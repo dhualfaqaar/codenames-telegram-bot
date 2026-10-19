@@ -727,7 +727,13 @@ export class CodenamesEngine {
           { text: 'قائد أحمر 🕵️‍♀️', callback_data: 'join:red:spymaster' }
         ],
         [
-          { text: 'ابدأ اللعبة 🚀', callback_data: 'game:start' }
+          {
+            text: (game.players.filter(p => p.team === 'blue').length >= 2 &&
+              game.players.filter(p => p.team === 'red').length >= 2)
+              ? 'ابدأ اللعبة 🚀 (اللعبة كاملة ✅)'
+              : 'ابدأ اللعبة 🚀 (قيد الانتظار ⏳)',
+            callback_data: 'game:start'
+          }
         ]
       ];
     }

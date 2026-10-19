@@ -58,6 +58,33 @@ interface TelegramUpdate {
   my_chat_member?: TelegramChatMemberUpdated;
 }
 
+/** Everything the bot knows about one of its users. */
+interface BotUserRecord {
+  id: string;
+  name: string;
+  username?: string;
+  firstSeen: number;
+  lastSeen: number;
+  /** pressed /start in the private chat at least once */
+  started: boolean;
+  /** he blocked the bot (we learnt it from a failed private message) */
+  blocked: boolean;
+  /** the owner disabled his messages to the bot */
+  silenced: boolean;
+  /** how many times he interacted with the bot */
+  actions: number;
+  /** did we already tell the owner that this user blocked the bot? */
+  blockNotified?: boolean;
+}
+
+/** A chat the bot has seen (group, supergroup or channel). */
+interface BotChatRecord {
+  id: string;
+  type: string;
+  title: string;
+  lastSeen: number;
+}
+
 export class TelegramBotManager {
   private token: string = '';
   private isPolling: boolean = false;
@@ -84,10 +111,21 @@ export class TelegramBotManager {
   // user id -> the typed clue word while waiting for the number choice
   private pendingClueWord: Map<string, { chatId: string; word: string }> = new Map();
 
-  constructor(initialToken?: string) {
+  // ---------------------------------------------------------------------
+  // Users / chats / owner dashboard
+  // ---------------------------------------------------------------------
+  private users: Map<string, BotUserRecord> = new Map();
+  private chats: Map<string, BotChatRecord> = new Map();
+  /** Telegram id of the bot owner (who gets the dashboard + alerts) */
+  private ownerId: string | null = null;
+  /** Should the owner receive alerts (new users, blocks, ...)? */
+  private ownerAlerts: boolean = true;
+
+  constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
       this.token = initialToken.trim();
     }
+    if (ownerId) this.ownerId = String(ownerId);
     this.seedInitialMatchHistory();
   }
 
@@ -393,7 +431,11 @@ export class TelegramBotManager {
       completedGames: this.completedGames,
       customWords: this.customWords,
       awaitingClueWord: Array.from(this.awaitingClueWord.entries()),
-      pendingClueWord: Array.from(this.pendingClueWord.entries())
+      pendingClueWord: Array.from(this.pendingClueWord.entries()),
+      users: Array.from(this.users.entries()),
+      chats: Array.from(this.chats.entries()),
+      ownerId: this.ownerId,
+      ownerAlerts: this.ownerAlerts
     };
   }
 
@@ -407,6 +449,10 @@ export class TelegramBotManager {
     if (Array.isArray(state.customWords)) this.customWords = state.customWords;
     if (Array.isArray(state.awaitingClueWord)) this.awaitingClueWord = new Map(state.awaitingClueWord);
     if (Array.isArray(state.pendingClueWord)) this.pendingClueWord = new Map(state.pendingClueWord);
+    if (Array.isArray(state.users)) this.users = new Map(state.users);
+    if (Array.isArray(state.chats)) this.chats = new Map(state.chats);
+    if (state.ownerId) this.ownerId = String(state.ownerId);
+    if (typeof state.ownerAlerts === 'boolean') this.ownerAlerts = state.ownerAlerts;
   }
 
   public setToken(token: string) {
@@ -585,6 +631,27 @@ export class TelegramBotManager {
   public async handleUpdate(update: TelegramUpdate) {
     try {
       const incoming = update.message || update.channel_post;
+
+      // ---- bookkeeping: chats + users (used by the owner dashboard) ----
+      const chat = incoming?.chat || update.callback_query?.message?.chat;
+      if (chat) this.trackChat(chat);
+
+      const actor = incoming?.from || update.callback_query?.from;
+      if (actor && !actor.is_bot) {
+        const record = this.trackUser(actor, false);
+
+        // The owner disabled this user's messages → ignore everything he sends.
+        if (record.silenced && !this.isOwner(actor.id)) {
+          if (update.callback_query) {
+            await this.answerCallbackQuery(
+              update.callback_query.id,
+              '🚫 رسائلك موقوفة من إدارة البوت.'
+            );
+          }
+          return;
+        }
+      }
+
       if (incoming) {
         await this.handleMessage(incoming);
       } else if (update.callback_query) {
@@ -625,6 +692,12 @@ export class TelegramBotManager {
       }
     }
 
+    // Owner dashboard button (private chat only)
+    if (message.chat.type === 'private' && text === '👑 لوحة التحكم' && this.isOwner(sender?.id)) {
+      await this.sendAdminPanel(chatId);
+      return;
+    }
+
     // /start command
     if (lower.startsWith('/start')) {
       if (message.chat.type === 'private') {
@@ -633,7 +706,30 @@ export class TelegramBotManager {
           await this.handleSpymasterReady(chatId, sender);
           return;
         }
+
+        // He opened the bot in private → mark him as "started" (+ tell the owner)
+        if (sender) {
+          const before = this.users.get(String(sender.id));
+          const wasStarted = Boolean(before?.started);
+          this.trackUser(sender, true);
+
+          if (!wasStarted) {
+            // Try to identify the owner from the channels the bot is in
+            await this.detectOwnerFromChannels(String(sender.id));
+
+            if (this.ownerAlerts && !this.isOwner(sender.id)) {
+              const rec = this.users.get(String(sender.id));
+              if (rec) {
+                await this.notifyOwner(`🆕 شغّل البوت: ${this.linkUser(rec)}`);
+              }
+            }
+          }
+        }
+
         await this.sendPrivateWelcome(chatId, senderName);
+        if (this.isOwner(sender?.id)) {
+          await this.sendAdminPanel(chatId);
+        }
         return;
       } else {
         // Group or channel start
@@ -655,6 +751,76 @@ export class TelegramBotManager {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const userId = cb.from.id;
     const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
+
+    // ---- owner dashboard buttons (only the owner may use them) ----
+    if (data.startsWith('admin:')) {
+      if (!this.isOwner(userId)) {
+        await this.answerCallbackQuery(cb.id, '⛔ هذي اللوحة لصاحب البوت بس.', true);
+        return;
+      }
+
+      const messageId = cb.message?.message_id;
+      const parts = data.split(':');
+
+      if (data === 'admin:noop') {
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+      if (data === 'admin:alerts') {
+        this.ownerAlerts = !this.ownerAlerts;
+        await this.answerCallbackQuery(
+          cb.id,
+          this.ownerAlerts ? '🔔 الإشعارات مفعّلة' : '🔕 الإشعارات معطّلة'
+        );
+        await this.sendAdminPanel(chatId, messageId);
+        return;
+      }
+      if (data === 'admin:panel' || data === 'admin:stats') {
+        await this.answerCallbackQuery(cb.id, 'محدّث ✅');
+        await this.sendAdminPanel(chatId, messageId);
+        return;
+      }
+      if (parts[1] === 'list') {
+        await this.answerCallbackQuery(cb.id, '');
+        await this.sendUserList(chatId, messageId, parts[2] || 'all', parseInt(parts[3] || '0', 10));
+        return;
+      }
+      if (parts[1] === 'u') {
+        await this.answerCallbackQuery(cb.id, '');
+        await this.sendUserDetail(chatId, messageId, parts[2] || '');
+        return;
+      }
+      if (parts[1] === 'silence' || parts[1] === 'block') {
+        const target = this.users.get(parts[2] || '');
+        if (!target) {
+          await this.answerCallbackQuery(cb.id, 'المستخدم غير موجود.', true);
+          return;
+        }
+        if (parts[1] === 'silence') {
+          target.silenced = !target.silenced;
+          await this.answerCallbackQuery(
+            cb.id,
+            target.silenced ? `🔇 أوقفت رسائل ${target.name}` : `🔊 فعّلت رسائل ${target.name}`
+          );
+        } else {
+          if (target.blocked) {
+            target.blocked = false;
+            target.blockNotified = false;
+            await this.answerCallbackQuery(cb.id, `✅ مسحت حظر ${target.name}`);
+          } else {
+            target.blocked = true;
+            target.blockNotified = true;
+            await this.answerCallbackQuery(cb.id, `🚫 علّمت ${target.name} كمحظور`);
+          }
+        }
+        this.users.set(target.id, target);
+        await this.sendUserDetail(chatId, messageId, target.id);
+        return;
+      }
+
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
 
     // Number chosen for a private clue (no-command flow) — this comes from the DM, not the game chat
     if (data.startsWith('setclue:')) {
@@ -951,7 +1117,7 @@ export class TelegramBotManager {
     const prevMessageId = existing?.messageId;
     this.games.set(chatId, game);
 
-    const text = CodenamesEngine.getTelegramMessageText(game);
+    const text = await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game));
     const keyboard = await this.buildKeyboard(game);
 
     // Reuse the previous board message (single-message mode).
@@ -1001,6 +1167,21 @@ export class TelegramBotManager {
   public async getBotUsername(): Promise<string | undefined> {
     await this.ensureBotInfo();
     return this.botInfo?.username;
+  }
+
+  /**
+   * Every game message ends with the bot's username, so anyone who still has
+   * not started the bot can tap it and press Start (and save it if he wants).
+   */
+  private async withBotFooter(text: string): Promise<string> {
+    const botUser = await this.getBotUsername();
+    if (!botUser) return text;
+    return (
+      text +
+      `\n━━━━━━━━━━━━━━━━━━━\n` +
+      `🤖 *البوت:* @${botUser}\n` +
+      `👆 اضغط عليه وشغّله (Start) حتى تلعب — وإذا عجبك احفظه عندك ✨`
+    );
   }
 
   /**
@@ -1128,6 +1309,12 @@ export class TelegramBotManager {
       }]);
     }
 
+    // The owner gets an extra button that opens his dashboard any time.
+    // (In a private chat the chat id IS the user id.)
+    if (this.isOwner(chatId)) {
+      keyboard.push([{ text: '👑 لوحة التحكم' }]);
+    }
+
     await this.sendMessageRaw(chatId, welcome, {
       keyboard,
       resize_keyboard: true,
@@ -1143,6 +1330,9 @@ export class TelegramBotManager {
     const channelId = String(shared.chat_id);
     const title = shared.title || 'القناة';
     const byUser = message.from ? String(message.from.id) : '';
+
+    // Whoever shares a game into his own channel is the bot owner.
+    if (message.from) this.claimOwner(message.from.id, 'channel');
 
     // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
     const existing = this.games.get(channelId);
@@ -1191,6 +1381,9 @@ export class TelegramBotManager {
     // In channels the update carries the admin who added the bot.
     const admins = update.from?.id ? [] : await this.getChatAdministrators(chatId);
     const creatorId = update.from?.id || admins.find((a: any) => a?.user?.id)?.user?.id;
+
+    // The admin who adds the bot to his own channel is the bot owner.
+    if (update.from?.id) this.claimOwner(update.from.id, 'channel');
 
     try {
       await this.startNewGameLobby(chatId, update.chat.title || 'القناة', creatorId);
@@ -1407,7 +1600,7 @@ export class TelegramBotManager {
    */
   private async updateTelegramGameBoard(chatId: string, game: CodenamesGame, messageId?: number, lastEvent?: string) {
     const msgId = messageId || game.messageId;
-    const text = CodenamesEngine.getTelegramMessageText(game, lastEvent);
+    const text = await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game, lastEvent));
     const keyboard = await this.buildKeyboard(game);
 
     if (msgId) {
@@ -1436,6 +1629,339 @@ export class TelegramBotManager {
   /** Remove characters that break Telegram Markdown from dynamic values. */
   private mdSafe(value: string): string {
     return (value || '').replace(/[*_`\[\]]/g, '');
+  }
+
+  // ---------------------------------------------------------------------
+  // Users, chats and the owner dashboard
+  // ---------------------------------------------------------------------
+
+  /** A clickable (blue) mention of a user — tapping it opens his account. */
+  private linkUser(user: { id: string | number; name?: string; username?: string }): string {
+    const label = this.mdSafe(
+      `${user.name || 'مستخدم'}${user.username ? ` (@${user.username})` : ''}`
+    );
+    return `[${label}](tg://user?id=${user.id})`;
+  }
+
+  /** Remember/refresh a user we saw in an update. */
+  private trackUser(user: TelegramUser, privateStart = false): BotUserRecord {
+    const id = String(user.id);
+    const name = user.first_name + (user.last_name ? ` ${user.last_name}` : '');
+    const now = Date.now();
+
+    const existing = this.users.get(id);
+    if (!existing) {
+      const fresh: BotUserRecord = {
+        id,
+        name,
+        username: user.username,
+        firstSeen: now,
+        lastSeen: now,
+        started: privateStart,
+        blocked: false,
+        silenced: false,
+        actions: 1
+      };
+      this.users.set(id, fresh);
+      return fresh;
+    }
+
+    existing.name = name;
+    if (user.username) existing.username = user.username;
+    existing.lastSeen = Date.now();
+    existing.actions += 1;
+    if (privateStart) existing.started = true;
+    this.users.set(id, existing);
+    return existing;
+  }
+
+  /** Remember/refresh a group or channel the bot lives in. */
+  private trackChat(chat?: TelegramChat) {
+    if (!chat || chat.type === 'private') return;
+    this.chats.set(String(chat.id), {
+      id: String(chat.id),
+      type: chat.type,
+      title: chat.title || 'بدون اسم',
+      lastSeen: Date.now()
+    });
+  }
+
+  public isOwner(userId?: string | number): boolean {
+    return Boolean(userId && this.ownerId && String(userId) === String(this.ownerId));
+  }
+
+  /** Send an alert to the bot owner. */
+  private async notifyOwner(text: string) {
+    if (!this.ownerId) return;
+    await this.sendMessage(this.ownerId, text);
+  }
+
+  /**
+   * Who owns the bot? Nothing is hardcoded: the owner is the admin who opened a
+   * lobby inside his own channel (OR the OWNER_ID variable, when configured).
+   */
+  private claimOwner(userId?: number | string, chatType?: string) {
+    if (this.ownerId || !userId) return;
+    if (chatType !== 'channel') return;
+    this.ownerId = String(userId);
+  }
+
+  /**
+   * Someone wrote to us in private → if we still don't know the owner, check
+   * whether he is an admin of a channel the bot already plays in.
+   */
+  private async detectOwnerFromChannels(userId: string) {
+    if (this.ownerId) return;
+
+    const candidates = Array.from(this.chats.values());
+    const knownIds = new Set(candidates.map(c => c.id));
+
+    // Add chats we only know through a game (their type is unknown until we ask)
+    for (const game of Array.from(this.games.values()).slice(0, 5)) {
+      const id = String((game as any).id || '');
+      if (!id || knownIds.has(id)) continue;
+      knownIds.add(id);
+      candidates.push({ id, type: 'unknown', title: game.chatTitle || '', lastSeen: 0 });
+    }
+
+    for (const candidate of candidates.slice(0, 6)) {
+      let type = candidate.type;
+      if (type === 'unknown') {
+        const info = await this.getChatInfo(candidate.id);
+        type = info?.type || 'unknown';
+      }
+      if (type !== 'channel' && type !== 'supergroup') continue;
+
+      const admins = await this.getChatAdministrators(candidate.id);
+      if (admins.some(a => String(a?.user?.id) === userId)) {
+        this.ownerId = userId;
+        return;
+      }
+    }
+
+    // Last resort: the only person who ever opened a lobby is the owner.
+    const creators = new Set(
+      Array.from(this.games.values())
+        .map(g => String(g.createdBy || ''))
+        .filter(Boolean)
+    );
+    if (creators.size === 1 && creators.has(userId)) {
+      this.ownerId = userId;
+    }
+  }
+
+  /** Telegram API: getChat (used to learn a chat's type). */
+  private async getChatInfo(chatId: string): Promise<any> {
+    if (!this.token) return null;
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${this.token}/getChat?chat_id=${encodeURIComponent(chatId)}`
+      );
+      const data: any = await res.json();
+      return data?.ok ? data.result : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * A private message to a user failed. "blocked" means he blocked the bot —
+   * the owner wants to know that.
+   */
+  private async noteDmFailure(userId: string, description?: string) {
+    if (!this.ownerId || String(userId) === this.ownerId) return;
+    const rec = this.users.get(String(userId));
+    if (!rec) return;
+
+    const desc = String(description || '').toLowerCase();
+    const blocked =
+      desc.includes('blocked') || desc.includes('deactivated') || desc.includes('kicked');
+    if (!blocked) return;
+    if (rec.blocked && rec.blockNotified) return;
+
+    rec.blocked = true;
+    rec.blockNotified = true;
+    rec.lastSeen = Date.now();
+    this.users.set(String(userId), rec);
+
+    if (this.ownerAlerts) {
+      await this.notifyOwner(`🚫 ${this.linkUser(rec)} حظر البوت!`);
+    }
+  }
+
+  /** Compact human date (UTC) used inside the dashboard. */
+  private stamp(ts: number): string {
+    if (!ts) return '—';
+    return new Date(ts).toISOString().replace('T', ' ').slice(0, 16);
+  }
+
+  /** The full statistics text. */
+  private async buildDashboardText(): Promise<string> {
+    const users = Array.from(this.users.values());
+    const started = users.filter(u => u.started).length;
+    const blocked = users.filter(u => u.blocked).length;
+    const silenced = users.filter(u => u.silenced).length;
+
+    const chats = Array.from(this.chats.values());
+    const channels = chats.filter(c => c.type === 'channel');
+    const groups = chats.filter(c => c.type === 'group' || c.type === 'supergroup');
+
+    const games = Array.from(this.games.values());
+    const active = games.filter(g => g.status !== 'game_over').length;
+    const finished = this.completedGames.length;
+    const blueWins = this.completedGames.filter(g => g.winner === 'blue').length;
+    const redWins = this.completedGames.filter(g => g.winner === 'red').length;
+
+    // In how many of those channels is the bot an admin?
+    let adminIn = 0;
+    if (this.botInfo?.id && channels.length) {
+      for (const channel of channels.slice(0, 8)) {
+        const admins = await this.getChatAdministrators(channel.id);
+        if (admins.some(a => String(a?.user?.id) === String(this.botInfo.id))) adminIn += 1;
+      }
+    }
+
+    return (
+      `📊 *إحصائيات البوت*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `👥 *المستخدمون:* ${users.length}\n` +
+      `✅ شغّلوا البوت: ${started}\n` +
+      `🚫 حظروا البوت: ${blocked}\n` +
+      `🔇 موقوفة رسائلهم: ${silenced}\n\n` +
+      `💬 *المحادثات:* ${chats.length}\n` +
+      `📣 القنوات: ${channels.length} — البوت مشرف بـ ${adminIn}\n` +
+      `👥 المجموعات: ${groups.length}\n\n` +
+      `🎮 *الألعاب:*\n` +
+      `⏳ الجارية الآن: ${active}\n` +
+      `🏁 المكتملة: ${finished}\n` +
+      `🔵 فاز الأزرق: ${blueWins} | 🔴 فاز الأحمر: ${redWins}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🕒 آخر تحديث: ${this.stamp(Date.now())}`
+    );
+  }
+
+  private adminPanelKeyboard(): any[][] {
+    const users = Array.from(this.users.values());
+    const blocked = users.filter(u => u.blocked).length;
+    const silenced = users.filter(u => u.silenced).length;
+
+    return [
+      [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
+      [
+        { text: `👥 المستخدمون (${users.length})`, callback_data: 'admin:list:all:0' },
+        { text: `🚫 حظروا البوت (${blocked})`, callback_data: 'admin:list:blocked:0' }
+      ],
+      [
+        { text: `🔇 موقوفة رسائلهم (${silenced})`, callback_data: 'admin:list:silenced:0' },
+        {
+          text: this.ownerAlerts ? '🔔 الإشعارات: ✅' : '🔕 الإشعارات: ❌',
+          callback_data: 'admin:alerts'
+        }
+      ]
+    ];
+  }
+
+  /** Show/refresh the owner dashboard. */
+  private async sendAdminPanel(chatId: string, messageId?: number) {
+    const body = `👑 *لوحة تحكم صاحب البوت*\n\n${await this.buildDashboardText()}`;
+    const keyboard = this.adminPanelKeyboard();
+
+    if (messageId) {
+      const res = await this.editMessageText(chatId, messageId, body, keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    await this.sendMessage(chatId, body, keyboard);
+  }
+
+  /** A page of the users list (all / blocked / silenced). */
+  private async sendUserList(
+    chatId: string,
+    messageId: number | undefined,
+    kind: string,
+    page: number
+  ) {
+    let list = Array.from(this.users.values()).sort((a, b) => b.lastSeen - a.lastSeen);
+    if (kind === 'blocked') list = list.filter(u => u.blocked);
+    if (kind === 'silenced') list = list.filter(u => u.silenced);
+
+    const perPage = 8;
+    const totalPages = Math.max(1, Math.ceil(list.length / perPage));
+    const safePage = Math.min(Math.max(0, page), totalPages - 1);
+    const slice = list.slice(safePage * perPage, safePage * perPage + perPage);
+
+    const title =
+      kind === 'blocked' ? '🚫 اللي حظروا البوت' : kind === 'silenced' ? '🔇 موقوفة رسائلهم' : '👥 المستخدمون';
+
+    const keyboard: any[][] = slice.map(u => [
+      {
+        text: `${u.blocked ? '🚫' : u.started ? '✅' : '▪️'} ${u.name}${u.username ? ` (@${u.username})` : ''}`,
+        callback_data: `admin:u:${u.id}`
+      }
+    ]);
+
+    if (totalPages > 1) {
+      const nav: any[] = [];
+      if (safePage > 0) nav.push({ text: '⬅️', callback_data: `admin:list:${kind}:${safePage - 1}` });
+      nav.push({ text: `${safePage + 1}/${totalPages}`, callback_data: 'admin:noop' });
+      if (safePage < totalPages - 1) nav.push({ text: '➡️', callback_data: `admin:list:${kind}:${safePage + 1}` });
+      keyboard.push(nav);
+    }
+    keyboard.push([{ text: '🔙 اللوحة', callback_data: 'admin:panel' }]);
+
+    const body =
+      `👑 *لوحة تحكم صاحب البوت*\n\n` +
+      (list.length === 0
+        ? `_لا أحد هنا._`
+        : `${title} — *${list.length}*\n👇 اضغط على أي اسم حتى تشوف تفاصيله وتتحكم بيه.`);
+
+    if (messageId) {
+      const res = await this.editMessageText(chatId, messageId, body, keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    await this.sendMessage(chatId, body, keyboard);
+  }
+
+  /** One user's details + the control buttons. */
+  private async sendUserDetail(chatId: string, messageId: number | undefined, targetId: string) {
+    const u = this.users.get(String(targetId));
+    if (!u) {
+      if (messageId) await this.editMessageText(chatId, messageId, '⚠️ هذا المستخدم مو موجود بالقائمة.');
+      return;
+    }
+
+    const body =
+      `👤 ${this.linkUser(u)}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🆔 \`${u.id}\`\n` +
+      `📅 أول ظهور: ${this.stamp(u.firstSeen)}\n` +
+      `🕒 آخر نشاط: ${this.stamp(u.lastSeen)}\n` +
+      `🔁 عدد التفاعلات: ${u.actions}\n` +
+      `✅ شغّل البوت: ${u.started ? 'نعم' : 'لا'}\n` +
+      `🚫 حظر البوت: ${u.blocked ? 'نعم' : 'لا'}\n` +
+      `🔇 رسائله للبوت: ${u.silenced ? 'موقوفة' : 'مفعّلة'}`;
+
+    const keyboard: any[][] = [
+      [{ text: '🔗 افتح حسابه', url: `tg://user?id=${u.id}` }],
+      [
+        {
+          text: u.silenced ? '🔊 فعّل رسائله' : '🔇 أوقف رسائله',
+          callback_data: `admin:silence:${u.id}`
+        },
+        {
+          text: u.blocked ? '✅ امسح الحظر' : '🚫 علّمه كمحظور',
+          callback_data: `admin:block:${u.id}`
+        }
+      ],
+      [{ text: '🔙 اللوحة', callback_data: 'admin:panel' }]
+    ];
+
+    const full = `👤 *تفاصيل المستخدم*\n\n${body}`;
+
+    if (messageId) {
+      const res = await this.editMessageText(chatId, messageId, full, keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    await this.sendMessage(chatId, full, keyboard);
   }
 
   /** Telegram API: getChatAdministrators (used to find the lobby owner inside channels). */
@@ -1534,7 +2060,14 @@ export class TelegramBotManager {
         body: JSON.stringify(body)
       });
 
-      return await res.json();
+      const data: any = await res.json();
+
+      // A private message failed (positive id = private user) → learn from it.
+      if (!data?.ok && Number(chatId) > 0) {
+        await this.noteDmFailure(String(chatId), data?.description);
+      }
+
+      return data;
     } catch (e) {
       console.error('sendMessage failed:', e);
       return null;
