@@ -714,11 +714,7 @@ export class TelegramBotManager {
     if (data === 'game:start' && game) {
       // Only the owner (the admin who opened the lobby) may start the round.
       if (game.createdBy && String(game.createdBy) !== String(userId)) {
-        await this.answerCallbackQuery(
-          cb.id,
-          '⚠️ فقط المشرف صاحب اللعبة يقدر يضغط (ابدأ اللعبة 🚀).',
-          true
-        );
+        await this.answerCallbackQuery(cb.id, '⚠️ لازم المشرف يبدأ اللعبة.', true);
         return;
       }
 
@@ -904,7 +900,11 @@ export class TelegramBotManager {
    * so the chat always has ONE single game message that keeps updating.
    * Returns the board message id (or null if it could not be sent).
    */
-  private async startNewGameLobby(chatId: string, chatTitle: string, createdBy?: number | string): Promise<number | null> {
+  private async startNewGameLobby(
+    chatId: string,
+    chatTitle: string,
+    createdBy?: number | string
+  ): Promise<{ messageId: number | null; error?: string }> {
     const existing = this.games.get(chatId);
     const game = CodenamesEngine.createLobby(
       chatId,
@@ -919,13 +919,15 @@ export class TelegramBotManager {
     const text = CodenamesEngine.getTelegramMessageText(game);
     const keyboard = CodenamesEngine.getTelegramInlineKeyboard(game);
 
-    // Reuse the previous board message (single-message mode)
+    // Reuse the previous board message (single-message mode).
+    // "message is not modified" also counts as success — nothing to change.
     if (prevMessageId) {
       const res = await this.editMessageText(chatId, prevMessageId, text, keyboard);
-      if (res?.ok) {
+      const unchanged = String(res?.description || '').includes('not modified');
+      if (res?.ok || unchanged) {
         game.messageId = prevMessageId;
         this.games.set(chatId, game);
-        return prevMessageId;
+        return { messageId: prevMessageId };
       }
     }
 
@@ -934,8 +936,12 @@ export class TelegramBotManager {
     if (msgId) {
       game.messageId = msgId;
       this.games.set(chatId, game);
+      return { messageId: msgId };
     }
-    return msgId || null;
+
+    const reason = sent?.description || 'ما وصل رد من تلجرام';
+    console.error('startNewGameLobby failed for', chatId, reason);
+    return { messageId: null, error: reason };
   }
 
   /**
@@ -988,20 +994,33 @@ export class TelegramBotManager {
     const title = shared.title || 'القناة';
     const byUser = message.from ? String(message.from.id) : '';
 
-    const msgId = await this.startNewGameLobby(channelId, title, message.from?.id);
+    // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
+    const existing = this.games.get(channelId);
+    if (existing && existing.status === 'lobby' && existing.messageId) {
+      await this.deleteMessage(channelId, existing.messageId);
+      this.games.delete(channelId);
+    }
+
+    let result = await this.startNewGameLobby(channelId, title, message.from?.id);
+    // Right after the bot is added to a channel Telegram sometimes needs a second try.
+    if (!result.messageId) {
+      result = await this.startNewGameLobby(channelId, title, message.from?.id);
+    }
+
     if (!byUser) return;
 
-    if (msgId) {
+    if (result.messageId) {
       await this.sendMessage(
         byUser,
         `✅ نزّلت اللعبة بقناتك «${this.mdSafe(title)}».\n` +
-        `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت (المشرف) تضغط (ابدأ اللعبة 🚀) لما ينضمون.`
+          `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت المشرف تضغط (ابدأ اللعبة 🚀).`
       );
     } else {
       await this.sendMessage(
         byUser,
         `⚠️ ما گدرت أنزل اللعبة بقناة «${this.mdSafe(title)}».\n` +
-        `تأكد إن البوت *مشرف (Admin)* بالقناة، وبعدين جرّب الزر مره ثانية.`
+          `*السبب:* ${this.mdSafe(String(result.error || 'غير معروف'))}\n\n` +
+          `تأكد إن البوت *مشرف (Admin)* بالقناة وبعدين جرّب مرة ثانية.`
       );
     }
   }
@@ -1291,6 +1310,24 @@ export class TelegramBotManager {
       return await res.json();
     } catch (e) {
       console.error('sendMessageRaw failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Telegram API: deleteMessage (used when re-sharing a fresh lobby into a channel)
+   */
+  public async deleteMessage(chatId: string, messageId: number): Promise<any> {
+    if (!this.token) return null;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/deleteMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('deleteMessage failed:', e);
       return null;
     }
   }

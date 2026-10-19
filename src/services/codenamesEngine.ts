@@ -69,19 +69,33 @@ export class CodenamesEngine {
       return { success: false, message: 'اللعبة قيد التشغيل بالفعل، لا يمكن تغيير الفرق الآن.', game };
     }
 
-    // Check if player already registered as spymaster in this team or role
+    const teamColor = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
     const existingIndex = game.players.findIndex(p => String(p.id) === String(player.id));
-    
-    // Check if role is spymaster, ensure there is only 1 spymaster per team
-    if (player.role === 'spymaster') {
-      const existingSpymaster = game.players.find(p => p.team === player.team && p.role === 'spymaster' && String(p.id) !== String(player.id));
-      if (existingSpymaster) {
-        return {
-          success: false,
-          message: `الفريق ال${player.team === 'blue' ? 'أزرق' : 'أحمر'} لديه قائد بالفعل (${existingSpymaster.name}). يمكنك الانضمام كعميل.`,
-          game
-        };
-      }
+    const alreadyIn = existingIndex >= 0;
+
+    // Every team has exactly 2 seats: one spymaster + one operative.
+    const seatTaken = game.players.find(
+      p => p.team === player.team && p.role === player.role && String(p.id) !== String(player.id)
+    );
+    if (seatTaken) {
+      const seatName = player.role === 'spymaster' ? 'القائد الجاسوس 🕵️' : 'العميل 👤';
+      return {
+        success: false,
+        message:
+          `⚠️ ما يصير — ${seatName} بالفريق ${teamColor} ماخوذه (${seatTaken.name}).\n` +
+          `اختار ${player.role === 'spymaster' ? '«عميل 👤»' : '«قائد جاسوس 🕵️»'} أو الفريق الثاني.`,
+        game
+      };
+    }
+
+    if (!alreadyIn && game.players.filter(p => p.team === player.team).length >= 2) {
+      return {
+        success: false,
+        message:
+          `⚠️ الفريق ${teamColor} مكتمل (قائد جاسوس + عميل).\n` +
+          `انضم للفريق الثاني، أو انتظر جولة جديدة.`,
+        game
+      };
     }
 
     const updatedPlayers = [...game.players];
@@ -92,7 +106,6 @@ export class CodenamesEngine {
     }
 
     const roleText = player.role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل ميداني 👤';
-    const teamColor = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
 
     const logEntry: GameLogEntry = {
       id: Math.random().toString(36).substring(7),
@@ -607,16 +620,22 @@ export class CodenamesEngine {
     const { blueRemaining, redRemaining } = this.getScores(game);
 
     if (game.status === 'lobby') {
+      const full =
+        game.players.filter(p => p.team === 'blue').length >= 2 &&
+        game.players.filter(p => p.team === 'red').length >= 2;
+
       return `🕵️‍♂️ *لعبة كود نيمز (Codenames)* 🕵️‍♀️\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `👥 *المنضمون الآن:* ${game.players.length}\n\n` +
+        `👥 *المنضمون:* ${game.players.length} من 4\n\n` +
         `${this.teamRoster(game, 'blue')}\n\n` +
         `${this.teamRoster(game, 'red')}\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `1️⃣ كل واحد يضغط زر فريقه (قائد جاسوس 🕵️ أو عميل 👤).\n` +
-        `2️⃣ كل فريق يحتاج *قائد جاسوس* واحد و*عميل* واحد على الأقل.\n` +
-        `3️⃣ لما ينضمون كلكم — *المشرف صاحب اللعبة* يضغط (ابدأ اللعبة 🚀).\n` +
-        `⚠️ غير المشرف ما يقدر يبدأ اللعبة.`;
+        (full
+          ? `🔒 *اللوبي مكتمل!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
+          : `⏳ *باقي ${Math.max(0, 4 - game.players.length)} لاعب* — كل فريق يحتاج (قائد جاسوس 🕵️ + عميل 👤).\n`) +
+        `1️⃣ كل واحد يضغط زر دوره بفريقه.\n` +
+        `2️⃣ الدور الماخوذ ما ينفع تاخذه — راح يجيك تنبيه.\n` +
+        `3️⃣ المشرف صاحب اللعبة يضغط (ابدأ اللعبة 🚀) بس.`;
     }
 
     if (game.status === 'game_over') {
