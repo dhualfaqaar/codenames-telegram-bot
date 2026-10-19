@@ -11,7 +11,7 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
-ENV PORT=7860
-EXPOSE 7860
+# The platform injects PORT; server.ts falls back to 3000.
+EXPOSE 3000
 
 CMD ["npm", "start"]
