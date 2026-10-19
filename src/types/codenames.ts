@@ -64,6 +64,8 @@ export interface CodenamesGame {
   logs: GameLogEntry[];
   createdAt: number;
   updatedAt: number;
+  /** 💵 هل انصرفت جوائز هاي المباراة؟ (حتى ما تنصرف مرتين) */
+  rewarded?: boolean;
 }
 
 export interface BotConfig {

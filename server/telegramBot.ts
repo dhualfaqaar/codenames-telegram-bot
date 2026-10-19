@@ -1,6 +1,7 @@
 import { CodenamesEngine } from '../src/services/codenamesEngine';
 import * as Wordle from '../src/services/wordleEngine';
 import * as Poet from '../src/services/poetEngine';
+import * as Economy from '../src/services/economy';
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
@@ -156,6 +157,23 @@ const BOT_GAMES: BotGameCard[] = [
       'البوت يعطيكم مجموعة حروف، وكل واحد يحاول يكوّن منها أطول كلمة عربية صحيحة،\n' +
       'والكلمة لازم تكون من نفس الحروف المعطاة بلا زيادة.\n' +
       'أطول كلمة صحيحة تفوز 🏆.',
+    ready: false
+  },
+  {
+    id: 'rps',
+    emoji: '✊',
+    title: 'حجرة ورقة مقص',
+    category: 'duo',
+    players: 'لاعبين — إنت وواحد ثاني (ناس حقيقيون)',
+    where: 'بقناة أو كروب — المشرف ينزّلها واللاعبين يشتركون',
+    goal: 'تفوز على خصمك بأفضل من 3 جولات',
+    reward: 'نقاط بسيطة — و0.011 💵 للفائز بس',
+    about:
+      'تحدي سريع: كل لاعب يختار *حجرة ✊ أو ورقة ✋ أو مقص ✌️* بالخاص وبلا ما يشوف اختيار خصمه،\n' +
+      'والبوت يكشف الاختيارين ويحسب الجولة (حجرة تكسر المقص • مقص يقص الورقة • ورقة تغطي الحجرة).\n' +
+      'أفضل من *3 جولات* يفوز 🏆 — والتعادل يعيد الجولة.\n' +
+      'لأنها بسيطة وحظّية، فلوسها كلش قليلة: *0.011* 💵 بس للفائز.',
+    channel: true,
     ready: false
   },
 
@@ -317,6 +335,18 @@ interface BotUserRecord {
   poetWins?: number;
   /** كم بيت لعبه بـ«خمّن الشاعر» (فاز أو خسر) */
   poetGames?: number;
+  /** 💵 رصيد الفلوس (غالية — بس من الألعاب مع ناس حقيقيين) */
+  money?: number;
+  /** 🎖️ نقاط الخبرة (تزيد بكل لعبة أونلاين) */
+  xp?: number;
+  /** كم لعبة أونلاين لعب */
+  onlineGames?: number;
+  /** كم لعبة أونلاين فاز */
+  onlineWins?: number;
+  /** يوم آخر ربح (للسقف اليومي) */
+  earnDay?: string;
+  /** كم ربح بهاي اليوم */
+  earnedToday?: number;
 }
 
 /** A chat the bot has seen (group, supergroup or channel). */
@@ -485,8 +515,12 @@ export class TelegramBotManager {
     this.completedGames = [match3, match2, match1];
   }
 
-  public recordFinishedGame(game: CodenamesGame) {
-    if (game.status !== 'game_over') return;
+  /**
+   * تسجيل مباراة خلصت + صرف جوائزها (فلوس/مستوى) مرة وحدة بس.
+   * يرجّع نص الجوائز إذا انصرفت، حتى ينرسل للقناة.
+   */
+  public recordFinishedGame(game: CodenamesGame): string | null {
+    if (game.status !== 'game_over') return null;
     const exists = this.completedGames.some(g => g.id === game.id);
     if (!exists) {
       this.completedGames.unshift(game);
@@ -494,6 +528,178 @@ export class TelegramBotManager {
         this.completedGames = this.completedGames.slice(0, 50);
       }
     }
+    if (exists) return null;
+    return this.settleCodenamesMatch(game);
+  }
+
+  // ---------------------------------------------------------------------
+  // 💵 اقتصاد المباريات (فلوس غالية + خبرة/مستوى) — ناس حقيقيين بس
+  // ---------------------------------------------------------------------
+
+  /** سجل اللاعب (وينشئه إذا ما موجود) حتى نحدّث محفظته */
+  private walletOf(player: Player): BotUserRecord {
+    const id = String(player.id);
+    let rec = this.users.get(id);
+    if (!rec) {
+      const now = Date.now();
+      rec = {
+        id,
+        name: player.name,
+        username: player.username,
+        firstSeen: now,
+        lastSeen: now,
+        started: false,
+        blocked: false,
+        banned: false,
+        actions: 0
+      };
+    }
+    return rec;
+  }
+
+  /** لاعب حقيقي؟ (أرقام تليكرام بس — نتجاهل الحسابات التجريبية والألعاب الوهمية) */
+  private isRealPlayer(player: Player): boolean {
+    if (!player || player.isBot) return false;
+    const raw = String(player.id);
+    return /^\d{5,}$/.test(raw);
+  }
+
+  /**
+   * 💵 يصرف جوائز مباراة كود نيمز:
+   *  - الفائزون ياخذون فلوس حسب أدائهم (بطاقات كشفوها + مستوى الخصوم).
+   *  - الخاسرون والخائبون ياخذون خبرة بس (المشاركة تزيد المستوى).
+   * المباريات المزروعة (match_hist_) ما تنصرف لها أي جوائز.
+   */
+  private settleCodenamesMatch(game: CodenamesGame): string | null {
+    if (String(game.id).startsWith('match_hist_')) return null;
+    if (game.rewarded) return null;
+    if (!game.winner) return null;
+    // مباراة قديمة/مستوردة؟ ما نصرف عليها جوائز
+    if (Date.now() - (game.updatedAt || game.createdAt || 0) > 6 * 3600 * 1000) return null;
+
+    const winners = game.players.filter(p => p.team === game.winner && this.isRealPlayer(p));
+    const losers = game.players.filter(p => p.team !== game.winner && this.isRealPlayer(p));
+    if (!winners.length) return null;
+
+    // الأداء: كم بطاقة صح كشف اللاعب (والغلط ينقص من أدائه)
+    const isCorrect = (c: { type: string; revealedBy?: { team?: string } }) =>
+      (c.type === 'blue' || c.type === 'red') && c.type === c.revealedBy?.team;
+    const teamCorrect = game.cards.filter(c => c.revealed && c.revealedBy?.team === game.winner && isCorrect(c)).length;
+    const correctBy = (name: string) =>
+      game.cards.filter(c => c.revealed && c.revealedBy?.playerName === name && isCorrect(c)).length;
+    const wrongBy = (name: string) =>
+      game.cards.filter(c => c.revealed && c.revealedBy?.playerName === name && !isCorrect(c)).length;
+
+    const shown = winners.map(p => {
+      const correct = p.role === 'spymaster' ? teamCorrect : correctBy(p.name);
+      const wrong = p.role === 'spymaster' ? 0 : wrongBy(p.name);
+      return { player: p, correct, wrong, score: Math.max(0, correct - 0.5 * wrong) };
+    });
+    const best = Math.max(1, ...shown.map(s => s.score));
+
+    // متوسط مستوى الخصوم — الخصم الأقوى يدفع أكثر
+    const loserLevels = losers.map(p => Economy.levelFromXp(this.users.get(String(p.id))?.xp || 0));
+    const opponentLevel = loserLevels.length
+      ? loserLevels.reduce((a, b) => a + b, 0) / loserLevels.length
+      : 1;
+
+    const gained: {
+      name: string;
+      money: number;
+      correct: number;
+      wrong: number;
+      level: number;
+      levelUp: boolean;
+      capped: boolean;
+    }[] = [];
+
+    for (const entry of shown) {
+      const p = entry.player;
+      const rec = this.walletOf(p);
+      const levelBefore = Economy.levelFromXp(rec.xp || 0);
+      const today = Economy.earnedToday(rec);
+      const performance = 0.35 + 0.65 * (entry.score / best);
+      const money = Economy.moneyForWin({
+        gameId: 'codenames',
+        performance,
+        level: levelBefore,
+        opponentLevel,
+        earnedToday: today
+      });
+
+      rec.money = Economy.roundMoney((rec.money || 0) + money);
+      rec.xp = (rec.xp || 0) + Economy.xpForResult('codenames', true);
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      rec.onlineWins = (rec.onlineWins || 0) + 1;
+      Economy.addEarned(rec, money);
+      this.users.set(rec.id, rec);
+
+      gained.push({
+        name: p.name,
+        money,
+        correct: entry.correct,
+        wrong: entry.wrong,
+        level: Economy.levelFromXp(rec.xp || 0),
+        levelUp: Economy.levelFromXp(rec.xp || 0) > levelBefore,
+        capped: money === 0 && Economy.earnedToday(rec) >= Economy.DAILY_MONEY_CAP
+      });
+    }
+
+    gained.sort((a, b) => b.money - a.money);
+
+    // الخاسرون: خبرة بس
+    let loserXp = 0;
+    for (const p of losers) {
+      const rec = this.walletOf(p);
+      const add = Economy.xpForResult('codenames', false);
+      rec.xp = (rec.xp || 0) + add;
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      this.users.set(rec.id, rec);
+      loserXp = add;
+    }
+
+    game.rewarded = true;
+
+    const lines: string[] = [`💰 *جوائز المباراة* — ${game.winner === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} فاز`, `━━━━━━━━━━━━━━━━━━━`];
+    gained.forEach((g, i) => {
+      const bits = [`${this.statMedal(i)} ${this.mdSafe(g.name)}`];
+      if (g.money > 0) bits.push(`*+${Economy.formatMoney(g.money)}* 💵`);
+      else if (g.capped) bits.push(`🔒 وصل السقف اليومي`);
+      if (g.correct) bits.push(`_${g.correct} بطاقة_`);
+      if (g.wrong) bits.push(`_${g.wrong} غلط_`);
+      if (g.levelUp) bits.push(`🎖️ مستوى *${g.level}* جديد!`);
+      else bits.push(`🎖️ مستوى ${g.level}`);
+      lines.push(bits.join(' • '));
+    });
+    if (loserXp) {
+      lines.push(`━━━━━━━━━━━━━━━━━━━`);
+      lines.push(`_الخصم خذ خبرة +${loserXp} بس — الفلوس للفائزين 💵_`);
+    }
+    if (gained.every(g => g.money === 0) && gained.some(g => g.capped)) {
+      lines.push(`🔒 *السقف اليومي:* ${Economy.formatMoney(Economy.DAILY_MONEY_CAP)} باليوم — ارجع باجر 🌙`);
+    }
+    lines.push(`_الفلوس غالية: الأداء الأحسن ياخذ أكثر 🥇_`);
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 👤 حالة اللاعب بسطرين (مستواه + فلوسه + تعليق بسيط).
+   * ترجع نص فاضي إذا ما عندنا اللاعب — يعني ما ينعرض ولا شي.
+   */
+  private playerStatusText(rec?: BotUserRecord): string {
+    if (!rec) return '';
+    const p = Economy.levelProgress(rec.xp || 0);
+    const money = rec.money || 0;
+    const games = rec.onlineGames || 0;
+    const wins = rec.onlineWins || 0;
+
+    const bits = [`🎖️ مستوى *${p.level}* (${Economy.levelTitle(p.level)})`];
+    bits.push(`💵 *${Economy.formatMoney(money)}*`);
+    if (games) bits.push(`🎮 ${games} مباراة • 🏆 ${wins}`);
+
+    const vibe = Economy.walletVibe({ level: p.level, money, onlineGames: games, wins });
+    return `${bits.join(' • ')}\n_${vibe}_`;
   }
 
   public addSampleFinishedGame(): CodenamesGame {
@@ -1227,6 +1433,12 @@ export class TelegramBotManager {
       return;
     }
 
+    // ---- 💰 المتصدرون بالفلوس / المستوى / ملفي (عامة — قراءة بس) ----
+    if (data.startsWith('rank:')) {
+      await this.handleRanking(cb, data.slice(5));
+      return;
+    }
+
     // ---- 🎮 قائمة الألعاب و«خمّن الكلمة» (كلها بالخاص) ----
     if (data.startsWith('hub:')) {
       await this.handleGamesMenu(cb, data.slice(4));
@@ -1568,8 +1780,9 @@ export class TelegramBotManager {
       }
 
       this.games.set(chatId, result.game);
+      let rewards: string | null = null;
       if (result.game.status === 'game_over') {
-        this.recordFinishedGame(result.game);
+        rewards = this.recordFinishedGame(result.game);
       }
       const guessedCard = game.cards.find(c => c.id === cardId);
       await this.answerCallbackQuery(cb.id, result.message);
@@ -1579,6 +1792,11 @@ export class TelegramBotManager {
         cb.message?.message_id,
         `${CodenamesEngine.nameTag(userName)} خمّن «${guessedCard?.word || ''}» — ${result.message}`
       );
+
+      // 💵 جوائز المباراة (فلوس + مستوى) — الفائزون بس
+      if (rewards) {
+        await this.sendMessage(chatId, await this.withBotFooter(rewards));
+      }
 
       // If the turn moved to the other team's spymaster, prompt them privately
       if (result.game.status === 'spymaster_turn') {
@@ -1812,7 +2030,12 @@ export class TelegramBotManager {
       return;
     }
 
-    const view = await this.buildGamesMenu(section);
+    const view = await this.buildGamesMenu(
+      section,
+      section === 'main' && cb.message?.chat.type === 'private'
+        ? this.users.get(String(cb.from.id))
+        : undefined
+    );
     const text = await this.withBotFooter(view.text);
     if (messageId) {
       await this.editMessageText(chatId, messageId, text, view.keyboard);
@@ -2100,7 +2323,149 @@ export class TelegramBotManager {
     return { text, keyboard };
   }
 
-  /** يفتح/يحدّث شاشة الإحصائيات (مسار عام — أي واحد يكدر يشوف) */
+  // ---------------------------------------------------------------------
+  // 💰 الفلوس والمستوى: لوحة المتصدرين + ملف اللاعب
+  // (عامة للكل — قراءة بس، وما تأثر على أي لعبة شغّالة)
+  // ---------------------------------------------------------------------
+
+  /** شاشات: rank:money (المتصدرون بالفلوس) / rank:level / rank:me */
+  private buildRanking(section: string, viewerId: string): { text: string; keyboard: any[][] } {
+    const users = Array.from(this.users.values()).filter(u => !u.banned);
+    const rich = users.filter(u => (u.money || 0) > 0).sort((a, b) => (b.money || 0) - (a.money || 0));
+    const ranked = users.filter(u => (u.onlineGames || 0) > 0).sort(
+      (a, b) => (b.xp || 0) - (a.xp || 0) || (b.onlineWins || 0) - (a.onlineWins || 0)
+    );
+
+    const tabs: any[][] = [
+      [
+        { text: '💰 الفلوس', callback_data: 'rank:money' },
+        { text: '🎖️ المستوى', callback_data: 'rank:level' }
+      ],
+      [{ text: '👤 ملفي', callback_data: 'rank:me' }],
+      [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
+    ];
+
+    // 🎖️ الأعلى مستوى
+    if (section === 'level') {
+      const top = ranked.slice(0, 15);
+      const lines = top.length
+        ? top
+            .map((u, i) => {
+              const p = Economy.levelProgress(u.xp || 0);
+              const games = u.onlineGames || 0;
+              const wins = u.onlineWins || 0;
+              return (
+                `${this.statMedal(i)} ${this.mdSafe(u.name)} — مستوى *${p.level}* ` +
+                `(${Economy.levelTitle(p.level)}) • *${u.xp || 0}* XP • ` +
+                `🎮 ${games} مباراة (${this.statPct(wins, games)} فوز)`
+              );
+            })
+            .join('\n')
+        : '_ما بعد أحد لعب مباراة أونلاين — المستوى يزيد مع ناس حقيقيين بس._';
+
+      return {
+        text:
+          `🎖️ *الأعلى مستوى*\n` +
+          `_المستوى يزيد بكل مباراة تنلعبها مع ناس حقيقيين (فوز أو خسارة)_\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `${lines}\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `👥 عندهم مستوى: *${ranked.length}* • 🎮 مجموع المباريات: *${ranked.reduce(
+            (s, u) => s + (u.onlineGames || 0),
+            0
+          )}*`,
+        keyboard: tabs
+      };
+    }
+
+    // 👤 ملف اللاعب نفسه
+    if (section === 'me') {
+      const rec = this.users.get(String(viewerId));
+      if (!rec) {
+        return {
+          text: `👤 *ملفي*\n━━━━━━━━━━━━━━━━━━━\nما عندي معلومات عنك بعد — اضغط /start أول 🙂`,
+          keyboard: tabs
+        };
+      }
+
+      const p = Economy.levelProgress(rec.xp || 0);
+      const games = rec.onlineGames || 0;
+      const wins = rec.onlineWins || 0;
+      const money = rec.money || 0;
+      const myRank = rich.findIndex(u => u.id === rec.id);
+      const today = Economy.earnedToday(rec);
+
+      const lines = [
+        `👤 *ملفي* — ${this.mdSafe(rec.name)}`,
+        `━━━━━━━━━━━━━━━━━━━`,
+        `🎖️ المستوى: *${p.level}* (${Economy.levelTitle(p.level)})`,
+        `${this.statBar(p.into, p.span)} *${p.into}* / ${p.span} XP • باقي *${p.left}* للمستوى ${p.level + 1}`,
+        `_${Economy.walletVibe({ level: p.level, money, onlineGames: games, wins })}_`,
+        `💵 رصيدي: *${Economy.formatMoney(money)}* 💵`,
+        `🎮 مباريات أونلاين: *${games}* • 🏆 فوز: *${wins}* (${this.statPct(wins, games)})`,
+        `🧠 نقاط ألعاب البوت: *${rec.points || 0}*`,
+        `━━━━━━━━━━━━━━━━━━━`,
+        `💰 ربحت اليوم: *${Economy.formatMoney(today)}* من *${Economy.formatMoney(
+          Economy.DAILY_MONEY_CAP
+        )}*`,
+        myRank >= 0
+          ? `🏅 ترتيبي بالفلوس: *#${myRank + 1}* من *${rich.length}*`
+          : `🏅 ما بعدك على لوحة الفلوس — الفوز مع ناس حقيقيين يخليك تصعد 💪`,
+        `_الفلوس والمستوى من الألعاب اللي مع ناس حقيقيين بس (مو مع البوت)_`
+      ];
+
+      return { text: lines.join('\n'), keyboard: tabs };
+    }
+
+    // 💰 الافتراضي: المتصدرون بالفلوس (كل الألعاب)
+    const top = rich.slice(0, 15);
+    const total = rich.reduce((s, u) => s + (u.money || 0), 0);
+    const lines = top.length
+      ? top
+          .map((u, i) => {
+            const level = Economy.levelFromXp(u.xp || 0);
+            return (
+              `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${Economy.formatMoney(
+                u.money || 0
+              )}* 💵 • 🎖️ ${level} (${Economy.levelTitle(level)})`
+            );
+          })
+          .join('\n')
+      : '_ما بعد أحد ربح فلوس 💵 — فلوس اللعبة تجي من الفوز مع ناس حقيقيين (مثل 🎮 كود نيمز)._';
+
+    return {
+      text:
+        `💰 *المتصدرون بالفلوس*\n` +
+        `_العملة غالية: الفائز ياخذ حسب أداءه، والفوز على مستوى أعلى يدفع أكثر_\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `${lines}\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `💵 مجموع الفلوس باللعبة: *${Economy.formatMoney(total)}*\n` +
+        `👥 عندهم فلوس: *${rich.length}* • 🔒 السقف اليومي: *${Economy.formatMoney(
+          Economy.DAILY_MONEY_CAP
+        )}* للاعب`,
+      keyboard: tabs
+    };
+  }
+
+  /** يفتح/يحدّث شاشات الفلوس والمستوى (أي واحد يكدر يشوفها) */
+  private async handleRanking(cb: TelegramCallbackQuery, section: string) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+
+    const view = this.buildRanking(section || 'money', String(cb.from.id));
+    const text = await this.withBotFooter(view.text);
+
+    if (messageId) {
+      const res = await this.editMessageText(chatId, messageId, text, view.keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) {
+        await this.answerCallbackQuery(cb.id, 'محدّثة ✅');
+        return;
+      }
+    }
+    await this.sendMessage(chatId, text, view.keyboard);
+    await this.answerCallbackQuery(cb.id, '');
+  }
   private async handleGameStats(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
@@ -2125,7 +2490,7 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, '');
   }
 
-  private async buildGamesMenu(section: string): Promise<{ text: string; keyboard: any[][] }> {
+  private async buildGamesMenu(section: string, viewer?: BotUserRecord): Promise<{ text: string; keyboard: any[][] }> {
     const botUser = await this.getBotUsername();
     const back = [{ text: '🔙 رجوع', callback_data: 'hub:main' }];
 
@@ -2162,6 +2527,8 @@ export class TelegramBotManager {
       }
 
       const lines = [`${game.emoji} *${game.title}*`, `👥 ${game.players}`, `📍 ${game.where}`];
+      const money = Economy.moneyNote(game.id);
+      if (money) lines.push(money);
       const keyboard: any[][] = [];
 
       // 1) شرح اللعبة
@@ -2172,8 +2539,8 @@ export class TelegramBotManager {
         keyboard.push([{ text: '📊 إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
       }
 
-      // 3) زر يحوّل اللعبة للقناة (ألعاب الفرق)
-      if (game.channel) {
+      // 3) زر يحوّل اللعبة للقناة (ألعاب الفرق — بس إذا جاهزة)
+      if (game.channel && game.ready) {
         keyboard.push([{ text: '📣 نزّل اللعبة بقناتك', callback_data: 'hub:channel' }]);
       }
 
@@ -2231,7 +2598,10 @@ export class TelegramBotManager {
     }
 
     // 🏠 الشاشة الرئيسية (الأصناف بس بالمربعات، بلا تكرار بالنص)
+    // وإذا احنا بالخاص: نعرض فوقها حالة اللاعب (مستواه + فلوسه + تعليق بسيط)
+    const personal = this.playerStatusText(viewer);
     const text =
+      (personal ? `${personal}\n` : '') +
       `🎮 *بوت الألعاب*\n` +
       `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇`;
     const keyboard: any[][] = [
@@ -2252,6 +2622,11 @@ export class TelegramBotManager {
         }
       ]);
     }
+    // 💵 الفلوس والمستوى: يشمل كل الألعاب → مكانه وي الأصناف
+    keyboard.push([
+      { text: '💰 المتصدرون بالفلوس', callback_data: 'rank:money' },
+      { text: '👤 ملفي ومستواي', callback_data: 'rank:me' }
+    ]);
     return { text, keyboard };
   }
 
@@ -2473,7 +2848,9 @@ export class TelegramBotManager {
    * Private /start welcome, with a button that lets the user pick a channel to play in.
    */
   private async sendPrivateWelcome(chatId: string, userName: string) {
-    const view = await this.buildGamesMenu('main');
+    // بالخاص: نعرض للاعب حالته (مستواه + فلوسه + تعليق قصير)
+    const rec = this.users.get(String(chatId));
+    const view = await this.buildGamesMenu('main', rec);
     const welcome = `👋 أهلاً بك يا ${this.mdSafe(userName)}!\n\n${view.text}`;
     // الشاشة الرئيسية: مربعات قابلة للضغط (بلا أي كيبورد بالأسفل)
     await this.sendMessage(chatId, await this.withBotFooter(welcome), view.keyboard);
