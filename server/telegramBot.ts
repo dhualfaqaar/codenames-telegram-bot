@@ -698,8 +698,8 @@ export class TelegramBotManager {
         // Spymasters must be reachable in private chat for the no-command clue input
         const dm = await this.sendMessage(
           String(userId),
-          `🕵️ سُجّلت *قائداً* في لعبة «${this.mdSafe(result.game.chatTitle || 'المجموعة')}»!\n` +
-          `لما يحين دورك راح أرسللك هنا كلمة التلميح — تكتب الكلمة بس (بلا أوامر) وبعدين تختار الرقم.`
+          `🕵️ سُجّلت *قائداً* في لعبة «${this.mdSafe(result.game.chatTitle || 'المجموعة')}»!\n\n` +
+            CodenamesEngine.getSpymasterGuide(team as Team)
         );
         if (!dm?.ok) {
           showAlert = true;
@@ -952,7 +952,7 @@ export class TelegramBotManager {
       `🕵️ *القائد:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
       `👥 *الأعضاء:* يخمّنون بالضغط على أزرار الكلمات بالقناة.\n\n` +
       `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
-      `🗺️ القائد يشوف خريطته من زر «🗺️ خريطة القائد (خاص)» — كل شي بالأزرار، بلا أي أوامر.`;
+      `🗺️ القائد يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
 
     const keyboard: any[][] = [];
     if (botUser) {
@@ -1037,13 +1037,14 @@ export class TelegramBotManager {
     const spymasters = game.players.filter(p => p.role === 'spymaster');
 
     for (const spy of spymasters) {
-      const secretVisual = CodenamesEngine.getSecretKeyVisual(game, spy.team);
+      // 1) Explain the game in simple words (in case this is their first time)
+      await this.sendMessage(String(spy.id), CodenamesEngine.getSpymasterGuide(spy.team));
+
+      // 2) Then send the colored card map
       await this.sendMessage(
         String(spy.id),
-        `🕵️ مرحباً يا قائد (${this.mdSafe(spy.name)})!\n` +
-          `هذي *بطاقاتك بالألوان* — إنت وحدك تشوفها:\n\n` +
-          `${secretVisual}\n\n` +
-          `💡 إذا ضاعت منك، اضغط زر «🗺️ خريطة القائد (خاص)» بالمحادثة.`
+        CodenamesEngine.getSecretKeyVisual(game, spy.team) +
+          `\n\n💡 إذا ضاعت منك الخريطة، اضغط زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» بالمحادثة.`
       );
     }
   }
@@ -1060,8 +1061,11 @@ export class TelegramBotManager {
     const teamName = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
     const res = await this.sendMessageRaw(
       String(spy.id),
-      `🕵️ دورك يا قائد ${teamName}!\n\n` +
-      `✍️ اكتب *كلمة التلميح* بالمربع بالأسفل (كلمة وحدة بلا أوامر)، وبعدها اختار الرقم.`,
+      `🕵️ *دورك يا قائد الفريق ${teamName}!*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `✍️ اكتب *كلمة التلميح* بالمربع بالأسفل — كلمة *وحدة* بس، وما تكون موجودة أصلاً بالبوكسات.\n` +
+      `بعدها راح أطلب منك الرقم.\n\n` +
+      `💡 تبي تشوف بطاقاتك؟ اضغط زر «🎨 بطاقاتي الملوّنة» بالقناة.`,
       { force_reply: true, selective: true, input_field_placeholder: 'اكتب كلمة التلميح هنا' }
     );
 

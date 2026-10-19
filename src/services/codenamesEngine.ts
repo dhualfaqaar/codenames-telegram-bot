@@ -487,7 +487,8 @@ export class CodenamesEngine {
   }
 
   /**
-   * Full secret map: the color grid plus the exact words of every color.
+   * Full secret map: the color grid plus the exact words of every color,
+   * with a short explanation of what each color means.
    * Pass the recipient's team to get "كلمات فريقك" wording; omit it for a neutral view.
    */
   public static getSecretKeyVisual(game: CodenamesGame, team?: Team): string {
@@ -497,29 +498,60 @@ export class CodenamesEngine {
       game.cards
         .filter(c => c.type === type)
         .map(c => (c.revealed ? `~${c.word}~` : c.word))
-        .join('، ') || '_لا يوجد_';
+        .join('، ') || '_ما بقى ولا كلمة_';
 
-    let blueLabel = '🟦 *كلمات الفريق الأزرق*';
-    let redLabel = '🟥 *كلمات الفريق الأحمر*';
-    if (team === 'blue') {
-      blueLabel = '🟦 *كلمات فريقك*';
-      redLabel = '🟥 *كلمات الخصم*';
-    } else if (team === 'red') {
-      blueLabel = '🟦 *كلمات الخصم*';
-      redLabel = '🟥 *كلمات فريقك*';
-    }
+    const countOf = (type: CardType) => game.cards.filter(c => c.type === type).length;
 
-    const blueCount = game.cards.filter(c => c.type === 'blue').length;
-    const redCount = game.cards.filter(c => c.type === 'red').length;
+    // Wording depends on which team the reader captains.
+    const blueTitle =
+      team === 'red' ? '🔴 *كلمات الخصم*' : team === 'blue' ? '🔵 *كلمات فريقك*' : '🔵 *الفريق الأزرق*';
+    const redTitle =
+      team === 'blue' ? '🔴 *كلمات الخصم*' : team === 'red' ? '🔴 *كلمات فريقك*' : '🔴 *الفريق الأحمر*';
 
-    return `🗺️ *خريطة البطاقات بالألوان*\n` +
+    return (
+      `🗺️ *خريطتك السرية* 🕵️ — إنت وحدك تشوفها!\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
-      `🔵 أزرق | 🔴 أحمر | ⚪ محايد | 💣 القاتل\n\n` +
+      `*شنو معنى الألوان؟*\n` +
+      `🔵 أزرق  |  🔴 أحمر  |  ⚪ محايد  |  💣 القاتل\n\n` +
+      `*موقع البطاقات على اللوحة* (نفس ترتيب الأزرار):\n\n` +
       `${this.getSecretKeyGrid(game)}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
+      `${blueTitle} (${countOf('blue')}) — صاحبها هو اللي لازم يخمّنها:\n` +
+      `${wordsOf('blue')}\n\n\n` +
+      `${redTitle} (${countOf('red')}) — لا تلمسونها، إذا لمستوها تربحون للخصم:\n` +
+      `${wordsOf('red')}\n\n\n` +
+      `⚪ *المحايد* (${countOf('bystander')}) — إذا اختار فريقك وحدة من هذي، ما تربحون ولا تخسرون، بس *يضيع دوركم* وينتقل للخصم:\n` +
+      `${wordsOf('bystander')}\n\n\n` +
+      `💣 *القاتل (الأسود)* — إذا اختار صديقك هذي الكلمة *تخسرون اللعبة فوراً!* ⚠️\n` +
+      `${wordsOf('assassin')}\n\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
-      `${blueLabel} (${blueCount}):\n${wordsOf('blue')}\n\n` +
-      `${redLabel} (${redCount}):\n${wordsOf('red')}\n\n` +
-      `💣 *القاتل (لا تخلّي فريقك يلمسه):* ${wordsOf('assassin')}`;
+      `💡 *نصيحة:* خلي تلميحك واضح لفريقك، وبعيد كلش عن الكلمة المحايدة والكلمة السوداء.`
+    );
+  }
+
+  /**
+   * Simple "how to play" guide for a spymaster who has never played before.
+   */
+  public static getSpymasterGuide(team: Team): string {
+    const teamName = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+    return (
+      `🕵️ *أهلين يا قائد الفريق ${teamName}!*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `*شنو شغلتك؟*\n` +
+      `إنت وحدك تشوف ألوان البطاقات. شغلتك تعطي فريقك *تلميح بكلمة وحدة*، وفريقك يخمّن بيها.\n\n` +
+      `*مثال:*\n` +
+      `موجودين 3 بطاقات من فريقك: *تفاح، برتقال، عنب*\n` +
+      `تكتب التلميح: *فواكه 3*\n` +
+      `فريقك يفهم إنه لازم يختار 3 كلمات من الفواكه 👌\n\n` +
+      `*شروط التلميح:*\n` +
+      `• كلمة *وحدة* بس — ممنوع كلمتين أو جملة.\n` +
+      `• ممنوع تكتب كلمة موجودة أصلاً بالبوكسات (مثل «تفاح»).\n` +
+      `• الرقم يعني: كم بطاقة من فريقك تخص هذا التلميح.\n\n` +
+      `*شلون ترسله؟*\n` +
+      `لما يجي دورك، راح أرسللك هنا بالخاص مربع — تكتب بيه كلمة التلميح بس، وبعدها تختار الرقم من الأزرار.\n\n` +
+      `🎨 *بطاقاتك بالألوان:* اضغط زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» بالقناة، أو راح توصلك هنا.\n\n` +
+      `⚠️ _لا تشارك هذي الرسالة مع أحد!_`
+    );
   }
 
   /**
@@ -599,37 +631,48 @@ export class CodenamesEngine {
     if (game.status === 'game_over') {
       const winnerEmoji = game.winner === 'blue' ? '🔵' : '🔴';
       const winnerName = game.winner === 'blue' ? 'الفريق الأزرق' : 'الفريق الأحمر';
-      const reasonText = game.winReason === 'assassin_triggered' 
-        ? 'بسبب لمس بطاقة القاتل (القنبلة) 💣'
-        : 'بسبب كشف جميع الكلمات التابعة للفريق! 🎯';
+      const reasonText = game.winReason === 'assassin_triggered'
+        ? 'فريق الخصم لمس بطاقة القاتل 💣'
+        : 'الفريق كشف كل كلماته 🎯';
 
-      return `🎉 *انتهت اللعبة! فاز ${winnerName} ${winnerEmoji}*\n` +
+      return `🎉 *انتهت اللعبة! فاز ${winnerName}* ${winnerEmoji}\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `${reasonText}\n\n` +
+        `🏁 *السبب:* ${reasonText}\n\n` +
         `📊 *النتيجة النهائية:*\n` +
-        `🔵 متبقي للأزرق: ${blueRemaining}\n` +
-        `🔴 متبقي للأحمر: ${redRemaining}\n\n` +
-        `شكراً للعب! اضغط أدناه لبدء جولة جديدة 🔄`;
+        `🔵 الأزرق: متبقي *${blueRemaining}*\n` +
+        `🔴 الأحمر: متبقي *${redRemaining}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🔄 اضغط «بدء جولة جديدة» بالأسفل للعب مرة ثانية`;
     }
 
     const currentTurnEmoji = game.currentTurn === 'blue' ? '🔵' : '🔴';
-    const currentTurnName = game.currentTurn === 'blue' ? 'الفريق الأزرق' : 'الفريق الأحمر';
+    const currentTurnName = game.currentTurn === 'blue' ? 'الأزرق' : 'الأحمر';
 
-    let header = `🎮 *كود نيمز | لوحة اللعب*\n` +
-      `🔵 الأزرق: متبقي *${blueRemaining}* | 🔴 الأحمر: متبقي *${redRemaining}*\n` +
-      (this.rosterLine(game) ? `${this.rosterLine(game)}\n` : '') +
-      `━━━━━━━━━━━━━━━━━━━\n`;
+    let header =
+      `🎮 *لعبة كود نيمز | لوحة اللعب*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `📊 *النتيجة:*\n` +
+      `🔵 الأزرق: متبقي *${blueRemaining}*\n` +
+      `🔴 الأحمر: متبقي *${redRemaining}*\n`;
+
+    const roster = this.rosterLine(game);
+    if (roster) {
+      header += `\n👥 *اللاعبون:*\n${roster}\n`;
+    }
+
+    header += `━━━━━━━━━━━━━━━━━━━\n`;
 
     if (game.status === 'spymaster_turn') {
-      header += `⏳ *الدور الآن:* قائد ${currentTurnName} ${currentTurnEmoji}\n` +
-        `✍️ القائد يكتب تلميحه بالخاص عند البوت (كلمة + رقم) — بلا أي أوامر.\n` +
-        `💡 الخريطة السرية للقادة عبر زر 🗺️ بالأسفل.`;
+      header += `🎯 *الدور الآن:* ⏳ قائد الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
+        `✍️ القائد يكتب تلميحه بالخاص عند البوت (كلمة وحدة + رقم).\n` +
+        `💡 الخريطة السرية للقائد عبر زر «🎨 بطاقاتي الملوّنة» بالأسفل.`;
     } else {
       const clue = game.currentClue;
-      header += `🎯 *الدور الآن:* عملاء ${currentTurnName} ${currentTurnEmoji}\n` +
-        `📢 *التلميح الحالي:* "${clue?.word}" (${clue?.count})\n` +
+      header += `🎯 *الدور الآن:* عملاء الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
+        `📢 *التلميح:* "${clue?.word}" — عدد البطاقات *${clue?.count}*\n` +
         `🔢 المحاولات المتبقية: *${clue?.remainingGuesses}*\n` +
-        `👇 اضغط على الكلمة لتخمينها من اللوحة:`;
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `👇 اضغط على الكلمة من اللوحة بالأسفل لتخمينها:`;
     }
 
     if (lastEvent) {
