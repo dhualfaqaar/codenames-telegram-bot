@@ -1845,10 +1845,44 @@ export class TelegramBotManager {
     };
   }
 
-  /** نصوص الإحصائيات: main / top / cn */
+  /** نصوص الإحصائيات: main / top / g:<id> (إحصائيات لعبة معينة) */
   private async buildGameStats(section: string): Promise<{ text: string; keyboard: any[][] }> {
     const n = this.gameStatsNumbers();
     const backStats = [{ text: '🔙 الإحصائيات', callback_data: 'gstat:main' }];
+
+    // 📊 إحصائيات لعبة معينة — توصل من صفحة اللعبة نفسها
+    const gameId = section.startsWith('g:') ? section.slice(2) : section === 'cn' ? 'codenames' : '';
+    const fromGame = section.startsWith('g:');
+    const gameBack = [{ text: '🔙 رجوع للعبة', callback_data: `hub:g:${gameId}` }];
+
+    // 🟩 إحصائيات خمّن الكلمة
+    if (gameId === 'wordle') {
+      const topSolvers = n.users
+        .filter(u => (u.wordleWins || 0) > 0)
+        .sort((a, b) => (b.wordleWins || 0) - (a.wordleWins || 0))
+        .slice(0, 10);
+      const playingNow = Array.from(this.wordle.values()).filter(w => !w.done).length;
+
+      const lines = topSolvers.length
+        ? topSolvers
+            .map(
+              (u, i) =>
+                `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${u.wordleWins || 0}* كلمة`
+            )
+            .join('\n')
+        : '_ما بعد أحد حلّها — كون أول واحد!_';
+
+      const text =
+        `🟩 *إحصائيات خمّن الكلمة*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `✅ انحلّت: *${n.solved}* مرة\n` +
+        `👥 لاعبون حلّوها: *${n.solvers.length}*\n` +
+        `⏳ يلعبونها هسه: *${playingNow}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🥇 *أكثر من حلّها:*\n${lines}`;
+
+      return { text, keyboard: [gameBack] };
+    }
 
     // 🏆 لوحة الأبطال
     if (section === 'top') {
@@ -1887,8 +1921,8 @@ export class TelegramBotManager {
       return { text, keyboard: [backStats] };
     }
 
-    // ⚔️ تفاصيل كود نيمز
-    if (section === 'cn') {
+    // ⚔️ إحصائيات كود نيمز
+    if (gameId === 'codenames') {
       const spyWins = new Map<string, { name: string; wins: number }>();
       for (const g of n.matches) {
         for (const p of g.players || []) {
@@ -1938,7 +1972,19 @@ export class TelegramBotManager {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `📣 *أكثر القنوات لعباً:*\n${chatLines}`;
 
-      return { text, keyboard: [backStats] };
+      return { text, keyboard: [fromGame ? gameBack : backStats] };
+    }
+
+    // 🔜 لعبة بعدها ما نزلت
+    if (gameId) {
+      const game = findBotGame(gameId);
+      return {
+        text:
+          `${game ? `${game.emoji} *إحصائيات ${game.title}*` : '📊 *إحصائيات اللعبة*'}\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `🔜 اللعبة بعدها ما نزلت — أول ما نجهّزها نفتح إحصائياتها الخاصة.`,
+        keyboard: [gameBack]
+      };
     }
 
     // 📊 الشاشة الرئيسية للإحصائيات
@@ -2027,10 +2073,6 @@ export class TelegramBotManager {
             { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
           ]);
         }
-        keyboard.push([{ text: '📊 إحصائيات كود نيمز', callback_data: 'gstat:cn' }]);
-      }
-      if (section === 'guess') {
-        keyboard.push([{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }]);
       }
       keyboard.push(back);
 
@@ -2078,16 +2120,19 @@ export class TelegramBotManager {
       // 📣 ألعاب القنوات: زر اللعب يحوّلك على اختيار قناتك
       if (game.channel) {
         keyboard.push([{ text: '▶️ العب — نزّلها بقناتك', callback_data: 'hub:channel' }]);
-        keyboard.push([{ text: '📊 إحصائيات كود نيمز', callback_data: 'gstat:cn' }]);
       }
       // 🔜 اللعبة اللي بعدها ما جاهزة
       if (!game.ready) {
         lines.push(`━━━━━━━━━━━━━━━━━━━`);
         lines.push(`🔜 *قريباً* — اللعبة بالطريق، وبنجهّزها بالأزرار مثل البقية.`);
         keyboard.push([{ text: '🔜 قريباً', callback_data: 'hub:soon' }]);
-      }
-      if (game.id === 'wordle') {
-        keyboard.push([{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }]);
+      } else {
+        // 📊 إحصائيات هاي اللعبة بس (مو كل الألعاب)
+        lines.push(`━━━━━━━━━━━━━━━━━━━`);
+        lines.push(`📊 تريد تشوف أرقام هاي اللعبة؟ اضغط زر الإحصائيات تحت.`);
+        keyboard.push([
+          { text: `📊 إحصائيات ${game.title}`, callback_data: `gstat:g:${game.id}` }
+        ]);
       }
 
       keyboard.push([categoryBack, { text: '🏠 الرئيسية', callback_data: 'hub:main' }]);
@@ -2123,24 +2168,25 @@ export class TelegramBotManager {
     const text =
       `🎮 *بوت الألعاب*\n` +
       `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇`;
-    return {
-      text,
-      keyboard: [
-        [
-          { text: '👥 ألعاب ثنائية 1v1', callback_data: 'hub:duo' },
-          { text: '⚔️ ألعاب فرق 2v2', callback_data: 'hub:team' }
-        ],
-        [
-          { text: '🧠 ألعاب خمّن', callback_data: 'hub:guess' },
-          { text: '🎲 ألعاب الحظ', callback_data: 'hub:luck' }
-        ],
-        [
-          { text: '📊 الإحصائيات', callback_data: 'gstat:main' },
-          { text: '❓ كيف ألعب؟', callback_data: 'hub:help' }
-        ],
-        [{ text: '📣 نزّل لعبة بقناتك', callback_data: 'hub:channel' }]
+    const keyboard: any[][] = [
+      [
+        { text: '👥 ألعاب ثنائية 1v1', callback_data: 'hub:duo' },
+        { text: '⚔️ ألعاب فرق 2v2', callback_data: 'hub:team' }
+      ],
+      [
+        { text: '🧠 ألعاب خمّن', callback_data: 'hub:guess' },
+        { text: '🎲 ألعاب الحظ', callback_data: 'hub:luck' }
       ]
-    };
+    ];
+    if (botUser) {
+      keyboard.push([
+        {
+          text: '🛡️ ارفع البوت مشرف بقناتك',
+          url: `https://t.me/${botUser}?startchannel=true`
+        }
+      ]);
+    }
+    return { text, keyboard };
   }
 
   /** رسالة كيبورد «نزّل لعبة بقناتك» (بها زر اختيار القناة الرسمي) */
