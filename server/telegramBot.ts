@@ -90,6 +90,8 @@ interface BotUserRecord {
   blockNotified?: boolean;
   /** last time we forwarded one of his messages to the owner (throttle) */
   lastForward?: number;
+  /** last time we answered him with the game explanation (throttle) */
+  lastWelcome?: number;
 }
 
 /** A chat the bot has seen (group, supergroup or channel). */
@@ -705,7 +707,13 @@ export class TelegramBotManager {
       return;
     }
 
-    if (!text) return;
+    if (!text) {
+      // صور / ملصقات / صوتيات — توصل لصاحب البوت هم، وما يجي العضو أي رد.
+      if (message.chat.type === 'private' && sender && !this.isOwner(sender.id)) {
+        await this.forwardToOwnerInbox(message, sender);
+      }
+      return;
+    }
 
     const lower = text.toLowerCase();
 
@@ -798,10 +806,21 @@ export class TelegramBotManager {
     // ملاحظة: البوت يعتمد كلياً على الأزرار والقناة/الخاص.
     // لا توجد أي أوامر غير /start — أي شيء آخر يُتجاهل.
 
-    // كل شي آخر يكتبه الناس للبوت بالخاص يوصل لصاحب البوت
-    // (الاسم أزرق قابل للضغط + الآيدي + النص) حتى يعرف منو اللي يسيء.
+    // كل شي آخر يكتبه الناس للبوت بالخاص:
+    //  1) يوصل لصاحب البوت (الاسم أزرق + الآيدي + النص) حتى يعرف منو اللي يسيء.
+    //  2) والشخص ما يشوف إلا رسالة شرح اللعبة — ولا شي غيرها بالدنيا.
     if (message.chat.type === 'private' && sender && !this.isOwner(sender.id)) {
       await this.forwardToOwnerInbox(message, sender);
+
+      const rec = this.users.get(String(sender.id));
+      const now = Date.now();
+      if (!rec || !rec.lastWelcome || now - rec.lastWelcome > 10000) {
+        if (rec) {
+          rec.lastWelcome = now;
+          this.users.set(rec.id, rec);
+        }
+        await this.sendPrivateWelcome(chatId, senderName);
+      }
     }
   }
 
