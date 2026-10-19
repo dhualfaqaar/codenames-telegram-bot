@@ -1,5 +1,5 @@
 import { CodenamesEngine } from '../src/services/codenamesEngine';
-import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team } from '../src/types/codenames';
+import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
   id: number;
@@ -628,6 +628,11 @@ export class TelegramBotManager {
     // /start command
     if (lower.startsWith('/start')) {
       if (message.chat.type === 'private') {
+        const payload = (text.split(/\s+/)[1] || '').toLowerCase();
+        if (payload === 'spy') {
+          await this.handleSpymasterReady(chatId, sender);
+          return;
+        }
         await this.sendPrivateWelcome(chatId, senderName);
         return;
       } else {
@@ -703,7 +708,7 @@ export class TelegramBotManager {
         );
         if (!dm?.ok) {
           showAlert = true;
-          alertText += `\n⚠️ مهم: افتح الخاص معي (@${this.botInfo?.username || 'البوت'}) واضغط Start عشان أقدر أرسللك التلميح.`;
+          alertText += `\n⚠️ مهم يا قائد: افتح الخاص مع البوت واضغط Start — أو اضغط زر (🕵️ القادة: افتحوا الخاص) بالأسفل.`;
         }
       }
       await this.answerCallbackQuery(cb.id, alertText, showAlert);
@@ -728,6 +733,22 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(
           cb.id,
           '⚠️ كل فريق لازم يختار قائد (🕵️) قبل ما تبدأ اللعبة.',
+          true
+        );
+        return;
+      }
+
+      // Every captain must have opened the bot's private chat first, otherwise
+      // Telegram blocks the bot and the map / clue can never reach him.
+      const unreachable: string[] = [];
+      for (const spy of game.players.filter(p => p.role === 'spymaster')) {
+        if (!(await this.canReachPrivate(String(spy.id)))) unreachable.push(spy.name);
+      }
+      if (unreachable.length > 0) {
+        await this.answerCallbackQuery(
+          cb.id,
+          `⚠️ القائد (${unreachable.join('، ')}) لسه ما فتح الخاص مع البوت!\n\n` +
+            `خلّيه يضغط الزر (🕵️ القادة: افتحوا الخاص مع البوت) بالأسفل ويسوي Start، وبعدين اضغط ابدأ.`,
           true
         );
         return;
@@ -917,7 +938,7 @@ export class TelegramBotManager {
     this.games.set(chatId, game);
 
     const text = CodenamesEngine.getTelegramMessageText(game);
-    const keyboard = CodenamesEngine.getTelegramInlineKeyboard(game);
+    const keyboard = this.buildKeyboard(game);
 
     // Reuse the previous board message (single-message mode).
     // "message is not modified" also counts as success — nothing to change.
@@ -942,6 +963,97 @@ export class TelegramBotManager {
     const reason = sent?.description || 'ما وصل رد من تلجرام';
     console.error('startNewGameLobby failed for', chatId, reason);
     return { messageId: null, error: reason };
+  }
+
+  /**
+   * Board keyboard + an extra button that opens the bot's private chat.
+   * Captains MUST do this once, otherwise Telegram blocks the bot from
+   * messaging them (the secret map / clue prompt can't be delivered).
+   */
+  private buildKeyboard(game: CodenamesGame): any[][] {
+    const keyboard = CodenamesEngine.getTelegramInlineKeyboard(game);
+    const botUser = this.botInfo?.username;
+    if (botUser && game.status === 'lobby') {
+      keyboard.push([{
+        text: '🕵️ القادة: افتحوا الخاص مع البوت',
+        url: `https://t.me/${botUser}?start=spy`
+      }]);
+    }
+    return keyboard;
+  }
+
+  /**
+   * Can the bot start a private conversation with this user?
+   * Telegram forbids bots from writing first, so we probe with sendChatAction.
+   */
+  private async canReachPrivate(userId: string): Promise<boolean> {
+    if (!this.token) return false;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendChatAction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: userId, action: 'typing' })
+      });
+      const data: any = await res.json();
+      return Boolean(data?.ok);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Every game in which this user is a captain (spymaster).
+   */
+  private findSpymasterGames(userId: string): { game: CodenamesGame; player: Player }[] {
+    const out: { game: CodenamesGame; player: Player }[] = [];
+    for (const game of this.games.values()) {
+      const player = game.players.find(
+        p => String(p.id) === userId && p.role === 'spymaster'
+      );
+      if (player) out.push({ game, player });
+    }
+    return out;
+  }
+
+  /**
+   * The captain tapped «🕵️ القادة: افتحوا الخاص مع البوت» in the channel and
+   * pressed Start. From now on the bot can DM him the map and clue prompts.
+   */
+  private async handleSpymasterReady(chatId: string, sender?: TelegramUser) {
+    if (!sender) return;
+    const userId = String(sender.id);
+    const mine = this.findSpymasterGames(userId);
+
+    const lines: string[] = [];
+    if (mine.length === 0) {
+      lines.push(
+        `✅ *تم تشغيل الخاص!*\n\n` +
+          `إنت حالياً مو مسجّل قائد بأي لعبة. لما تنضم قائد بأي قناة، راح توصلك *خريطتك الملوّنة* وتلميحاتك هنا بالخاص 💬`
+      );
+    } else {
+      for (const { game, player } of mine) {
+        const teamName = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+        lines.push(`✅ *تم!* إنت القائد الجاسوس بفريق ${teamName} بلعبة «${this.mdSafe(game.chatTitle || 'المجموعة')}».`);
+        if (game.status === 'lobby') {
+          lines.push(`📌 اللعبة بمرحلة الانضمام — أول ما تبدأ الجولة راح أرسللك خريطتك الملوّنة هنا.`);
+          lines.push(CodenamesEngine.getSpymasterGuide(player.team));
+        }
+      }
+    }
+
+    await this.sendMessage(chatId, lines.join('\n\n'));
+
+    // If a round is already running, push the map + guide right away.
+    for (const { game, player } of mine) {
+      if (game.status === 'spymaster_turn' || game.status === 'operative_turn') {
+        await this.sendMessage(chatId, CodenamesEngine.getSpymasterGuide(player.team));
+        await this.sendMessage(
+          chatId,
+          `🎨 *خريطتك الملوّنة (${player.team === 'blue' ? 'الفريق الأزرق 🔵' : 'الفريق الأحمر 🔴'})*\n\n` +
+            CodenamesEngine.getSecretKeyVisual(game, player.team)
+        );
+      }
+    }
   }
 
   /**
@@ -1229,7 +1341,7 @@ export class TelegramBotManager {
   private async updateTelegramGameBoard(chatId: string, game: CodenamesGame, messageId?: number, lastEvent?: string) {
     const msgId = messageId || game.messageId;
     const text = CodenamesEngine.getTelegramMessageText(game, lastEvent);
-    const keyboard = CodenamesEngine.getTelegramInlineKeyboard(game);
+    const keyboard = this.buildKeyboard(game);
 
     if (msgId) {
       const res = await this.editMessageText(chatId, msgId, text, keyboard);
