@@ -31,7 +31,8 @@ export class CodenamesEngine {
     id: string,
     chatTitle: string = 'مجموعة اللعب',
     wordPack: CodenamesGame['wordPack'] = 'arabic_standard',
-    customWords: string[] = []
+    customWords: string[] = [],
+    createdBy?: number | string
   ): CodenamesGame {
     return {
       id,
@@ -43,6 +44,7 @@ export class CodenamesEngine {
       players: [],
       clueHistory: [],
       wordPack,
+      createdBy,
       logs: [
         {
           id: Math.random().toString(36).substring(7),
@@ -523,6 +525,26 @@ export class CodenamesEngine {
   }
 
   /**
+   * Compact roster line so everyone can see who is playing (and who is the spymaster).
+   */
+  public static rosterLine(game: CodenamesGame): string {
+    if (!game.players.length) return '';
+    const label = (team: Team) => {
+      const list = game.players
+        .filter(p => p.team === team)
+        .map(p => (p.role === 'spymaster' ? `${p.name} 🕵️` : p.name));
+      return list.length ? list.join(' · ') : '_لا أحد_';
+    };
+    const line = `👥 🔵 ${label('blue')} | 🔴 ${label('red')}`;
+    if (line.length > 150) {
+      const blue = game.players.filter(p => p.team === 'blue').length;
+      const red = game.players.filter(p => p.team === 'red').length;
+      return `👥 🔵 ${blue} لاعبين | 🔴 ${red} لاعبين`;
+    }
+    return line;
+  }
+
+  /**
    * Formats the Telegram Chat message text for the group
    */
   public static getTelegramMessageText(game: CodenamesGame, lastEvent?: string): string {
@@ -533,17 +555,24 @@ export class CodenamesEngine {
       const redPlayers = game.players.filter(p => p.team === 'red');
       const blueSpy = bluePlayers.find(p => p.role === 'spymaster');
       const redSpy = redPlayers.find(p => p.role === 'spymaster');
+      const operatives = (list: Player[]) =>
+        list.filter(p => p.role !== 'spymaster').map(p => p.name).join(' · ');
+      const spyLine = (spy?: Player) => (spy ? spy.name : '_لم يُحدد بعد_');
 
-      return `🕵️‍♂️ *لعبة كود نيمز (Codenames) في تلجرام* 🕵️‍♀️\n` +
+      return `🕵️‍♂️ *لعبة كود نيمز (Codenames)* 🕵️‍♀️\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `انضموا للفريقين واختاروا القائد والعملاء!\n\n` +
-        `🔵 *الفريق الأزرق:*\n` +
-        `• القائد: ${blueSpy ? blueSpy.name : '_لم يُحدد بعد_'}\n` +
-        `• العملاء: ${bluePlayers.filter(p => p.role !== 'spymaster').map(p => p.name).join(', ') || '_لا يوجد_'}\n\n` +
-        `🔴 *الفريق الأحمر:*\n` +
-        `• القائد: ${redSpy ? redSpy.name : '_لم يُحدد بعد_'}\n` +
-        `• العملاء: ${redPlayers.filter(p => p.role !== 'spymaster').map(p => p.name).join(', ') || '_لا يوجد_'}\n\n` +
-        `اضغطوا على الأزرار أدناه للانضمام ثم اضغطوا (ابدأ اللعبة 🚀)`;
+        `👥 *المنضمون الآن:* ${game.players.length}\n\n` +
+        `🔵 *الفريق الأزرق* (${bluePlayers.length})\n` +
+        `• القائد: ${spyLine(blueSpy)}\n` +
+        `• العملاء: ${operatives(bluePlayers) || '_لا يوجد_'}\n\n` +
+        `🔴 *الفريق الأحمر* (${redPlayers.length})\n` +
+        `• القائد: ${spyLine(redSpy)}\n` +
+        `• العملاء: ${operatives(redPlayers) || '_لا يوجد_'}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `1️⃣ كل واحد يضغط زر فريقه (قائد 🕵️ أو عميل 👤).\n` +
+        `2️⃣ كل فريق يحتاج *قائد* واحد و*عميل* واحد على الأقل.\n` +
+        `3️⃣ لما ينضمون كلكم — *المشرف صاحب اللعبة* يضغط (ابدأ اللعبة 🚀).\n` +
+        `⚠️ غير المشرف ما يقدر يبدأ اللعبة.`;
     }
 
     if (game.status === 'game_over') {
@@ -567,6 +596,7 @@ export class CodenamesEngine {
 
     let header = `🎮 *كود نيمز | لوحة اللعب*\n` +
       `🔵 الأزرق: متبقي *${blueRemaining}* | 🔴 الأحمر: متبقي *${redRemaining}*\n` +
+      (this.rosterLine(game) ? `${this.rosterLine(game)}\n` : '') +
       `━━━━━━━━━━━━━━━━━━━\n`;
 
     if (game.status === 'spymaster_turn') {

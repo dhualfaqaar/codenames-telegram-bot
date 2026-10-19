@@ -58,6 +58,8 @@ export interface CodenamesGame {
   winner?: Team;
   winReason?: 'all_cards_found' | 'assassin_triggered';
   messageId?: number; // Telegram message ID of the game board
+  /** The admin who opened the lobby — only this person may press "start". */
+  createdBy?: number | string;
   wordPack: 'arabic_standard' | 'arabic_iraqi' | 'pop_culture' | 'english' | 'custom';
   logs: GameLogEntry[];
   createdAt: number;

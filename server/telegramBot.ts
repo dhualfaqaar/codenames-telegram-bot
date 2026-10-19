@@ -632,7 +632,8 @@ export class TelegramBotManager {
         return;
       } else {
         // Group or channel start
-        await this.startNewGameLobby(chatId, message.chat.title || 'مجموعة اللعب');
+        const creator = await this.resolveCreator(chatId, message);
+        await this.startNewGameLobby(chatId, message.chat.title || 'مجموعة اللعب', creator);
         return;
       }
     }
@@ -711,6 +712,31 @@ export class TelegramBotManager {
 
     // 2. Start game
     if (data === 'game:start' && game) {
+      // Only the owner (the admin who opened the lobby) may start the round.
+      if (game.createdBy && String(game.createdBy) !== String(userId)) {
+        await this.answerCallbackQuery(
+          cb.id,
+          '⚠️ فقط المشرف صاحب اللعبة يقدر يضغط (ابدأ اللعبة 🚀).',
+          true
+        );
+        return;
+      }
+
+      const blueSpy = game.players.some(p => p.team === 'blue' && p.role === 'spymaster');
+      const redSpy = game.players.some(p => p.team === 'red' && p.role === 'spymaster');
+      if (game.players.length < 2) {
+        await this.answerCallbackQuery(cb.id, '⚠️ لازم ينضم لاعبين على الأقل قبل البدء.', true);
+        return;
+      }
+      if (!blueSpy || !redSpy) {
+        await this.answerCallbackQuery(
+          cb.id,
+          '⚠️ كل فريق لازم يختار قائد (🕵️) قبل ما تبدأ اللعبة.',
+          true
+        );
+        return;
+      }
+
       const result = CodenamesEngine.startGame(game, this.customWords);
       this.games.set(chatId, result.game);
 
@@ -726,8 +752,18 @@ export class TelegramBotManager {
 
     // 3. New game / Rematch
     if (data === 'game:new') {
+      if (game && game.status !== 'game_over' && game.createdBy && String(game.createdBy) !== String(userId)) {
+        await this.answerCallbackQuery(cb.id, '⚠️ فقط المشرف صاحب اللعبة يقدر يبدأ جولة جديدة.', true);
+        return;
+      }
       const title = cb.message?.chat.title || 'المجموعة';
-      const newLobby = CodenamesEngine.createLobby(chatId, title, game?.wordPack || 'arabic_standard');
+      const newLobby = CodenamesEngine.createLobby(
+        chatId,
+        title,
+        game?.wordPack || 'arabic_standard',
+        this.customWords,
+        game?.createdBy ?? userId
+      );
       this.games.set(chatId, newLobby);
 
       await this.answerCallbackQuery(cb.id, 'تم بدء جولة جديدة! اختاروا الفرق 🔄');
@@ -838,9 +874,15 @@ export class TelegramBotManager {
    * so the chat always has ONE single game message that keeps updating.
    * Returns the board message id (or null if it could not be sent).
    */
-  private async startNewGameLobby(chatId: string, chatTitle: string): Promise<number | null> {
+  private async startNewGameLobby(chatId: string, chatTitle: string, createdBy?: number | string): Promise<number | null> {
     const existing = this.games.get(chatId);
-    const game = CodenamesEngine.createLobby(chatId, chatTitle, existing?.wordPack || 'arabic_standard', this.customWords);
+    const game = CodenamesEngine.createLobby(
+      chatId,
+      chatTitle,
+      existing?.wordPack || 'arabic_standard',
+      this.customWords,
+      createdBy ?? existing?.createdBy
+    );
     const prevMessageId = existing?.messageId;
     this.games.set(chatId, game);
 
@@ -916,14 +958,14 @@ export class TelegramBotManager {
     const title = shared.title || 'القناة';
     const byUser = message.from ? String(message.from.id) : '';
 
-    const msgId = await this.startNewGameLobby(channelId, title);
+    const msgId = await this.startNewGameLobby(channelId, title, message.from?.id);
     if (!byUser) return;
 
     if (msgId) {
       await this.sendMessage(
         byUser,
         `✅ نزّلت اللعبة بقناتك «${this.mdSafe(title)}».\n` +
-        `روح للقناة، انضموا للفرق 🔵🔴 وبعدين اضغطوا (ابدأ اللعبة 🚀).`
+        `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت (المشرف) تضغط (ابدأ اللعبة 🚀) لما ينضمون.`
       );
     } else {
       await this.sendMessage(
@@ -942,11 +984,20 @@ export class TelegramBotManager {
     if (status !== 'administrator' && status !== 'member') return;
     if (update.chat.type !== 'channel') return;
 
-    await this.sendMessage(
-      String(update.chat.id),
-      `🎮 *بوت كود نيمز* جاهز بقناتكم!\nاضغطوا الزر بالأسفل لبدء لعبة جديدة.`,
-      [[{ text: '🎮 ابدأ لعبة كود نيمز', callback_data: 'game:new' }]]
-    );
+    const chatId = String(update.chat.id);
+    const existing = this.games.get(chatId);
+    // Never reset a lobby/match that is already open.
+    if (existing && existing.status !== 'game_over') return;
+
+    // In channels the update carries the admin who added the bot.
+    const admins = update.from?.id ? [] : await this.getChatAdministrators(chatId);
+    const creatorId = update.from?.id || admins.find((a: any) => a?.user?.id)?.user?.id;
+
+    try {
+      await this.startNewGameLobby(chatId, update.chat.title || 'القناة', creatorId);
+    } catch (e) {
+      console.error('failed to open channel lobby:', e);
+    }
   }
 
   /**
@@ -1143,6 +1194,36 @@ export class TelegramBotManager {
   /** Remove characters that break Telegram Markdown from dynamic values. */
   private mdSafe(value: string): string {
     return (value || '').replace(/[*_`\[\]]/g, '');
+  }
+
+  /** Telegram API: getChatAdministrators (used to find the lobby owner inside channels). */
+  private async getChatAdministrators(chatId: string): Promise<any[]> {
+    if (!this.token) return [];
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${this.token}/getChatAdministrators?chat_id=${encodeURIComponent(chatId)}`
+      );
+      const data: any = await res.json();
+      return data?.ok ? data.result || [] : [];
+    } catch (e) {
+      console.error('getChatAdministrators failed:', e);
+      return [];
+    }
+  }
+
+  /**
+   * Who owns the lobby?
+   * In groups it is whoever sent the message. Channel posts have no `from`,
+   * so we fall back to the first chat administrator.
+   */
+  private async resolveCreator(chatId: string, message: TelegramMessage): Promise<number | string | undefined> {
+    if (message.from?.id) return message.from.id;
+    if (message.chat.type === 'channel') {
+      const admins = await this.getChatAdministrators(chatId);
+      const owner = admins.find(a => a?.user?.id)?.user?.id;
+      if (owner) return owner;
+    }
+    return (message as any).sender_chat?.id;
   }
 
   /**
