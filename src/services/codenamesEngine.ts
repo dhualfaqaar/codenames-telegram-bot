@@ -128,6 +128,50 @@ export class CodenamesEngine {
   }
 
   /**
+   * A player leaves the lobby. His seat becomes free again for anybody else.
+   */
+  public static leaveGame(
+    game: CodenamesGame,
+    playerId: number | string
+  ): { success: boolean; message: string; game: CodenamesGame } {
+    if (game.status !== 'lobby') {
+      return {
+        success: false,
+        message: 'اللعبة انطلقت بالفعل — ما ينفع الانسحاب هسه.',
+        game
+      };
+    }
+
+    const index = game.players.findIndex(p => String(p.id) === String(playerId));
+    if (index < 0) {
+      return { success: false, message: 'إنت مو مسجّل بهذه اللعبة.', game };
+    }
+
+    const leaving = game.players[index];
+    const teamColor = leaving.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+    const roleText = leaving.role === 'spymaster' ? 'القائد الجاسوس 🕵️' : 'العميل 👤';
+
+    const logEntry: GameLogEntry = {
+      id: `leave_${Date.now()}_${index}`,
+      timestamp: Date.now(),
+      type: 'lobby',
+      team: leaving.team,
+      message: `🚪 ${this.nameTag(leaving.name)} انسحب من اللعبة (${roleText} — ${teamColor})`
+    };
+
+    return {
+      success: true,
+      message: `🚪 انسحبت — مقعدك (${roleText} ${teamColor}) صار فاضي.`,
+      game: {
+        ...game,
+        players: game.players.filter((_, i) => i !== index),
+        logs: [...game.logs, logEntry],
+        updatedAt: Date.now()
+      }
+    };
+  }
+
+  /**
    * Start the match and generate 25 random cards
    */
   public static startGame(game: CodenamesGame, customWords: string[] = []): { success: boolean; message: string; game: CodenamesGame } {

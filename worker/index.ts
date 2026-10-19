@@ -48,11 +48,23 @@ export class BotState {
     const bot = await this.getBot();
 
     if (request.method !== 'POST') {
+      const games = bot.getGames() as any[];
       return Response.json({
         ok: true,
         info: 'Codenames Telegram bot (Cloudflare Worker)',
         tokenConfigured: Boolean(this.env.TELEGRAM_BOT_TOKEN),
-        activeGames: bot.getGames().length
+        activeGames: games.length,
+        debug: games.map(g => ({
+          status: g.status,
+          messageId: g.messageId,
+          players: (g.players || []).length,
+          seats: {
+            blueSpymaster: (g.players || []).some((p: any) => p.team === 'blue' && p.role === 'spymaster'),
+            blueOperative: (g.players || []).some((p: any) => p.team === 'blue' && p.role === 'operative'),
+            redSpymaster: (g.players || []).some((p: any) => p.team === 'red' && p.role === 'spymaster'),
+            redOperative: (g.players || []).some((p: any) => p.team === 'red' && p.role === 'operative')
+          }
+        }))
       });
     }
 

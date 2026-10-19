@@ -41,6 +41,19 @@ interface TelegramMessage {
   date: number;
   text?: string;
   chat_shared?: TelegramChatShared;
+  /** the message this one replies to (used by the owner's «حظر» replies) */
+  reply_to_message?: TelegramMessage;
+  // media people may send to the bot (delivered to the owner in his inbox)
+  photo?: any[];
+  sticker?: any;
+  voice?: any;
+  video?: any;
+  video_note?: any;
+  audio?: any;
+  animation?: any;
+  document?: any;
+  location?: any;
+  contact?: any;
 }
 
 interface TelegramCallbackQuery {
@@ -69,12 +82,14 @@ interface BotUserRecord {
   started: boolean;
   /** he blocked the bot (we learnt it from a failed private message) */
   blocked: boolean;
-  /** the owner disabled his messages to the bot */
-  silenced: boolean;
+  /** the owner banned him: the bot ignores him completely */
+  banned?: boolean;
   /** how many times he interacted with the bot */
   actions: number;
   /** did we already tell the owner that this user blocked the bot? */
   blockNotified?: boolean;
+  /** last time we forwarded one of his messages to the owner (throttle) */
+  lastForward?: number;
 }
 
 /** A chat the bot has seen (group, supergroup or channel). */
@@ -120,6 +135,16 @@ export class TelegramBotManager {
   private ownerId: string | null = null;
   /** Should the owner receive alerts (new users, blocks, ...)? */
   private ownerAlerts: boolean = true;
+  /**
+   * Should every message people send to the bot be delivered to the owner?
+   * (He can switch this on/off from his panel — sometimes it is too noisy.)
+   */
+  private ownerInbox: boolean = true;
+  /**
+   * Banned users list is inside `users`; this maps a message the BOT sent to
+   * the owner back to the user it came from, so the owner can reply "حظر".
+   */
+  private inboxMap: Map<string, string> = new Map();
 
   constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
@@ -435,7 +460,9 @@ export class TelegramBotManager {
       users: Array.from(this.users.entries()),
       chats: Array.from(this.chats.entries()),
       ownerId: this.ownerId,
-      ownerAlerts: this.ownerAlerts
+      ownerAlerts: this.ownerAlerts,
+      ownerInbox: this.ownerInbox,
+      inboxMap: Array.from(this.inboxMap.entries())
     };
   }
 
@@ -453,6 +480,8 @@ export class TelegramBotManager {
     if (Array.isArray(state.chats)) this.chats = new Map(state.chats);
     if (state.ownerId) this.ownerId = String(state.ownerId);
     if (typeof state.ownerAlerts === 'boolean') this.ownerAlerts = state.ownerAlerts;
+    if (typeof state.ownerInbox === 'boolean') this.ownerInbox = state.ownerInbox;
+    if (Array.isArray(state.inboxMap)) this.inboxMap = new Map(state.inboxMap);
   }
 
   public setToken(token: string) {
@@ -640,9 +669,8 @@ export class TelegramBotManager {
       if (actor && !actor.is_bot) {
         const record = this.trackUser(actor, false);
 
-        // The owner disabled this user's messages → ignore everything he sends.
-        // Done silently: he is never told that a moderator exists.
-        if (record.silenced && !this.isOwner(actor.id)) {
+        // The owner banned him → the bot ignores him completely, silently.
+        if ((record.banned || record.blocked) && !this.isOwner(actor.id)) {
           if (update.callback_query) {
             await this.answerCallbackQuery(update.callback_query.id, '');
           }
@@ -680,6 +708,38 @@ export class TelegramBotManager {
     if (!text) return;
 
     const lower = text.toLowerCase();
+
+    // ------------------------------------------------------------------
+    // Owner: replying «حظر» to a delivered message bans that user
+    // ------------------------------------------------------------------
+    if (
+      message.chat.type === 'private' &&
+      sender &&
+      this.isOwner(sender.id) &&
+      message.reply_to_message
+    ) {
+      const targetId = this.inboxMap.get(String(message.reply_to_message.message_id));
+      if (targetId) {
+        const clean = text.replace(/[إأآٱ]/g, 'ا').replace(/[ًٌٍَُِّْـ]/g, '').trim();
+        const target = this.users.get(targetId) || { id: targetId };
+
+        if (clean === 'حظر' || clean === 'حض' || clean === 'بلك' || clean === 'block' || clean === 'حظر!') {
+          await this.setBanned(targetId, true);
+          await this.sendMessage(
+            chatId,
+            `🛑 *تم الحظر:* ${this.linkUser(target)}\n` +
+              `البوت صار يتجاهله تماماً — لا رسائل ولا أزرار ولا أي رد.\n\n` +
+              `_(إذا تريد ترجّعه، رد على نفس الرسالة واكتب: الغاء الحظر)_`
+          );
+          return;
+        }
+        if (['الغاء الحظر', 'فك الحظر', 'الغاء', 'الغ حظر', 'رفع الحظر'].includes(clean)) {
+          await this.setBanned(targetId, false);
+          await this.sendMessage(chatId, `✅ *تم مسح الحظر عن:* ${this.linkUser(target)}`);
+          return;
+        }
+      }
+    }
 
     // Spymaster typing the clue word privately (NO command needed)
     if (message.chat.type === 'private' && sender && !text.startsWith('/')) {
@@ -737,6 +797,12 @@ export class TelegramBotManager {
 
     // ملاحظة: البوت يعتمد كلياً على الأزرار والقناة/الخاص.
     // لا توجد أي أوامر غير /start — أي شيء آخر يُتجاهل.
+
+    // كل شي آخر يكتبه الناس للبوت بالخاص يوصل لصاحب البوت
+    // (الاسم أزرق قابل للضغط + الآيدي + النص) حتى يعرف منو اللي يسيء.
+    if (message.chat.type === 'private' && sender && !this.isOwner(sender.id)) {
+      await this.forwardToOwnerInbox(message, sender);
+    }
   }
 
   /**
@@ -788,30 +854,27 @@ export class TelegramBotManager {
         await this.sendUserDetail(chatId, messageId, parts[2] || '');
         return;
       }
-      if (parts[1] === 'silence' || parts[1] === 'block') {
+      if (data === 'admin:inbox') {
+        this.ownerInbox = !this.ownerInbox;
+        await this.answerCallbackQuery(
+          cb.id,
+          this.ownerInbox ? '📨 وصل الرسائل: مفعّل' : '📴 وصل الرسائل: معطّل'
+        );
+        await this.sendAdminPanel(chatId, messageId);
+        return;
+      }
+      if (parts[1] === 'ban') {
         const target = this.users.get(parts[2] || '');
         if (!target) {
           await this.answerCallbackQuery(cb.id, 'المستخدم غير موجود.', true);
           return;
         }
-        if (parts[1] === 'silence') {
-          target.silenced = !target.silenced;
-          await this.answerCallbackQuery(
-            cb.id,
-            target.silenced ? `🔇 أوقفت رسائل ${target.name}` : `🔊 فعّلت رسائل ${target.name}`
-          );
-        } else {
-          if (target.blocked) {
-            target.blocked = false;
-            target.blockNotified = false;
-            await this.answerCallbackQuery(cb.id, `✅ مسحت حظر ${target.name}`);
-          } else {
-            target.blocked = true;
-            target.blockNotified = true;
-            await this.answerCallbackQuery(cb.id, `🚫 علّمت ${target.name} كمحظور`);
-          }
-        }
+        target.banned = !target.banned;
         this.users.set(target.id, target);
+        await this.answerCallbackQuery(
+          cb.id,
+          target.banned ? `🚫 حظرت ${target.name}` : `✅ مسحت الحظر عن ${target.name}`
+        );
         await this.sendUserDetail(chatId, messageId, target.id);
         return;
       }
@@ -834,6 +897,60 @@ export class TelegramBotManager {
       return;
     }
 
+    // ---- «هل تريد الانسحاب؟» — هذه الأزرار بالخاص، فاللعبة تنحدد بالمعرّف داخل الزر
+    if (data.startsWith('leave:')) {
+      const parts = data.split(':');
+      const answer = parts[1];
+      const targetChatId = parts.slice(2).join(':');
+      const targetGame = this.games.get(targetChatId);
+
+      if (!targetGame || targetGame.status !== 'lobby') {
+        await this.answerCallbackQuery(cb.id, 'ما صار انسحاب — اللعبة انطلقت بالفعل.', true);
+        if (cb.message?.message_id) {
+          await this.editMessageText(
+            String(userId),
+            cb.message.message_id,
+            'ℹ️ ما تقدر تنسحب هسه — اللعبة انطلقت بالفعل.'
+          );
+        }
+        return;
+      }
+
+      if (answer !== 'yes') {
+        if (cb.message?.message_id) {
+          await this.editMessageText(
+            String(userId),
+            cb.message.message_id,
+            `✅ تمام — إنت باقي على مقعدك.\n\n` +
+              `🔁 وإذا تريد تبدّل، اضغط على أي مقعد فاضي بلوحة اللعبة:\n` +
+              `▪️ ${this.freeSeatsText(targetGame)}`
+          );
+        }
+        await this.answerCallbackQuery(cb.id, '✅ تمام، إنت باقي على مقعدك');
+        return;
+      }
+
+      const left = CodenamesEngine.leaveGame(targetGame, userId);
+      if (!left.success) {
+        await this.answerCallbackQuery(cb.id, left.message, true);
+        return;
+      }
+
+      this.games.set(targetChatId, left.game);
+      await this.updateTelegramGameBoard(targetChatId, left.game);
+
+      if (cb.message?.message_id) {
+        await this.editMessageText(
+          String(userId),
+          cb.message.message_id,
+          `🚪 تم انسحابك من اللعبة.\n\n` +
+            `تقدر ترجع بأي وقت بالضغط على أي مقعد فاضي بلوحة اللعبة 👇`
+        );
+      }
+      await this.answerCallbackQuery(cb.id, '🚪 تم الانسحاب');
+      return;
+    }
+
     let game = this.games.get(chatId);
 
     // If no game in this chat, notify (game:new can create one from scratch)
@@ -845,6 +962,38 @@ export class TelegramBotManager {
     // 1. Join Team or Role: join:blue:operative, join:blue:spymaster, etc.
     if (data.startsWith('join:') && game) {
       const [, team, role] = data.split(':');
+
+      // He pressed the SAME seat he already owns → offer to leave the game.
+      const mine = game.players.find(p => String(p.id) === String(userId));
+      if (mine && mine.team === team && mine.role === (role as PlayerRole)) {
+        if (game.status !== 'lobby') {
+          await this.answerCallbackQuery(cb.id, 'هذا مقعدك بالفعل — اللعبة انطلقت.', true);
+          return;
+        }
+
+        const roleName = role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+        const teamName = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+        const dm = await this.sendMessage(
+          String(userId),
+          `🚪 *إنت مسجّل بالفعل:* ${roleName} — فريق ${teamName}\n` +
+            `فعلاً تريد تنسحب من لعبة «${this.mdSafe(game.chatTitle || 'اللعبة')}»؟\n\n` +
+            `_إذا نسحبت، مقعدك يصير فاضي وواحد ثاني يقدر ياخذه._`,
+          [
+            [{ text: '🚪 نعم، انسحب', callback_data: `leave:yes:${chatId}` }],
+            [{ text: '✅ لا، أبقى', callback_data: `leave:no:${chatId}` }]
+          ]
+        );
+
+        await this.answerCallbackQuery(
+          cb.id,
+          dm?.ok
+            ? '📩 أرسلتلك تأكيد الانسحاب بالخاص.'
+            : '⚠️ افتح الخاص مع البوت واضغط Start حتى تقدر تنسحب.',
+          !dm?.ok
+        );
+        return;
+      }
+
       const result = CodenamesEngine.joinGame(game, {
         id: userId,
         name: userName,
@@ -854,7 +1003,11 @@ export class TelegramBotManager {
       });
 
       if (!result.success) {
-        await this.answerCallbackQuery(cb.id, result.message, true);
+        await this.answerCallbackQuery(
+          cb.id,
+          `${this.mdSafe(result.message)}\n\n${this.freeSeatsText(game)}`,
+          true
+        );
         return;
       }
 
@@ -1618,6 +1771,11 @@ export class TelegramBotManager {
     return (value || '').replace(/[*_`\[\]]/g, '');
   }
 
+  /** Escape text written by a user so it can never break the Markdown parse. */
+  private escapeMd(value: string): string {
+    return String(value || '').replace(/([_*`\[\]])/g, '\\$1');
+  }
+
   // ---------------------------------------------------------------------
   // Users, chats and the owner dashboard
   // ---------------------------------------------------------------------
@@ -1646,7 +1804,7 @@ export class TelegramBotManager {
         lastSeen: now,
         started: privateStart,
         blocked: false,
-        silenced: false,
+        banned: false,
         actions: 1
       };
       this.users.set(id, fresh);
@@ -1660,6 +1818,109 @@ export class TelegramBotManager {
     if (privateStart) existing.started = true;
     this.users.set(id, existing);
     return existing;
+  }
+
+  /**
+   * Ban / unban a user. A banned user gets absolutely nothing from the bot:
+   * every update he sends is dropped before it is processed.
+   */
+  private async setBanned(userId: string, banned: boolean) {
+    const rec = this.users.get(String(userId));
+    if (!rec) return;
+    rec.banned = banned;
+    rec.lastSeen = Date.now();
+    this.users.set(rec.id, rec);
+  }
+
+  /** Keep the reply→user map small (only the newest entries matter). */
+  private trimInboxMap() {
+    const max = 300;
+    if (this.inboxMap.size <= max) return;
+    const extra = this.inboxMap.size - max;
+    const keys = Array.from(this.inboxMap.keys());
+    for (let i = 0; i < extra; i++) this.inboxMap.delete(keys[i]);
+  }
+
+  /**
+   * Send one message a user wrote to the bot into the owner's private chat.
+   *
+   * The owner sees the text, the sender's id and his name as a BLUE link, and
+   * he can simply reply to that message with «حظر» to ban the sender.
+   */
+  private async forwardToOwnerInbox(message: TelegramMessage, sender: TelegramUser) {
+    if (!this.ownerId || !this.ownerInbox) return;
+    if (message.chat.type !== 'private') return;
+    if (this.isOwner(sender.id)) return;
+    // Game messages (the captain typing his clue) are not "inbox" messages.
+    if (
+      this.awaitingClueWord.has(String(sender.id)) ||
+      this.pendingClueWord.has(String(sender.id))
+    ) {
+      return;
+    }
+
+    const rec = this.trackUser(sender, false);
+    const now = Date.now();
+    // Very light anti-flood: at most one delivered message per 2 seconds.
+    if (rec.lastForward && now - rec.lastForward < 2000) return;
+    rec.lastForward = now;
+    this.users.set(rec.id, rec);
+
+    let body: string;
+    if (message.text) {
+      const raw = message.text.length > 2500 ? message.text.slice(0, 2500) + '…' : message.text;
+      body = this.escapeMd(raw);
+    } else if (message.photo) body = '🖼️ _صورة_';
+    else if (message.sticker) body = `🎭 _ملصق_${message.sticker.emoji ? ' ' + message.sticker.emoji : ''}`;
+    else if (message.voice) body = '🎤 _رسالة صوتية_';
+    else if (message.video_note) body = '⭕ _فيديو دائري_';
+    else if (message.video) body = '🎬 _فيديو_';
+    else if (message.audio) body = '🎵 _تسجيل صوتي_';
+    else if (message.animation) body = '🎞️ _صورة متحركة_';
+    else if (message.document) body = '📎 _ملف_';
+    else if (message.location) body = '📍 _موقع_';
+    else if (message.contact) body = '👤 _جهة اتصال_';
+    else body = '📨 _رسالة_';
+
+    const header =
+      `📨 *رسالة جديدة للبوت*\n` +
+      `👤 ${this.linkUser(rec)}\n` +
+      `🆔 \`${rec.id}\`\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `${body}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `↩️ ردّ على هذه الرسالة واكتب *حظر* حتى تحظره.`;
+
+    const sent = await this.sendMessage(String(this.ownerId), header);
+    const sentId = sent?.result?.message_id;
+    if (sentId) {
+      this.inboxMap.set(String(sentId), rec.id);
+      this.trimInboxMap();
+    }
+
+    // Media: send a copy as well, so the owner really sees what was sent.
+    if (!message.text && sentId) {
+      const copy = await this.copyMessage(String(this.ownerId), String(message.chat.id), message.message_id);
+      const copyId = copy?.result?.message_id;
+      if (copyId) {
+        this.inboxMap.set(String(copyId), rec.id);
+        this.trimInboxMap();
+      }
+    }
+  }
+
+  /** «المقاعد الفاضية: 🔵 عميل — 🔴 قائد» — يخلي الرد واضح لكل واحد. */
+  private freeSeatsText(game: CodenamesGame): string {
+    const parts: string[] = [];
+    for (const team of ['blue', 'red'] as Team[]) {
+      const list = game.players.filter(p => p.team === team);
+      const free: string[] = [];
+      if (!list.some(p => p.role === 'spymaster')) free.push('قائد جاسوس 🕵️');
+      if (!list.some(p => p.role === 'operative')) free.push('عميل 👤');
+      const teamName = team === 'blue' ? '🔵' : '🔴';
+      parts.push(`${teamName} ${free.length ? free.join(' + ') : 'مكتمل ❌'}`);
+    }
+    return `المقاعد الفاضية: ${parts.join(' | ')}`;
   }
 
   /** Remember/refresh a group or channel the bot lives in. */
@@ -1729,7 +1990,7 @@ export class TelegramBotManager {
     const users = Array.from(this.users.values());
     const started = users.filter(u => u.started).length;
     const blocked = users.filter(u => u.blocked).length;
-    const silenced = users.filter(u => u.silenced).length;
+    const banned = users.filter(u => u.banned).length;
 
     const chats = Array.from(this.chats.values());
     const channels = chats.filter(c => c.type === 'channel');
@@ -1756,7 +2017,8 @@ export class TelegramBotManager {
       `👥 *المستخدمون:* ${users.length}\n` +
       `✅ شغّلوا البوت: ${started}\n` +
       `🚫 حظروا البوت: ${blocked}\n` +
-      `🔇 موقوفة رسائلهم: ${silenced}\n\n` +
+      `🛑 حظرتهم إنت: ${banned}\n` +
+      `📨 وصول رسائل الناس إلك: ${this.ownerInbox ? 'مفعّل ✅' : 'معطّل ❌'}\n\n` +
       `💬 *المحادثات:* ${chats.length}\n` +
       `📣 القنوات: ${channels.length} — البوت مشرف بـ ${adminIn}\n` +
       `👥 المجموعات: ${groups.length}\n\n` +
@@ -1771,17 +2033,23 @@ export class TelegramBotManager {
 
   private adminPanelKeyboard(): any[][] {
     const users = Array.from(this.users.values());
+    const banned = users.filter(u => u.banned).length;
     const blocked = users.filter(u => u.blocked).length;
-    const silenced = users.filter(u => u.silenced).length;
 
     return [
       [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
       [
         { text: `👥 المستخدمون (${users.length})`, callback_data: 'admin:list:all:0' },
-        { text: `🚫 حظروا البوت (${blocked})`, callback_data: 'admin:list:blocked:0' }
+        { text: `🛑 المحظورون (${banned})`, callback_data: 'admin:list:banned:0' }
       ],
       [
-        { text: `🔇 موقوفة رسائلهم (${silenced})`, callback_data: 'admin:list:silenced:0' },
+        { text: `🚫 حظروا البوت (${blocked})`, callback_data: 'admin:list:blocked:0' },
+        {
+          text: this.ownerInbox ? '📨 رسائل الناس: ✅' : '📴 رسائل الناس: ❌',
+          callback_data: 'admin:inbox'
+        }
+      ],
+      [
         {
           text: this.ownerAlerts ? '🔔 الإشعارات: ✅' : '🔕 الإشعارات: ❌',
           callback_data: 'admin:alerts'
@@ -1802,7 +2070,7 @@ export class TelegramBotManager {
     await this.sendMessage(chatId, body, keyboard);
   }
 
-  /** A page of the users list (all / blocked / silenced). */
+  /** A page of the users list (all / banned / blocked). */
   private async sendUserList(
     chatId: string,
     messageId: number | undefined,
@@ -1811,7 +2079,7 @@ export class TelegramBotManager {
   ) {
     let list = Array.from(this.users.values()).sort((a, b) => b.lastSeen - a.lastSeen);
     if (kind === 'blocked') list = list.filter(u => u.blocked);
-    if (kind === 'silenced') list = list.filter(u => u.silenced);
+    if (kind === 'banned') list = list.filter(u => u.banned);
 
     const perPage = 8;
     const totalPages = Math.max(1, Math.ceil(list.length / perPage));
@@ -1819,11 +2087,11 @@ export class TelegramBotManager {
     const slice = list.slice(safePage * perPage, safePage * perPage + perPage);
 
     const title =
-      kind === 'blocked' ? '🚫 اللي حظروا البوت' : kind === 'silenced' ? '🔇 موقوفة رسائلهم' : '👥 المستخدمون';
+      kind === 'blocked' ? '🚫 اللي حظروا البوت' : kind === 'banned' ? '🛑 المحظورون عندك' : '👥 المستخدمون';
 
     const keyboard: any[][] = slice.map(u => [
       {
-        text: `${u.blocked ? '🚫' : u.started ? '✅' : '▪️'} ${u.name}${u.username ? ` (@${u.username})` : ''}`,
+        text: `${u.banned ? '🛑' : u.blocked ? '🚫' : u.started ? '✅' : '▪️'} ${u.name}${u.username ? ` (@${u.username})` : ''}`,
         callback_data: `admin:u:${u.id}`
       }
     ]);
@@ -1866,19 +2134,15 @@ export class TelegramBotManager {
       `🕒 آخر نشاط: ${this.stamp(u.lastSeen)}\n` +
       `🔁 عدد التفاعلات: ${u.actions}\n` +
       `✅ شغّل البوت: ${u.started ? 'نعم' : 'لا'}\n` +
-      `🚫 حظر البوت: ${u.blocked ? 'نعم' : 'لا'}\n` +
-      `🔇 رسائله للبوت: ${u.silenced ? 'موقوفة' : 'مفعّلة'}`;
+      `🚫 هو حظر البوت: ${u.blocked ? 'نعم' : 'لا'}\n` +
+      `🛑 حظرته إنت: ${u.banned ? 'نعم — البوت يتجاهله' : 'لا'}`;
 
     const keyboard: any[][] = [
       [{ text: '🔗 افتح حسابه', url: `tg://user?id=${u.id}` }],
       [
         {
-          text: u.silenced ? '🔊 فعّل رسائله' : '🔇 أوقف رسائله',
-          callback_data: `admin:silence:${u.id}`
-        },
-        {
-          text: u.blocked ? '✅ امسح الحظر' : '🚫 علّمه كمحظور',
-          callback_data: `admin:block:${u.id}`
+          text: u.banned ? '✅ امسح الحظر' : '🛑 احظره',
+          callback_data: `admin:ban:${u.id}`
         }
       ],
       [{ text: '🔙 اللوحة', callback_data: 'admin:panel' }]
@@ -1944,6 +2208,28 @@ export class TelegramBotManager {
       return await res.json();
     } catch (e) {
       console.error('sendMessageRaw failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Telegram API: copyMessage (used to show the owner the media people send)
+   */
+  public async copyMessage(toChatId: string, fromChatId: string, messageId: number): Promise<any> {
+    if (!this.token) return null;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/copyMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: toChatId,
+          from_chat_id: fromChatId,
+          message_id: messageId
+        })
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('copyMessage failed:', e);
       return null;
     }
   }
