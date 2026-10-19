@@ -1,5 +1,6 @@
 import { CodenamesEngine } from '../src/services/codenamesEngine';
 import * as Wordle from '../src/services/wordleEngine';
+import * as Poet from '../src/services/poetEngine';
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
@@ -195,6 +196,23 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
+    id: 'poet',
+    emoji: '🎭',
+    title: 'خمّن الشاعر',
+    category: 'guess',
+    players: 'لاعب واحد — إنت والبوت',
+    where: 'هنا بالخاص',
+    goal: 'تعرف منو ناظم البيت الشعري',
+    reward: '10 نقاط إذا عرفتها من أول محاولة، و5 إذا من الثانية',
+    about:
+      'البوت يعرضلك *بيت شعر* مشهور، وتحتّه أربعة أسماء لشعراء عرب،\n' +
+      'وإنت تختار منو ناظم البيت بالضغط على اسمه.\n' +
+      'عندك *محاولتين* بس — إذا غلطت بالأولى نعلّم الغلط ❌ وتكمّل.\n' +
+      'عرفتها من أول مرة؟ 10 نقاط ⭐ — من الثانية؟ 5 نقاط.',
+    play: { label: '🤖 العب مع البوت', data: 'po:new' },
+    ready: true
+  },
+  {
     id: 'guess_player',
     emoji: '⚽',
     title: 'خمّن اللاعب',
@@ -295,6 +313,10 @@ interface BotUserRecord {
   points?: number;
   /** كم مرة حلّ «خمّن الكلمة» */
   wordleWins?: number;
+  /** كم بيت عرف ناظمه بـ«خمّن الشاعر» */
+  poetWins?: number;
+  /** كم بيت لعبه بـ«خمّن الشاعر» (فاز أو خسر) */
+  poetGames?: number;
 }
 
 /** A chat the bot has seen (group, supergroup or channel). */
@@ -358,6 +380,8 @@ export class TelegramBotManager {
   private autoBan: boolean = true;
   /** 🟩 «خمّن الكلمة»: لعبة لكل مستخدم داخل الخاص */
   private wordle: Map<string, Wordle.WordleState> = new Map();
+  /** 🎭 «خمّن الشاعر» — جولة لكل لاعب (Key: User ID) */
+  private poet: Map<string, Poet.PoetRound> = new Map();
 
   constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
@@ -679,7 +703,8 @@ export class TelegramBotManager {
       inboxRaw: Array.from(this.inboxRaw.entries()),
       bannedWords: this.bannedWords,
       autoBan: this.autoBan,
-      wordle: Array.from(this.wordle.entries())
+      wordle: Array.from(this.wordle.entries()),
+      poet: Array.from(this.poet.entries())
     };
   }
 
@@ -703,6 +728,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.bannedWords)) this.bannedWords = state.bannedWords;
     if (typeof state.autoBan === 'boolean') this.autoBan = state.autoBan;
     if (Array.isArray(state.wordle)) this.wordle = new Map(state.wordle);
+    if (Array.isArray(state.poet)) this.poet = new Map(state.poet);
   }
 
   public setToken(token: string) {
@@ -1208,6 +1234,10 @@ export class TelegramBotManager {
     }
     if (data.startsWith('wl:')) {
       await this.handleWordleKey(cb, data.slice(3));
+      return;
+    }
+    if (data.startsWith('po:')) {
+      await this.handlePoetKey(cb, data.slice(3));
       return;
     }
 
@@ -1884,6 +1914,42 @@ export class TelegramBotManager {
       return { text, keyboard: [gameBack] };
     }
 
+    // 🎭 إحصائيات خمّن الشاعر
+    if (gameId === 'poet') {
+      const played = n.users.reduce((sum, u) => sum + (u.poetGames || 0), 0);
+      const solved = n.users.reduce((sum, u) => sum + (u.poetWins || 0), 0);
+      const experts = n.users.filter(u => (u.poetGames || 0) > 0);
+      const topExperts = experts
+        .slice()
+        .sort((a, b) => (b.poetWins || 0) - (a.poetWins || 0))
+        .slice(0, 10);
+      const playingNow = Array.from(this.poet.values()).filter(p => !p.done).length;
+      const accuracy = played ? Math.round((solved / played) * 100) : 0;
+
+      const lines = topExperts.length
+        ? topExperts
+            .map((u, i) => {
+              const games = u.poetGames || 0;
+              const wins = u.poetWins || 0;
+              const pct = games ? Math.round((wins / games) * 100) : 0;
+              return `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${wins}* بيت (${pct}%)`;
+            })
+            .join('\n')
+        : '_ما بعد أحد خمّن — كون أول واحد!_';
+
+      const text =
+        `🎭 *إحصائيات خمّن الشاعر*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `✅ أبيات انحلّت: *${solved}*\n` +
+        `🎯 أبيات انلعبت: *${played}*\n` +
+        `📈 دقة التخمين: *${accuracy}%*\n` +
+        `⏳ يلعبونها هسه: *${playingNow}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🥇 *أخبر من عرف الشعراء:*\n${lines}`;
+
+      return { text, keyboard: [gameBack] };
+    }
+
     // 🏆 لوحة الأبطال
     if (section === 'top') {
       const topPoints = n.users
@@ -1988,6 +2054,8 @@ export class TelegramBotManager {
     }
 
     // 📊 الشاشة الرئيسية للإحصائيات
+    const poetSolved = n.users.reduce((sum, u) => sum + (u.poetWins || 0), 0);
+    const poetPlayers = n.users.filter(u => (u.poetWins || 0) > 0).length;
     const topPoints = n.users
       .filter(u => (u.points || 0) > 0)
       .sort((a, b) => (b.points || 0) - (a.points || 0))
@@ -2001,12 +2069,14 @@ export class TelegramBotManager {
     const text =
       `📊 *إحصائيات الألعاب*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
-      `🎮 *المجموع:* ${n.matches.length + n.solved} لعبة مكتملة • ${n.active.length} جارية الآن\n\n` +
+      `🎮 *المجموع:* ${n.matches.length + n.solved + poetSolved} لعبة مكتملة • ${n.active.length + Array.from(this.poet.values()).filter(p => !p.done).length} جارية الآن\n\n` +
       `⚔️ *كود نيمز (2 ضد 2)*\n` +
       `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
       `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n\n` +
       `🧠 *خمّن الكلمة*\n` +
       `✅ انحلّت: *${n.solved}* مرة • 👥 فازوا: *${n.solvers.length}*\n\n` +
+      `🎭 *خمّن الشاعر*\n` +
+      `✅ أبيات انحلّت: *${poetSolved}* • 👥 لاعبون: *${poetPlayers}*\n\n` +
       `👥 *ألعاب ثنائية:* 🔜 قريباً • 🎲 *ألعاب الحظ:* 🔜 قريباً\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `🏆 *أقوى 5 بالنقاط:*\n${topLines}\n` +
@@ -2017,6 +2087,10 @@ export class TelegramBotManager {
       [
         { text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' },
         { text: '⚔️ تفاصيل كود نيمز', callback_data: 'gstat:cn' }
+      ],
+      [
+        { text: '🟩 تفاصيل خمّن الكلمة', callback_data: 'gstat:g:wordle' },
+        { text: '🎭 تفاصيل خمّن الشاعر', callback_data: 'gstat:g:poet' }
       ]
     ];
     keyboard.push([{ text: '🔙 رجوع', callback_data: 'hub:main' }]);
@@ -2299,6 +2373,99 @@ export class TelegramBotManager {
       await this.editMessageText(chatId, messageId, text, Wordle.keyboard(state));
     } else {
       await this.sendMessage(chatId, text, Wordle.keyboard(state));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🎭 «خمّن الشاعر»
+  // ---------------------------------------------------------------------
+
+  /** تثبيت جولة «خمّن الشاعر» مع تحديد حجم الذاكرة */
+  private setPoet(userId: string, round: Poet.PoetRound) {
+    if (!this.poet.has(userId) && this.poet.size >= 2000) {
+      const oldest = this.poet.keys().next().value;
+      if (oldest) this.poet.delete(oldest);
+    }
+    this.poet.set(userId, round);
+  }
+
+  /** زر من أزرار «خمّن الشاعر» (بيت جديد / اختيار شاعر) */
+  private async handlePoetKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const previous = this.poet.get(userId);
+      const fresh = Poet.createRound(previous?.verse, previous?.poet);
+      this.setPoet(userId, fresh);
+      await this.paintPoet(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '🎭 بيت جديد — منو الشاعر؟');
+      return;
+    }
+
+    if (key === 'noop') {
+      await this.answerCallbackQuery(cb.id, '❌ هذا الخيار غلط — اختار غيره.', true);
+      return;
+    }
+
+    const round = this.poet.get(userId);
+    if (!round) {
+      await this.answerCallbackQuery(cb.id, 'اضغط «🎭 خمّن الشاعر» من قائمة الألعاب.', true);
+      return;
+    }
+
+    const index = parseInt(key, 10);
+    if (isNaN(index)) {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const wasDone = round.done;
+    const next = Poet.answer(round, index);
+    this.setPoet(userId, next);
+
+    // أول مرة تخلص الجولة → نسجّل النتيجة والنقاط
+    if (!wasDone && next.done) {
+      const rec = this.users.get(userId);
+      if (rec) {
+        rec.poetGames = (rec.poetGames || 0) + 1;
+        if (next.won) {
+          rec.poetWins = (rec.poetWins || 0) + 1;
+          rec.points = (rec.points || 0) + Poet.pointsFor(next);
+        }
+        this.users.set(rec.id, rec);
+      }
+    }
+
+    await this.paintPoet(cb, next);
+
+    if (next.done) {
+      await this.answerCallbackQuery(cb.id, next.won ? '🎉 عرفتها!' : '😅 الجواب كان: ' + next.poet);
+    } else if (next.wrong.length) {
+      await this.answerCallbackQuery(cb.id, '❌ غلط — بقيتلك محاولة وحدة!', true);
+    } else {
+      await this.answerCallbackQuery(cb.id, '');
+    }
+  }
+
+  /** يعرض/يحدّث لوحة «خمّن الشاعر» داخل الرسالة نفسها */
+  private async paintPoet(cb: TelegramCallbackQuery, round: Poet.PoetRound) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    let text = Poet.renderMessage(round);
+
+    if (round.done) {
+      const rec = this.users.get(String(cb.from.id));
+      const gained = Poet.pointsFor(round);
+      const total = rec?.points || 0;
+      text += round.won
+        ? `\n\n🏆 *نقاطك:* ${total} _(+${gained})_`
+        : `\n\n🏆 *نقاطك:* ${total}\n_الله يعوّضك — جرّب بيت ثاني!_`;
+    }
+
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, Poet.keyboard(round));
+    } else {
+      await this.sendMessage(chatId, text, Poet.keyboard(round));
     }
   }
 
