@@ -1583,6 +1583,13 @@ export class TelegramBotManager {
       return;
     }
 
+    // «📣 نزّل لعبة بقناتك» → رسالة جديدة بكيبورد اختيار القناة
+    if (section === 'channel') {
+      await this.answerCallbackQuery(cb.id, 'اختار من الأزرار تحت 👇');
+      await this.sendChannelKeyboard(chatId);
+      return;
+    }
+
     const view = await this.buildGamesMenu(section);
     const text = await this.withBotFooter(view.text);
     if (messageId) {
@@ -1593,39 +1600,64 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, '');
   }
 
-  /** محتوى أقسام الألعاب */
+  /** محتوى أقسام الألعاب (المربعات القابلة للضغط) */
   private async buildGamesMenu(section: string): Promise<{ text: string; keyboard: any[][] }> {
     const botUser = await this.getBotUsername();
-    const back = [{ text: '🔙 رجوع', callback_data: 'hub:main' }];
+    const back = [{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }];
 
-    if (section === 'teams') {
+    // 👥 ألعاب ثنائية (1 ضد 1)
+    if (section === 'duo') {
       const text =
-        `👥 *ألعاب الفرق*\n` +
-        `تنلعب بالقناة أو الكروب — إنت المشرف تنزّل اللعبة، والأعضاء يشتركون ويخمّنون بالأزرار.\n` +
+        `👥 *ألعاب ثنائية (1 ضد 1)*\n` +
+        `تتحدى واحد ثاني — واحد يفوز وواحد يخسر.\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🔢 *تحدي الحساب* — نفس المسألة للاثنين، أسرع واحد يحلّها يفوز.\n` +
+        `🥊 *تحدي القافية* — كل واحد يجيب كلمة تقافي الكلمة المعطاة.\n` +
+        `📏 *أطول كلمة* — من نفس الحروف، أطول كلمة تفوز.`;
+      return {
+        text,
+        keyboard: [
+          [{ text: '🔢 تحدي الحساب 🔜', callback_data: 'hub:soon' }],
+          [
+            { text: '🥊 تحدي القافية 🔜', callback_data: 'hub:soon' },
+            { text: '📏 أطول كلمة 🔜', callback_data: 'hub:soon' }
+          ],
+          back
+        ]
+      };
+    }
+
+    // ⚔️ ألعاب الفرق (4 ضد 4)
+    if (section === 'team') {
+      const text =
+        `⚔️ *ألعاب الفرق (4 ضد 4)*\n` +
+        `تنلعب بقناة أو كروب — إنت المشرف تنزّلها، والأعضاء يشتركون بالأزرار.\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🎮 *كود نيمز (Codenames)*\n` +
-        `فريقين: جاسوس لكل فريق يشوف الخريطة ويكتب تلميح بكلمة وحدة ورقم، والعملاء يخمّنون البطاقات. اللي يخلّص بطاقات فريقه أول يفوز.\n\n` +
-        `📌 *طريقة النزول:* ضيف البوت للقناة كمشرف، وبعدين اضغط زر «📣 شارك اللعبة في قناتك» من رسالة البداية (أو اكتب /start)، واختار قناتك.\n` +
-        `_الأعضاء ما يكتبون أي أمر — كل شي أزرار، ولمّا يكمل العدد يوصلك إشعار بالخاص._`;
-      const rows: any[][] = [];
+        `فريقين، كل فريق: جاسوس 🕵️ + عميل 👤 (يعني 4 لاعبين).\n` +
+        `الجاسوس يشوف الخريطة ويكتب تلميح بكلمة وحدة ورقم — والعملاء يخمّنون البطاقات.\n` +
+        `اللي يخلّص بطاقات فريقه أول يفوز. 💀 والخطر: بطاقة القاتل تخسّرك اللعبة فوراً!\n\n` +
+        `📌 *النزول:* اضغط «📣 نزّل لعبة بقناتك» تحت، واختار قناتك.\n` +
+        `_الأعضاء ما يكتبون أي أمر — ولمّا يكمل العدد يوصلك إشعار بالخاص إنت بس._`;
+      const rows: any[][] = [
+        [{ text: '📣 نزّل لعبة بقناتك', callback_data: 'hub:channel' }]
+      ];
       if (botUser) {
-        rows.push([
-          { text: '➕ ضيف البوت لقناتك (مشرف)', url: `https://t.me/${botUser}?startchannel=true` }
-        ]);
         rows.push([
           { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
         ]);
       }
-      rows.push([{ text: '🔙 رجوع', callback_data: 'hub:main' }]);
+      rows.push(back);
       return { text, keyboard: rows };
     }
 
+    // 🧠 ألعاب خمّن
     if (section === 'guess') {
       const text =
-        `🧠 *ألعاب التخمين*\n` +
-        `تنلعب هنا بالخاص — لحالك، وبالضغط على الأزرار.\n` +
+        `🧠 *ألعاب خمّن*\n` +
+        `تنلعب هنا بالخاص، لحالك — كل شي بالضغط على الأزرار.\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `🟩 *خمّن الكلمة* — كلمة من 5 حروف وعندك 6 محاولات.\n` +
+        `🟩 *خمّن الكلمة* — كلمة من 5 حروف، وعندك 6 محاولات. ✅ شغالة\n` +
         `⚽ *خمّن اللاعب* — تلميحات وتخمّن اللاعب.\n` +
         `🎵 *خمّن الأغنية* — من الكلمات تعرف الأغنية.`;
       return {
@@ -1641,65 +1673,96 @@ export class TelegramBotManager {
       };
     }
 
-    if (section === 'fast') {
+    // 🎲 ألعاب الحظ
+    if (section === 'luck') {
       const text =
-        `⚡ *تحديات سريعة*\n` +
-        `ألعاب سريعة تنلعب بالخاص — ولا واحدة تحتاج تكتب شي، كلها أزرار.\n` +
+        `🎲 *ألعاب الحظ*\n` +
+        `حظك هو الحكم — دوّر واربح أو اخسر.\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `🎰 *عجلة الحظ* — دوّر العجلة، ضاعف نقاطك أو اخسرها.\n` +
-        `🔢 *تحدي الحساب* — أسرع واحد يحلّ المسألة.\n` +
-        `🥊 *تحدي القافية* — جيب كلمة تقافي الكلمة اللي أعطيك إياها.\n` +
-        `📏 *أطول كلمة* — كوّن أطول كلمة من الحروف المعطاة.`;
+        `🎰 *عجلة الحظ* — دوّر العجلة: ضاعف نقاطك أو اخسرها.\n` +
+        `🍀 والجوائز المخفية قريباً.`;
       return {
         text,
         keyboard: [
-          [
-            { text: '🎰 عجلة الحظ 🔜', callback_data: 'hub:soon' },
-            { text: '🔢 تحدي الحساب 🔜', callback_data: 'hub:soon' }
-          ],
-          [
-            { text: '🥊 تحدي القافية 🔜', callback_data: 'hub:soon' },
-            { text: '📏 أطول كلمة 🔜', callback_data: 'hub:soon' }
-          ],
+          [{ text: '🎰 عجلة الحظ 🔜', callback_data: 'hub:soon' }],
           back
         ]
       };
     }
 
+    // ❓ الشرح
     if (section === 'help') {
       const text =
         `❓ *كيف ألعب؟*\n` +
+        `كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `👥 *ألعاب الفرق (كود نيمز):* تنلعب بقناة أو كروب. ضيف البوت كمشرف، وبعدين اضغط «📣 شارك اللعبة في قناتك» واختار قناتك. الأعضاء ينضمون بالضغط، وإنت المشرف تضغط (ابدأ اللعبة 🚀) — ولمّا يكمل العدد يوصلك إشعار بالخاص.\n\n` +
-        `🟩 *خمّن الكلمة:* تنلعب هنا بالخاص. اضغط الحروف من اللوحة، الأخضر = بمكانه، الأصفر = موجود بمكان ثاني، الأبيض = مو بالكلمة. عندك 6 محاولات.\n\n` +
-        `🏆 *النقاط:* كل لعبة تربحها تجمعلك نقاط، وقريباً تنزل لوحة شرف بالأبطال.\n\n` +
-        `🤖 كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).`;
+        `👥 *ثنائية (1 ضد 1):* تتحدى واحد — نفس السؤال للاثنين، الأسرع والأذكى يفوز.\n` +
+        `⚔️ *فرق (4 ضد 4):* كود نيمز بقناة أو كروب. ضيف البوت كمشرف، وبعدين «📣 نزّل لعبة بقناتك» واختار قناتك.\n` +
+        `🧠 *خمّن:* خمّن الكلمة تنلعب هنا بالخاص: اضغط الحروف من اللوحة — 🟩 بمكانه، 🟨 موجود بمكان ثاني، ⬜ مو بالكلمة، وعندك 6 محاولات.\n` +
+        `🎲 *حظ:* عجلة الحظ تدوّرها وتشوف حظك.\n\n` +
+        `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط، وقريباً تنزل لوحة شرف بالأبطال.`;
       return {
         text,
-        keyboard: [[{ text: '🔙 رجوع', callback_data: 'hub:main' }]]
+        keyboard: [[{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }]]
       };
     }
 
-    // القائمة الرئيسية
+    // 🏠 الشاشة الرئيسية
     const text =
-      `🎮 *الألعاب* — اختار القسم:\n` +
+      `🎮 *بوت الألعاب*\n` +
+      `كل الألعاب هنا، وكلها بالأزرار — اختار الصنف يا طيب 👇\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
-      `👥 *ألعاب الفرق* — كود نيمز بالقناة والكروب\n` +
-      `🧠 *ألعاب التخمين* — خمّن الكلمة وغيره\n` +
-      `⚡ *تحديات سريعة* — حظ، حساب، قافية، أطول كلمة`;
+      `👥 *ألعاب ثنائية* — 1 ضد 1\n` +
+      `⚔️ *ألعاب الفرق* — 4 ضد 4 (كود نيمز)\n` +
+      `🧠 *ألعاب خمّن* — خمّن الكلمة وربعها\n` +
+      `🎲 *ألعاب الحظ* — عجلة الحظ`;
     return {
       text,
       keyboard: [
         [
-          { text: '👥 ألعاب الفرق', callback_data: 'hub:teams' },
-          { text: '🧠 ألعاب التخمين', callback_data: 'hub:guess' }
+          { text: '👥 ألعاب ثنائية 1v1', callback_data: 'hub:duo' },
+          { text: '⚔️ ألعاب فرق 4v4', callback_data: 'hub:team' }
         ],
         [
-          { text: '⚡ تحديات سريعة', callback_data: 'hub:fast' },
+          { text: '🧠 ألعاب خمّن', callback_data: 'hub:guess' },
+          { text: '🎲 ألعاب الحظ', callback_data: 'hub:luck' }
+        ],
+        [
+          { text: '📣 نزّل لعبة بقناتك', callback_data: 'hub:channel' },
           { text: '❓ كيف ألعب؟', callback_data: 'hub:help' }
         ]
       ]
     };
+  }
+
+  /** رسالة كيبورد «نزّل لعبة بقناتك» (بها زر اختيار القناة الرسمي) */
+  private async sendChannelKeyboard(chatId: string) {
+    const botUser = await this.getBotUsername();
+    const rows: any[][] = [];
+    if (botUser) {
+      rows.push([
+        { text: '➕ ضيف البوت لقناتك (مشرف)', url: `https://t.me/${botUser}?startchannel=true` }
+      ]);
+    }
+    rows.push([
+      {
+        text: '📣 شارك اللعبة في قناتك',
+        request_chat: { request_id: 1, chat_is_channel: true, bot_is_member: true }
+      }
+    ]);
+    if (botUser) {
+      rows.push([
+        { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
+      ]);
+    }
+    await this.sendMessageRaw(
+      chatId,
+      `📣 *نزّل لعبة بقناتك*\n` +
+        `1️⃣ ضيف البوت لقناتك كمشرف (Admin) — من الزر الأول.\n` +
+        `2️⃣ ارجع هنا واضغط «📣 شارك اللعبة في قناتك» (زر بالأسفل 👇).\n` +
+        `3️⃣ اختار قناتك — تنتزل اللعبة هناك وتكمل بالأزرار.`,
+      { keyboard: rows, resize_keyboard: true, one_time_keyboard: true }
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -1797,44 +1860,10 @@ export class TelegramBotManager {
    * Private /start welcome, with a button that lets the user pick a channel to play in.
    */
   private async sendPrivateWelcome(chatId: string, userName: string) {
-    const botUser = await this.getBotUsername();
-    const welcome =
-      `👋 أهلاً بك يا ${userName} في *بوت كود نيمز (Codenames)*!\n\n` +
-      `🎮 *الألعاب:* اضغط زر «🎮 الألعاب» بالأسفل واختار اللي يعجبك — كود نيمز للفرق والقنوات، وباقي الألعاب تنلعب هنا بالخاص.\n\n` +
-      `📣 *تلعب بقناة؟* (إنت المشرف الوحيد، والأعضاء ما يكتبون أوامر)\n` +
-      `1️⃣ ضيف البوت إلى قناتك كمشرف (Admin).\n` +
-      `2️⃣ ارجع لهنا واضغط زر «📣 شارك اللعبة في قناتك».\n` +
-      `3️⃣ اختار قناتك — تنتزل اللعبة هناك وتكمل بالأزرار.\n\n` +
-      `🕵️ *الجاسوس:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
-      `👥 *الأعضاء:* يخمّنون بالضغط على أزرار الكلمات بالقناة.\n\n` +
-      `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
-      `🗺️ الجاسوس يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
-
-    const keyboard: any[][] = [
-      [{ text: '🎮 الألعاب' }]
-    ];
-    if (botUser) {
-      keyboard.push([{
-        text: '➕ ضيف البوت لقناتك (مشرف)',
-        url: `https://t.me/${botUser}?startchannel=true`
-      }]);
-    }
-    keyboard.push([{
-      text: '📣 شارك اللعبة في قناتك',
-      request_chat: { request_id: 1, chat_is_channel: true, bot_is_member: true }
-    }]);
-    if (botUser) {
-      keyboard.push([{
-        text: '➕ ضيف البوت لمجموعتك',
-        url: `https://t.me/${botUser}?startgroup=codenames`
-      }]);
-    }
-
-    await this.sendMessageRaw(chatId, welcome, {
-      keyboard,
-      resize_keyboard: true,
-      one_time_keyboard: true
-    });
+    const view = await this.buildGamesMenu('main');
+    const welcome = `👋 أهلاً بك يا ${this.mdSafe(userName)}!\n\n${view.text}`;
+    // الشاشة الرئيسية: مربعات قابلة للضغط (بلا أي كيبورد بالأسفل)
+    await this.sendMessage(chatId, await this.withBotFooter(welcome), view.keyboard);
   }
 
   /**
