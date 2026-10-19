@@ -40,7 +40,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
 
   // Current game state for the simulator
   const [game, setGame] = useState<CodenamesGame>(() => {
-    const newLobby = CodenamesEngine.createLobby('sim_group_01', 'قروب الأصدقاء 🎮', 'arabic_standard');
+    const newLobby = CodenamesEngine.createLobby('sim_group_01', 'كروب الأصدقاء 🎮', 'arabic_standard');
     // Pre-seed with mock players so user can jump right into testing!
     const p1 = CodenamesEngine.joinGame(newLobby, { id: 'user_1', name: 'أحمد', team: 'blue', role: 'spymaster' });
     const p2 = CodenamesEngine.joinGame(p1.game, { id: 'user_2', name: 'سارة', team: 'blue', role: 'operative' });
@@ -132,7 +132,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
     const lower = txt.toLowerCase();
 
     if (lower === '/newgame' || lower === '/start') {
-      const newLobby = CodenamesEngine.createLobby('sim_group_01', 'قروب الأصدقاء 🎮', game.wordPack);
+      const newLobby = CodenamesEngine.createLobby('sim_group_01', 'كروب الأصدقاء 🎮', game.wordPack);
       setGame(newLobby);
       pushMessage('بوت كود نيمز', 'تم فتح غرفة جديدة! انضموا إلى الفرق لاختيار القادة والعملاء ثم اضغطوا (ابدأ اللعبة 🚀).', true);
       return;
@@ -461,7 +461,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
               {/* Reset Game button */}
               <button
                 onClick={() => {
-                  const newLobby = CodenamesEngine.createLobby('sim_group_01', 'قروب الأصدقاء 🎮', game.wordPack);
+                  const newLobby = CodenamesEngine.createLobby('sim_group_01', 'كروب الأصدقاء 🎮', game.wordPack);
                   newLobby.players = game.players;
                   setGame(newLobby);
                   pushMessage('بوت كود نيمز', '🔄 تم إعادة تشغيل الغرفة! انضموا مجدداً أو اضغطوا (ابدأ اللعبة 🚀)', true);
@@ -573,7 +573,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
                 </div>
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: theme.colors.textPrimary }}>
-                    <span>قروب الأصدقاء 🎮</span>
+                    <span>كروب الأصدقاء 🎮</span>
                     <span className="text-[10px] text-[#00c853] font-normal">● البوت متصل</span>
                   </h3>
                   <p className="text-[11px]" style={{ color: theme.colors.textMuted }}>

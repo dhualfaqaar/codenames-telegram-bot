@@ -81,7 +81,7 @@ const STOP_WORDS = new Set([
   'كيف', 'وين', 'مثل', 'بس', 'ما', 'لا', 'مو', 'يا', 'من', 'في', 'عن', 'مع',
   'الى', 'قال', 'زين', 'طيب', 'اوكي', 'حبيبي', 'هلا', 'مرحبا', 'السلام',
   'عليكم', 'مساء', 'صباح', 'الخير', 'شكرا', 'اريد', 'اكو', 'اكيد', 'بعد',
-  'قبل', 'كلش', 'وايد', 'برب', 'تمام', 'اوك'
+  'قبل', 'كلش', 'وايد', 'هوايه', 'برب', 'تمام', 'اوك'
 ]);
 
 /** Everything the bot knows about one of its users. */
@@ -189,7 +189,7 @@ export class TelegramBotManager {
 
     const match1: CodenamesGame = {
       id: 'match_hist_1',
-      chatTitle: 'قروب الشباب 🎮',
+      chatTitle: 'كروب الشباب 🎮',
       status: 'game_over',
       startingTeam: 'blue',
       currentTurn: 'blue',
@@ -777,6 +777,34 @@ export class TelegramBotManager {
       }
     }
 
+    // ------------------------------------------------------------------
+    // المالك: فك الحظر باليوزر — يكتب «الغاء حظر @username» (أو الآيدي)
+    // ------------------------------------------------------------------
+    if (message.chat.type === 'private' && sender && this.isOwner(sender.id)) {
+      const unban = text.match(/^\s*(?:الغاء|الغ|فك|رفع)\s*(?:ال)?حظر\s*[،,:\-+]*\s*@?(\S+)\s*$/);
+      if (unban) {
+        const handle = unban[1].trim();
+        const asId = /^\d+$/.test(handle);
+        const target = Array.from(this.users.values()).find(u =>
+          asId ? u.id === handle : (u.username || '').toLowerCase() === handle.toLowerCase()
+        );
+
+        if (!target) {
+          await this.sendMessage(
+            chatId,
+            asId
+              ? `⚠️ ما لكيت حساب بهذا الآيدي: \`${handle}\``
+              : `⚠️ ما لكيت حساب بيوزر @${handle} — تأكد من اليوزر عدل.`
+          );
+          return;
+        }
+
+        await this.setBanned(target.id, false);
+        await this.sendMessage(chatId, `✅ *تم مسح الحظر عن:* ${this.linkUser(target)}`);
+        return;
+      }
+    }
+
     // Spymaster typing the clue word privately (NO command needed)
     if (message.chat.type === 'private' && sender && !text.startsWith('/')) {
       const pendingGameId = this.awaitingClueWord.get(String(sender.id));
@@ -1099,13 +1127,13 @@ export class TelegramBotManager {
       let alertText = result.message;
       let showAlert = false;
 
-      // If he was already in the lobby, this press MOVED him (his old seat is free now).
+      // If he was already in the lobby, this press MOVED him.
       if (mine) {
         const oldRole = mine.role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
         const oldTeam = mine.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-        alertText =
-          `🔄 نقلناك من مقعدك القديم (${oldRole} — ${oldTeam}) إلى ${result.message}\n` +
-          `📌 مقعدك القديم صار فاضي لواحد ثاني.`;
+        const newRole = role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+        const newTeam = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+        alertText = `🔄 نقلناك من مقعدك القديم (${oldRole} — ${oldTeam}) إلى (${newRole} — ${newTeam})`;
         showAlert = true;
       }
       if (role === 'spymaster') {
@@ -1158,7 +1186,7 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(
           cb.id,
           `⚠️ القائد (${unreachable.join('، ')}) لسه ما فتح الخاص مع البوت!\n\n` +
-            `خلّيه يضغط الزر (🕵️ القادة: افتحوا الخاص مع البوت) بالأسفل ويسوي Start، وبعدين اضغط ابدأ.`,
+            `خلّيه يضغط الزر (🕵️ القادة: افتحوا الخاص مع البوت) بالأسفل ويضغط Start، وبعدين اضغط ابدأ.`,
           true
         );
         return;

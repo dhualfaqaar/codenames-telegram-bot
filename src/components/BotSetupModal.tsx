@@ -86,7 +86,7 @@ export const BotSetupModal: React.FC<BotSetupModalProps> = ({
                 إعداد وتشغيل بوت تلجرام المباشر
               </h2>
               <p className="text-xs" style={{ color: theme.colors.textMuted }}>
-                اربط توكن البوت لتشغيل اللعبة في أي محادثة أو قروب على تلجرام
+                اربط توكن البوت لتشغيل اللعبة في أي محادثة أو كروب على تلجرام
               </p>
             </div>
           </div>
@@ -136,7 +136,7 @@ export const BotSetupModal: React.FC<BotSetupModalProps> = ({
                   style={{ backgroundColor: theme.colors.accentPrimary }}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>إضافة لقروب تلجرام</span>
+                  <span>إضافة لكروب تلجرام</span>
                 </a>
               )}
             </div>
@@ -259,7 +259,7 @@ export const BotSetupModal: React.FC<BotSetupModalProps> = ({
                 • <strong>في بيئة المعاينة الحالية:</strong> يعمل البوت ويستقبل الرسائل مباشرة، ولكن بيئة المعاينة قد تدخل في وضع الخمول عند إغلاق المتصفح لفترة.
               </p>
               <p>
-                • <strong>لضمان استيقاظ البوت عند أي رسالة:</strong> اضغط على <span className="font-bold text-[#00c853]">تفعيل الويب هوك السحابي (Webhook 24/7)</span>. حينها يقوم تلجرام نفسه بإيقاظ السيرفر فور إرسال أي أمر في القروب!
+                • <strong>لضمان استيقاظ البوت عند أي رسالة:</strong> اضغط على <span className="font-bold text-[#00c853]">تفعيل الويب هوك السحابي (Webhook 24/7)</span>. حينها يقوم تلجرام نفسه بإيقاظ السيرفر فور إرسال أي أمر في الكروب!
               </p>
               <p>
                 • <strong>لتشغيله دائماً على مدار العام وبشكل مستقل:</strong> الكود كامل وجاهز للتشغيل بأمر واحد (<code className="font-mono px-1 py-0.5 rounded border" style={{ backgroundColor: theme.colors.bgSurface, borderColor: theme.colors.borderColor }}>npm start</code>) على أي سيرفر أو استضافة سحابية مجانية (مثل Render أو Railway أو VPS).

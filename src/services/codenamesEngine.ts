@@ -665,8 +665,8 @@ export class CodenamesEngine {
     const seat = (role: PlayerRole, roleLabel: string, index: number) => {
       const player = list.find(p => p.role === role);
       return player
-        ? `${index}. ${this.nameTag(player.name)} — ${roleLabel}`
-        : `${index}. ⬜ _مقعد فاضي_ — ${roleLabel}`;
+        ? `${index}. ${this.nameTag(player.name)} — ${roleLabel} _(مشغول)_`
+        : `${index}. ⬜ — ${roleLabel} _(فارغ)_`;
     };
 
     return [
@@ -694,8 +694,8 @@ export class CodenamesEngine {
         `${this.teamRoster(game, 'red')}\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         (full
-          ? `🔒 *اللوبي مكتمل!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
-          : `⏳ *باقي ${Math.max(0, 4 - game.players.length)} لاعب* — كل فريق يحتاج (قائد جاسوس 🕵️ + عميل 👤).\n`) +
+          ? `🔒 *اكتمل العدد!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
+          : `_⏳ قيد الانتظار: باقي ${Math.max(0, 4 - game.players.length)} لاعب — كل فريق يحتاج (قائد جاسوس 🕵️ + عميل 👤)._\n`) +
         `1️⃣ كل واحد يضغط زر دوره بفريقه.\n` +
         `2️⃣ الدور الماخوذ ما ينفع تاخذه — راح يجيك تنبيه.\n` +
         `3️⃣ *القادة 🕵️:* اضغطوا زر «القادة: افتحوا الخاص» بالأسفل حتى توصلكم الخريطة والتلميح.\n` +
@@ -761,14 +761,18 @@ export class CodenamesEngine {
    */
   public static getTelegramInlineKeyboard(game: CodenamesGame): any[][] {
     if (game.status === 'lobby') {
+      // حالة كل مقعد: فارغ / مشغول — تنعرض بنفس ترتيب الأزرار.
+      const state = (team: Team, role: PlayerRole) =>
+        game.players.some(p => p.team === team && p.role === role) ? '(مشغول)' : '(فارغ)';
+
       return [
         [
-          { text: 'عميل أزرق 🔵', callback_data: 'join:blue:operative' },
-          { text: 'عميل أحمر 🔴', callback_data: 'join:red:operative' }
+          { text: `عميل أزرق 🔵 ${state('blue', 'operative')}`, callback_data: 'join:blue:operative' },
+          { text: `عميل أحمر 🔴 ${state('red', 'operative')}`, callback_data: 'join:red:operative' }
         ],
         [
-          { text: 'قائد أزرق 🕵️‍♂️', callback_data: 'join:blue:spymaster' },
-          { text: 'قائد أحمر 🕵️‍♀️', callback_data: 'join:red:spymaster' }
+          { text: `قائد أزرق 🕵️‍♂️ ${state('blue', 'spymaster')}`, callback_data: 'join:blue:spymaster' },
+          { text: `قائد أحمر 🕵️‍♀️ ${state('red', 'spymaster')}`, callback_data: 'join:red:spymaster' }
         ],
         [
           {

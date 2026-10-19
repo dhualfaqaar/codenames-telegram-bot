@@ -29,7 +29,7 @@ export const RulesGuide: React.FC = () => {
             دليل وقوانين لعبة كود نيمز (Codenames) في تلجرام
           </h2>
           <p className="text-xs mt-0.5" style={{ color: theme.colors.textMuted }}>
-            كل ما تحتاجه للعب واحتراف اللعبة داخل مجموعات وقروبات تلجرام
+            كل ما تحتاجه للعب واحتراف اللعبة داخل مجموعات وكروبات تلجرام
           </p>
         </div>
       </div>
@@ -201,7 +201,7 @@ export const RulesGuide: React.FC = () => {
               <code className="font-bold font-mono" style={{ color: theme.colors.accentPrimary }}>/newgame</code>
               <p className="text-[11px] mt-0.5" style={{ color: theme.colors.textMuted }}>بدء جولة جديدة وفتح أزرار الانضمام للفرق في المجموعة</p>
             </div>
-            <span className="text-[10px] px-2 py-1 rounded" style={{ backgroundColor: theme.colors.bgInput, color: theme.colors.textSecondary }}>في القروب</span>
+            <span className="text-[10px] px-2 py-1 rounded" style={{ backgroundColor: theme.colors.bgInput, color: theme.colors.textSecondary }}>في الكروب</span>
           </div>
 
           <div className="py-2.5 flex items-start justify-between gap-4">

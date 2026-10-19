@@ -72,8 +72,8 @@ export const LiveBotMonitor: React.FC<LiveBotMonitorProps> = ({ botConfig, onOpe
             </div>
             <p className="text-xs mt-0.5" style={{ color: theme.colors.textMuted }}>
               {isOnline 
-                ? `البوت متصل بالمعرف @${botConfig.botInfo?.username} ويستقبل الأوامر من القروبات تلقائياً`
-                : 'قم بربط Bot Token لتشغيل البوت في أي قروب تلجرام حقيقي'}
+                ? `البوت متصل بالمعرف @${botConfig.botInfo?.username} ويستقبل الأوامر من الكروبات تلقائياً`
+                : 'قم بربط Bot Token لتشغيل البوت في أي كروب تلجرام حقيقي'}
             </p>
           </div>
         </div>
@@ -111,7 +111,7 @@ export const LiveBotMonitor: React.FC<LiveBotMonitorProps> = ({ botConfig, onOpe
               style={{ backgroundColor: theme.colors.accentPrimary }}
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              <span>إضافة البوت لقروب تلجرام</span>
+              <span>إضافة البوت لكروب تلجرام</span>
             </a>
           )}
         </div>
