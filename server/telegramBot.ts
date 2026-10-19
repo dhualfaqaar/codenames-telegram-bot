@@ -383,6 +383,32 @@ export class TelegramBotManager {
     return this.games.get(chatId);
   }
 
+  /**
+   * Serialize every piece of mutable game state.
+   * Used by the Cloudflare Worker (Durable Object) to persist games across requests.
+   */
+  public exportState(): any {
+    return {
+      games: Array.from(this.games.entries()),
+      completedGames: this.completedGames,
+      customWords: this.customWords,
+      awaitingClueWord: Array.from(this.awaitingClueWord.entries()),
+      pendingClueWord: Array.from(this.pendingClueWord.entries())
+    };
+  }
+
+  /**
+   * Restore state previously produced by exportState().
+   */
+  public importState(state: any) {
+    if (!state) return;
+    if (Array.isArray(state.games)) this.games = new Map(state.games);
+    if (Array.isArray(state.completedGames)) this.completedGames = state.completedGames;
+    if (Array.isArray(state.customWords)) this.customWords = state.customWords;
+    if (Array.isArray(state.awaitingClueWord)) this.awaitingClueWord = new Map(state.awaitingClueWord);
+    if (Array.isArray(state.pendingClueWord)) this.pendingClueWord = new Map(state.pendingClueWord);
+  }
+
   public setToken(token: string) {
     const trimmed = token ? token.trim() : '';
     if (!trimmed) {

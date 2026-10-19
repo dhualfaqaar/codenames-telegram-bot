@@ -1,0 +1,13 @@
+name = "codenames-telegram-bot"
+main = "worker/index.ts"
+compatibility_date = "2025-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [
+  { name = "BOT_STATE", class_name = "BotState" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BotState"]
