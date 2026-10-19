@@ -1,4 +1,5 @@
 import { CodenamesEngine } from '../src/services/codenamesEngine';
+import * as Wordle from '../src/services/wordleEngine';
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
@@ -105,6 +106,10 @@ interface BotUserRecord {
   lastForward?: number;
   /** last time we answered him with the game explanation (throttle) */
   lastWelcome?: number;
+  /** نقاط الألعاب (خمّن الكلمة وغيره) */
+  points?: number;
+  /** كم مرة حلّ «خمّن الكلمة» */
+  wordleWins?: number;
 }
 
 /** A chat the bot has seen (group, supergroup or channel). */
@@ -166,6 +171,8 @@ export class TelegramBotManager {
   private bannedWords: string[] = [];
   /** الحظر التلقائي للسبّابين: يشتغل/ينطفي من اللوحة */
   private autoBan: boolean = true;
+  /** 🟩 «خمّن الكلمة»: لعبة لكل مستخدم داخل الخاص */
+  private wordle: Map<string, Wordle.WordleState> = new Map();
 
   constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
@@ -486,7 +493,8 @@ export class TelegramBotManager {
       inboxMap: Array.from(this.inboxMap.entries()),
       inboxRaw: Array.from(this.inboxRaw.entries()),
       bannedWords: this.bannedWords,
-      autoBan: this.autoBan
+      autoBan: this.autoBan,
+      wordle: Array.from(this.wordle.entries())
     };
   }
 
@@ -509,6 +517,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.inboxRaw)) this.inboxRaw = new Map(state.inboxRaw);
     if (Array.isArray(state.bannedWords)) this.bannedWords = state.bannedWords;
     if (typeof state.autoBan === 'boolean') this.autoBan = state.autoBan;
+    if (Array.isArray(state.wordle)) this.wordle = new Map(state.wordle);
   }
 
   public setToken(token: string) {
@@ -814,6 +823,13 @@ export class TelegramBotManager {
       }
     }
 
+    // زر «🎮 الألعاب» من كيبورد الخاص — يفتح قائمة الألعاب (للجميع، حتى المالك)
+    if (message.chat.type === 'private' && text === '🎮 الألعاب') {
+      const view = await this.buildGamesMenu('main');
+      await this.sendMessage(chatId, await this.withBotFooter(view.text), view.keyboard);
+      return;
+    }
+
     // Owner dashboard button (private chat only)
     if (message.chat.type === 'private' && text === '👑 لوحة التحكم' && this.isOwner(sender?.id)) {
       await this.sendAdminPanel(chatId);
@@ -990,6 +1006,16 @@ export class TelegramBotManager {
       }
 
       await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ---- 🎮 قائمة الألعاب و«خمّن الكلمة» (كلها بالخاص) ----
+    if (data.startsWith('hub:')) {
+      await this.handleGamesMenu(cb, data.slice(4));
+      return;
+    }
+    if (data.startsWith('wl:')) {
+      await this.handleWordleKey(cb, data.slice(3));
       return;
     }
 
@@ -1547,6 +1573,226 @@ export class TelegramBotManager {
     }
   }
 
+  /** عرض قسم من قائمة الألعاب (أزرار فقط) */
+  private async handleGamesMenu(cb: TelegramCallbackQuery, section: string) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+
+    if (section === 'soon') {
+      await this.answerCallbackQuery(cb.id, '🔜 هاي اللعبة جاية قريب!');
+      return;
+    }
+
+    const view = await this.buildGamesMenu(section);
+    const text = await this.withBotFooter(view.text);
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, view.keyboard);
+    } else {
+      await this.sendMessage(chatId, text, view.keyboard);
+    }
+    await this.answerCallbackQuery(cb.id, '');
+  }
+
+  /** محتوى أقسام الألعاب */
+  private async buildGamesMenu(section: string): Promise<{ text: string; keyboard: any[][] }> {
+    const botUser = await this.getBotUsername();
+    const back = [{ text: '🔙 رجوع', callback_data: 'hub:main' }];
+
+    if (section === 'teams') {
+      const text =
+        `👥 *ألعاب الفرق*\n` +
+        `تنلعب بالقناة أو الكروب — إنت المشرف تنزّل اللعبة، والأعضاء يشتركون ويخمّنون بالأزرار.\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🎮 *كود نيمز (Codenames)*\n` +
+        `فريقين: جاسوس لكل فريق يشوف الخريطة ويكتب تلميح بكلمة وحدة ورقم، والعملاء يخمّنون البطاقات. اللي يخلّص بطاقات فريقه أول يفوز.\n\n` +
+        `📌 *طريقة النزول:* ضيف البوت للقناة كمشرف، وبعدين اضغط زر «📣 شارك اللعبة في قناتك» من رسالة البداية (أو اكتب /start)، واختار قناتك.\n` +
+        `_الأعضاء ما يكتبون أي أمر — كل شي أزرار، ولمّا يكمل العدد يوصلك إشعار بالخاص._`;
+      const rows: any[][] = [];
+      if (botUser) {
+        rows.push([
+          { text: '➕ ضيف البوت لقناتك (مشرف)', url: `https://t.me/${botUser}?startchannel=true` }
+        ]);
+        rows.push([
+          { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
+        ]);
+      }
+      rows.push([{ text: '🔙 رجوع', callback_data: 'hub:main' }]);
+      return { text, keyboard: rows };
+    }
+
+    if (section === 'guess') {
+      const text =
+        `🧠 *ألعاب التخمين*\n` +
+        `تنلعب هنا بالخاص — لحالك، وبالضغط على الأزرار.\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🟩 *خمّن الكلمة* — كلمة من 5 حروف وعندك 6 محاولات.\n` +
+        `⚽ *خمّن اللاعب* — تلميحات وتخمّن اللاعب.\n` +
+        `🎵 *خمّن الأغنية* — من الكلمات تعرف الأغنية.`;
+      return {
+        text,
+        keyboard: [
+          [{ text: '🟩 خمّن الكلمة', callback_data: 'wl:new' }],
+          [
+            { text: '⚽ خمّن اللاعب 🔜', callback_data: 'hub:soon' },
+            { text: '🎵 خمّن الأغنية 🔜', callback_data: 'hub:soon' }
+          ],
+          back
+        ]
+      };
+    }
+
+    if (section === 'fast') {
+      const text =
+        `⚡ *تحديات سريعة*\n` +
+        `ألعاب سريعة تنلعب بالخاص — ولا واحدة تحتاج تكتب شي، كلها أزرار.\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🎰 *عجلة الحظ* — دوّر العجلة، ضاعف نقاطك أو اخسرها.\n` +
+        `🔢 *تحدي الحساب* — أسرع واحد يحلّ المسألة.\n` +
+        `🥊 *تحدي القافية* — جيب كلمة تقافي الكلمة اللي أعطيك إياها.\n` +
+        `📏 *أطول كلمة* — كوّن أطول كلمة من الحروف المعطاة.`;
+      return {
+        text,
+        keyboard: [
+          [
+            { text: '🎰 عجلة الحظ 🔜', callback_data: 'hub:soon' },
+            { text: '🔢 تحدي الحساب 🔜', callback_data: 'hub:soon' }
+          ],
+          [
+            { text: '🥊 تحدي القافية 🔜', callback_data: 'hub:soon' },
+            { text: '📏 أطول كلمة 🔜', callback_data: 'hub:soon' }
+          ],
+          back
+        ]
+      };
+    }
+
+    if (section === 'help') {
+      const text =
+        `❓ *كيف ألعب؟*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `👥 *ألعاب الفرق (كود نيمز):* تنلعب بقناة أو كروب. ضيف البوت كمشرف، وبعدين اضغط «📣 شارك اللعبة في قناتك» واختار قناتك. الأعضاء ينضمون بالضغط، وإنت المشرف تضغط (ابدأ اللعبة 🚀) — ولمّا يكمل العدد يوصلك إشعار بالخاص.\n\n` +
+        `🟩 *خمّن الكلمة:* تنلعب هنا بالخاص. اضغط الحروف من اللوحة، الأخضر = بمكانه، الأصفر = موجود بمكان ثاني، الأبيض = مو بالكلمة. عندك 6 محاولات.\n\n` +
+        `🏆 *النقاط:* كل لعبة تربحها تجمعلك نقاط، وقريباً تنزل لوحة شرف بالأبطال.\n\n` +
+        `🤖 كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).`;
+      return {
+        text,
+        keyboard: [[{ text: '🔙 رجوع', callback_data: 'hub:main' }]]
+      };
+    }
+
+    // القائمة الرئيسية
+    const text =
+      `🎮 *الألعاب* — اختار القسم:\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `👥 *ألعاب الفرق* — كود نيمز بالقناة والكروب\n` +
+      `🧠 *ألعاب التخمين* — خمّن الكلمة وغيره\n` +
+      `⚡ *تحديات سريعة* — حظ، حساب، قافية، أطول كلمة`;
+    return {
+      text,
+      keyboard: [
+        [
+          { text: '👥 ألعاب الفرق', callback_data: 'hub:teams' },
+          { text: '🧠 ألعاب التخمين', callback_data: 'hub:guess' }
+        ],
+        [
+          { text: '⚡ تحديات سريعة', callback_data: 'hub:fast' },
+          { text: '❓ كيف ألعب؟', callback_data: 'hub:help' }
+        ]
+      ]
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // 🟩 «خمّن الكلمة»
+  // ---------------------------------------------------------------------
+
+  /** تثبيت لعبة «خمّن الكلمة» مع تحديد حجم الذاكرة */
+  private setWordle(userId: string, state: Wordle.WordleState) {
+    if (!this.wordle.has(userId) && this.wordle.size >= 2000) {
+      const oldest = this.wordle.keys().next().value;
+      if (oldest) this.wordle.delete(oldest);
+    }
+    this.wordle.set(userId, state);
+  }
+
+  /** زر من أزرار «خمّن الكلمة» (حرف / مسح / إرسال / كلمة جديدة) */
+  private async handleWordleKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const previous = this.wordle.get(userId);
+      const fresh = Wordle.createGame(previous?.target);
+      this.setWordle(userId, fresh);
+      await this.paintWordle(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '🟩 كلمة جديدة — بالتوفيق!');
+      return;
+    }
+
+    const game = this.wordle.get(userId);
+    if (!game) {
+      await this.answerCallbackQuery(cb.id, 'اضغط «🟩 خمّن الكلمة» من قائمة الألعاب.', true);
+      return;
+    }
+
+    if (key === 'del') {
+      const next = Wordle.deleteLetter(game);
+      this.setWordle(userId, next);
+      await this.paintWordle(cb, next);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (key === 'ok') {
+      const res = Wordle.submitGuess(game);
+      if (res.error) {
+        await this.answerCallbackQuery(cb.id, res.error, true);
+        return;
+      }
+      const next = res.state;
+      this.setWordle(userId, next);
+
+      if (next.won) {
+        const gained = Wordle.pointsFor(next.guesses.length);
+        const rec = this.users.get(userId);
+        if (rec) {
+          rec.points = (rec.points || 0) + gained;
+          rec.wordleWins = (rec.wordleWins || 0) + 1;
+          this.users.set(rec.id, rec);
+        }
+      }
+      await this.paintWordle(cb, next);
+      await this.answerCallbackQuery(cb.id, next.won ? '🎉 حليتها!' : next.done ? '😅 خلصت المحاولات' : '');
+      return;
+    }
+
+    const next = Wordle.addLetter(game, key);
+    this.setWordle(userId, next);
+    await this.paintWordle(cb, next);
+    await this.answerCallbackQuery(cb.id, '');
+  }
+
+  /** يعرض/يحدّث لوحة «خمّن الكلمة» داخل الرسالة نفسها */
+  private async paintWordle(cb: TelegramCallbackQuery, state: Wordle.WordleState) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    let text = Wordle.renderMessage(state);
+
+    if (state.done) {
+      const rec = this.users.get(String(cb.from.id));
+      const gained = state.won ? Wordle.pointsFor(state.guesses.length) : 0;
+      const total = rec?.points || 0;
+      text += state.won
+        ? `\n\n🏆 *نقاطك:* ${total} _(+${gained})_`
+        : `\n\n🏆 *نقاطك:* ${total}\n_الله يعوّضك — جرّب مرة ثانية!_`;
+    }
+
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, Wordle.keyboard(state));
+    } else {
+      await this.sendMessage(chatId, text, Wordle.keyboard(state));
+    }
+  }
+
   /**
    * Private /start welcome, with a button that lets the user pick a channel to play in.
    */
@@ -1554,6 +1800,7 @@ export class TelegramBotManager {
     const botUser = await this.getBotUsername();
     const welcome =
       `👋 أهلاً بك يا ${userName} في *بوت كود نيمز (Codenames)*!\n\n` +
+      `🎮 *الألعاب:* اضغط زر «🎮 الألعاب» بالأسفل واختار اللي يعجبك — كود نيمز للفرق والقنوات، وباقي الألعاب تنلعب هنا بالخاص.\n\n` +
       `📣 *تلعب بقناة؟* (إنت المشرف الوحيد، والأعضاء ما يكتبون أوامر)\n` +
       `1️⃣ ضيف البوت إلى قناتك كمشرف (Admin).\n` +
       `2️⃣ ارجع لهنا واضغط زر «📣 شارك اللعبة في قناتك».\n` +
@@ -1563,7 +1810,9 @@ export class TelegramBotManager {
       `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
       `🗺️ الجاسوس يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
 
-    const keyboard: any[][] = [];
+    const keyboard: any[][] = [
+      [{ text: '🎮 الألعاب' }]
+    ];
     if (botUser) {
       keyboard.push([{
         text: '➕ ضيف البوت لقناتك (مشرف)',
