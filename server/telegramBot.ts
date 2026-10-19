@@ -191,7 +191,7 @@ const BOT_GAMES: BotGameCard[] = [
       'وكل محاولة تتلوّن حتى تعرف وين غلطك:\n' +
       '🟩 الحرف بمكانه الصح • 🟨 الحرف موجود بس بمكان ثاني • ⬜ الحرف مو بالكلمة.\n' +
       'كل ما حلّيت بمحاولات أقل، نقاطك أكثر ⭐.',
-    play: { label: '▶️ العب مع البوت', data: 'wl:new' },
+    play: { label: '🤖 العب مع البوت', data: 'wl:new' },
     ready: true
   },
   {
@@ -1848,12 +1848,12 @@ export class TelegramBotManager {
   /** نصوص الإحصائيات: main / top / g:<id> (إحصائيات لعبة معينة) */
   private async buildGameStats(section: string): Promise<{ text: string; keyboard: any[][] }> {
     const n = this.gameStatsNumbers();
-    const backStats = [{ text: '🔙 الإحصائيات', callback_data: 'gstat:main' }];
+    const backStats = [{ text: '🔙 رجوع', callback_data: 'gstat:main' }];
 
     // 📊 إحصائيات لعبة معينة — توصل من صفحة اللعبة نفسها
     const gameId = section.startsWith('g:') ? section.slice(2) : section === 'cn' ? 'codenames' : '';
     const fromGame = section.startsWith('g:');
-    const gameBack = [{ text: '🔙 رجوع للعبة', callback_data: `hub:g:${gameId}` }];
+    const gameBack = [{ text: '🔙 رجوع', callback_data: `hub:g:${gameId}` }];
 
     // 🟩 إحصائيات خمّن الكلمة
     if (gameId === 'wordle') {
@@ -2019,7 +2019,7 @@ export class TelegramBotManager {
         { text: '⚔️ تفاصيل كود نيمز', callback_data: 'gstat:cn' }
       ]
     ];
-    keyboard.push([{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }]);
+    keyboard.push([{ text: '🔙 رجوع', callback_data: 'hub:main' }]);
     // صاحب البوت يرجع للوحته مباشرة
     keyboard.push([{ text: '👑 لوحة التحكم', callback_data: 'admin:panel' }]);
 
@@ -2053,9 +2053,9 @@ export class TelegramBotManager {
 
   private async buildGamesMenu(section: string): Promise<{ text: string; keyboard: any[][] }> {
     const botUser = await this.getBotUsername();
-    const back = [{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }];
+    const back = [{ text: '🔙 رجوع', callback_data: 'hub:main' }];
 
-    // 📂 صفحة الصنف: يعرض ألعاب الصنف (كل لعبة بمربع → صفحة اللعبة)
+    // 📂 صفحة الصنف: ألعاب الصنف فقط + رجوع
     if (GAME_CATEGORIES[section]) {
       const cat = GAME_CATEGORIES[section];
       const list = BOT_GAMES.filter(g => g.category === section);
@@ -2066,78 +2066,76 @@ export class TelegramBotManager {
           callback_data: `hub:g:${g.id}`
         }
       ]);
-
-      if (section === 'team') {
-        if (botUser) {
-          keyboard.push([
-            { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
-          ]);
-        }
-      }
       keyboard.push(back);
 
       const text =
         `${cat.emoji} *${cat.title}*\n` +
         `${cat.intro}\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `👇 اضغط على اللعبة وتشوف *شرحها* وزر اللعب:`;
+        `👇 اختار اللعبة:`;
 
       return { text, keyboard };
     }
 
-    // 🎯 صفحة لعبة واحدة: شرح اللعبة + زر اللعب
+    // 🎯 قائمة اللعبة: أزرار (شرح / إحصائيات / قناة / لعب مع البوت)
     if (section.startsWith('g:')) {
       const game = findBotGame(section.slice(2));
-      const categoryBack = game
-        ? { text: `🔙 رجوع`, callback_data: `hub:${game.category}` }
-        : { text: '🔙 رجوع', callback_data: 'hub:main' };
-
       if (!game) {
         return {
           text: `⚠️ ما لكيت هاي اللعبة — ارجع واختار من القائمة.`,
-          keyboard: [[categoryBack]]
+          keyboard: [back]
         };
       }
 
-      const lines = [
-        `${game.emoji} *${game.title}*`,
-        `━━━━━━━━━━━━━━━━━━━`,
-        `👥 *اللاعبون:* ${game.players}`,
-        `📍 *الوين:* ${game.where}`
-      ];
-      if (game.goal) lines.push(`🎯 *الهدف:* ${game.goal}`);
-      if (game.reward) lines.push(`🏆 *النقاط:* ${game.reward}`);
-      lines.push(`━━━━━━━━━━━━━━━━━━━`);
-      lines.push(`📖 *الشرح:*`);
-      lines.push(game.about);
-
+      const lines = [`${game.emoji} *${game.title}*`, `👥 ${game.players}`, `📍 ${game.where}`];
       const keyboard: any[][] = [];
 
-      // 🟩 ألعاب تنلعب مع البوت نفسه
+      // 1) شرح اللعبة
+      keyboard.push([{ text: '📖 شرح اللعبة', callback_data: `hub:how:${game.id}` }]);
+
+      // 2) إحصائيات اللعبة نفسها
+      if (game.ready) {
+        keyboard.push([{ text: '📊 إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
+      }
+
+      // 3) زر يحوّل اللعبة للقناة (ألعاب الفرق)
+      if (game.channel) {
+        keyboard.push([{ text: '📣 نزّل اللعبة بقناتك', callback_data: 'hub:channel' }]);
+      }
+
+      // 4) اللعبة اللي بعدها ما نزلت
+      if (!game.ready) {
+        lines.push(`━━━━━━━━━━━━━━━━━━━`);
+        lines.push(`🔜 *قريباً* — اللعبة بالطريق.`);
+        keyboard.push([{ text: '🔜 قريباً', callback_data: 'hub:soon' }]);
+      }
+
+      // 5) وأخيراً: إذا اللعبة تنلعب مع البوت نفسه
       if (game.play) {
         keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
       }
-      // 📣 ألعاب القنوات: زر اللعب يحوّلك على اختيار قناتك
-      if (game.channel) {
-        keyboard.push([{ text: '▶️ العب — نزّلها بقناتك', callback_data: 'hub:channel' }]);
-      }
-      // 🔜 اللعبة اللي بعدها ما جاهزة
-      if (!game.ready) {
-        lines.push(`━━━━━━━━━━━━━━━━━━━`);
-        lines.push(`🔜 *قريباً* — اللعبة بالطريق، وبنجهّزها بالأزرار مثل البقية.`);
-        keyboard.push([{ text: '🔜 قريباً', callback_data: 'hub:soon' }]);
-      } else {
-        // 📊 إحصائيات هاي اللعبة بس (مو كل الألعاب)
-        lines.push(`━━━━━━━━━━━━━━━━━━━`);
-        lines.push(`📊 تريد تشوف أرقام هاي اللعبة؟ اضغط زر الإحصائيات تحت.`);
-        keyboard.push([
-          { text: `📊 إحصائيات ${game.title}`, callback_data: `gstat:g:${game.id}` }
-        ]);
-      }
 
-      keyboard.push([categoryBack, { text: '🏠 الرئيسية', callback_data: 'hub:main' }]);
+      keyboard.push([{ text: '🔙 رجوع', callback_data: `hub:${game.category}` }]);
 
       return { text: lines.join('\n'), keyboard };
+    }
+
+    // 📖 شرح اللعبة (جوّا اللعبة نفسها)
+    if (section.startsWith('how:')) {
+      const game = findBotGame(section.slice(4));
+      if (!game) {
+        return { text: `⚠️ ما لكيت هاي اللعبة.`, keyboard: [back] };
+      }
+
+      const lines = [`📖 *شرح: ${game.title}*`, `━━━━━━━━━━━━━━━━━━━`, game.about];
+      if (game.goal) lines.push(`🎯 *الهدف:* ${game.goal}`);
+      if (game.reward) lines.push(`🏆 *النقاط:* ${game.reward}`);
+      if (!game.ready) lines.push(`🔜 *قريباً* — اللعبة بعدها ما نزلت.`);
+
+      return {
+        text: lines.join('\n'),
+        keyboard: [[{ text: '🔙 رجوع', callback_data: `hub:g:${game.id}` }]]
+      };
     }
 
     // ❓ الشرح
@@ -2146,21 +2144,15 @@ export class TelegramBotManager {
         `❓ *كيف ألعب؟*\n` +
         `كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `1️⃣ اختار *الصنف* من الشاشة الرئيسية (ثنائية / فرق / خمّن / حظ).\n` +
-        `2️⃣ تشوف *ألعاب الصنف* — اضغط على اللعبة اللي تريدها.\n` +
-        `3️⃣ تنفتحلك صفحة اللعبة: *شرحها الخاص* + *زر اللعب*.\n` +
+        `1️⃣ اختار *الصنف* من الشاشة الرئيسية.\n` +
+        `2️⃣ اختار *اللعبة* من الصنف.\n` +
+        `3️⃣ بلعبة تلكى أزرارها: 📖 شرح اللعبة • 📊 إحصائيات اللعبة • 📣 نزّل اللعبة بقناتك • 🤖 العب مع البوت (إذا تنلعب مع البوت).\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `🤖 *ألعاب البوت* (مثل 🟩 خمّن الكلمة): زر «▶️ العب مع البوت» يبديها هنا بالخاص فوراً.\n` +
-        `📣 *ألعاب الفرق* (مثل 🎮 كود نيمز 2 ضد 2): زر «▶️ العب — نزّلها بقناتك» يحوّلك لاختيار قناتك، والأعضاء يشتركون بالأزرار.\n` +
-        `🔜 *الألعاب اللي بيها 🔜* بعدها ما جاهزة — ننزّلها وحدة وحدة.\n\n` +
-        `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط، وتشوف ترتيبك بلوحة الأبطال.\n` +
-        `📊 *الإحصائيات:* تشوف أرقام كل الألعاب وأصنافها — مفتوحة للكل.`;
+        `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط.\n` +
+        `🔜 *الألعاب اللي بيها 🔜* بعدها ما جاهزة — ننزّلها وحدة وحدة.`;
       return {
         text,
-        keyboard: [
-          [{ text: '📊 الإحصائيات', callback_data: 'gstat:main' }],
-          [{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }]
-        ]
+        keyboard: [[{ text: '🔙 رجوع', callback_data: 'hub:main' }]]
       };
     }
 

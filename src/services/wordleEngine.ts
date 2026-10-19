@@ -228,7 +228,7 @@ export function keyboard(state: WordleState): any[][] {
   if (state.done) {
     return [
       [{ text: '🔄 كلمة جديدة', callback_data: 'wl:new' }],
-      [{ text: '🏠 قائمة الألعاب', callback_data: 'hub:guess' }]
+      [{ text: '🔙 رجوع', callback_data: 'hub:g:wordle' }]
     ];
   }
   const marks = letterMarks(state);
@@ -243,9 +243,9 @@ export function keyboard(state: WordleState): any[][] {
     );
   }
   rows.push([
-    { text: '🔙 مسح حرف', callback_data: 'wl:del' },
+    { text: '⌫ مسح حرف', callback_data: 'wl:del' },
     { text: '✅ إرسال', callback_data: 'wl:ok' }
   ]);
-  rows.push([{ text: '🏠 قائمة الألعاب', callback_data: 'hub:main' }]);
+  rows.push([{ text: '🔙 رجوع', callback_data: 'hub:g:wordle' }]);
   return rows;
 }
