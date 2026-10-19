@@ -1,0 +1,11 @@
+node_modules
+.git
+.gitignore
+dist
+build
+.env
+.env.*
+*.log
+codenames-bot.zip
+start-bot.bat
+start-bot-hidden.vbs
