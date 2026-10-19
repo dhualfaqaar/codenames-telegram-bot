@@ -708,20 +708,8 @@ export class TelegramBotManager {
         );
         if (!dm?.ok) {
           showAlert = true;
-          alertText += `\n⚠️ مهم يا قائد: افتح الخاص مع البوت واضغط Start (زر بالأسفل) حتى أقدر أرسللك خريطتك.`;
-
-          // Also post a loud notice inside the chat, so the captain can't miss it.
-          const botUser = await this.getBotUsername();
-          const noticeKeyboard: any[][] = botUser
-            ? [[{ text: '🕵️ القائد: اضغط هنا لفتح الخاص', url: `https://t.me/${botUser}?start=spy` }]]
-            : [];
-          await this.sendMessage(
-            chatId,
-            `⚠️ *تنبيه للقائد* [${this.mdSafe(userName)}](tg://user?id=${userId})\n` +
-              `ما أقدر أرسللك رسالة بالخاص لأنه ما فتحته بعد.\n` +
-              `اضغط الزر بالأسفل وضغط *Start* — وراح توصلك *خريطتك الملوّنة* هنا 👆`,
-            noticeKeyboard
-          );
+          alertText +=
+            `\n⚠️ فتح الخاص مع البوت واضغط Start (زر «🕵️ القادة» بالرسالة) حتى توصلك خريطتك.`;
         }
       }
       await this.answerCallbackQuery(cb.id, alertText, showAlert);
@@ -773,6 +761,8 @@ export class TelegramBotManager {
       await this.answerCallbackQuery(cb.id, 'بدأت اللعبة! تم توزيع الكلمات 🚀');
       await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
 
+      // Tell everyone in the game (privately) that the round has begun
+      await this.notifyPlayersRoundStarted(result.game);
       // Notify spymasters in private message if possible
       await this.notifySpymasters(result.game);
       // Immediately ask the starting spymaster for the first clue (no commands needed)
@@ -890,8 +880,14 @@ export class TelegramBotManager {
       if (result.game.status === 'game_over') {
         this.recordFinishedGame(result.game);
       }
+      const guessedCard = game.cards.find(c => c.id === cardId);
       await this.answerCallbackQuery(cb.id, result.message);
-      await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
+      await this.updateTelegramGameBoard(
+        chatId,
+        result.game,
+        cb.message?.message_id,
+        `${CodenamesEngine.nameTag(userName)} خمّن «${guessedCard?.word || ''}» — ${result.message}`
+      );
 
       // If the turn moved to the other team's spymaster, prompt them privately
       if (result.game.status === 'spymaster_turn') {
@@ -911,7 +907,12 @@ export class TelegramBotManager {
       this.games.set(chatId, result.game);
 
       await this.answerCallbackQuery(cb.id, 'تم إنهاء الدور والانتقال للفريق الآخر.');
-      await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
+      await this.updateTelegramGameBoard(
+        chatId,
+        result.game,
+        cb.message?.message_id,
+        `${CodenamesEngine.nameTag(userName)} أنهى الدور 🤝`
+      );
 
       // Prompt the new team's spymaster privately
       await this.promptSpymasterForClue(result.game);
@@ -1218,6 +1219,35 @@ export class TelegramBotManager {
   }
 
   /**
+   * Tell every player — privately — that the round has started.
+   */
+  private async notifyPlayersRoundStarted(game: CodenamesGame) {
+    const firstTeam = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+
+    for (const player of game.players) {
+      const teamName = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+      const isSpy = player.role === 'spymaster';
+      const roleName = isSpy ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+
+      const tail = isSpy
+        ? `🎨 خريطتك الملوّنة وصلتك 👆 وأول ما يجي دورك راح أطلب منك التلميح هنا.`
+        : `👀 استنى *تلميح قائدك* — يوصلك هنا بالخاص.\n` +
+          `وبعدها خمّنوا بالضغط على أزرار الكلمات بملعب القناة 👆`;
+
+      await this.sendMessage(
+        String(player.id),
+        `🚀 *بدأت الجولة!*\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `👥 فريقك: ${teamName}\n` +
+          `🎭 دورك: ${roleName}\n` +
+          `🎯 يبدأ: ${firstTeam}\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          tail
+      );
+    }
+  }
+
+  /**
    * Privately prompt the current team's spymaster for a clue — no commands needed.
    * Uses a ForceReply "empty box" so the spymaster just types the word.
    */
@@ -1366,7 +1396,7 @@ export class TelegramBotManager {
       pending.chatId,
       result.game,
       game.messageId,
-      `📢 القائد ${this.mdSafe(userName)} (${teamName}) قال: «${this.mdSafe(pending.word)}» × ${count}`
+      `🎯 *${this.mdSafe(userName)}* (${teamName}) قال: «${this.mdSafe(pending.word)}» × ${count}`
     );
   }
 

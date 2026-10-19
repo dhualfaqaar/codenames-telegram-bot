@@ -82,7 +82,7 @@ export class CodenamesEngine {
       return {
         success: false,
         message:
-          `⚠️ ما يصير — ${seatName} بالفريق ${teamColor} ماخوذه (${seatTaken.name}).\n` +
+          `⚠️ ما يصير — ${seatName} بالفريق ${teamColor} ماخوذه (${this.nameTag(seatTaken.name)}).\n` +
           `اختار ${player.role === 'spymaster' ? '«عميل 👤»' : '«قائد جاسوس 🕵️»'} أو الفريق الثاني.`,
         game
       };
@@ -112,7 +112,7 @@ export class CodenamesEngine {
       timestamp: Date.now(),
       type: 'lobby',
       team: player.team,
-      message: `انضم ${player.name} إلى الفريق ${teamColor} بصفة ${roleText}`
+      message: `انضم ${this.nameTag(player.name)} إلى الفريق ${teamColor} بصفة ${roleText}`
     };
 
     return {
@@ -598,6 +598,15 @@ export class CodenamesEngine {
   }
 
   /**
+   * A player name, bolded so it stands out from the rest of the text.
+   * (Markdown-breaking characters are stripped first.)
+   */
+  public static nameTag(name: string): string {
+    const clean = String(name || '').replace(/[*_`\[\]]/g, '').trim();
+    return `*${clean}*`;
+  }
+
+  /**
    * One team's roster: a title line then a line per player.
    */
   public static teamRoster(game: CodenamesGame, team: Team): string {
@@ -607,8 +616,10 @@ export class CodenamesEngine {
 
     if (!list.length) return `${title}\n• _لا أحد بعد_`;
 
-    const lines = list.map(p =>
-      p.role === 'spymaster' ? `• ${p.name} (قائد جاسوس 🕵️)` : `• ${p.name} (عميل 👤)`
+    const lines = list.map((p, index) =>
+      p.role === 'spymaster'
+        ? `${index + 1}. ${this.nameTag(p.name)} — قائد جاسوس 🕵️`
+        : `${index + 1}. ${this.nameTag(p.name)} — عميل 👤`
     );
     return `${title}\n${lines.join('\n')}`;
   }
