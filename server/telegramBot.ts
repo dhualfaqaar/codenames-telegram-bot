@@ -714,9 +714,6 @@ export class TelegramBotManager {
           this.trackUser(sender, true);
 
           if (!wasStarted) {
-            // Try to identify the owner from the channels the bot is in
-            await this.detectOwnerFromChannels(String(sender.id));
-
             if (this.ownerAlerts && !this.isOwner(sender.id)) {
               const rec = this.users.get(String(sender.id));
               if (rec) {
@@ -1289,7 +1286,9 @@ export class TelegramBotManager {
       `🕵️ *القائد:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
       `👥 *الأعضاء:* يخمّنون بالضغط على أزرار الكلمات بالقناة.\n\n` +
       `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
-      `🗺️ القائد يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
+      `🗺️ القائد يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» — كل شي بالأزرار، بلا أي أوامر.\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🆔 *معرّفك:* \`${chatId}\``;
 
     const keyboard: any[][] = [];
     if (botUser) {
@@ -1331,8 +1330,6 @@ export class TelegramBotManager {
     const title = shared.title || 'القناة';
     const byUser = message.from ? String(message.from.id) : '';
 
-    // Whoever shares a game into his own channel is the bot owner.
-    if (message.from) this.claimOwner(message.from.id, 'channel');
 
     // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
     const existing = this.games.get(channelId);
@@ -1381,9 +1378,6 @@ export class TelegramBotManager {
     // In channels the update carries the admin who added the bot.
     const admins = update.from?.id ? [] : await this.getChatAdministrators(chatId);
     const creatorId = update.from?.id || admins.find((a: any) => a?.user?.id)?.user?.id;
-
-    // The admin who adds the bot to his own channel is the bot owner.
-    if (update.from?.id) this.claimOwner(update.from.id, 'channel');
 
     try {
       await this.startNewGameLobby(chatId, update.chat.title || 'القناة', creatorId);
@@ -1697,71 +1691,13 @@ export class TelegramBotManager {
   }
 
   /**
-   * Who owns the bot? Nothing is hardcoded: the owner is the admin who opened a
-   * lobby inside his own channel (OR the OWNER_ID variable, when configured).
+   * Set the owner manually (used by the worker when the OWNER_ID variable is
+   * configured). There is NO auto-detection: the dashboard belongs to exactly
+   * one Telegram account.
    */
-  private claimOwner(userId?: number | string, chatType?: string) {
-    if (this.ownerId || !userId) return;
-    if (chatType !== 'channel') return;
-    this.ownerId = String(userId);
-  }
-
-  /**
-   * Someone wrote to us in private → if we still don't know the owner, check
-   * whether he is an admin of a channel the bot already plays in.
-   */
-  private async detectOwnerFromChannels(userId: string) {
-    if (this.ownerId) return;
-
-    const candidates = Array.from(this.chats.values());
-    const knownIds = new Set(candidates.map(c => c.id));
-
-    // Add chats we only know through a game (their type is unknown until we ask)
-    for (const game of Array.from(this.games.values()).slice(0, 5)) {
-      const id = String((game as any).id || '');
-      if (!id || knownIds.has(id)) continue;
-      knownIds.add(id);
-      candidates.push({ id, type: 'unknown', title: game.chatTitle || '', lastSeen: 0 });
-    }
-
-    for (const candidate of candidates.slice(0, 6)) {
-      let type = candidate.type;
-      if (type === 'unknown') {
-        const info = await this.getChatInfo(candidate.id);
-        type = info?.type || 'unknown';
-      }
-      if (type !== 'channel' && type !== 'supergroup') continue;
-
-      const admins = await this.getChatAdministrators(candidate.id);
-      if (admins.some(a => String(a?.user?.id) === userId)) {
-        this.ownerId = userId;
-        return;
-      }
-    }
-
-    // Last resort: the only person who ever opened a lobby is the owner.
-    const creators = new Set(
-      Array.from(this.games.values())
-        .map(g => String(g.createdBy || ''))
-        .filter(Boolean)
-    );
-    if (creators.size === 1 && creators.has(userId)) {
-      this.ownerId = userId;
-    }
-  }
-
-  /** Telegram API: getChat (used to learn a chat's type). */
-  private async getChatInfo(chatId: string): Promise<any> {
-    if (!this.token) return null;
-    try {
-      const res = await fetch(
-        `https://api.telegram.org/bot${this.token}/getChat?chat_id=${encodeURIComponent(chatId)}`
-      );
-      const data: any = await res.json();
-      return data?.ok ? data.result : null;
-    } catch (e) {
-      return null;
-    }
+  public setOwnerId(ownerId?: string | number) {
+    if (ownerId === undefined || ownerId === null || ownerId === '') return;
+    this.ownerId = String(ownerId);
   }
 
   /**
