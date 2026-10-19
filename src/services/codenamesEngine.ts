@@ -572,7 +572,6 @@ export class CodenamesEngine {
     if (game.status === 'spymaster_turn') {
       header += `⏳ *الدور الآن:* قائد ${currentTurnName} ${currentTurnEmoji}\n` +
         `✍️ القائد يكتب تلميحه بالخاص عند البوت (كلمة + رقم) — بلا أي أوامر.\n` +
-        `_للمجموعات: يُمكن استخدام_ \`/clue الكلمة العدد\`\n` +
         `💡 الخريطة السرية للقادة عبر زر 🗺️ بالأسفل.`;
     } else {
       const clue = game.currentClue;

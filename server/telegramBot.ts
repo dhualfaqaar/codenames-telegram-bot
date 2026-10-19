@@ -637,44 +637,8 @@ export class TelegramBotManager {
       }
     }
 
-    // /rules command
-    if (lower.startsWith('/rules') || lower.startsWith('/قوانين')) {
-      const rules = `📜 *قوانين لعبة كود نيمز (Codenames):*\n\n` +
-        `• لوحة مكونة من 25 كلمة مخفية الهوية.\n` +
-        `• ينقسم اللاعبون إلى *فريق أزرق 🔵* و *فريق أحمر 🔴*.\n` +
-        `• يرى قادة الفريقين (Spymasters) خريطة سرية تكشف لون كل بطاقة (أزرق، أحمر، مدني بريء، أو القاتل 💣).\n` +
-        `• يكتب القائد تلميحاً من كلمة واحدة فقط وعدد البطاقات المتعلقة به، مثل: \`/clue سماء 3\`.\n` +
-        `• يقوم عملاء الفريق بالضغط على أزرار الكلمات لتخمينها.\n` +
-        `• إذا خمنوا بطاقة صحيحة يمكنهم الاستمرار، وإذا أخطأوا ينتهي دورهم.\n` +
-        `• الفريق الذي يلمس بطاقة القاتل 💣 يخسر اللعبة فوراً!\n` +
-        `• الفريق الذي يكشف جميع عملائه أولاً يفوز باللعبة 🏆!`;
-      await this.sendMessage(chatId, rules);
-      return;
-    }
-
-    // /newgame command
-    if (lower.startsWith('/newgame') || lower.startsWith('/لعبة_جديدة')) {
-      await this.startNewGameLobby(chatId, message.chat.title || 'المجموعة');
-      return;
-    }
-
-    // /clue command: /clue <word> <number>
-    if (lower.startsWith('/clue') || lower.startsWith('/تلميح')) {
-      await this.handleClueCommand(chatId, sender, text);
-      return;
-    }
-
-    // /pass command
-    if (lower.startsWith('/pass') || lower.startsWith('/تخطي') || lower.startsWith('/إنهاء')) {
-      await this.handlePassCommand(chatId, sender);
-      return;
-    }
-
-    // /map command (in private chat with spymaster)
-    if (lower.startsWith('/map') || lower.startsWith('/خريطة')) {
-      await this.handleMapCommand(chatId, sender);
-      return;
-    }
+    // ملاحظة: البوت يعتمد كلياً على الأزرار والقناة/الخاص.
+    // لا توجد أي أوامر غير /start — أي شيء آخر يُتجاهل.
   }
 
   /**
@@ -704,7 +668,7 @@ export class TelegramBotManager {
 
     // If no game in this chat, notify (game:new can create one from scratch)
     if (!game && !data.startsWith('action:secret_map') && data !== 'game:new') {
-      await this.answerCallbackQuery(cb.id, 'لا توجد لعبة نشطة في هذه المحادثة! اكتب /newgame لبدء لعبة جديدة.');
+      await this.answerCallbackQuery(cb.id, 'لا توجد لعبة نشطة في هذه المحادثة! ابدأ لعبة جديدة من الخاص بأمر /start.');
       return;
     }
 
@@ -869,98 +833,6 @@ export class TelegramBotManager {
   }
 
   /**
-   * Handle /clue command
-   */
-  private async handleClueCommand(chatId: string, sender?: TelegramUser, fullText: string = '') {
-    const game = this.games.get(chatId);
-    if (!game) {
-      await this.sendMessage(chatId, 'لا توجد لعبة نشطة في هذه المجموعة! اكتب `/newgame` لبدء لعبة.');
-      return;
-    }
-
-    if (game.status !== 'spymaster_turn') {
-      await this.sendMessage(chatId, '⚠️ ليس وقت تقديم التلميح حالياً. إما أن اللعبة في مرحلة التخمين أو لم تبدأ بعد.');
-      return;
-    }
-
-    const parts = fullText.trim().split(/\s+/);
-    if (parts.length < 3) {
-      await this.sendMessage(chatId, `❌ صيغة الأمر خاطئة!\nاكتب الأمر هكذا:\n\`/clue <الكلمة> <العدد>\`\nمثال: \`/clue سماء 2\``);
-      return;
-    }
-
-    const clueWord = parts[1];
-    const clueCount = parseInt(parts[2], 10);
-
-    if (isNaN(clueCount) || clueCount < 1) {
-      await this.sendMessage(chatId, '❌ يرجى تحديد عدد صحيح للكلمات (من 1 إلى 9).');
-      return;
-    }
-
-    const senderName = sender ? sender.first_name : 'القائد';
-    const result = CodenamesEngine.giveClue(game, clueWord, clueCount, senderName);
-
-    if (!result.success) {
-      await this.sendMessage(chatId, `⚠️ ${result.message}`);
-      return;
-    }
-
-    this.games.set(chatId, result.game);
-
-    // Single-message mode: announce the clue by EDITING the same board message
-    const teamName = result.game.currentTurn === 'blue' ? 'الأزرق' : 'الأحمر';
-    const announcement = `تلميح قائد الفريق ${teamName} (${this.mdSafe(senderName)}): «${this.mdSafe(clueWord)}» × ${clueCount}`;
-
-    await this.updateTelegramGameBoard(chatId, result.game, game.messageId, announcement);
-  }
-
-  /**
-   * Handle /pass command
-   */
-  private async handlePassCommand(chatId: string, sender?: TelegramUser) {
-    const game = this.games.get(chatId);
-    if (!game || game.status !== 'operative_turn') {
-      await this.sendMessage(chatId, '⚠️ لا يمكن إنهاء الدور الآن.');
-      return;
-    }
-
-    const senderName = sender ? sender.first_name : 'العميل';
-    const result = CodenamesEngine.passTurn(game, senderName);
-    this.games.set(chatId, result.game);
-
-    // Single-message mode: update the same board message
-    await this.updateTelegramGameBoard(chatId, result.game, game.messageId, `أنهى ${senderName} دور التخمين ⏭️`);
-
-    // Prompt the next team's spymaster privately
-    await this.promptSpymasterForClue(result.game);
-  }
-
-  /**
-   * Handle /map command
-   */
-  private async handleMapCommand(chatId: string, sender?: TelegramUser) {
-    if (!sender) return;
-
-    // Search all active games where this user is registered as spymaster
-    let found = false;
-    for (const [gid, g] of this.games.entries()) {
-      const isSpy = g.players.some(p => String(p.id) === String(sender.id) && p.role === 'spymaster');
-      if (isSpy && g.status !== 'lobby') {
-        const visual = CodenamesEngine.getSecretKeyVisual(g);
-        await this.sendMessage(String(sender.id), visual);
-        found = true;
-      }
-    }
-
-    if (!found) {
-      await this.sendMessage(
-        String(sender.id),
-        '⚠️ لم يتم العثور على لعبة نشطة أنت قائد فيها (Spymaster). تأكد من انضمامك كقائد في المجموعة أولاً.'
-      );
-    }
-  }
-
-  /**
    * Start a new game lobby in a chat.
    * If a board message already exists in this chat, we EDIT it instead of sending a new one,
    * so the chat always has ONE single game message that keeps updating.
@@ -1008,7 +880,7 @@ export class TelegramBotManager {
       `🕵️ *القائد:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
       `👥 *الأعضاء:* يخمّنون بالضغط على أزرار الكلمات بالقناة.\n\n` +
       `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
-      `📜 قوانين اللعبة: \`/rules\`  |  🗺️ خريطتك: \`/map\``;
+      `🗺️ القائد يشوف خريطته من زر «🗺️ خريطة القائد (خاص)» — كل شي بالأزرار، بلا أي أوامر.`;
 
     const keyboard: any[][] = [];
     if (botUser) {
