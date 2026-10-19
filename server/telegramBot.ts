@@ -1,5 +1,5 @@
 import { CodenamesEngine } from '../src/services/codenamesEngine';
-import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole } from '../src/types/codenames';
+import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team } from '../src/types/codenames';
 
 interface TelegramUser {
   id: number;
@@ -771,38 +771,68 @@ export class TelegramBotManager {
       return;
     }
 
-    // 4. View Secret Map
+    // 4. View Secret Map (each spymaster sees only their own colored card)
     if (data === 'action:secret_map') {
       if (!game || game.status === 'lobby') {
         await this.answerCallbackQuery(cb.id, 'اللعبة لم تبدأ بعد!', true);
         return;
       }
 
-      // Check if user is a Spymaster
       const player = game.players.find(p => String(p.id) === String(userId));
       const isSpymaster = player?.role === 'spymaster';
 
-      // For Telegram, show alert dialog with emoji grid so it's instant and works right inside the group!
-      const visualMap = CodenamesEngine.getSecretKeyVisual(game);
-      
       if (!isSpymaster && game.status !== 'game_over') {
         await this.answerCallbackQuery(
           cb.id,
-          '⚠️ تنبيه: هذه الخريطة مخصصة لقادة الفرق (Spymasters) فقط! لا تُفسد اللعبة على فريقك.',
+          '⚠️ هذي الخريطة للقادة (🕵️) بس! إنت عليك تنتظر تلميح قائدك.',
           true
         );
         return;
       }
 
-      // Show alert with key
-      await this.answerCallbackQuery(cb.id, `🗺️ خريطة القائد السرية:\n\n` + visualMap.slice(0, 180), true);
-      
-      // Also send full DM to the user
-      await this.sendMessage(String(userId), visualMap);
+      const myTeam: Team = (player?.team as Team) || 'blue';
+      const fullMap = CodenamesEngine.getSecretKeyVisual(game, myTeam);
+
+      // The popup is limited to ~200 chars, so it only shows the compact color grid.
+      const popup =
+        `🗺️ خريطتك السرية — ${myTeam === 'red' ? 'أحمر 🔴' : 'أزرق 🔵'}\n` +
+        `🔵 فريقك | 🔴 الخصم | ⚪ محايد | 💣 القاتل\n\n` +
+        CodenamesEngine.getSecretKeyGrid(game);
+
+      // Send the full map (grid + the exact words of each color) in private.
+      const dm = await this.sendMessage(
+        String(userId),
+        `🕵️ *خريطتك السرية يا قائد* — إنت وحدك تشوفها:\n\n${fullMap}\n\n⚠️ _لا تشاركها مع أحد!_`
+      );
+
+      if (!dm?.ok) {
+        await this.answerCallbackQuery(
+          cb.id,
+          '⚠️ ما گدرت أرسللك الخريطة بالخاص.\n' +
+            'افتح محادثة البوت بالخاص واضغط /start، وبعدين اضغط الزر مرة ثانية.',
+          true
+        );
+        return;
+      }
+
+      const note = '\n\n📩 الخريطة الكاملة (بأسماء البطاقات) أرسلتها لك بالخاص.';
+      const body = popup.length + note.length <= 200 ? popup + note : popup.slice(0, 200);
+      await this.answerCallbackQuery(cb.id, body, true);
       return;
     }
 
-    // 5. Guess Card
+    // 5. Show the full map after the game ended (nothing is secret anymore)
+    if (data === 'game:show_all') {
+      if (!game || game.status !== 'game_over') {
+        await this.answerCallbackQuery(cb.id, '⚠️ هذا الزر يشتغل بس بعد نهاية اللعبة.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '📩 أرسلت الخريطة كاملة بالمحادثة.');
+      await this.sendMessage(chatId, CodenamesEngine.getSecretKeyVisual(game));
+      return;
+    }
+
+    // 6. Guess Card
     if (data.startsWith('guess:') && game) {
       const cardId = parseInt(data.replace('guess:', ''), 10);
 
@@ -840,7 +870,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // 6. Pass turn
+    // 7. Pass turn
     if (data === 'action:pass' && game) {
       if (game.status !== 'operative_turn') {
         await this.answerCallbackQuery(cb.id, 'لا يمكن إنهاء الدور الآن.', true);
@@ -1005,12 +1035,15 @@ export class TelegramBotManager {
    */
   private async notifySpymasters(game: CodenamesGame) {
     const spymasters = game.players.filter(p => p.role === 'spymaster');
-    const secretVisual = CodenamesEngine.getSecretKeyVisual(game);
 
     for (const spy of spymasters) {
+      const secretVisual = CodenamesEngine.getSecretKeyVisual(game, spy.team);
       await this.sendMessage(
         String(spy.id),
-        `🕵️ مرحباً يا قائد (${this.mdSafe(spy.name)})!\nبدأت الجولة، هذي خريطتك السرية:\n\n${secretVisual}`
+        `🕵️ مرحباً يا قائد (${this.mdSafe(spy.name)})!\n` +
+          `هذي *بطاقاتك بالألوان* — إنت وحدك تشوفها:\n\n` +
+          `${secretVisual}\n\n` +
+          `💡 إذا ضاعت منك، اضغط زر «🗺️ خريطة القائد (خاص)» بالمحادثة.`
       );
     }
   }

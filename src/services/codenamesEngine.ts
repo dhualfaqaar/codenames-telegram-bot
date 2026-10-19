@@ -487,41 +487,62 @@ export class CodenamesEngine {
   }
 
   /**
-   * Generates the secret 5x5 color map for Spymasters with emoji grid
+   * Full secret map: the color grid plus the exact words of every color.
+   * Pass the recipient's team to get "كلمات فريقك" wording; omit it for a neutral view.
    */
-  public static getSecretKeyVisual(game: CodenamesGame): string {
+  public static getSecretKeyVisual(game: CodenamesGame, team?: Team): string {
     if (game.cards.length !== 25) return 'لا توجد لعبة نشطة حالياً.';
 
-    const typeToEmoji: Record<CardType, string> = {
-      blue: '🟦',
-      red: '🟥',
-      bystander: '⬜',
-      assassin: '💣'
-    };
+    const wordsOf = (type: CardType) =>
+      game.cards
+        .filter(c => c.type === type)
+        .map(c => (c.revealed ? `~${c.word}~` : c.word))
+        .join('، ') || '_لا يوجد_';
 
-    let text = `🗺️ *خريطة القائد السرية (لعبة #${game.id.slice(-4)})*\n`;
-    text += `الفريق البادئ: ${game.startingTeam === 'blue' ? 'الأزرق 🟦 (9)' : 'الأحمر 🟥 (9)'}\n\n`;
-
-    // 5x5 grid
-    for (let row = 0; row < 5; row++) {
-      const rowEmojis = [];
-      for (let col = 0; col < 5; col++) {
-        const card = game.cards[row * 5 + col];
-        rowEmojis.push(typeToEmoji[card.type]);
-      }
-      text += rowEmojis.join(' ') + '\n';
+    let blueLabel = '🟦 *كلمات الفريق الأزرق*';
+    let redLabel = '🟥 *كلمات الفريق الأحمر*';
+    if (team === 'blue') {
+      blueLabel = '🟦 *كلمات فريقك*';
+      redLabel = '🟥 *كلمات الخصم*';
+    } else if (team === 'red') {
+      blueLabel = '🟦 *كلمات الخصم*';
+      redLabel = '🟥 *كلمات فريقك*';
     }
 
-    text += '\n*قائمة الكلمات المصنفة:*\n';
-    const blueWords = game.cards.filter(c => c.type === 'blue').map(c => c.revealed ? `~${c.word}~` : c.word).join(', ');
-    const redWords = game.cards.filter(c => c.type === 'red').map(c => c.revealed ? `~${c.word}~` : c.word).join(', ');
-    const assassinWord = game.cards.find(c => c.type === 'assassin')?.word || '';
+    const blueCount = game.cards.filter(c => c.type === 'blue').length;
+    const redCount = game.cards.filter(c => c.type === 'red').length;
 
-    text += `🟦 *الأزرق:* ${blueWords}\n`;
-    text += `🟥 *الأحمر:* ${redWords}\n`;
-    text += `💣 *القاتل (ممنوع الاقتراب!):* ${assassinWord}\n`;
+    return `🗺️ *خريطة البطاقات بالألوان*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🔵 أزرق | 🔴 أحمر | ⚪ محايد | 💣 القاتل\n\n` +
+      `${this.getSecretKeyGrid(game)}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `${blueLabel} (${blueCount}):\n${wordsOf('blue')}\n\n` +
+      `${redLabel} (${redCount}):\n${wordsOf('red')}\n\n` +
+      `💣 *القاتل (لا تخلّي فريقك يلمسه):* ${wordsOf('assassin')}`;
+  }
 
-    return text;
+  /**
+   * Compact 5x5 color grid (no Markdown) — fits inside a Telegram callback popup.
+   * Positions match the buttons on the board exactly.
+   */
+  public static getSecretKeyGrid(game: CodenamesGame): string {
+    const icons: Record<CardType, string> = {
+      blue: '🔵',
+      red: '🔴',
+      bystander: '⚪',
+      assassin: '💣'
+    };
+    const rows: string[] = [];
+    for (let r = 0; r < 5; r++) {
+      const cells: string[] = [];
+      for (let c = 0; c < 5; c++) {
+        const card = game.cards[r * 5 + c];
+        cells.push(card ? icons[card.type] : '⬛');
+      }
+      rows.push(cells.join(' '));
+    }
+    return rows.join('\n');
   }
 
   /**
@@ -681,7 +702,7 @@ export class CodenamesEngine {
     if (game.status === 'operative_turn') {
       actionRow.push({ text: '⏭️ إنهاء التخمين (Pass)', callback_data: 'action:pass' });
     }
-    actionRow.push({ text: '🗺️ خريطة القائد (خاص)', callback_data: 'action:secret_map' });
+    actionRow.push({ text: '🎨 بطاقاتي الملوّنة (للقائد 🕵️)', callback_data: 'action:secret_map' });
     keyboard.push(actionRow);
 
     return keyboard;
