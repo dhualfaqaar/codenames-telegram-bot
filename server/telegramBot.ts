@@ -708,7 +708,20 @@ export class TelegramBotManager {
         );
         if (!dm?.ok) {
           showAlert = true;
-          alertText += `\n⚠️ مهم يا قائد: افتح الخاص مع البوت واضغط Start — أو اضغط زر (🕵️ القادة: افتحوا الخاص) بالأسفل.`;
+          alertText += `\n⚠️ مهم يا قائد: افتح الخاص مع البوت واضغط Start (زر بالأسفل) حتى أقدر أرسللك خريطتك.`;
+
+          // Also post a loud notice inside the chat, so the captain can't miss it.
+          const botUser = await this.getBotUsername();
+          const noticeKeyboard: any[][] = botUser
+            ? [[{ text: '🕵️ القائد: اضغط هنا لفتح الخاص', url: `https://t.me/${botUser}?start=spy` }]]
+            : [];
+          await this.sendMessage(
+            chatId,
+            `⚠️ *تنبيه للقائد* [${this.mdSafe(userName)}](tg://user?id=${userId})\n` +
+              `ما أقدر أرسللك رسالة بالخاص لأنه ما فتحته بعد.\n` +
+              `اضغط الزر بالأسفل وضغط *Start* — وراح توصلك *خريطتك الملوّنة* هنا 👆`,
+            noticeKeyboard
+          );
         }
       }
       await this.answerCallbackQuery(cb.id, alertText, showAlert);
@@ -938,7 +951,7 @@ export class TelegramBotManager {
     this.games.set(chatId, game);
 
     const text = CodenamesEngine.getTelegramMessageText(game);
-    const keyboard = this.buildKeyboard(game);
+    const keyboard = await this.buildKeyboard(game);
 
     // Reuse the previous board message (single-message mode).
     // "message is not modified" also counts as success — nothing to change.
@@ -966,13 +979,37 @@ export class TelegramBotManager {
   }
 
   /**
+   * Make sure the bot's own username is known (needed for t.me deep links).
+   * In the webhook/Worker flow getMe() is never called by itself, so we do it
+   * lazily here and cache the result.
+   */
+  public async ensureBotInfo(): Promise<void> {
+    if (this.botInfo?.username) return;
+    if (!this.token) return;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/getMe`);
+      const data: any = await res.json();
+      if (data?.ok) this.botInfo = data.result;
+      else console.error('getMe failed:', data?.description);
+    } catch (e) {
+      console.error('getMe error:', e);
+    }
+  }
+
+  /** The bot's @username, fetching it if we don't know it yet. */
+  public async getBotUsername(): Promise<string | undefined> {
+    await this.ensureBotInfo();
+    return this.botInfo?.username;
+  }
+
+  /**
    * Board keyboard + an extra button that opens the bot's private chat.
    * Captains MUST do this once, otherwise Telegram blocks the bot from
    * messaging them (the secret map / clue prompt can't be delivered).
    */
-  private buildKeyboard(game: CodenamesGame): any[][] {
+  private async buildKeyboard(game: CodenamesGame): Promise<any[][]> {
     const keyboard = CodenamesEngine.getTelegramInlineKeyboard(game);
-    const botUser = this.botInfo?.username;
+    const botUser = await this.getBotUsername();
     if (botUser && game.status === 'lobby') {
       keyboard.push([{
         text: '🕵️ القادة: افتحوا الخاص مع البوت',
@@ -1060,7 +1097,7 @@ export class TelegramBotManager {
    * Private /start welcome, with a button that lets the user pick a channel to play in.
    */
   private async sendPrivateWelcome(chatId: string, userName: string) {
-    const botUser = this.botInfo?.username;
+    const botUser = await this.getBotUsername();
     const welcome =
       `👋 أهلاً بك يا ${userName} في *بوت كود نيمز (Codenames)*!\n\n` +
       `📣 *تلعب بقناة؟* (إنت المشرف الوحيد، والأعضاء ما يكتبون أوامر)\n` +
@@ -1341,7 +1378,7 @@ export class TelegramBotManager {
   private async updateTelegramGameBoard(chatId: string, game: CodenamesGame, messageId?: number, lastEvent?: string) {
     const msgId = messageId || game.messageId;
     const text = CodenamesEngine.getTelegramMessageText(game, lastEvent);
-    const keyboard = this.buildKeyboard(game);
+    const keyboard = await this.buildKeyboard(game);
 
     if (msgId) {
       const res = await this.editMessageText(chatId, msgId, text, keyboard);
