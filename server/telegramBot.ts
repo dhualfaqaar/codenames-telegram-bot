@@ -85,6 +85,191 @@ const STOP_WORDS = new Set([
   'قبل', 'كلش', 'وايد', 'هوايه', 'برب', 'تمام', 'اوك'
 ]);
 
+/**
+ * 🎮 صندوق الألعاب: كل لعبة بتفاصيلها وشرحها الخاص.
+ * الترتيب: الصنف → اللعبة → صفحة اللعبة (الشرح + زر اللعب).
+ */
+interface BotGameCard {
+  id: string;
+  emoji: string;
+  title: string;
+  category: 'duo' | 'team' | 'guess' | 'luck';
+  /** كم لاعب */
+  players: string;
+  /** وين تنلعب */
+  where: string;
+  /** هدف اللعبة / شرط الفوز */
+  goal?: string;
+  /** النقاط */
+  reward?: string;
+  /** الشرح الكامل */
+  about: string;
+  /** زر اللعب مع البوت نفسه (إن كانت تنلعب بالخاص) */
+  play?: { label: string; data: string };
+  /** تنلعب بقناة/كروب؟ */
+  channel?: boolean;
+  /** جاهزة للعب؟ (غير الجاهزة تظهر 🔜) */
+  ready: boolean;
+}
+
+const BOT_GAMES: BotGameCard[] = [
+  // ─────────────── 👥 ألعاب ثنائية (1 ضد 1) ───────────────
+  {
+    id: 'math',
+    emoji: '🔢',
+    title: 'تحدي الحساب',
+    category: 'duo',
+    players: 'لاعبين — إنت وواحد ثاني',
+    where: 'هنا بالخاص',
+    goal: 'أسرع واحد يضغط الجواب الصح',
+    reward: 'نقطة لكل جواب صح، وأول من يجمع 5 يفوز',
+    about:
+      'تظهر نفس المسألة الحسابية للاثنين بنفس اللحظة (جمع وطرح وضرب)،\n' +
+      'وأسرع واحد يضغط الجواب الصح ياخذ النقطة — واللي يجمع 5 نقاط أول يفوز 🏆.\n' +
+      'اللعبة تقيس سرعتك ودقتك، والغلط يخليك تخسر الثانية.',
+    ready: false
+  },
+  {
+    id: 'rhyme',
+    emoji: '🥊',
+    title: 'تحدي القافية',
+    category: 'duo',
+    players: 'لاعبين — إنت وواحد ثاني',
+    where: 'هنا بالخاص',
+    goal: 'أكثر كلمات تقافي الكلمة المعطاة',
+    about:
+      'البوت يعطيكم كلمة (مثلاً: *كتاب*)، وعندكم وقت محدد تكتب كل واحد كلمات تقافيها\n' +
+      '(باب، شباب، حساب…)، والكلمة المكررة ما تنحسب.\n' +
+      'اللي يجيب كلمات صح أكثر يفوز 🏆.',
+    ready: false
+  },
+  {
+    id: 'longest',
+    emoji: '📏',
+    title: 'أطول كلمة',
+    category: 'duo',
+    players: 'لاعبين — إنت وواحد ثاني',
+    where: 'هنا بالخاص',
+    goal: 'أطول كلمة من نفس الحروف',
+    about:
+      'البوت يعطيكم مجموعة حروف، وكل واحد يحاول يكوّن منها أطول كلمة عربية صحيحة،\n' +
+      'والكلمة لازم تكون من نفس الحروف المعطاة بلا زيادة.\n' +
+      'أطول كلمة صحيحة تفوز 🏆.',
+    ready: false
+  },
+
+  // ─────────────── ⚔️ ألعاب الفرق (2 ضد 2) ───────────────
+  {
+    id: 'codenames',
+    emoji: '🎮',
+    title: 'كود نيمز (Codenames)',
+    category: 'team',
+    players: '4 لاعبين — فريقين 2 ضد 2 (جاسوس 🕵️ + عميل 👤 لكل فريق)',
+    where: 'بقناة أو كروب — إنت المشرف تنزّلها والأعضاء يشتركون بالأزرار',
+    goal: 'أول فريق يكشف كل بطاقاته',
+    about:
+      'فريقين: أزرق 🔵 وأحمر 🔴، وكل فريق جاسوس 🕵️ وعميل 👤 (2 ضد 2).\n' +
+      'الجاسوس يشوف خريطة البطاقات الملوّنة بالخاص، ويكتب تلميح *بكلمة وحدة + رقم* (مثلاً: بحر 2)،\n' +
+      'والعملاء يخمّنون البطاقات بالقناة من ضغط الأزرار.\n' +
+      'اللي يكشف كل بطاقات فريقه أول يفوز 🏁 — وإذا أحد كشف بطاقة القاتل 💀 يخسر فريقه فوراً!',
+    channel: true,
+    ready: true
+  },
+
+  // ─────────────── 🧠 ألعاب خمّن ───────────────
+  {
+    id: 'wordle',
+    emoji: '🟩',
+    title: 'خمّن الكلمة',
+    category: 'guess',
+    players: 'لاعب واحد — إنت والبوت',
+    where: 'هنا بالخاص',
+    goal: 'تكتشف الكلمة بـ 6 محاولات',
+    reward: 'من 5 إلى 25 نقطة — كل ما كانت محاولاتك أقل نقاطك أكثر',
+    about:
+      'كلمة عربية من *5 حروف*، وعندك *6 محاولات*. تكتب بالضغط على الحروف من اللوحة،\n' +
+      'وكل محاولة تتلوّن حتى تعرف وين غلطك:\n' +
+      '🟩 الحرف بمكانه الصح • 🟨 الحرف موجود بس بمكان ثاني • ⬜ الحرف مو بالكلمة.\n' +
+      'كل ما حلّيت بمحاولات أقل، نقاطك أكثر ⭐.',
+    play: { label: '▶️ العب مع البوت', data: 'wl:new' },
+    ready: true
+  },
+  {
+    id: 'guess_player',
+    emoji: '⚽',
+    title: 'خمّن اللاعب',
+    category: 'guess',
+    players: 'لاعب واحد — إنت والبوت',
+    where: 'هنا بالخاص',
+    goal: 'تعرف اللاعب من أقل تلميحات',
+    reward: 'نقاط أكثر كل ما خمّنت بتلميحات أقل',
+    about:
+      'البوت يعطيك تلميحات عن لاعب مشهور شوية شوية: النادي، المركز، الرقم، الإنجازات…\n' +
+      'وإنت تخمّن منو اللاعب بالضغط على الأزرار.\n' +
+      'كل تلميح إضافي ياخذ من نقاطك — فخمّن بسرعة! 🔥',
+    ready: false
+  },
+  {
+    id: 'guess_song',
+    emoji: '🎵',
+    title: 'خمّن الأغنية',
+    category: 'guess',
+    players: 'لاعب واحد — إنت والبوت',
+    where: 'هنا بالخاص',
+    goal: 'تعرف الأغنية من كلماتها',
+    about:
+      'البوت يوريك مقطع من كلمات أغنية مشهورة، وإنت تخمّن اسم الأغنية أو المطرب\n' +
+      'من أزرار الاختيارات.\n' +
+      'كل ما خمّنت بسرعة وبأقل تلميحات، نقاطك أكثر 🎶.',
+    ready: false
+  },
+
+  // ─────────────── 🎲 ألعاب الحظ ───────────────
+  {
+    id: 'wheel',
+    emoji: '🎰',
+    title: 'عجلة الحظ',
+    category: 'luck',
+    players: 'لاعب واحد — إنت والبوت',
+    where: 'هنا بالخاص',
+    goal: 'ضاعف نقاطك أو اخسرها',
+    about:
+      'تدوّر العجلة مرة باليوم، والنتيجة إما تزيد نقاطك أو تنقصها (حظك وحظك 😅).\n' +
+      'فيها جوايز مخفية ومضاعفات نادرة.',
+    ready: false
+  }
+];
+
+/** معلومات الأصناف (الترتيب هنا = ترتيب الشاشة) */
+const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: string }> = {
+  duo: {
+    emoji: '👥',
+    title: 'ألعاب ثنائية (1 ضد 1)',
+    intro: 'تتحدى واحد ثاني — واحد يفوز وواحد يخسر.'
+  },
+  team: {
+    emoji: '⚔️',
+    title: 'ألعاب الفرق (2 ضد 2)',
+    intro: 'تنلعب بقناة أو كروب — إنت المشرف تنزّلها والأعضاء يشتركون بالأزرار.'
+  },
+  guess: {
+    emoji: '🧠',
+    title: 'ألعاب خمّن',
+    intro: 'تنلعب هنا بالخاص — إنت والبوت، لحالك.'
+  },
+  luck: {
+    emoji: '🎲',
+    title: 'ألعاب الحظ',
+    intro: 'حظك هو الحكم — دوّر واربح أو اخسر.'
+  }
+};
+
+/** رقم اللعبة بمعرّفها */
+function findBotGame(id: string): BotGameCard | undefined {
+  return BOT_GAMES.find(g => g.id === id);
+}
+
+
 /** Everything the bot knows about one of its users. */
 interface BotUserRecord {
   id: string;
@@ -1741,7 +1926,7 @@ export class TelegramBotManager {
         : '_ما بعد انلعبت مباراة بقناة._';
 
       const text =
-        `⚔️ *إحصائيات كود نيمز (4 ضد 4)*\n` +
+        `⚔️ *إحصائيات كود نيمز (2 ضد 2)*\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🏁 مباريات مكتملة: *${n.matches.length}*\n` +
         `⏳ جارية الآن: *${n.active.length}*\n` +
@@ -1771,7 +1956,7 @@ export class TelegramBotManager {
       `📊 *إحصائيات الألعاب*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `🎮 *المجموع:* ${n.matches.length + n.solved} لعبة مكتملة • ${n.active.length} جارية الآن\n\n` +
-      `⚔️ *كود نيمز (4 ضد 4)*\n` +
+      `⚔️ *كود نيمز (2 ضد 2)*\n` +
       `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
       `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n\n` +
       `🧠 *خمّن الكلمة*\n` +
@@ -1824,70 +2009,90 @@ export class TelegramBotManager {
     const botUser = await this.getBotUsername();
     const back = [{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }];
 
-    // 👥 ألعاب ثنائية (1 ضد 1)
-    if (section === 'duo') {
-      const text =
-        `👥 *ألعاب ثنائية (1 ضد 1)*\n` +
-        `تتحدى واحد ثاني — واحد يفوز وواحد يخسر 👇`;
-      return {
-        text,
-        keyboard: [
-          [{ text: '🔢 تحدي الحساب 🔜', callback_data: 'hub:soon' }],
-          [
-            { text: '🥊 تحدي القافية 🔜', callback_data: 'hub:soon' },
-            { text: '📏 أطول كلمة 🔜', callback_data: 'hub:soon' }
-          ],
-          back
-        ]
-      };
-    }
+    // 📂 صفحة الصنف: يعرض ألعاب الصنف (كل لعبة بمربع → صفحة اللعبة)
+    if (GAME_CATEGORIES[section]) {
+      const cat = GAME_CATEGORIES[section];
+      const list = BOT_GAMES.filter(g => g.category === section);
 
-    // ⚔️ ألعاب الفرق (4 ضد 4)
-    if (section === 'team') {
-      const text =
-        `⚔️ *ألعاب الفرق (4 ضد 4)*\n` +
-        `🎮 *كود نيمز* — جاسوس 🕵️ وعميل 👤 لكل فريق، واللي يخلّص بطاقات فريقه أول يفوز.\n` +
-        `👇 نزّلها بقناتك أو بمجموعتك:`;
-      const rows: any[][] = [
-        [{ text: '📣 نزّل لعبة بقناتك', callback_data: 'hub:channel' }]
-      ];
-      if (botUser) {
-        rows.push([
-          { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
-        ]);
+      const keyboard: any[][] = list.map(g => [
+        {
+          text: `${g.emoji} ${g.title}${g.ready ? '' : ' 🔜'}`,
+          callback_data: `hub:g:${g.id}`
+        }
+      ]);
+
+      if (section === 'team') {
+        if (botUser) {
+          keyboard.push([
+            { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
+          ]);
+        }
+        keyboard.push([{ text: '📊 إحصائيات كود نيمز', callback_data: 'gstat:cn' }]);
       }
-      rows.push([{ text: '📊 إحصائيات كود نيمز', callback_data: 'gstat:cn' }]);
-      rows.push(back);
-      return { text, keyboard: rows };
+      if (section === 'guess') {
+        keyboard.push([{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }]);
+      }
+      keyboard.push(back);
+
+      const text =
+        `${cat.emoji} *${cat.title}*\n` +
+        `${cat.intro}\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `👇 اضغط على اللعبة وتشوف *شرحها* وزر اللعب:`;
+
+      return { text, keyboard };
     }
 
-    // 🧠 ألعاب خمّن
-    if (section === 'guess') {
-      const text = `🧠 *ألعاب خمّن*\nتنلعب هنا بالخاص — اختار اللعبة 👇`;
-      return {
-        text,
-        keyboard: [
-          [{ text: '🟩 خمّن الكلمة', callback_data: 'wl:new' }],
-          [
-            { text: '⚽ خمّن اللاعب 🔜', callback_data: 'hub:soon' },
-            { text: '🎵 خمّن الأغنية 🔜', callback_data: 'hub:soon' }
-          ],
-          [{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }],
-          back
-        ]
-      };
-    }
+    // 🎯 صفحة لعبة واحدة: شرح اللعبة + زر اللعب
+    if (section.startsWith('g:')) {
+      const game = findBotGame(section.slice(2));
+      const categoryBack = game
+        ? { text: `🔙 رجوع`, callback_data: `hub:${game.category}` }
+        : { text: '🔙 رجوع', callback_data: 'hub:main' };
 
-    // 🎲 ألعاب الحظ
-    if (section === 'luck') {
-      const text = `🎲 *ألعاب الحظ*\nحظك هو الحكم — دوّر واربح أو اخسر 👇`;
-      return {
-        text,
-        keyboard: [
-          [{ text: '🎰 عجلة الحظ 🔜', callback_data: 'hub:soon' }],
-          back
-        ]
-      };
+      if (!game) {
+        return {
+          text: `⚠️ ما لكيت هاي اللعبة — ارجع واختار من القائمة.`,
+          keyboard: [[categoryBack]]
+        };
+      }
+
+      const lines = [
+        `${game.emoji} *${game.title}*`,
+        `━━━━━━━━━━━━━━━━━━━`,
+        `👥 *اللاعبون:* ${game.players}`,
+        `📍 *الوين:* ${game.where}`
+      ];
+      if (game.goal) lines.push(`🎯 *الهدف:* ${game.goal}`);
+      if (game.reward) lines.push(`🏆 *النقاط:* ${game.reward}`);
+      lines.push(`━━━━━━━━━━━━━━━━━━━`);
+      lines.push(`📖 *الشرح:*`);
+      lines.push(game.about);
+
+      const keyboard: any[][] = [];
+
+      // 🟩 ألعاب تنلعب مع البوت نفسه
+      if (game.play) {
+        keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
+      }
+      // 📣 ألعاب القنوات: زر اللعب يحوّلك على اختيار قناتك
+      if (game.channel) {
+        keyboard.push([{ text: '▶️ العب — نزّلها بقناتك', callback_data: 'hub:channel' }]);
+        keyboard.push([{ text: '📊 إحصائيات كود نيمز', callback_data: 'gstat:cn' }]);
+      }
+      // 🔜 اللعبة اللي بعدها ما جاهزة
+      if (!game.ready) {
+        lines.push(`━━━━━━━━━━━━━━━━━━━`);
+        lines.push(`🔜 *قريباً* — اللعبة بالطريق، وبنجهّزها بالأزرار مثل البقية.`);
+        keyboard.push([{ text: '🔜 قريباً', callback_data: 'hub:soon' }]);
+      }
+      if (game.id === 'wordle') {
+        keyboard.push([{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }]);
+      }
+
+      keyboard.push([categoryBack, { text: '🏠 الرئيسية', callback_data: 'hub:main' }]);
+
+      return { text: lines.join('\n'), keyboard };
     }
 
     // ❓ الشرح
@@ -1896,10 +2101,13 @@ export class TelegramBotManager {
         `❓ *كيف ألعب؟*\n` +
         `كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `👥 *ثنائية (1 ضد 1):* تتحدى واحد — نفس السؤال للاثنين، الأسرع والأذكى يفوز.\n` +
-        `⚔️ *فرق (4 ضد 4):* كود نيمز بقناة أو كروب. ضيف البوت كمشرف، وبعدين «📣 نزّل لعبة بقناتك» واختار قناتك.\n` +
-        `🧠 *خمّن:* خمّن الكلمة تنلعب هنا بالخاص: اضغط الحروف من اللوحة — 🟩 بمكانه، 🟨 موجود بمكان ثاني، ⬜ مو بالكلمة، وعندك 6 محاولات.\n` +
-        `🎲 *حظ:* عجلة الحظ تدوّرها وتشوف حظك.\n\n` +
+        `1️⃣ اختار *الصنف* من الشاشة الرئيسية (ثنائية / فرق / خمّن / حظ).\n` +
+        `2️⃣ تشوف *ألعاب الصنف* — اضغط على اللعبة اللي تريدها.\n` +
+        `3️⃣ تنفتحلك صفحة اللعبة: *شرحها الخاص* + *زر اللعب*.\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🤖 *ألعاب البوت* (مثل 🟩 خمّن الكلمة): زر «▶️ العب مع البوت» يبديها هنا بالخاص فوراً.\n` +
+        `📣 *ألعاب الفرق* (مثل 🎮 كود نيمز 2 ضد 2): زر «▶️ العب — نزّلها بقناتك» يحوّلك لاختيار قناتك، والأعضاء يشتركون بالأزرار.\n` +
+        `🔜 *الألعاب اللي بيها 🔜* بعدها ما جاهزة — ننزّلها وحدة وحدة.\n\n` +
         `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط، وتشوف ترتيبك بلوحة الأبطال.\n` +
         `📊 *الإحصائيات:* تشوف أرقام كل الألعاب وأصنافها — مفتوحة للكل.`;
       return {
@@ -1914,13 +2122,13 @@ export class TelegramBotManager {
     // 🏠 الشاشة الرئيسية (الأصناف بس بالمربعات، بلا تكرار بالنص)
     const text =
       `🎮 *بوت الألعاب*\n` +
-      `كل الألعاب هنا — اختار الصنف واللعبة اللي تريدها 👇`;
+      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇`;
     return {
       text,
       keyboard: [
         [
           { text: '👥 ألعاب ثنائية 1v1', callback_data: 'hub:duo' },
-          { text: '⚔️ ألعاب فرق 4v4', callback_data: 'hub:team' }
+          { text: '⚔️ ألعاب فرق 2v2', callback_data: 'hub:team' }
         ],
         [
           { text: '🧠 ألعاب خمّن', callback_data: 'hub:guess' },
