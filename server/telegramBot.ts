@@ -1081,7 +1081,7 @@ export class TelegramBotManager {
           return;
         }
 
-        const roleName = role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+        const roleName = role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤';
         const teamName = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
         const dm = await this.sendMessage(
           String(userId),
@@ -1129,9 +1129,9 @@ export class TelegramBotManager {
 
       // If he was already in the lobby, this press MOVED him.
       if (mine) {
-        const oldRole = mine.role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+        const oldRole = mine.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤';
         const oldTeam = mine.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-        const newRole = role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+        const newRole = role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤';
         const newTeam = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
         alertText = `🔄 نقلناك من مقعدك القديم (${oldRole} — ${oldTeam}) إلى (${newRole} — ${newTeam})`;
         showAlert = true;
@@ -1140,13 +1140,13 @@ export class TelegramBotManager {
         // Spymasters must be reachable in private chat for the no-command clue input
         const dm = await this.sendMessage(
           String(userId),
-          `🕵️ سُجّلت *قائداً* في لعبة «${this.mdSafe(result.game.chatTitle || 'المجموعة')}»!\n\n` +
+          `🕵️ سُجّلت *جاسوساً* في لعبة «${this.mdSafe(result.game.chatTitle || 'المجموعة')}»!\n\n` +
             CodenamesEngine.getSpymasterGuide(team as Team)
         );
         if (!dm?.ok) {
           showAlert = true;
           alertText +=
-            `\n⚠️ فتح الخاص مع البوت واضغط Start (زر «🕵️ القادة» بالرسالة) حتى توصلك خريطتك.`;
+            `\n⚠️ فتح الخاص مع البوت واضغط Start (زر «🕵️ الجواسيس» بالرسالة) حتى توصلك خريطتك.`;
         }
       }
       await this.answerCallbackQuery(cb.id, alertText, showAlert);
@@ -1170,7 +1170,7 @@ export class TelegramBotManager {
       if (!blueSpy || !redSpy) {
         await this.answerCallbackQuery(
           cb.id,
-          '⚠️ كل فريق لازم يختار قائد (🕵️) قبل ما تبدأ اللعبة.',
+          '⚠️ كل فريق لازم يختار جاسوس (🕵️) قبل ما تبدأ اللعبة.',
           true
         );
         return;
@@ -1185,8 +1185,8 @@ export class TelegramBotManager {
       if (unreachable.length > 0) {
         await this.answerCallbackQuery(
           cb.id,
-          `⚠️ القائد (${unreachable.join('، ')}) لسه ما فتح الخاص مع البوت!\n\n` +
-            `خلّيه يضغط الزر (🕵️ القادة: افتحوا الخاص مع البوت) بالأسفل ويضغط Start، وبعدين اضغط ابدأ.`,
+          `⚠️ الجاسوس (${unreachable.join('، ')}) لسه ما فتح الخاص مع البوت!\n\n` +
+            `خلّيه يضغط الزر (🕵️ الجواسيس: افتحوا الخاص مع البوت) بالأسفل ويضغط Start، وبعدين اضغط ابدأ.`,
           true
         );
         return;
@@ -1241,7 +1241,7 @@ export class TelegramBotManager {
       if (!isSpymaster && game.status !== 'game_over') {
         await this.answerCallbackQuery(
           cb.id,
-          '⚠️ هذي الخريطة للقادة (🕵️) بس! إنت عليك تنتظر تلميح قائدك.',
+          '⚠️ هذي الخريطة للجواسيس (🕵️) بس! إنت عليك تنتظر تلميح جاسوسك.',
           true
         );
         return;
@@ -1259,7 +1259,7 @@ export class TelegramBotManager {
       // Send the full map (grid + the exact words of each color) in private.
       const dm = await this.sendMessage(
         String(userId),
-        `🕵️ *خريطتك السرية يا قائد* — إنت وحدك تشوفها:\n\n${fullMap}\n\n⚠️ _لا تشاركها مع أحد!_`
+        `🕵️ *خريطتك السرية يا جاسوس* — إنت وحدك تشوفها:\n\n${fullMap}\n\n⚠️ _لا تشاركها مع أحد!_`
       );
 
       if (!dm?.ok) {
@@ -1295,14 +1295,14 @@ export class TelegramBotManager {
 
       // Verify it is operative turn
       if (game.status !== 'operative_turn') {
-        await this.answerCallbackQuery(cb.id, '⏳ ليس دور التخمين الآن! بانتظار تلميح القائد.', true);
+        await this.answerCallbackQuery(cb.id, '⏳ ليس دور التخمين الآن! بانتظار تلميح الجاسوس.', true);
         return;
       }
 
       // Verify that user is not the spymaster
       const player = game.players.find(p => String(p.id) === String(userId));
       if (player && player.role === 'spymaster') {
-        await this.answerCallbackQuery(cb.id, '⛔ أنت القائد! لا يجوز للقادة الضغط على بطاقات التخمين.', true);
+        await this.answerCallbackQuery(cb.id, '⛔ أنت الجاسوس! لا يجوز للجواسيس الضغط على بطاقات التخمين.', true);
         return;
       }
 
@@ -1460,7 +1460,7 @@ export class TelegramBotManager {
     const botUser = await this.getBotUsername();
     if (botUser && game.status === 'lobby') {
       keyboard.push([{
-        text: '🕵️ القادة: افتحوا الخاص مع البوت',
+        text: '🕵️ الجواسيس: افتحوا الخاص مع البوت',
         url: `https://t.me/${botUser}?start=spy`
       }]);
     }
@@ -1501,7 +1501,7 @@ export class TelegramBotManager {
   }
 
   /**
-   * The captain tapped «🕵️ القادة: افتحوا الخاص مع البوت» in the channel and
+   * The captain tapped «🕵️ الجواسيس: افتحوا الخاص مع البوت» in the channel and
    * pressed Start. From now on the bot can DM him the map and clue prompts.
    */
   private async handleSpymasterReady(chatId: string, sender?: TelegramUser) {
@@ -1513,12 +1513,12 @@ export class TelegramBotManager {
     if (mine.length === 0) {
       lines.push(
         `✅ *تم تشغيل الخاص!*\n\n` +
-          `إنت حالياً مو مسجّل قائد بأي لعبة. لما تنضم قائد بأي قناة، راح توصلك *خريطتك الملوّنة* وتلميحاتك هنا بالخاص 💬`
+          `إنت حالياً مو مسجّل جاسوس بأي لعبة. لما تنضم جاسوس بأي قناة، راح توصلك *خريطتك الملوّنة* وتلميحاتك هنا بالخاص 💬`
       );
     } else {
       for (const { game, player } of mine) {
         const teamName = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-        lines.push(`✅ *تم!* إنت القائد الجاسوس بفريق ${teamName} بلعبة «${this.mdSafe(game.chatTitle || 'المجموعة')}».`);
+        lines.push(`✅ *تم!* إنت الجاسوس بفريق ${teamName} بلعبة «${this.mdSafe(game.chatTitle || 'المجموعة')}».`);
         if (game.status === 'lobby') {
           lines.push(`📌 اللعبة بمرحلة الانضمام — أول ما تبدأ الجولة راح أرسللك خريطتك الملوّنة هنا.`);
           lines.push(CodenamesEngine.getSpymasterGuide(player.team));
@@ -1552,10 +1552,10 @@ export class TelegramBotManager {
       `1️⃣ ضيف البوت إلى قناتك كمشرف (Admin).\n` +
       `2️⃣ ارجع لهنا واضغط زر «📣 شارك اللعبة في قناتك».\n` +
       `3️⃣ اختار قناتك — تنتزل اللعبة هناك وتكمل بالأزرار.\n\n` +
-      `🕵️ *القائد:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
+      `🕵️ *الجاسوس:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
       `👥 *الأعضاء:* يخمّنون بالضغط على أزرار الكلمات بالقناة.\n\n` +
       `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
-      `🗺️ القائد يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
+      `🗺️ الجاسوس يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
 
     const keyboard: any[][] = [];
     if (botUser) {
@@ -1661,7 +1661,7 @@ export class TelegramBotManager {
       await this.sendMessage(
         String(spy.id),
         CodenamesEngine.getSecretKeyVisual(game, spy.team) +
-          `\n\n💡 إذا ضاعت منك الخريطة، اضغط زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» بالمحادثة.`
+          `\n\n💡 إذا ضاعت منك الخريطة، اضغط زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» بالمحادثة.`
       );
     }
   }
@@ -1675,11 +1675,11 @@ export class TelegramBotManager {
     for (const player of game.players) {
       const teamName = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
       const isSpy = player.role === 'spymaster';
-      const roleName = isSpy ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+      const roleName = isSpy ? 'جاسوس 🕵️' : 'عميل 👤';
 
       const tail = isSpy
         ? `🎨 خريطتك الملوّنة وصلتك 👆 وأول ما يجي دورك راح أطلب منك التلميح هنا.`
-        : `👀 استنى *تلميح قائدك* — يوصلك هنا بالخاص.\n` +
+        : `👀 استنى *تلميح جاسوسك* — يوصلك هنا بالخاص.\n` +
           `وبعدها خمّنوا بالضغط على أزرار الكلمات بملعب القناة 👆`;
 
       await this.sendMessage(
@@ -1707,7 +1707,7 @@ export class TelegramBotManager {
     const teamName = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
     const res = await this.sendMessageRaw(
       String(spy.id),
-      `🎯 *دورك يا قائد الفريق ${teamName}*\n` +
+      `🎯 *دورك يا جاسوس الفريق ${teamName}*\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         `✍️ ارسل *التلميح* اللي يوصل لصديقك (بالمربع بالأسفل):\n` +
         `• كلمة *وحدة* فقط، بلا أي كلمة ثانية.\n` +
@@ -1740,7 +1740,7 @@ export class TelegramBotManager {
     const player = game.players.find(p => String(p.id) === userId);
     if (!player || player.role !== 'spymaster') {
       this.awaitingClueWord.delete(userId);
-      await this.sendMessage(userId, '⚠️ إنت مو قائد بهذي اللعبة.');
+      await this.sendMessage(userId, '⚠️ إنت مو جاسوس بهذي اللعبة.');
       return;
     }
 
@@ -2126,13 +2126,13 @@ export class TelegramBotManager {
     }
   }
 
-  /** «المقاعد الفاضية: 🔵 عميل — 🔴 قائد» — يخلي الرد واضح لكل واحد. */
+  /** «المقاعد الفاضية: 🔵 عميل — 🔴 جاسوس» — يخلي الرد واضح لكل واحد. */
   private freeSeatsText(game: CodenamesGame): string {
     const parts: string[] = [];
     for (const team of ['blue', 'red'] as Team[]) {
       const list = game.players.filter(p => p.team === team);
       const free: string[] = [];
-      if (!list.some(p => p.role === 'spymaster')) free.push('قائد جاسوس 🕵️');
+      if (!list.some(p => p.role === 'spymaster')) free.push('جاسوس 🕵️');
       if (!list.some(p => p.role === 'operative')) free.push('عميل 👤');
       const teamName = team === 'blue' ? '🔵' : '🔴';
       parts.push(`${teamName} ${free.length ? free.join(' + ') : 'مكتمل ❌'}`);

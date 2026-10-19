@@ -134,12 +134,12 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
     if (lower === '/newgame' || lower === '/start') {
       const newLobby = CodenamesEngine.createLobby('sim_group_01', 'كروب الأصدقاء 🎮', game.wordPack);
       setGame(newLobby);
-      pushMessage('بوت كود نيمز', 'تم فتح غرفة جديدة! انضموا إلى الفرق لاختيار القادة والعملاء ثم اضغطوا (ابدأ اللعبة 🚀).', true);
+      pushMessage('بوت كود نيمز', 'تم فتح غرفة جديدة! انضموا إلى الفرق لاختيار الجواسيس والعملاء ثم اضغطوا (ابدأ اللعبة 🚀).', true);
       return;
     }
 
     if (lower === '/rules' || lower === '/قوانين') {
-      pushMessage('بوت كود نيمز', '📜 قوانين كود نيمز:\nلوحة 25 كلمة. كل قائد يرسل تلميحاً مع عدد الكلمات، والعملاء يضغطون على الأزرار لتخمينها. تجنبوا القاتل 💣!', true);
+      pushMessage('بوت كود نيمز', '📜 قوانين كود نيمز:\nلوحة 25 كلمة. كل جاسوس يرسل تلميحاً مع عدد الكلمات، والعملاء يضغطون على الأزرار لتخمينها. تجنبوا القاتل 💣!', true);
       return;
     }
 
@@ -160,7 +160,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
 
     if (lower === '/map' || lower === '/خريطة') {
       setShowSecretMap(true);
-      pushMessage('بوت كود نيمز', '🗺️ تم فتح الخريطة السرية للقائد في نافذة خاصة.', true);
+      pushMessage('بوت كود نيمز', '🗺️ تم فتح الخريطة السرية للجاسوس في نافذة خاصة.', true);
       return;
     }
   };
@@ -170,7 +170,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
     const res = CodenamesEngine.startGame(game);
     setGame(res.game);
     const startTeamText = res.game.startingTeam === 'blue' ? 'الأزرق 🔵 (9 كلمات)' : 'الأحمر 🔴 (9 كلمات)';
-    pushMessage('بوت كود نيمز', `🚀 بدأت اللعبة بنجاح! الفريق البادئ هو ${startTeamText}.\nالدور الآن لقائد الفريق لإرسال التلميح عبر الزر أو كتابة \`/clue <كلمة> <عدد>\``, true);
+    pushMessage('بوت كود نيمز', `🚀 بدأت اللعبة بنجاح! الفريق البادئ هو ${startTeamText}.\nالدور الآن لجاسوس الفريق لإرسال التلميح عبر الزر أو كتابة \`/clue <كلمة> <عدد>\``, true);
   };
 
   // Submit Clue
@@ -186,7 +186,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
     const teamName = res.game.currentTurn === 'blue' ? 'الأزرق' : 'الأحمر';
     pushMessage(
       'بوت كود نيمز', 
-      `📢 تلميح قائد ${teamName} ${teamEmoji} (${activePlayer.name}):\n"${word}" (${count} كلمات)\n👇 يا عملاء ${teamName}، اضغطوا على البطاقات لتخمينها!`,
+      `📢 تلميح جاسوس ${teamName} ${teamEmoji} (${activePlayer.name}):\n"${word}" (${count} كلمات)\n👇 يا عملاء ${teamName}، اضغطوا على البطاقات لتخمينها!`,
       true
     );
     setClueWord('');
@@ -195,7 +195,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
   // Guess Card
   const handleGuess = (cardId: number) => {
     if (game.status !== 'operative_turn') {
-      pushMessage('بوت كود نيمز', '⚠️ ليس دور التخمين الآن! بانتظار تلميح القائد.', true);
+      pushMessage('بوت كود نيمز', '⚠️ ليس دور التخمين الآن! بانتظار تلميح الجاسوس.', true);
       return;
     }
 
@@ -252,7 +252,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
     if (game.status !== 'operative_turn') return;
     const res = CodenamesEngine.passTurn(game, activePlayer.name);
     setGame(res.game);
-    pushMessage('بوت كود نيمز', `⏭️ قرر ${activePlayer.name} إنهاء الدور. ينتقل الدور لقائد الفريق المنافس!`, true);
+    pushMessage('بوت كود نيمز', `⏭️ قرر ${activePlayer.name} إنهاء الدور. ينتقل الدور لجاسوس الفريق المنافس!`, true);
   };
 
   // Change Word Pack
@@ -310,7 +310,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
             }}
           >
             <Eye className="w-4 h-4" />
-            <span>خريطة القائد السرية 🗺️</span>
+            <span>خريطة الجاسوس السرية 🗺️</span>
           </button>
 
           <button
@@ -378,7 +378,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
                           {isSelected && <span className="text-[10px] text-[#00c853]">● (أنت الآن)</span>}
                         </div>
                         <div className="text-[11px]" style={{ color: theme.colors.textMuted }}>
-                          {p.team === 'blue' ? 'الفريق الأزرق 🔵' : 'الفريق الأحمر 🔴'} • {p.role === 'spymaster' ? 'قائد (Spymaster) 🕵️' : 'عميل ميداني 👤'}
+                          {p.team === 'blue' ? 'الفريق الأزرق 🔵' : 'الفريق الأحمر 🔴'} • {p.role === 'spymaster' ? 'جاسوس (Spymaster) 🕵️' : 'عميل ميداني 👤'}
                         </div>
                       </div>
                     </div>
@@ -493,7 +493,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
               <div className="flex items-center gap-2 mb-2 font-bold text-xs" style={{ color: theme.colors.textPrimary }}>
                 <Sparkles className="w-4 h-4 text-[#ffca28]" />
                 <span>
-                  دور قائد الفريق {game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} لتقديم التلميح
+                  دور جاسوس الفريق {game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} لتقديم التلميح
                 </span>
               </div>
               <p className="text-[11px] mb-3" style={{ color: theme.colors.textSecondary }}>
@@ -715,7 +715,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
                                 }}
                                 className="py-2 px-3 rounded-xl bg-[#132537] hover:bg-[#1a324b] text-[#90caf9] border border-[#2b5278]/60 text-xs font-bold transition"
                               >
-                                قائد أزرق 🕵️‍♂️
+                                جاسوس أزرق 🕵️‍♂️
                               </button>
                               <button
                                 onClick={() => {
@@ -729,7 +729,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
                                 }}
                                 className="py-2 px-3 rounded-xl bg-[#341618] hover:bg-[#461e20] text-[#ef9a9a] border border-[#7f2628]/60 text-xs font-bold transition"
                               >
-                                قائد أحمر 🕵️‍♀️
+                                جاسوس أحمر 🕵️‍♀️
                               </button>
                             </div>
 
@@ -831,7 +831,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
                                 }}
                               >
                                 <Eye className="w-3.5 h-3.5" />
-                                <span>🗺️ خريطة القائد السرية</span>
+                                <span>🗺️ خريطة الجاسوس السرية</span>
                               </button>
 
                               {game.status === 'game_over' && (
@@ -967,7 +967,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
             <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: theme.colors.borderColor }}>
               <div className="flex items-center gap-2 font-bold text-sm" style={{ color: theme.colors.textPrimary }}>
                 <Eye className="w-5 h-5" style={{ color: theme.colors.accentPrimary }} />
-                <span>خريطة القائد السرية (Secret Spymaster Key)</span>
+                <span>خريطة الجاسوس السرية (Secret Spymaster Key)</span>
               </div>
               <button
                 onClick={() => setShowSecretMap(false)}
@@ -979,7 +979,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
             </div>
 
             <p className="text-xs" style={{ color: theme.colors.textSecondary }}>
-              هذه الخريطة يراها قادة الفريقين فقط في محادثة خاصة مع البوت (DM) لمعرفة ألوان جميع البطاقات الـ 25:
+              هذه الخريطة يراها جواسيس الفريقين فقط في محادثة خاصة مع البوت (DM) لمعرفة ألوان جميع البطاقات الـ 25:
             </p>
 
             {/* Visual 5x5 Matrix of the cards */}

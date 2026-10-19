@@ -358,7 +358,7 @@ export const LiveBotMonitor: React.FC<LiveBotMonitorProps> = ({ botConfig, onOpe
                         {selectedGame.players.filter(p => p.team === 'blue').map(p => (
                           <li key={p.id} className="flex justify-between">
                             <span>{p.name}</span>
-                            <span className="text-[11px]" style={{ color: theme.colors.textMuted }}>{p.role === 'spymaster' ? 'قائد 🕵️' : 'عميل 👤'}</span>
+                            <span className="text-[11px]" style={{ color: theme.colors.textMuted }}>{p.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤'}</span>
                           </li>
                         ))}
                       </ul>
@@ -378,7 +378,7 @@ export const LiveBotMonitor: React.FC<LiveBotMonitorProps> = ({ botConfig, onOpe
                         {selectedGame.players.filter(p => p.team === 'red').map(p => (
                           <li key={p.id} className="flex justify-between">
                             <span>{p.name}</span>
-                            <span className="text-[11px]" style={{ color: theme.colors.textMuted }}>{p.role === 'spymaster' ? 'قائد 🕵️' : 'عميل 👤'}</span>
+                            <span className="text-[11px]" style={{ color: theme.colors.textMuted }}>{p.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤'}</span>
                           </li>
                         ))}
                       </ul>

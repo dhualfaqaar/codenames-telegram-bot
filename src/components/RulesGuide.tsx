@@ -70,7 +70,7 @@ export const RulesGuide: React.FC = () => {
           </h3>
           <ul className="text-xs space-y-2 leading-relaxed" style={{ color: theme.colors.textSecondary }}>
             <li>
-              <strong style={{ color: theme.colors.textPrimary }}>1. القائد الجاسوس (Spymaster 🕵️‍♂️):</strong>
+              <strong style={{ color: theme.colors.textPrimary }}>1. الجاسوس (Spymaster 🕵️‍♂️):</strong>
               <br />
               شخص واحد في كل فريق يرى <span className="text-[#ffca28] font-bold">الخريطة السرية</span> كاملة مع ألوان البطاقات. مهمته إعطاء تلميح من كلمة واحدة ورقم يربط أكبر عدد من بطاقات فريقه.
             </li>
@@ -168,13 +168,13 @@ export const RulesGuide: React.FC = () => {
         </h3>
         <ol className="space-y-2 text-xs list-decimal list-inside leading-relaxed" style={{ color: theme.colors.textSecondary }}>
           <li>
-            <strong style={{ color: theme.colors.textPrimary }}>كلمة واحدة فقط:</strong> لا يجوز للقائد أن يرسل جملة أو كلمتين مركبتين (مثال صحيح: <code className="text-[#2481cc]">سماء</code>، مثال خاطئ: <code className="text-[#ef5350]">السماء الزرقاء</code>).
+            <strong style={{ color: theme.colors.textPrimary }}>كلمة واحدة فقط:</strong> لا يجوز للجاسوس أن يرسل جملة أو كلمتين مركبتين (مثال صحيح: <code className="text-[#2481cc]">سماء</code>، مثال خاطئ: <code className="text-[#ef5350]">السماء الزرقاء</code>).
           </li>
           <li>
-            <strong style={{ color: theme.colors.textPrimary }}>ممنوع ذكر أي كلمة من اللوحة:</strong> لا يجوز للقائد استخدام أي كلمة أو مشتق مباشر لكلمة غير مكشوفة على اللوحة.
+            <strong style={{ color: theme.colors.textPrimary }}>ممنوع ذكر أي كلمة من اللوحة:</strong> لا يجوز للجاسوس استخدام أي كلمة أو مشتق مباشر لكلمة غير مكشوفة على اللوحة.
           </li>
           <li>
-            <strong style={{ color: theme.colors.textPrimary }}>عدد المحاولات:</strong> يحق لعملاء الفريق تخمين عدد الكلمات التي حددها القائد + محاولة واحدة إضافية (Bonus).
+            <strong style={{ color: theme.colors.textPrimary }}>عدد المحاولات:</strong> يحق لعملاء الفريق تخمين عدد الكلمات التي حددها الجاسوس + محاولة واحدة إضافية (Bonus).
           </li>
           <li>
             <strong style={{ color: theme.colors.textPrimary }}>إنهاء الدور اختيارياً:</strong> يمكن للعملاء الضغط على زر <code className="text-[#ffca28]">⏭️ إنهاء التخمين (Pass)</code> في أي وقت للحفاظ على نقاطهم ونقل الدور للفريق الآخر.
@@ -207,9 +207,9 @@ export const RulesGuide: React.FC = () => {
           <div className="py-2.5 flex items-start justify-between gap-4">
             <div>
               <code className="text-[#ffca28] font-bold font-mono">/clue &lt;الكلمة&gt; &lt;العدد&gt;</code>
-              <p className="text-[11px] mt-0.5" style={{ color: theme.colors.textMuted }}>إرسال تلميح القائد مع عدد الكلمات، مثل: <span className="font-mono" style={{ color: theme.colors.textPrimary }}>/clue سماء 2</span></p>
+              <p className="text-[11px] mt-0.5" style={{ color: theme.colors.textMuted }}>إرسال تلميح الجاسوس مع عدد الكلمات، مثل: <span className="font-mono" style={{ color: theme.colors.textPrimary }}>/clue سماء 2</span></p>
             </div>
-            <span className="text-[10px] px-2 py-1 rounded" style={{ backgroundColor: theme.colors.bgInput, color: theme.colors.textSecondary }}>للقائد</span>
+            <span className="text-[10px] px-2 py-1 rounded" style={{ backgroundColor: theme.colors.bgInput, color: theme.colors.textSecondary }}>للجاسوس</span>
           </div>
 
           <div className="py-2.5 flex items-start justify-between gap-4">
@@ -223,7 +223,7 @@ export const RulesGuide: React.FC = () => {
           <div className="py-2.5 flex items-start justify-between gap-4">
             <div>
               <code className="text-[#2481cc] font-bold font-mono">/map</code>
-              <p className="text-[11px] mt-0.5" style={{ color: theme.colors.textMuted }}>يرسل البوت الخريطة السرية للقائد في محادثة خاصة (DM)</p>
+              <p className="text-[11px] mt-0.5" style={{ color: theme.colors.textMuted }}>يرسل البوت الخريطة السرية للجاسوس في محادثة خاصة (DM)</p>
             </div>
             <span className="text-[10px] px-2 py-1 rounded" style={{ backgroundColor: theme.colors.bgInput, color: theme.colors.textSecondary }}>خاص</span>
           </div>

@@ -50,7 +50,7 @@ export class CodenamesEngine {
           id: Math.random().toString(36).substring(7),
           timestamp: Date.now(),
           type: 'lobby',
-          message: 'تم فتح غرفة كود نيمز جديدة! انضموا إلى الفرق لاختيار القادة والعملاء.'
+          message: 'تم فتح غرفة كود نيمز جديدة! انضموا إلى الفرق لاختيار الجواسيس والعملاء.'
         }
       ],
       createdAt: Date.now(),
@@ -78,12 +78,12 @@ export class CodenamesEngine {
       p => p.team === player.team && p.role === player.role && String(p.id) !== String(player.id)
     );
     if (seatTaken) {
-      const seatName = player.role === 'spymaster' ? 'القائد الجاسوس 🕵️' : 'العميل 👤';
+      const seatName = player.role === 'spymaster' ? 'الجاسوس 🕵️' : 'العميل 👤';
       return {
         success: false,
         message:
           `⚠️ ما يصير — ${seatName} بالفريق ${teamColor} ماخوذه (${this.nameTag(seatTaken.name)}).\n` +
-          `اختار ${player.role === 'spymaster' ? '«عميل 👤»' : '«قائد جاسوس 🕵️»'} أو الفريق الثاني.`,
+          `اختار ${player.role === 'spymaster' ? '«عميل 👤»' : '«جاسوس 🕵️»'} أو الفريق الثاني.`,
         game
       };
     }
@@ -92,7 +92,7 @@ export class CodenamesEngine {
       return {
         success: false,
         message:
-          `⚠️ الفريق ${teamColor} مكتمل (قائد جاسوس + عميل).\n` +
+          `⚠️ الفريق ${teamColor} مكتمل (جاسوس + عميل).\n` +
           `انضم للفريق الثاني، أو انتظر جولة جديدة.`,
         game
       };
@@ -105,7 +105,7 @@ export class CodenamesEngine {
       updatedPlayers.push(player);
     }
 
-    const roleText = player.role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل ميداني 👤';
+    const roleText = player.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل ميداني 👤';
 
     const logEntry: GameLogEntry = {
       id: Math.random().toString(36).substring(7),
@@ -149,7 +149,7 @@ export class CodenamesEngine {
 
     const leaving = game.players[index];
     const teamColor = leaving.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-    const roleText = leaving.role === 'spymaster' ? 'القائد الجاسوس 🕵️' : 'العميل 👤';
+    const roleText = leaving.role === 'spymaster' ? 'الجاسوس 🕵️' : 'العميل 👤';
 
     const logEntry: GameLogEntry = {
       id: `leave_${Date.now()}_${index}`,
@@ -214,7 +214,7 @@ export class CodenamesEngine {
       timestamp: Date.now(),
       type: 'system',
       team: startingTeam,
-      message: `بدأت اللعبة! الفريق البادئ هو ${startingTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} (لديه 9 كلمات). بانتظار تلميح القائد!`
+      message: `بدأت اللعبة! الفريق البادئ هو ${startingTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} (لديه 9 كلمات). بانتظار تلميح الجاسوس!`
     };
 
     return {
@@ -242,7 +242,7 @@ export class CodenamesEngine {
     game: CodenamesGame,
     clueWord: string,
     clueCount: number,
-    spymasterName: string = 'القائد'
+    spymasterName: string = 'الجاسوس'
   ): { success: boolean; message: string; game: CodenamesGame } {
     if (game.status !== 'spymaster_turn') {
       return { success: false, message: 'ليس وقت تقديم التلميح حالياً.', game };
@@ -433,7 +433,7 @@ export class CodenamesEngine {
           id: Math.random().toString(36).substring(7),
           timestamp: Date.now(),
           type: 'system',
-          message: `انتهت محاولات التخمين لهذا الدور. ينتقل الدور إلى قائد الفريق ${oppositeTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'}.`
+          message: `انتهت محاولات التخمين لهذا الدور. ينتقل الدور إلى جاسوس الفريق ${oppositeTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'}.`
         };
 
         return {
@@ -592,7 +592,7 @@ export class CodenamesEngine {
   public static getSpymasterGuide(team: Team): string {
     const teamName = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
     return (
-      `🕵️ *أهلين يا قائد الفريق ${teamName}!*\n` +
+      `🕵️ *أهلين يا جاسوس الفريق ${teamName}!*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `*شنو شغلتك؟*\n` +
       `إنت وحدك تشوف ألوان البطاقات. شغلتك تعطي فريقك *تلميح بكلمة وحدة*، وفريقك يخمّن بيها.\n\n` +
@@ -606,7 +606,7 @@ export class CodenamesEngine {
       `• الرقم يعني: كم بطاقة من فريقك تخص هذا التلميح.\n\n` +
       `*شلون ترسله؟*\n` +
       `لما يجي دورك، راح أرسللك هنا بالخاص مربع — تكتب بيه كلمة التلميح بس، وبعدها تختار الرقم من الأزرار.\n\n` +
-      `🎨 *بطاقاتك بالألوان:* اضغط زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» بالقناة، أو راح توصلك هنا.\n\n` +
+      `🎨 *بطاقاتك بالألوان:* اضغط زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» بالقناة، أو راح توصلك هنا.\n\n` +
       `⚠️ _لا تشارك هذي الرسالة مع أحد!_`
     );
   }
@@ -652,7 +652,7 @@ export class CodenamesEngine {
 
   /**
    * One team's roster: always shows the two seats of the team
-   * (قائد جاسوس + عميل). An empty seat is shown as «مقعد فاضي» so everyone
+   * (جاسوس + عميل). An empty seat is shown as «مقعد فاضي» so everyone
    * knows exactly which role is still free.
    */
   public static teamRoster(game: CodenamesGame, team: Team): string {
@@ -671,7 +671,7 @@ export class CodenamesEngine {
 
     return [
       title,
-      seat('spymaster', 'قائد جاسوس 🕵️', 1),
+      seat('spymaster', 'جاسوس 🕵️', 1),
       seat('operative', 'عميل 👤', 2)
     ].join('\n');
   }
@@ -695,10 +695,10 @@ export class CodenamesEngine {
         `━━━━━━━━━━━━━━━━━━━\n` +
         (full
           ? `🔒 *اكتمل العدد!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
-          : `_⏳ قيد الانتظار: باقي ${Math.max(0, 4 - game.players.length)} لاعب — كل فريق يحتاج (قائد جاسوس 🕵️ + عميل 👤)._\n`) +
+          : `_⏳ قيد الانتظار: باقي ${Math.max(0, 4 - game.players.length)} لاعب — كل فريق يحتاج (جاسوس 🕵️ + عميل 👤)._\n`) +
         `1️⃣ كل واحد يضغط زر دوره بفريقه.\n` +
         `2️⃣ الدور الماخوذ ما ينفع تاخذه — راح يجيك تنبيه.\n` +
-        `3️⃣ *القادة 🕵️:* اضغطوا زر «القادة: افتحوا الخاص» بالأسفل حتى توصلكم الخريطة والتلميح.\n` +
+        `3️⃣ *الجواسيس 🕵️:* اضغطوا زر «الجواسيس: افتحوا الخاص» بالأسفل حتى توصلكم الخريطة والتلميح.\n` +
         `4️⃣ المشرف صاحب اللعبة يضغط (ابدأ اللعبة 🚀).`;
     }
 
@@ -737,9 +737,9 @@ export class CodenamesEngine {
     header += `━━━━━━━━━━━━━━━━━━━\n`;
 
     if (game.status === 'spymaster_turn') {
-      header += `🎯 *الدور الآن:* ⏳ قائد الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
-        `✍️ القائد يكتب تلميحه بالخاص عند البوت (كلمة وحدة + رقم).\n` +
-        `💡 الخريطة السرية للقائد عبر زر «🎨 بطاقاتي الملوّنة» بالأسفل.`;
+      header += `🎯 *الدور الآن:* ⏳ جاسوس الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
+        `✍️ الجاسوس يكتب تلميحه بالخاص عند البوت (كلمة وحدة + رقم).\n` +
+        `💡 الخريطة السرية للجاسوس عبر زر «🎨 بطاقاتي الملوّنة» بالأسفل.`;
     } else {
       const clue = game.currentClue;
       header += `🎯 *الدور الآن:* عملاء الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
@@ -771,8 +771,8 @@ export class CodenamesEngine {
           { text: `عميل أحمر 🔴 ${state('red', 'operative')}`, callback_data: 'join:red:operative' }
         ],
         [
-          { text: `قائد أزرق 🕵️‍♂️ ${state('blue', 'spymaster')}`, callback_data: 'join:blue:spymaster' },
-          { text: `قائد أحمر 🕵️‍♀️ ${state('red', 'spymaster')}`, callback_data: 'join:red:spymaster' }
+          { text: `جاسوس أزرق 🕵️‍♂️ ${state('blue', 'spymaster')}`, callback_data: 'join:blue:spymaster' },
+          { text: `جاسوس أحمر 🕵️‍♀️ ${state('red', 'spymaster')}`, callback_data: 'join:red:spymaster' }
         ],
         [
           {
@@ -829,7 +829,7 @@ export class CodenamesEngine {
     if (game.status === 'operative_turn') {
       actionRow.push({ text: '⏭️ إنهاء التخمين (Pass)', callback_data: 'action:pass' });
     }
-    actionRow.push({ text: '🎨 بطاقاتي الملوّنة (للقائد 🕵️)', callback_data: 'action:secret_map' });
+    actionRow.push({ text: '🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)', callback_data: 'action:secret_map' });
     keyboard.push(actionRow);
 
     return keyboard;

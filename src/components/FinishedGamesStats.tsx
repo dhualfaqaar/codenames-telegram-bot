@@ -978,7 +978,7 @@ export const FinishedGamesStats: React.FC = () => {
                 <span className="font-bold text-[#2481cc]">🔵 لاعبو الأزرق</span>
                 <ul className="space-y-0.5 text-[11px]" style={{ color: theme.colors.textSecondary }}>
                   {selectedMatch.players.filter(p => p.team === 'blue').map(p => (
-                    <li key={p.id}>• {p.name} ({p.role === 'spymaster' ? 'قائد 🕵️' : 'عميل 👤'})</li>
+                    <li key={p.id}>• {p.name} ({p.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤'})</li>
                   ))}
                 </ul>
               </div>
@@ -987,7 +987,7 @@ export const FinishedGamesStats: React.FC = () => {
                 <span className="font-bold text-[#ef5350]">🔴 لاعبو الأحمر</span>
                 <ul className="space-y-0.5 text-[11px]" style={{ color: theme.colors.textSecondary }}>
                   {selectedMatch.players.filter(p => p.team === 'red').map(p => (
-                    <li key={p.id}>• {p.name} ({p.role === 'spymaster' ? 'قائد 🕵️' : 'عميل 👤'})</li>
+                    <li key={p.id}>• {p.name} ({p.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤'})</li>
                   ))}
                 </ul>
               </div>

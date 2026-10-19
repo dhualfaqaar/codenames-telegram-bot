@@ -1,6 +1,6 @@
 {
   "name": "بوت لعبة كود نيمز لتلجرام | Codenames Telegram Bot",
-  "description": "بوت تلجرام متكامل للعب كود نيمز (Codenames) مباشرة داخل المحادثات والمجموعات مع أزرار تفاعلية وخريطة سرية للقادة وقوائم كلمات عربية.",
+  "description": "بوت تلجرام متكامل للعب كود نيمز (Codenames) مباشرة داخل المحادثات والمجموعات مع أزرار تفاعلية وخريطة سرية للجواسيس وقوائم كلمات عربية.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
