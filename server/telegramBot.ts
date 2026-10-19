@@ -1104,6 +1104,7 @@ export class TelegramBotManager {
         return;
       }
 
+      const wasFull = this.lobbyIsFull(game);
       const result = CodenamesEngine.joinGame(game, {
         id: userId,
         name: userName,
@@ -1123,6 +1124,11 @@ export class TelegramBotManager {
 
       this.games.set(chatId, result.game);
       await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
+
+      // كمل العدد؟ ننبّه المشرف اللي رسل اللعبة بالخاص — هو وحده اللي يبدأ.
+      if (!wasFull && this.lobbyIsFull(result.game)) {
+        await this.notifySupervisorLobbyFull(result.game);
+      }
 
       let alertText = result.message;
       let showAlert = false;
@@ -2138,6 +2144,34 @@ export class TelegramBotManager {
       parts.push(`${teamName} ${free.length ? free.join(' + ') : 'مكتمل ❌'}`);
     }
     return `المقاعد الفاضية: ${parts.join(' | ')}`;
+  }
+
+  /** كل المقاعد الأربعة ماخوذة؟ (جاسوس + عميل بكل فريق) */
+  private lobbyIsFull(game: CodenamesGame): boolean {
+    return (['blue', 'red'] as Team[]).every(
+      team =>
+        game.players.some(p => p.team === team && p.role === 'spymaster') &&
+        game.players.some(p => p.team === team && p.role === 'operative')
+    );
+  }
+
+  /**
+   * لمّا يكمل عدد اللاعبين، ننبّه المشرف اللي رسل اللعبة بالخاص — هو وحده يبدأ.
+   */
+  private async notifySupervisorLobbyFull(game: CodenamesGame) {
+    if (!game.createdBy) return;
+    const title = this.mdSafe(game.chatTitle || 'المجموعة');
+    const text =
+      `✅ *العدد كمل — ${game.players.length} من 4!*\n\n` +
+      `🎮 *اللعبة:* «${title}»\n` +
+      `👥 الجواسيس والعملاء كلهن حاضرين:\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `${CodenamesEngine.teamRoster(game, 'blue')}\n\n` +
+      `${CodenamesEngine.teamRoster(game, 'red')}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `👇 ارجع للمحادثة واضغط *(ابدأ اللعبة 🚀)*\n` +
+      `_إنت وحدك المشرف اللي يكدر يبدأ الجولة._`;
+    await this.sendMessage(String(game.createdBy), text);
   }
 
   /** Remember/refresh a group or channel the bot lives in. */
