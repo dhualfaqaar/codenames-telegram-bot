@@ -1327,12 +1327,7 @@ export class TelegramBotManager {
   private async withBotFooter(text: string): Promise<string> {
     const botUser = await this.getBotUsername();
     if (!botUser) return text;
-    return (
-      text +
-      `\n━━━━━━━━━━━━━━━━━━━\n` +
-      `🤖 *البوت:* @${botUser}\n` +
-      `👆 اضغط عليه وشغّله (Start) حتى تلعب — وإذا عجبك احفظه عندك ✨`
-    );
+    return text + `\n━━━━━━━━━━━━━━━━━━━\n` + `🤖 *البوت:* @${botUser}`;
   }
 
   /**
