@@ -724,6 +724,20 @@ export class TelegramBotManager {
         }
 
         await this.sendPrivateWelcome(chatId, senderName);
+
+        // Temporary helper: ONLY the creator of a channel the bot plays in sees
+        // his own id in private, so he can hand it over and have the dashboard
+        // locked to his account. Nobody else ever sees this, and nothing is
+        // granted automatically.
+        if (sender && !this.ownerId && (await this.isChannelCreator(String(sender.id)))) {
+          await this.sendMessage(
+            chatId,
+            '🆔 *معرّفك:* `' +
+              sender.id +
+              '`\n\n_هذي الرسالة تطلع لمالك القناة بس — انسخ الرقم وأرسله للمطوّر._'
+          );
+        }
+
         if (this.isOwner(sender?.id)) {
           await this.sendAdminPanel(chatId);
         }
@@ -1286,9 +1300,7 @@ export class TelegramBotManager {
       `🕵️ *القائد:* راح أرسلله مربع بالخاص يكتب بيه كلمة التلميح (بلا أوامر)، وبعدين يختار الرقم.\n` +
       `👥 *الأعضاء:* يخمّنون بالضغط على أزرار الكلمات بالقناة.\n\n` +
       `🎮 *أو العب بمجموعة:* ضيف البوت لمجموعتك.\n` +
-      `🗺️ القائد يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» — كل شي بالأزرار، بلا أي أوامر.\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
-      `🆔 *معرّفك:* \`${chatId}\``;
+      `🗺️ القائد يشوف بطاقاته الملوّنة من زر «🎨 بطاقاتي الملوّنة (للقائد 🕵️)» — كل شي بالأزرار، بلا أي أوامر.`;
 
     const keyboard: any[][] = [];
     if (botUser) {
@@ -1698,6 +1710,51 @@ export class TelegramBotManager {
   public setOwnerId(ownerId?: string | number) {
     if (ownerId === undefined || ownerId === null || ownerId === '') return;
     this.ownerId = String(ownerId);
+  }
+
+  /** Telegram API: getChat (used to learn a chat's type). */
+  private async getChatInfo(chatId: string): Promise<any> {
+    if (!this.token) return null;
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${this.token}/getChat?chat_id=${encodeURIComponent(chatId)}`
+      );
+      const data: any = await res.json();
+      return data?.ok ? data.result : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Is this user the *creator* of a channel the bot already plays in?
+   *
+   * This is used for one single purpose: showing that person his own Telegram
+   * id in private, so he can hand it over and have the dashboard locked to his
+   * account forever. It is hidden from everybody else — a normal player can
+   * never see it, and nothing is granted automatically.
+   */
+  private async isChannelCreator(userId: string): Promise<boolean> {
+    const candidates: Array<{ id: string; type: string }> = Array.from(this.chats.values()).map(
+      c => ({ id: c.id, type: c.type })
+    );
+    const known = new Set(candidates.map(c => c.id));
+
+    for (const game of Array.from(this.games.values()).slice(0, 4)) {
+      const id = String((game as any).id || '');
+      if (!id || known.has(id)) continue;
+      known.add(id);
+      const info = await this.getChatInfo(id);
+      if (info?.type) candidates.push({ id, type: info.type });
+    }
+
+    for (const candidate of candidates.slice(0, 6)) {
+      if (candidate.type !== 'channel' && candidate.type !== 'supergroup') continue;
+      const admins = await this.getChatAdministrators(candidate.id);
+      const member = admins.find(a => String(a?.user?.id) === userId);
+      if (String(member?.status) === 'creator') return true;
+    }
+    return false;
   }
 
   /**
