@@ -641,12 +641,10 @@ export class TelegramBotManager {
         const record = this.trackUser(actor, false);
 
         // The owner disabled this user's messages → ignore everything he sends.
+        // Done silently: he is never told that a moderator exists.
         if (record.silenced && !this.isOwner(actor.id)) {
           if (update.callback_query) {
-            await this.answerCallbackQuery(
-              update.callback_query.id,
-              '🚫 رسائلك موقوفة من إدارة البوت.'
-            );
+            await this.answerCallbackQuery(update.callback_query.id, '');
           }
           return;
         }
@@ -752,8 +750,10 @@ export class TelegramBotManager {
 
     // ---- owner dashboard buttons (only the owner may use them) ----
     if (data.startsWith('admin:')) {
+      // Invisible moderation: anyone who is not the owner is simply ignored —
+      // no error, no hint that a dashboard (or an owner) even exists.
       if (!this.isOwner(userId)) {
-        await this.answerCallbackQuery(cb.id, '⛔ هذي اللوحة لصاحب البوت بس.', true);
+        await this.answerCallbackQuery(cb.id, '');
         return;
       }
 
@@ -1305,12 +1305,6 @@ export class TelegramBotManager {
         text: '➕ ضيف البوت لمجموعتك',
         url: `https://t.me/${botUser}?startgroup=codenames`
       }]);
-    }
-
-    // The owner gets an extra button that opens his dashboard any time.
-    // (In a private chat the chat id IS the user id.)
-    if (this.isOwner(chatId)) {
-      keyboard.push([{ text: '👑 لوحة التحكم' }]);
     }
 
     await this.sendMessageRaw(chatId, welcome, {
