@@ -1010,6 +1010,12 @@ export class TelegramBotManager {
       return;
     }
 
+    // ---- 📊 إحصائيات الألعاب (متاحة للكل — للقراءة فقط، بلا أي تأثير على اللاعبين) ----
+    if (data.startsWith('gstat:')) {
+      await this.handleGameStats(cb, data.slice(6));
+      return;
+    }
+
     // ---- 🎮 قائمة الألعاب و«خمّن الكلمة» (كلها بالخاص) ----
     if (data.startsWith('hub:')) {
       await this.handleGamesMenu(cb, data.slice(4));
@@ -1601,7 +1607,219 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, '');
   }
 
-  /** محتوى أقسام الألعاب (المربعات القابلة للضغط) */
+  // ---------------------------------------------------------------------
+  // 📊 إحصائيات الألعاب — تُعرض للكل (صاحب البوت وأي لاعب)، للقراءة فقط.
+  // ما تغيّر أي حالة ولا تأثر على أي لعبة شغّالة.
+  // ---------------------------------------------------------------------
+
+  /** شريط صغير يبيّن النسبة بشكل مرتب */
+  private statBar(part: number, total: number): string {
+    if (!total) return '▱▱▱▱▱';
+    const filled = Math.max(0, Math.min(5, Math.round((part / total) * 5)));
+    return '▰'.repeat(filled) + '▱'.repeat(5 - filled);
+  }
+
+  private statPct(part: number, total: number): string {
+    if (!total) return '0%';
+    return `${Math.round((part / total) * 100)}%`;
+  }
+
+  private statMedal(index: number): string {
+    return ['🥇', '🥈', '🥉'][index] || `${index + 1}.`;
+  }
+
+  /** المباريات الحقيقية فقط (الأمثلة القديمة للتجربة ما تنحسب) */
+  private realMatches(): CodenamesGame[] {
+    return this.completedGames.filter(g => !String(g.id).startsWith('match_hist_'));
+  }
+
+  /** كل أرقام الألعاب بمكان واحد */
+  private gameStatsNumbers() {
+    const users = Array.from(this.users.values());
+    const matches = this.realMatches();
+    const active = Array.from(this.games.values()).filter(g => g.status !== 'game_over');
+
+    const blueWins = matches.filter(g => g.winner === 'blue').length;
+    const redWins = matches.filter(g => g.winner === 'red').length;
+    const assassinLosses = matches.filter(g => g.winReason === 'assassin_triggered').length;
+
+    const solvers = users.filter(u => (u.wordleWins || 0) > 0);
+    const solved = users.reduce((sum, u) => sum + (u.wordleWins || 0), 0);
+    const totalPoints = users.reduce((sum, u) => sum + (u.points || 0), 0);
+
+    return {
+      users,
+      matches,
+      active,
+      blueWins,
+      redWins,
+      assassinLosses,
+      solvers,
+      solved,
+      totalPoints
+    };
+  }
+
+  /** نصوص الإحصائيات: main / top / cn */
+  private async buildGameStats(section: string): Promise<{ text: string; keyboard: any[][] }> {
+    const n = this.gameStatsNumbers();
+    const backStats = [{ text: '🔙 الإحصائيات', callback_data: 'gstat:main' }];
+
+    // 🏆 لوحة الأبطال
+    if (section === 'top') {
+      const topPoints = n.users
+        .filter(u => (u.points || 0) > 0)
+        .sort((a, b) => (b.points || 0) - (a.points || 0))
+        .slice(0, 10);
+      const topWordle = n.users
+        .filter(u => (u.wordleWins || 0) > 0)
+        .sort((a, b) => (b.wordleWins || 0) - (a.wordleWins || 0))
+        .slice(0, 5);
+
+      const pointsLines = topPoints.length
+        ? topPoints
+            .map((u, i) => `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${u.points || 0}* نقطة`)
+            .join('\n')
+        : '_ما بعد أحد جمع نقاط — كونوا أول الأبطال!_';
+
+      const wordleLines = topWordle.length
+        ? topWordle
+            .map(
+              (u, i) => `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${u.wordleWins || 0}* فوز`
+            )
+            .join('\n')
+        : '_ما بعد أحد حلّ «خمّن الكلمة»._';
+
+      const text =
+        `🏆 *لوحة الأبطال*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `⭐ *الأكثر نقاط:*\n${pointsLines}\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🧠 *أكثر من حلّ «خمّن الكلمة»:*\n${wordleLines}\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `⭐ مجموع نقاط كل اللاعبين: *${n.totalPoints}*`;
+
+      return { text, keyboard: [backStats] };
+    }
+
+    // ⚔️ تفاصيل كود نيمز
+    if (section === 'cn') {
+      const spyWins = new Map<string, { name: string; wins: number }>();
+      for (const g of n.matches) {
+        for (const p of g.players || []) {
+          if (p.role !== 'spymaster' || p.team !== g.winner) continue;
+          const key = String(p.id);
+          const cur = spyWins.get(key) || { name: p.name, wins: 0 };
+          cur.wins += 1;
+          cur.name = p.name;
+          spyWins.set(key, cur);
+        }
+      }
+      const topSpies = Array.from(spyWins.values())
+        .sort((a, b) => b.wins - a.wins)
+        .slice(0, 5);
+
+      const chatPlays = new Map<string, number>();
+      for (const g of n.matches) {
+        const title = g.chatTitle || 'قناة';
+        chatPlays.set(title, (chatPlays.get(title) || 0) + 1);
+      }
+      const topChats = Array.from(chatPlays.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+
+      const spyLines = topSpies.length
+        ? topSpies
+            .map((s, i) => `${this.statMedal(i)} ${this.mdSafe(s.name)} — *${s.wins}* فوز`)
+            .join('\n')
+        : '_ما بعد أكو جاسوس فاز — ننتظر أول مباراة!_';
+
+      const chatLines = topChats.length
+        ? topChats
+            .map(([title, count], i) => `${i + 1}. ${this.mdSafe(title)} — *${count}* مباراة`)
+            .join('\n')
+        : '_ما بعد انلعبت مباراة بقناة._';
+
+      const text =
+        `⚔️ *إحصائيات كود نيمز (4 ضد 4)*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🏁 مباريات مكتملة: *${n.matches.length}*\n` +
+        `⏳ جارية الآن: *${n.active.length}*\n` +
+        `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
+        `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n` +
+        `💀 خسارة بالقاتل: *${n.assassinLosses}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🕵️ *أفضل الجواسيس:*\n${spyLines}\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `📣 *أكثر القنوات لعباً:*\n${chatLines}`;
+
+      return { text, keyboard: [backStats] };
+    }
+
+    // 📊 الشاشة الرئيسية للإحصائيات
+    const topPoints = n.users
+      .filter(u => (u.points || 0) > 0)
+      .sort((a, b) => (b.points || 0) - (a.points || 0))
+      .slice(0, 5);
+    const topLines = topPoints.length
+      ? topPoints
+          .map((u, i) => `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${u.points || 0}* نقطة`)
+          .join('\n')
+      : '_ما بعد أحد جمع نقاط — العبوا وارجعوا تشوفون اسمكم هنا!_';
+
+    const text =
+      `📊 *إحصائيات الألعاب*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🎮 *المجموع:* ${n.matches.length + n.solved} لعبة مكتملة • ${n.active.length} جارية الآن\n\n` +
+      `⚔️ *كود نيمز (4 ضد 4)*\n` +
+      `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
+      `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n\n` +
+      `🧠 *خمّن الكلمة*\n` +
+      `✅ انحلّت: *${n.solved}* مرة • 👥 فازوا: *${n.solvers.length}*\n\n` +
+      `👥 *ألعاب ثنائية:* 🔜 قريباً • 🎲 *ألعاب الحظ:* 🔜 قريباً\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🏆 *أقوى 5 بالنقاط:*\n${topLines}\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `⭐ مجموع نقاط اللاعبين: *${n.totalPoints}*`;
+
+    const keyboard: any[][] = [
+      [
+        { text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' },
+        { text: '⚔️ تفاصيل كود نيمز', callback_data: 'gstat:cn' }
+      ]
+    ];
+    keyboard.push([{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }]);
+    // صاحب البوت يرجع للوحته مباشرة
+    keyboard.push([{ text: '👑 لوحة التحكم', callback_data: 'admin:panel' }]);
+
+    return { text, keyboard };
+  }
+
+  /** يفتح/يحدّث شاشة الإحصائيات (مسار عام — أي واحد يكدر يشوف) */
+  private async handleGameStats(cb: TelegramCallbackQuery, section: string) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+
+    const view = await this.buildGameStats(section || 'main');
+    // زر «👑 لوحة التحكم» يظهر لصاحب البوت فقط — للآخرين ما يبين
+    const keyboard = this.isOwner(cb.from.id)
+      ? view.keyboard
+      : view.keyboard
+          .map(row => row.filter((b: any) => b.callback_data !== 'admin:panel'))
+          .filter(row => row.length);
+
+    const text = await this.withBotFooter(view.text);
+    if (messageId) {
+      const res = await this.editMessageText(chatId, messageId, text, keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) {
+        await this.answerCallbackQuery(cb.id, 'محدّثة ✅');
+        return;
+      }
+    }
+    await this.sendMessage(chatId, text, keyboard);
+    await this.answerCallbackQuery(cb.id, '');
+  }
+
   private async buildGamesMenu(section: string): Promise<{ text: string; keyboard: any[][] }> {
     const botUser = await this.getBotUsername();
     const back = [{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }];
@@ -1638,6 +1856,7 @@ export class TelegramBotManager {
           { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
         ]);
       }
+      rows.push([{ text: '📊 إحصائيات كود نيمز', callback_data: 'gstat:cn' }]);
       rows.push(back);
       return { text, keyboard: rows };
     }
@@ -1653,6 +1872,7 @@ export class TelegramBotManager {
             { text: '⚽ خمّن اللاعب 🔜', callback_data: 'hub:soon' },
             { text: '🎵 خمّن الأغنية 🔜', callback_data: 'hub:soon' }
           ],
+          [{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }],
           back
         ]
       };
@@ -1680,10 +1900,14 @@ export class TelegramBotManager {
         `⚔️ *فرق (4 ضد 4):* كود نيمز بقناة أو كروب. ضيف البوت كمشرف، وبعدين «📣 نزّل لعبة بقناتك» واختار قناتك.\n` +
         `🧠 *خمّن:* خمّن الكلمة تنلعب هنا بالخاص: اضغط الحروف من اللوحة — 🟩 بمكانه، 🟨 موجود بمكان ثاني، ⬜ مو بالكلمة، وعندك 6 محاولات.\n` +
         `🎲 *حظ:* عجلة الحظ تدوّرها وتشوف حظك.\n\n` +
-        `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط، وقريباً تنزل لوحة شرف بالأبطال.`;
+        `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط، وتشوف ترتيبك بلوحة الأبطال.\n` +
+        `📊 *الإحصائيات:* تشوف أرقام كل الألعاب وأصنافها — مفتوحة للكل.`;
       return {
         text,
-        keyboard: [[{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }]]
+        keyboard: [
+          [{ text: '📊 الإحصائيات', callback_data: 'gstat:main' }],
+          [{ text: '🔙 رجوع للرئيسية', callback_data: 'hub:main' }]
+        ]
       };
     }
 
@@ -1703,9 +1927,10 @@ export class TelegramBotManager {
           { text: '🎲 ألعاب الحظ', callback_data: 'hub:luck' }
         ],
         [
-          { text: '📣 نزّل لعبة بقناتك', callback_data: 'hub:channel' },
+          { text: '📊 الإحصائيات', callback_data: 'gstat:main' },
           { text: '❓ كيف ألعب؟', callback_data: 'hub:help' }
-        ]
+        ],
+        [{ text: '📣 نزّل لعبة بقناتك', callback_data: 'hub:channel' }]
       ]
     };
   }
@@ -2515,12 +2740,6 @@ export class TelegramBotManager {
     const channels = chats.filter(c => c.type === 'channel');
     const groups = chats.filter(c => c.type === 'group' || c.type === 'supergroup');
 
-    const games = Array.from(this.games.values());
-    const active = games.filter(g => g.status !== 'game_over').length;
-    const finished = this.completedGames.length;
-    const blueWins = this.completedGames.filter(g => g.winner === 'blue').length;
-    const redWins = this.completedGames.filter(g => g.winner === 'red').length;
-
     // In how many of those channels is the bot an admin?
     let adminIn = 0;
     if (this.botInfo?.id && channels.length) {
@@ -2541,12 +2760,9 @@ export class TelegramBotManager {
       `🛡️ الحظر التلقائي للسباب: ${this.autoBan ? 'مفعّل ✅' : 'معطّل ❌'}\n\n` +
       `💬 *المحادثات:* ${chats.length}\n` +
       `📣 القنوات: ${channels.length} — البوت مشرف بـ ${adminIn}\n` +
-      `👥 المجموعات: ${groups.length}\n\n` +
-      `🎮 *الألعاب:*\n` +
-      `⏳ الجارية الآن: ${active}\n` +
-      `🏁 المكتملة: ${finished}\n` +
-      `🔵 فاز الأزرق: ${blueWins} | 🔴 فاز الأحمر: ${redWins}\n` +
+      `👥 المجموعات: ${groups.length}\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
+      `📊 إحصائيات الألعاب: من زر «📊 إحصائيات الألعاب» تحت.\n` +
       `🕒 آخر تحديث: ${this.stamp(Date.now())}`
     );
   }
@@ -2558,6 +2774,7 @@ export class TelegramBotManager {
 
     return [
       [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
+      [{ text: '📊 إحصائيات الألعاب', callback_data: 'gstat:main' }],
       [
         { text: `👥 المستخدمون (${users.length})`, callback_data: 'admin:list:all:0' },
         { text: `🛑 المحظورون (${banned})`, callback_data: 'admin:list:banned:0' }
