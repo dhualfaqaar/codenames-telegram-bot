@@ -665,8 +665,8 @@ export class CodenamesEngine {
     const seat = (role: PlayerRole, roleLabel: string, index: number) => {
       const player = list.find(p => p.role === role);
       return player
-        ? `${index}. ${this.nameTag(player.name)} — ${roleLabel} _﹙مشغول﹚_`
-        : `${index}. ⬜ — ${roleLabel} _﹙فارغ﹚_`;
+        ? `${index}. ${this.nameTag(player.name)} — ${roleLabel}`
+        : `${index}. ⬜ — ${roleLabel} _(فارغ)_`;
     };
 
     return [
@@ -761,9 +761,9 @@ export class CodenamesEngine {
    */
   public static getTelegramInlineKeyboard(game: CodenamesGame): any[][] {
     if (game.status === 'lobby') {
-      // حالة كل مقعد: فارغ / مشغول — تنعرض بنفس ترتيب الأزرار.
+      // حالة المقعد الفاضي بس — المقعد المأخوذ ما يحتاج كتابة.
       const state = (team: Team, role: PlayerRole) =>
-        game.players.some(p => p.team === team && p.role === role) ? '﹙مشغول﹚' : '﹙فارغ﹚';
+        game.players.some(p => p.team === team && p.role === role) ? '' : ' (فارغ)';
 
       return [
         [
@@ -778,8 +778,8 @@ export class CodenamesEngine {
           {
             text: (game.players.filter(p => p.team === 'blue').length >= 2 &&
               game.players.filter(p => p.team === 'red').length >= 2)
-              ? 'ابدأ اللعبة 🚀 ﹙اللعبة كاملة ✅﹚'
-              : 'ابدأ اللعبة 🚀 ﹙قيد الانتظار ⏳﹚',
+              ? 'ابدأ اللعبة 🚀 (اللعبة كاملة ✅)'
+              : 'ابدأ اللعبة 🚀 (قيد الانتظار ⏳)',
             callback_data: 'game:start'
           }
         ]
