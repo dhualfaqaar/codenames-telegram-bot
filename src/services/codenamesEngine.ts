@@ -607,21 +607,29 @@ export class CodenamesEngine {
   }
 
   /**
-   * One team's roster: a title line then a line per player.
+   * One team's roster: always shows the two seats of the team
+   * (قائد جاسوس + عميل). An empty seat is shown as «مقعد فاضي» so everyone
+   * knows exactly which role is still free.
    */
   public static teamRoster(game: CodenamesGame, team: Team): string {
     const list = game.players.filter(p => p.team === team);
     const title =
-      team === 'blue' ? `🔵 *الفريق الأزرق* (${list.length})` : `🔴 *الفريق الأحمر* (${list.length})`;
+      team === 'blue'
+        ? `🔵 *الفريق الأزرق* (${list.length}/2)`
+        : `🔴 *الفريق الأحمر* (${list.length}/2)`;
 
-    if (!list.length) return `${title}\n• _لا أحد بعد_`;
+    const seat = (role: PlayerRole, roleLabel: string, index: number) => {
+      const player = list.find(p => p.role === role);
+      return player
+        ? `${index}. ${this.nameTag(player.name)} — ${roleLabel}`
+        : `${index}. ⬜ _مقعد فاضي_ — ${roleLabel}`;
+    };
 
-    const lines = list.map((p, index) =>
-      p.role === 'spymaster'
-        ? `${index + 1}. ${this.nameTag(p.name)} — قائد جاسوس 🕵️`
-        : `${index + 1}. ${this.nameTag(p.name)} — عميل 👤`
-    );
-    return `${title}\n${lines.join('\n')}`;
+    return [
+      title,
+      seat('spymaster', 'قائد جاسوس 🕵️', 1),
+      seat('operative', 'عميل 👤', 2)
+    ].join('\n');
   }
 
   /**
