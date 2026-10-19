@@ -763,8 +763,8 @@ export class CodenamesEngine {
     if (game.status === 'lobby') {
       return [
         [
-          { text: 'انضم كـ عميل أزرق 🔵', callback_data: 'join:blue:operative' },
-          { text: 'انضم كـ عميل أحمر 🔴', callback_data: 'join:red:operative' }
+          { text: 'عميل أزرق 🔵', callback_data: 'join:blue:operative' },
+          { text: 'عميل أحمر 🔴', callback_data: 'join:red:operative' }
         ],
         [
           { text: 'قائد أزرق 🕵️‍♂️', callback_data: 'join:blue:spymaster' },

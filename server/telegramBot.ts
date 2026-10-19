@@ -71,6 +71,19 @@ interface TelegramUpdate {
   my_chat_member?: TelegramChatMemberUpdated;
 }
 
+/**
+ * كلمات شائعة جداً — البوت ما يتعلمها أبداً كإساءة، حتى لا ينحظر إنسان بريء
+ * بالغلط لمجرد إنه كتب كلمة عادية مثلها مثل البقية.
+ */
+const STOP_WORDS = new Set([
+  'انت', 'انتي', 'انتو', 'انا', 'احنا', 'هذا', 'هاذ', 'هذه', 'هسه', 'هذول',
+  'هو', 'هي', 'هم', 'كان', 'كانت', 'على', 'الي', 'اللي', 'شو', 'شنو', 'ليش',
+  'كيف', 'وين', 'مثل', 'بس', 'ما', 'لا', 'مو', 'يا', 'من', 'في', 'عن', 'مع',
+  'الى', 'قال', 'زين', 'طيب', 'اوكي', 'حبيبي', 'هلا', 'مرحبا', 'السلام',
+  'عليكم', 'مساء', 'صباح', 'الخير', 'شكرا', 'اريد', 'اكو', 'اكيد', 'بعد',
+  'قبل', 'كلش', 'وايد', 'برب', 'تمام', 'اوك'
+]);
+
 /** Everything the bot knows about one of its users. */
 interface BotUserRecord {
   id: string;
@@ -147,6 +160,12 @@ export class TelegramBotManager {
    * the owner back to the user it came from, so the owner can reply "حظر".
    */
   private inboxMap: Map<string, string> = new Map();
+  /** owner-message id -> the original text of the delivered message (for learning) */
+  private inboxRaw: Map<string, string> = new Map();
+  /** كلمات إساءة تعلّمها البوت من قرارات صاحب البوت نفسه (رد «حظر») */
+  private bannedWords: string[] = [];
+  /** الحظر التلقائي للسبّابين: يشتغل/ينطفي من اللوحة */
+  private autoBan: boolean = true;
 
   constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
@@ -464,7 +483,10 @@ export class TelegramBotManager {
       ownerId: this.ownerId,
       ownerAlerts: this.ownerAlerts,
       ownerInbox: this.ownerInbox,
-      inboxMap: Array.from(this.inboxMap.entries())
+      inboxMap: Array.from(this.inboxMap.entries()),
+      inboxRaw: Array.from(this.inboxRaw.entries()),
+      bannedWords: this.bannedWords,
+      autoBan: this.autoBan
     };
   }
 
@@ -484,6 +506,9 @@ export class TelegramBotManager {
     if (typeof state.ownerAlerts === 'boolean') this.ownerAlerts = state.ownerAlerts;
     if (typeof state.ownerInbox === 'boolean') this.ownerInbox = state.ownerInbox;
     if (Array.isArray(state.inboxMap)) this.inboxMap = new Map(state.inboxMap);
+    if (Array.isArray(state.inboxRaw)) this.inboxRaw = new Map(state.inboxRaw);
+    if (Array.isArray(state.bannedWords)) this.bannedWords = state.bannedWords;
+    if (typeof state.autoBan === 'boolean') this.autoBan = state.autoBan;
   }
 
   public setToken(token: string) {
@@ -733,6 +758,9 @@ export class TelegramBotManager {
 
         if (clean === 'حظر' || clean === 'حض' || clean === 'بلك' || clean === 'block' || clean === 'حظر!') {
           await this.setBanned(targetId, true);
+          // البوت يتعلّم من قرارك: نفس الكلام بعد لا يمرّ على أي واحد ثاني.
+          const raw = this.inboxRaw.get(String(message.reply_to_message.message_id));
+          if (raw) this.learnAbuse(raw);
           await this.sendMessage(
             chatId,
             `🛑 *تم الحظر:* ${this.linkUser(target)}\n` +
@@ -810,8 +838,34 @@ export class TelegramBotManager {
     //  1) يوصل لصاحب البوت (الاسم أزرق + الآيدي + النص) حتى يعرف منو اللي يسيء.
     //  2) والشخص ما يشوف إلا رسالة شرح اللعبة — ولا شي غيرها بالدنيا.
     if (message.chat.type === 'private' && sender && !this.isOwner(sender.id)) {
-      await this.forwardToOwnerInbox(message, sender);
+      // 0) السباب: إذا الرسالة بيها إساءة واضحة → حظر تلقائي فوري وبلا أي رد.
+      const abuse = this.autoBan ? this.checkAbuse(text) : { ban: false, flag: false };
+      if (abuse.ban) {
+        const rec = this.trackUser(sender, false);
+        await this.setBanned(rec.id, true);
+        this.learnAbuse(text);
+        const alert = await this.notifyOwner(
+          `🛡️ *حظر تلقائي (سباب)*\n` +
+            `👤 ${this.linkUser(rec)}\n` +
+            `🆔 \`${rec.id}\`\n` +
+            `━━━━━━━━━━━━━━━━━━━\n` +
+            `${this.escapeMd(text)}\n` +
+            `━━━━━━━━━━━━━━━━━━━\n` +
+            `📴 البوت صار يتجاهله تماماً.\n` +
+            `_(إذا تريد ترجّعه: رد هنا واكتب: الغاء الحظر)_`
+        );
+        const alertId = alert?.result?.message_id;
+        if (alertId) {
+          this.inboxMap.set(String(alertId), rec.id);
+          this.trimInboxMap();
+        }
+        return;
+      }
 
+      // 1) يوصل لصاحب البوت (الاسم أزرق + الآيدي + النص) حتى يعرف منو اللي يسيء.
+      await this.forwardToOwnerInbox(message, sender, abuse.flag);
+
+      // 2) والشخص ما يشوف إلا رسالة شرح اللعبة — ولا شي غيرها بالدنيا.
       const rec = this.users.get(String(sender.id));
       const now = Date.now();
       if (!rec || !rec.lastWelcome || now - rec.lastWelcome > 10000) {
@@ -878,6 +932,15 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(
           cb.id,
           this.ownerInbox ? '📨 وصل الرسائل: مفعّل' : '📴 وصل الرسائل: معطّل'
+        );
+        await this.sendAdminPanel(chatId, messageId);
+        return;
+      }
+      if (data === 'admin:autoban') {
+        this.autoBan = !this.autoBan;
+        await this.answerCallbackQuery(
+          cb.id,
+          this.autoBan ? '🛡️ الحظر التلقائي: مفعّل' : '🛡️ الحظر التلقائي: معطّل'
         );
         await this.sendAdminPanel(chatId, messageId);
         return;
@@ -1035,6 +1098,16 @@ export class TelegramBotManager {
 
       let alertText = result.message;
       let showAlert = false;
+
+      // If he was already in the lobby, this press MOVED him (his old seat is free now).
+      if (mine) {
+        const oldRole = mine.role === 'spymaster' ? 'قائد جاسوس 🕵️' : 'عميل 👤';
+        const oldTeam = mine.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+        alertText =
+          `🔄 نقلناك من مقعدك القديم (${oldRole} — ${oldTeam}) إلى ${result.message}\n` +
+          `📌 مقعدك القديم صار فاضي لواحد ثاني.`;
+        showAlert = true;
+      }
       if (role === 'spymaster') {
         // Spymasters must be reachable in private chat for the no-command clue input
         const dm = await this.sendMessage(
@@ -1791,6 +1864,103 @@ export class TelegramBotManager {
   }
 
   // ---------------------------------------------------------------------
+  // حماية البوت من السباب (moderation)
+  // ---------------------------------------------------------------------
+  /**
+   * أسوأ الكلمات — إذا انوجدت بالرسالة *ككلمة كاملة* ينحظر صاحبها تلقائياً.
+   * مكتوبة بصيغتها المُوحّدة (بلا همزات/تشكيل، ة = ه، ى = ي).
+   */
+  private static readonly ABUSE_HARD: string[] = [
+    'كس', 'كسك', 'كسه', 'كسها', 'كسم', 'كسمك', 'كسامك', 'كسخت', 'كسختك', 'كسكم',
+    'زب', 'زبك', 'زبه', 'زبي', 'زبر', 'زبرك',
+    'طيز', 'طيزك', 'طيزه',
+    'كساس', 'نيكامك', 'نيكاختك', 'نيكك', 'نياك',
+    'شرموط', 'شرموطه', 'شرموطك', 'شرمطه',
+    'قحبه', 'قحبت', 'قحبتك', 'قحاب',
+    'عرص', 'عرصه', 'عرصك', 'عرصات',
+    'دعره', 'عاهره', 'عاهر', 'زانيه',
+    'لوطي', 'لواط', 'منيك', 'منيوك', 'منيوكه',
+    'fuck', 'fucker', 'fucking', 'bitch', 'whore', 'slut', 'cunt', 'asshole',
+    'nigger', 'nigga', 'bastard'
+  ];
+
+  /**
+   * كلمات بذيئة/خفيفة — تُعلَّم فقط بعلامة ⚠️ وينتظر قرار صاحب البوت
+   * (حتى لا ينحظر إنسان بريء بالغلط).
+   */
+  private static readonly ABUSE_SOFT: string[] = [
+    'كلب', 'كلبه', 'كلبك', 'كلاب', 'حمار', 'حماره', 'خنزير', 'خنزيره', 'خول',
+    'غبي', 'غبيه', 'اهبل', 'هبل', 'مجنون', 'مجنونه', 'معتوه', 'حقير', 'حقيره',
+    'قرد', 'تيس', 'بقره', 'وضيع', 'فاشل', 'فاشله', 'زفت', 'خرا', 'خرائي', 'وسخ',
+    'عاهر', 'عاهره', 'زانيه', 'يلعن', 'لعنه', 'ملعون', 'انقلع', 'تخسا', 'نيك',
+    'fuck', 'shit', 'bitch', 'asshole', 'bastard', 'dick', 'pussy', 'whore',
+    'slut', 'cunt', 'idiot', 'stupid', 'moron'
+  ];
+
+  /**
+   * توحيد النص حتى الإساءة تنمسك مهما تلاعبوا بالكتابة:
+   * همزات، تشكيل، تطويل، محارف مخفية، ة/ه، ى/ي، حروف فارسية، رموز وإيموجي.
+   */
+  private normalizeAbuse(text: string): { compact: string; tokens: string[] } {
+    const cleaned = String(text || '')
+      .toLowerCase()
+      .replace(/[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, '')
+      .replace(/[\u064b-\u0652\u0640]/g, '')
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ىئ]/g, 'ي')
+      .replace(/ؤ/g, 'و')
+      .replace(/ة/g, 'ه')
+      .replace(/[کڪ]/g, 'ك')
+      .replace(/ی/g, 'ي')
+      .replace(/[گ]/g, 'ك')
+      .replace(/[چ]/g, 'ج')
+      .replace(/[ڤ]/g, 'ف')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const tokens = cleaned.split(' ').filter(Boolean);
+    return { compact: tokens.join(''), tokens };
+  }
+
+  /** هل الرسالة سباب؟ (الحظر التلقائي للواضح بس) */
+  private checkAbuse(text: string): { ban: boolean; flag: boolean } {
+    const { compact, tokens } = this.normalizeAbuse(text);
+    if (!compact) return { ban: false, flag: false };
+
+    const hard = new Set([...TelegramBotManager.ABUSE_HARD, ...this.bannedWords]);
+    const soft = new Set(TelegramBotManager.ABUSE_SOFT);
+
+    // إذا الرسالة كلها كلمة وحدة → حظر (حتى لو كاتبها «ك س م» متفرقة)
+    if (hard.has(compact)) return { ban: true, flag: true };
+
+    // المرشحين: كل كلمة، وكل كلمتين ملزوقات («نيك» + «امك» = «نيكامك»)
+    const candidates = [...tokens];
+    for (let i = 0; i < tokens.length - 1; i++) {
+      candidates.push(tokens[i] + tokens[i + 1]);
+    }
+
+    if (candidates.some(w => hard.has(w))) return { ban: true, flag: true };
+    return { ban: false, flag: candidates.some(w => soft.has(w)) };
+  }
+
+  /** تعلّم كلمة إساءة جديدة من قرار صاحب البوت (رد «حظر»). */
+  private learnAbuse(text: string) {
+    const { compact, tokens } = this.normalizeAbuse(text);
+    if (!compact || compact.length > 40) return;
+    // نتعلّم نص الرسالة كامل (نفس الكلام بعد لا يمرّ)
+    if (!this.bannedWords.includes(compact)) this.bannedWords.push(compact);
+    // وإذا كانت الرسالة كلها كلمة وحدة، نتعلم الكلمة نفسها حتى لو جت داخل جملة.
+    if (tokens.length === 1) {
+      const token = tokens[0];
+      if (token.length >= 3 && !STOP_WORDS.has(token) && !this.bannedWords.includes(token)) {
+        this.bannedWords.push(token);
+      }
+    }
+    if (this.bannedWords.length > 200) this.bannedWords = this.bannedWords.slice(-200);
+  }
+
+  // ---------------------------------------------------------------------
   // Users, chats and the owner dashboard
   // ---------------------------------------------------------------------
 
@@ -1852,7 +2022,10 @@ export class TelegramBotManager {
     if (this.inboxMap.size <= max) return;
     const extra = this.inboxMap.size - max;
     const keys = Array.from(this.inboxMap.keys());
-    for (let i = 0; i < extra; i++) this.inboxMap.delete(keys[i]);
+    for (let i = 0; i < extra; i++) {
+      this.inboxMap.delete(keys[i]);
+      this.inboxRaw.delete(keys[i]);
+    }
   }
 
   /**
@@ -1861,7 +2034,7 @@ export class TelegramBotManager {
    * The owner sees the text, the sender's id and his name as a BLUE link, and
    * he can simply reply to that message with «حظر» to ban the sender.
    */
-  private async forwardToOwnerInbox(message: TelegramMessage, sender: TelegramUser) {
+  private async forwardToOwnerInbox(message: TelegramMessage, sender: TelegramUser, warn = false) {
     if (!this.ownerId || !this.ownerInbox) return;
     if (message.chat.type !== 'private') return;
     if (this.isOwner(sender.id)) return;
@@ -1898,6 +2071,7 @@ export class TelegramBotManager {
 
     const header =
       `📨 *رسالة جديدة للبوت*\n` +
+      (warn ? `⚠️ *يبدو بيها كلام مسيء* — راجعها وقرّر.\n` : '') +
       `👤 ${this.linkUser(rec)}\n` +
       `🆔 \`${rec.id}\`\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
@@ -1909,6 +2083,7 @@ export class TelegramBotManager {
     const sentId = sent?.result?.message_id;
     if (sentId) {
       this.inboxMap.set(String(sentId), rec.id);
+      if (message.text) this.inboxRaw.set(String(sentId), message.text);
       this.trimInboxMap();
     }
 
@@ -1954,8 +2129,8 @@ export class TelegramBotManager {
 
   /** Send an alert to the bot owner. */
   private async notifyOwner(text: string) {
-    if (!this.ownerId) return;
-    await this.sendMessage(this.ownerId, text);
+    if (!this.ownerId) return undefined;
+    return await this.sendMessage(this.ownerId, text);
   }
 
   /**
@@ -2032,7 +2207,8 @@ export class TelegramBotManager {
       `✅ شغّلوا البوت: ${started}\n` +
       `🚫 حظروا البوت: ${blocked}\n` +
       `🛑 حظرتهم إنت: ${banned}\n` +
-      `📨 وصول رسائل الناس إلك: ${this.ownerInbox ? 'مفعّل ✅' : 'معطّل ❌'}\n\n` +
+      `📨 وصول رسائل الناس إلك: ${this.ownerInbox ? 'مفعّل ✅' : 'معطّل ❌'}\n` +
+      `🛡️ الحظر التلقائي للسباب: ${this.autoBan ? 'مفعّل ✅' : 'معطّل ❌'}\n\n` +
       `💬 *المحادثات:* ${chats.length}\n` +
       `📣 القنوات: ${channels.length} — البوت مشرف بـ ${adminIn}\n` +
       `👥 المجموعات: ${groups.length}\n\n` +
@@ -2067,6 +2243,10 @@ export class TelegramBotManager {
         {
           text: this.ownerAlerts ? '🔔 الإشعارات: ✅' : '🔕 الإشعارات: ❌',
           callback_data: 'admin:alerts'
+        },
+        {
+          text: this.autoBan ? '🛡️ الحظر التلقائي: ✅' : '🛡️ الحظر التلقائي: ❌',
+          callback_data: 'admin:autoban'
         }
       ]
     ];
