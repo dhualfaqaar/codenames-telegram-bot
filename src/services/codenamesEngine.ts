@@ -578,23 +578,26 @@ export class CodenamesEngine {
   }
 
   /**
-   * Compact roster line so everyone can see who is playing (and who is the spymaster).
+   * Player list, one team per block, and every player with their role in brackets.
    */
   public static rosterLine(game: CodenamesGame): string {
-    if (!game.players.length) return '';
-    const label = (team: Team) => {
-      const list = game.players
-        .filter(p => p.team === team)
-        .map(p => (p.role === 'spymaster' ? `${p.name} 🕵️` : p.name));
-      return list.length ? list.join(' · ') : '_لا أحد_';
-    };
-    const line = `👥 🔵 ${label('blue')} | 🔴 ${label('red')}`;
-    if (line.length > 150) {
-      const blue = game.players.filter(p => p.team === 'blue').length;
-      const red = game.players.filter(p => p.team === 'red').length;
-      return `👥 🔵 ${blue} لاعبين | 🔴 ${red} لاعبين`;
-    }
-    return line;
+    return `${this.teamRoster(game, 'blue')}\n\n${this.teamRoster(game, 'red')}`;
+  }
+
+  /**
+   * One team's roster: a title line then a line per player.
+   */
+  public static teamRoster(game: CodenamesGame, team: Team): string {
+    const list = game.players.filter(p => p.team === team);
+    const title =
+      team === 'blue' ? `🔵 *الفريق الأزرق* (${list.length})` : `🔴 *الفريق الأحمر* (${list.length})`;
+
+    if (!list.length) return `${title}\n• _لا أحد بعد_`;
+
+    const lines = list.map(p =>
+      p.role === 'spymaster' ? `• ${p.name} (قائد جاسوس 🕵️)` : `• ${p.name} (عميل 👤)`
+    );
+    return `${title}\n${lines.join('\n')}`;
   }
 
   /**
@@ -604,26 +607,14 @@ export class CodenamesEngine {
     const { blueRemaining, redRemaining } = this.getScores(game);
 
     if (game.status === 'lobby') {
-      const bluePlayers = game.players.filter(p => p.team === 'blue');
-      const redPlayers = game.players.filter(p => p.team === 'red');
-      const blueSpy = bluePlayers.find(p => p.role === 'spymaster');
-      const redSpy = redPlayers.find(p => p.role === 'spymaster');
-      const operatives = (list: Player[]) =>
-        list.filter(p => p.role !== 'spymaster').map(p => p.name).join(' · ');
-      const spyLine = (spy?: Player) => (spy ? spy.name : '_لم يُحدد بعد_');
-
       return `🕵️‍♂️ *لعبة كود نيمز (Codenames)* 🕵️‍♀️\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         `👥 *المنضمون الآن:* ${game.players.length}\n\n` +
-        `🔵 *الفريق الأزرق* (${bluePlayers.length})\n` +
-        `• القائد: ${spyLine(blueSpy)}\n` +
-        `• العملاء: ${operatives(bluePlayers) || '_لا يوجد_'}\n\n` +
-        `🔴 *الفريق الأحمر* (${redPlayers.length})\n` +
-        `• القائد: ${spyLine(redSpy)}\n` +
-        `• العملاء: ${operatives(redPlayers) || '_لا يوجد_'}\n\n` +
+        `${this.teamRoster(game, 'blue')}\n\n` +
+        `${this.teamRoster(game, 'red')}\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `1️⃣ كل واحد يضغط زر فريقه (قائد 🕵️ أو عميل 👤).\n` +
-        `2️⃣ كل فريق يحتاج *قائد* واحد و*عميل* واحد على الأقل.\n` +
+        `1️⃣ كل واحد يضغط زر فريقه (قائد جاسوس 🕵️ أو عميل 👤).\n` +
+        `2️⃣ كل فريق يحتاج *قائد جاسوس* واحد و*عميل* واحد على الأقل.\n` +
         `3️⃣ لما ينضمون كلكم — *المشرف صاحب اللعبة* يضغط (ابدأ اللعبة 🚀).\n` +
         `⚠️ غير المشرف ما يقدر يبدأ اللعبة.`;
     }
