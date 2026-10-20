@@ -2804,32 +2804,24 @@ export class TelegramBotManager {
     return { text, keyboard };
   }
 
-  /** رسالة كيبورد «نزّل لعبة بقناتك» (بها زر اختيار القناة الرسمي) */
+  /** رسالة كيبورد لاختيار القناة مباشرة (يفتح picker القنوات فوراً) */
   private async sendChannelKeyboard(chatId: string) {
-    const botUser = await this.getBotUsername();
-    const rows: any[][] = [];
-    if (botUser) {
-      rows.push([
-        { text: '➕ ضيف البوت لقناتك (مشرف)', url: `https://t.me/${botUser}?startchannel=true` }
-      ]);
-    }
-    rows.push([
-      {
-        text: '📣 شارك اللعبة في قناتك',
-        request_chat: { request_id: 1, chat_is_channel: true, bot_is_member: true }
-      }
-    ]);
-    if (botUser) {
-      rows.push([
-        { text: '➕ ضيف البوت لمجموعتك', url: `https://t.me/${botUser}?startgroup=codenames` }
-      ]);
-    }
+    const rows: any[][] = [
+      [
+        {
+          text: '🎮 اختيار القناة لنشر اللعبة',
+          request_chat: {
+            request_id: 1,
+            chat_is_channel: true,
+            bot_is_member: false
+          }
+        }
+      ]
+    ];
     await this.sendMessageRaw(
       chatId,
-      `📣 *نزّل لعبة بقناتك*\n` +
-        `1️⃣ ضيف البوت لقناتك كمشرف (Admin) — من الزر الأول.\n` +
-        `2️⃣ ارجع هنا واضغط «📣 شارك اللعبة في قناتك» (زر بالأسفل 👇).\n` +
-        `3️⃣ اختار قناتك — تنتزل اللعبة هناك وتكمل بالأزرار.`,
+      `🎮 *اختر القناة لنشر اللعبة*\n\n` +
+        `اضغط الزر بالأسفل 👇 يطلع لك قائمة قنواتك مباشرة، اختار القناة اللي تريد تنشر اللعبة فيها (البوت لازم يكون مشرف بالقناة).`,
       { keyboard: rows, resize_keyboard: true, one_time_keyboard: true }
     );
   }
