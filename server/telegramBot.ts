@@ -2065,7 +2065,7 @@ export class TelegramBotManager {
 
     // «🎮 العب بالقناة» → يرسل مباشرة اختيار القناة
     if (section === 'channel') {
-      await this.answerCallbackQuery(cb.id, '');
+      await this.answerCallbackQuery(cb.id);
       await this.sendChannelKeyboard(chatId);
       return;
     }
