@@ -3292,16 +3292,27 @@ export class TelegramBotManager {
       const xp = Economy.xpForResult('rps', won, 1);
       rec.xp = (rec.xp || 0) + xp;
       if (won) {
-        rec.money = Economy.roundMoney((rec.money || 0) + Economy.RPS_REWARD);
-        Economy.addEarned(rec, Economy.RPS_REWARD);
+        // فلوس RPS ضئيلة جداً وبس ضمن سقف يومي صغير خاص فيها
+        const today = Economy.earnedToday(rec);
+        const room = Math.max(0, Economy.RPS_DAILY_CAP - today);
+        const gain = Math.min(Economy.RPS_REWARD, room);
+        if (gain > 0) {
+          rec.money = Economy.roundMoney((rec.money || 0) + gain);
+          Economy.addEarned(rec, gain);
+        }
       }
       this.users.set(rec.id, rec);
     }
 
     if (winner) {
+      const rec = this.users.get(winner.id);
+      const capped = Boolean(rec) && Economy.earnedToday(rec!) >= Economy.RPS_DAILY_CAP;
+      const moneyLine = capped
+        ? `🔒 وصلت السقف اليومي لفلوس حجرة ورقة`
+        : `+${Economy.formatMoney(Economy.RPS_REWARD)} 💵`;
       await this.sendMessage(
         winner.id,
-        `🏆 *فزت بمباراة حجرة ورقة مقص!*\n+${Economy.RPS_REWARD} 💵\n+${Economy.xpForResult('rps', true, 1)} XP`
+        `🏆 *فزت بمباراة حجرة ورقة مقص!*\n${moneyLine}\n+${Economy.xpForResult('rps', true, 1)} XP`
       );
     }
     const loser = game.players.find(p => p.id !== game.winnerId);

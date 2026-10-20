@@ -31,11 +31,13 @@ export interface GameEconomy {
   note: string;
 }
 
-/** ⛔ أقصى ربح يومي للاعب الواحد — حتى يبقى الاقتصاد متوازن */
-export const DAILY_MONEY_CAP = 2.5;
+/** ⛔ أقصى ربح يومي للاعب الواحد — حتى يبقى الاقتصاد متوازن وصعب */
+export const DAILY_MONEY_CAP = 0.25;
 
-/** ✊ مكافأة الفوز بمباراة حجرة ورقة مقص */
-export const RPS_REWARD = 0.011;
+/** ✊ مكافأة الفوز بمباراة حجرة ورقة مقص (ضئيلة جداً) */
+export const RPS_REWARD = 0.001;
+/** ✊ أقصى ربح يومي من حجرة ورقة مقص لحالها */
+export const RPS_DAILY_CAP = 0.01;
 /** ✊ خبرة الفوز بمباراة حجرة ورقة مقص */
 export const RPS_XP = 4;
 
@@ -47,43 +49,43 @@ export const RPS_XP = 4;
 export const GAME_ECONOMY: Record<string, GameEconomy> = {
   // 🎮 لعبة قوية ومعقدة (فريق + جاسوس + تلميحات) — الأعلى = 15
   codenames: {
-    maxMoney: 0.75,
+    maxMoney: 0.06,
     winXp: 15,
     loseXp: 6,
     online: true,
-    note: 'الفائز ياخذ *0.14 – 0.75* 💵 حسب أداءه'
+    note: 'الفائز ياخذ *0.012 – 0.06* 💵 حسب أداءه'
   },
   // 🧠 متوسطة — تحتاج إبداع بالكلام
   rhyme: {
-    maxMoney: 0.12,
+    maxMoney: 0.012,
     winXp: 10,
     loseXp: 4,
     online: true,
-    note: 'الفائز ياخذ *0.03 – 0.12* 💵'
+    note: 'الفائز ياخذ *0.003 – 0.012* 💵'
   },
   // 📏 متوسطة — إبداع وطول بالكلمة
   longest: {
-    maxMoney: 0.12,
+    maxMoney: 0.012,
     winXp: 10,
     loseXp: 4,
     online: true,
-    note: 'الفائز ياخذ *0.03 – 0.12* 💵'
+    note: 'الفائز ياخذ *0.003 – 0.012* 💵'
   },
   // 🔢 خفيفة — سرعة ومنطق
   math: {
-    maxMoney: 0.08,
+    maxMoney: 0.008,
     winXp: 7,
     loseXp: 3,
     online: true,
-    note: 'الفائز ياخذ *0.02 – 0.08* 💵'
+    note: 'الفائز ياخذ *0.002 – 0.008* 💵'
   },
-  // ✊ بسيطة وحظّية — 3 أو 4 بس
+  // ✊ بسيطة وحظّية — فلوس ضئيلة جداً وبشرط
   rps: {
-    maxMoney: 0.011,
+    maxMoney: 0.003,
     winXp: 4,
     loseXp: 2,
     online: true,
-    note: 'لعبة بسيطة — الفائز ياخذ *0.003 – 0.011* 💵 بس'
+    note: 'لعبة بسيطة — الفائز ياخذ *0.001* 💵 بس، وبحد يومي صغير'
   },
 
   // ── ألعاب البوت: صفر لكل شي (بلا فلوس بلا مستوى بلا إحصائيات أونلاين) ──
@@ -91,11 +93,11 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
   poet: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
   wheel: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
   guess_player: {
-    maxMoney: 0.12,
+    maxMoney: 0.012,
     winXp: 8,
     loseXp: 3,
     online: true,
-    note: 'من يخمن أول يفوز — *0.03 – 0.12* 💵'
+    note: 'من يخمن أول يفوز — *0.003 – 0.012* 💵'
   },
   guess_song: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' }
 };
@@ -118,13 +120,13 @@ export function moneyNote(gameId: string): string {
 
 /**
  * مجموع الخبرة المطلوب للوصول للمستوى (المستوى 1 = صفر).
- * القاعدة الذكية: كل ما زاد مستواك، يزيد الخبرة المطلوب للوصول للدرجة اللي بعده
- * (+50 عن كل مستوى سابق): المستوى 2 يحتاج 50 • 3 يحتاج 100 إضافية •
- * 4 يحتاج 150 • 5 يحتاج 200 • وهكذا (تدرّج سريع بصعودك).
+ * القاعدة الصعبة: كل مستوى يحتاج خبرة أكثر بكثير من اللي قبله،
+ * حتى توصل للمستويات العالية بصعوبة وبجهد طويل:
+ * المستوى 2 = 80 • 3 = 240 • 4 = 480 • 5 = 800 • وهكذا (تدرّج حاد).
  */
 export function xpForLevel(level: number): number {
   const l = Math.max(0, level);
-  return 25 * l * (l - 1);
+  return 40 * l * (l - 1);
 }
 
 /** المستوى حسب مجموع الخبرة */
