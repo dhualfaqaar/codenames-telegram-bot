@@ -2720,18 +2720,9 @@ export class TelegramBotManager {
         // إحصائيات اللعبة نفسها
         keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
 
-        // العب في القناة - يفتح picker القنوات مباشرة
+        // العب في القناة
         if (game.channel) {
-          keyboard.push([
-            {
-              text: '🎮 العب بالقناة',
-              request_chat: {
-                request_id: 2000,
-                chat_is_channel: true,
-                bot_is_member: false
-              }
-            }
-          ]);
+          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
         }
 
         // العب مع البوت
@@ -2813,7 +2804,7 @@ export class TelegramBotManager {
     return { text, keyboard };
   }
 
-  /** اختيار القناة مباشرة (Inline) يفتح picker القنوات فوراً بدون رسالة إضافية */
+  /** اختيار القناة مباشرة يفتح picker القنوات فوراً */
   private async sendChannelKeyboard(chatId: string) {
     const keyboard = [
       [
@@ -2827,7 +2818,11 @@ export class TelegramBotManager {
         }
       ]
     ];
-    await this.sendMessageRaw(chatId, '🎮 اختر القناة ونشر اللعبة هناك:', { inline_keyboard: keyboard });
+    await this.sendMessageRaw(chatId, '🎮 اختر القناة لنشر اللعبة:', {
+      keyboard,
+      resize_keyboard: true,
+      one_time_keyboard: true
+    });
   }
 
   // ---------------------------------------------------------------------
