@@ -2506,11 +2506,11 @@ export class TelegramBotManager {
           `🏅 *المتصدرون*\n` +
           `اختار لوحة الترتيم اللي تبيها 👇\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
-          `💵 *بالفلوس* — من جمع أكثر عملة اللعبة الغالية\n` +
-          `🎖️ *بالمستوى* — الأعلى خبرة وأكمل مباريات مع ناس`,
+          `💵 *متصدرين بالفلوس* — من جمع أكثر عملة اللعبة الغالية\n` +
+          `🎖️ *متصدرين بالمستوى* — الأعلى خبرة وأكمل مباريات مع ناس`,
         keyboard: [
-          [{ text: '💵 المتصدرون بالفلوس', callback_data: 'rank:money' }],
-          [{ text: '🎖️ المتصدرون بالمستوى', callback_data: 'rank:level' }],
+          [{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }],
+          [{ text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }],
           [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
         ]
       };
@@ -2524,8 +2524,8 @@ export class TelegramBotManager {
 
     const tabs: any[][] = [
       [
-        { text: '💵 بالفلوس', callback_data: 'rank:money' },
-        { text: '🎖️ بالمستوى', callback_data: 'rank:level' }
+        { text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' },
+        { text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }
       ],
       [{ text: '👤 ملفي', callback_data: 'rank:me' }],
       [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
@@ -2533,7 +2533,7 @@ export class TelegramBotManager {
 
     // 🎖️ الأعلى مستوى
     if (section === 'level') {
-      const top = ranked.slice(0, 15);
+      const top = ranked.slice(0, 5);
       const lines = top.length
         ? top
             .map((u, i) => {
@@ -2551,7 +2551,7 @@ export class TelegramBotManager {
 
       return {
         text:
-          `🎖️ *المتصدرون بالمستوى*\n` +
+          `🎖️ *متصدرين بالمستوى* (أعلى 5)\n` +
           `_المستوى يزيد بكل مباراة تنلعبها مع ناس حقيقيين (فوز أو خسارة)_\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
           `${lines}\n` +
@@ -2604,7 +2604,7 @@ export class TelegramBotManager {
     }
 
     // 💰 الافتراضي: المتصدرون بالفلوس (كل الألعاب)
-    const top = rich.slice(0, 15);
+    const top = rich.slice(0, 5);
     const total = rich.reduce((s, u) => s + (u.money || 0), 0);
     const lines = top.length
       ? top
@@ -2621,7 +2621,7 @@ export class TelegramBotManager {
 
     return {
       text:
-        `💰 *المتصدرون بالفلوس*\n` +
+        `💰 *متصدرين بالفلوس* (أعلى 5)\n` +
         `_العملة غالية: الفائز ياخذ حسب أداءه، والفوز على مستوى أعلى يدفع أكثر_\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         `${lines}\n` +
@@ -2810,13 +2810,10 @@ export class TelegramBotManager {
         }
       ]);
     }
-    // 💵 الفلوس والمستوى: يشمل كل الألعاب → مكانه وي الأصناف
-    // (زر «ملفي ومستواي» انحذف — معلوماتك صارت بسطور فوق بأول رسالة /start)
+    // 💵 الفلوس والمستوى + القناة
     keyboard.push([
-      {
-        text: '📢 القناة',
-        url: 'https://t.me/pleasegodimtired'
-      }
+      { text: '🏅 المتصدرون', callback_data: 'rank:menu' },
+      { text: '📢 القناة', url: 'https://t.me/pleasegodimtired' }
     ]);
     return { text, keyboard };
   }
