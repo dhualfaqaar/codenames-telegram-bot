@@ -443,7 +443,7 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
       lines.push(
         game.players
           .map((p, i) => `> ${i + 1} \\- \\| *${wkMd(p.name)}* \\|`)
-          .join('\n\n')
+          .join('\n')
       );
     }
     if (notice) {
@@ -465,7 +465,7 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
             : `ثبّت ${p.answers.length} من ${game.questions.length} ✍️`;
           return `> \\| *${wkMd(p.name)}* \\| — ${st}`;
         })
-        .join('\n\n')
+        .join('\n')
     );
     return lines.join('\n');
   }
@@ -482,7 +482,7 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
             : `خمّن ${p.guesses.length} من ${game.questions.length} 🤔`;
           return `> \\| *${wkMd(p.name)}* \\| — ${st}`;
         })
-        .join('\n\n')
+        .join('\n')
     );
     return lines.join('\n');
   }
@@ -506,7 +506,7 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
   lines.push(
     sorted
       .map((p, i) => `> ${i + 1} \\- \\| *${wkMd(p.name)}* \\| — جاب *${p.score}* من *${total}* صح`)
-      .join('\n\n')
+      .join('\n')
   );
 
   // تفصيل البطاقات المكشوفة لكل شخص

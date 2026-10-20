@@ -180,7 +180,7 @@ export function renderGame(game: RPSGame): string {
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
+      lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n'));
     }
     lines.push(`🎯 الجولات: *${game.totalRounds}*`);
     return lines.join('\n');
@@ -197,14 +197,14 @@ export function renderGame(game: RPSGame): string {
     }
     lines.push(SEP);
     lines.push(`📊 *النتيجة النهائية:*`);
-    lines.push(sorted.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
+    lines.push(sorted.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n'));
     return lines.join('\n');
   }
 
   lines.push(`🎯 الجولة *${game.round}* من *${game.totalRounds}*`);
   lines.push(SEP);
   lines.push(`🏆 *النقاط:*`);
-  lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score, p.move ? ' ✅' : ' ⏳')).join('\n\n'));
+  lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score, p.move ? ' ✅' : ' ⏳')).join('\n'));
   return lines.join('\n');
 }
 

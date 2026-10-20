@@ -2351,20 +2351,9 @@ export class TelegramBotManager {
     // ── ✊✋✌️ حجرة ورقة مقص ──
     if (forcedGameId === 'rps') {
       const game = RPS.createGame(chatId, chatTitle, rounds ?? 5, String(createdBy ?? ''));
-      const prevRps = this.rpsGames.get(chatId);
       this.rpsGames.set(chatId, game);
       const text = await this.withBotFooter(RPS.renderGame(game), true);
       const keyboard = RPS.boardKeyboard(game);
-
-      if (prevRps?.messageId) {
-        const res = await this.editMessageText(chatId, prevRps.messageId, text, keyboard, 'MarkdownV2');
-        const unchanged = String(res?.description || '').includes('not modified');
-        if (res?.ok || unchanged) {
-          game.messageId = prevRps.messageId;
-          this.rpsGames.set(chatId, game);
-          return { messageId: prevRps.messageId };
-        }
-      }
 
       const sent = await this.sendMessage(chatId, text, keyboard, 'MarkdownV2');
       const msgId = sent?.result?.message_id;
@@ -2386,23 +2375,10 @@ export class TelegramBotManager {
       this.customWords,
       createdBy ?? existing?.createdBy
     );
-    const prevMessageId = existing?.messageId;
     this.games.set(chatId, game);
 
     const text = GG.toV2(await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game), true));
     const keyboard = await this.buildKeyboard(game);
-
-    // Reuse the previous board message (single-message mode).
-    // "message is not modified" also counts as success — nothing to change.
-    if (prevMessageId) {
-      const res = await this.editMessageText(chatId, prevMessageId, text, keyboard, 'MarkdownV2');
-      const unchanged = String(res?.description || '').includes('not modified');
-      if (res?.ok || unchanged) {
-        game.messageId = prevMessageId;
-        this.games.set(chatId, game);
-        return { messageId: prevMessageId };
-      }
-    }
 
     const sent = await this.sendMessage(chatId, text, keyboard, 'MarkdownV2');
     const msgId = sent?.result?.message_id;
@@ -2529,7 +2505,7 @@ export class TelegramBotManager {
       }
     }
 
-    await this.sendMessage(chatId, lines.join('\n\n'));
+    await this.sendMessage(chatId, lines.join('\n'));
 
     // If a round is already running, push the map + guide right away.
     for (const { game, player } of mine) {
@@ -2694,15 +2670,12 @@ export class TelegramBotManager {
     gameId?: string,
     rounds?: number
   ): Promise<{ ok: boolean; text: string }> {
-    // نظّف اللوحات القديمة بنفس القناة حتى تطلع الجديدة واضحة
+    // نبقي اللوحات السابقة موجودة بالقناة وما نحذفها أبداً — نبدأ لعبة جديدة بأسفلها فقط
     if (gameId === 'rps') {
-      const oldRps = this.rpsGames.get(channelId);
-      if (oldRps?.messageId) await this.deleteMessage(channelId, oldRps.messageId);
       this.rpsGames.delete(channelId);
     } else {
       const existing = this.games.get(channelId);
-      if (existing && existing.status === 'lobby' && existing.messageId) {
-        await this.deleteMessage(channelId, existing.messageId);
+      if (existing && existing.status === 'lobby') {
         this.games.delete(channelId);
       }
     }
@@ -2892,10 +2865,6 @@ export class TelegramBotManager {
 
     // ── 🤝 منو يعرف الثاني أكثر؟ ──
     if (isWkCard) {
-      const oldWk = this.wkGames.get(chatId);
-      if (oldWk?.messageId && oldWk.messageId !== message.message_id) {
-        await this.deleteMessage(chatId, oldWk.messageId);
-      }
       const wkGame = WK.createWKGame(chatId, message.chat.title || 'المحادثة');
       wkGame.messageId = message.message_id;
       if (message.from?.id) {
@@ -2918,15 +2887,7 @@ export class TelegramBotManager {
     if (gqMark) {
       const kind = gqMark[1];
 
-      // نمسح أي لعبة جماعية قديمة معلّقة بنفس المحادثة
-      const oldGq = this.gqGames.get(chatId);
-      if (oldGq?.messageId && oldGq.messageId !== message.message_id) {
-        await this.deleteMessage(chatId, oldGq.messageId);
-      }
-      const oldMm = this.mmGames.get(chatId);
-      if (oldMm?.messageId && oldMm.messageId !== message.message_id) {
-        await this.deleteMessage(chatId, oldMm.messageId);
-      }
+      // نبقي الرسائل السابقة موجودة بالقناة دون حذف — نستبدل المؤشر النشط فقط
       this.gqGames.delete(chatId);
       this.mmGames.delete(chatId);
 
@@ -2975,11 +2936,6 @@ export class TelegramBotManager {
       const r = rMatch ? parseInt(rMatch[1], 10) : 5;
       const rounds = [5, 10, 15].includes(r) ? r : 5;
 
-      const oldRps = this.rpsGames.get(chatId);
-      if (oldRps?.messageId && oldRps.messageId !== message.message_id) {
-        await this.deleteMessage(chatId, oldRps.messageId);
-      }
-
       let game = RPS.createGame(
         chatId,
         message.chat.title || 'المحادثة',
@@ -3009,7 +2965,6 @@ export class TelegramBotManager {
     // ── كود نيمز ──
     const existing = this.games.get(chatId);
     if (existing && existing.status === 'lobby' && existing.messageId && existing.messageId !== message.message_id) {
-      await this.deleteMessage(chatId, existing.messageId);
       this.games.delete(chatId);
     }
 
@@ -3309,13 +3264,28 @@ export class TelegramBotManager {
       return;
     }
 
-    // 🔄 لعبة جديدة
+    // 🔄 لعبة جديدة — نبقي نتيجة اللعبة السابقة محفوظة فوق ونرسل لوحة جديدة بأسفلها
     if (op === 'gqn') {
       const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind);
-      fresh.messageId = game.messageId;
-      fresh.inlineMessageId = game.inlineMessageId;
+      GG.quizJoin(fresh, playerId, playerName);
       this.gqGames.set(game.chatId, fresh);
-      await this.paintQuiz(fresh);
+      const sent = game.chatId
+        ? await this.sendMessage(
+            game.chatId,
+            await this.withBotFooter(GG.renderQuiz(fresh), true),
+            GG.quizKeyboard(fresh),
+            'MarkdownV2'
+          )
+        : null;
+      if (sent?.ok && sent.result?.message_id) {
+        fresh.messageId = sent.result.message_id;
+        this.gqGames.set(game.chatId, fresh);
+      } else {
+        fresh.messageId = game.messageId;
+        fresh.inlineMessageId = game.inlineMessageId;
+        this.gqGames.set(game.chatId, fresh);
+        await this.paintQuiz(fresh);
+      }
       await this.answerCallbackQuery(cb.id, '🔄 لعبة جديدة — انضموا!');
       return;
     }
@@ -3393,12 +3363,28 @@ export class TelegramBotManager {
       this.mmGames.set(cbChatId, game);
     }
 
-    // 🔄 لعبة جديدة
+    // 🔄 لعبة جديدة — نبقي نتيجة اللعبة السابقة محفوظة فوق ونرسل لوحة جديدة بأسفلها
     if (data.startsWith('mmn:')) {
       const fresh = GG.mmCreate(game.chatId, game.chatName);
-      fresh.messageId = game.messageId;
+      GG.mmJoin(fresh, playerId, playerName);
       this.mmGames.set(game.chatId, fresh);
-      await this.paintMM(fresh);
+      const sent = game.chatId
+        ? await this.sendMessage(
+            game.chatId,
+            await this.withBotFooter(GG.renderMM(fresh), true),
+            GG.mmKeyboard(fresh),
+            'MarkdownV2'
+          )
+        : null;
+      if (sent?.ok && sent.result?.message_id) {
+        fresh.messageId = sent.result.message_id;
+        this.mmGames.set(game.chatId, fresh);
+      } else {
+        fresh.messageId = game.messageId;
+        fresh.inlineMessageId = game.inlineMessageId;
+        this.mmGames.set(game.chatId, fresh);
+        await this.paintMM(fresh);
+      }
       await this.answerCallbackQuery(cb.id, '🔄 رقم سري جديد — انضموا!');
       return;
     }
@@ -3642,7 +3628,7 @@ export class TelegramBotManager {
 
       const lines = top.length
         ? top
-            .map((x, i) => this.quoteRow(i + 1, x.u.name, `(🏆 ${x.st.wins} فوز • ⭐ ${x.st.points} نقطة)`)).join('\n\n')
+            .map((x, i) => this.quoteRow(i + 1, x.u.name, `(🏆 ${x.st.wins} فوز • ⭐ ${x.st.points} نقطة)`)).join('\n')
         : '_لا يوجد متصدرون بعد_';
 
       const mySt = myRec ? this.userGqStat(myRec, gqKind) : { games: 0, wins: 0, points: 0 };
@@ -3687,7 +3673,7 @@ export class TelegramBotManager {
             .map((u, i) =>
               this.quoteRow(i + 1, u.name, `(🏆 ${u.wkWins || 0} فوز • 🃏 ${u.wkCorrect || 0} بطاقة صح)`)
             )
-            .join('\n\n')
+            .join('\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.wkGames || 0;
@@ -3775,7 +3761,7 @@ export class TelegramBotManager {
 
       const lines = topSolvers.length
         ? topSolvers
-            .map((u, i) => this.quoteRow(i + 1, u.name, `(${u.wordleWins || 0} كلمة)`)).join('\n\n')
+            .map((u, i) => this.quoteRow(i + 1, u.name, `(${u.wordleWins || 0} كلمة)`)).join('\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.wordleGames || 0;
@@ -3875,12 +3861,12 @@ export class TelegramBotManager {
 
       const spyLines = topSpies.length
         ? topSpies
-            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز)`)).join('\n\n')
+            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز)`)).join('\n')
         : '_لا يوجد جواسيس متصدرون بعد_';
 
       const winLines = winBoard.length
         ? winBoard
-            .map((w, i) => this.quoteRow(i + 1, w.name, `(🏆 ${w.wins} فوز)`)).join('\n\n')
+            .map((w, i) => this.quoteRow(i + 1, w.name, `(🏆 ${w.wins} فوز)`)).join('\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myId = String(viewerId);
@@ -4027,7 +4013,7 @@ export class TelegramBotManager {
 
       const pointsLines = topPoints.length
         ? topPoints
-            .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`)).join('\n\n')
+            .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`)).join('\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myPts = myRec?.points || 0;
@@ -4081,7 +4067,7 @@ export class TelegramBotManager {
     const topPoints = pointsBoard.slice(0, 5);
     const topLines = topPoints.length
       ? topPoints
-          .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`)).join('\n\n')
+          .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`)).join('\n')
       : '_لا يوجد متصدرون بعد_';
 
     const myPts = myRec?.points || 0;
@@ -5406,11 +5392,26 @@ export class TelegramBotManager {
 
     if (data.startsWith('wkn:')) {
       const fresh = WK.createWKGame(game.chatId, game.chatTitle || 'المحادثة');
-      fresh.messageId = game.messageId;
-      fresh.inlineMessageId = game.inlineMessageId;
       WK.wkJoin(fresh, uid, uname);
       this.wkGames.set(game.chatId, fresh);
-      await this.paintWKBoard(fresh);
+      const botUser = await this.getBotUsername();
+      const sent = game.chatId
+        ? await this.sendMessage(
+            game.chatId,
+            await this.withBotFooter(WK.renderWKBoard(fresh), true),
+            WK.wkBoardKeyboard(fresh, botUser),
+            'MarkdownV2'
+          )
+        : null;
+      if (sent?.ok && sent.result?.message_id) {
+        fresh.messageId = sent.result.message_id;
+        this.wkGames.set(game.chatId, fresh);
+      } else {
+        fresh.messageId = game.messageId;
+        fresh.inlineMessageId = game.inlineMessageId;
+        this.wkGames.set(game.chatId, fresh);
+        await this.paintWKBoard(fresh);
+      }
       await this.answerCallbackQuery(cb.id, '🔄 تحدٍّ جديد — بانتظار اللاعب الثاني!');
       return;
     }
