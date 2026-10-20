@@ -55,29 +55,29 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'الفائز ياخذ *0.012 – 0.06* 💵 حسب أداءه'
   },
-  // 🧠 متوسطة — تحتاج إبداع بالكلام
+  // 🧠 متوسطة — ألعاب كلمات مع البوت: نقاط بس
   rhyme: {
-    maxMoney: 0.012,
-    winXp: 10,
-    loseXp: 4,
-    online: true,
-    note: 'الفائز ياخذ *0.003 – 0.012* 💵'
+    maxMoney: 0,
+    winXp: 0,
+    loseXp: 0,
+    online: false,
+    note: 'لكل كلمة صح *+2* نقطة'
   },
-  // 📏 متوسطة — إبداع وطول بالكلمة
+  // 📏 متوسطة — ألعاب كلمات مع البوت: نقاط بس
   longest: {
-    maxMoney: 0.012,
-    winXp: 10,
-    loseXp: 4,
-    online: true,
-    note: 'الفائز ياخذ *0.003 – 0.012* 💵'
+    maxMoney: 0,
+    winXp: 0,
+    loseXp: 0,
+    online: false,
+    note: 'الفوز *+8* نقاط'
   },
-  // 🔢 خفيفة — سرعة ومنطق
+  // 🔢 خفيفة — مع البوت: نقاط بس
   math: {
-    maxMoney: 0.008,
-    winXp: 7,
-    loseXp: 3,
-    online: true,
-    note: 'الفائز ياخذ *0.002 – 0.008* 💵'
+    maxMoney: 0,
+    winXp: 0,
+    loseXp: 0,
+    online: false,
+    note: 'الفوز *+10* نقاط'
   },
   // ✊ بسيطة وحظّية — فلوس ضئيلة جداً وبشرط
   rps: {
@@ -112,6 +112,22 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
 export function moneyNote(gameId: string): string {
   const eco = GAME_ECONOMY[gameId];
   if (!eco) return '';
+  // 🎯 ألعاب النقاط مع البوت (نقاط بس — بلا فلوس وبلا مستوى)
+  const pointGames: Record<string, string> = {
+    wordle: 'حلّ الكلمة *+?* نقطة',
+    poet: 'اعرف الشاعر *+?* نقطة',
+    rhyme: 'لكل كلمة صح *+2* نقطة',
+    longest: 'الفوز *+8* نقاط',
+    math: 'الفوز *+10* نقاط',
+    guess_song: 'عرف الأغنية بأقل محاولات = نقاط أكثر'
+  };
+  if (pointGames[gameId]) {
+    return (
+      `⭐ النقاط: ${pointGames[gameId]}\n` +
+      `💰 الفلوس والمستوى: 🚫 ما يزيدون من لعبة البوت\n` +
+      `_الفلوس والمستوى من الألعاب اللي مع *ناس حقيقيين* بس_`
+    );
+  }
   if (gameId === 'wheel') {
     return (
       `💰 الفلوس: ${eco.note}\n` +
