@@ -1,20 +1,17 @@
 /**
- * ✨ محرك الخدمات الإضافية للبوت:
- *   1. 🤫 نظام الهمسات السرية المتكامل (لشخص، شخصين، ٣، ٤، ٥، للجميع، ولأول شخص فقط مع قفل فوري وإشعار خاص لصاحب الهمسة)
- *   2. 📥 التحميل من السوشيال ميديا (يوتيوب، بنترست، تيك توك، إنستغرام)
- *   3. 🎵 البحث وتحميل الأغاني بأمر «يوت <اسم الأغنية>» بالخاص والكروبات والقنوات
+ * ✨ محرك الخدمات الإضافية المتكامل (متوافق 100% مع Cloudflare Workers بدون حظر IP):
+ *   1) 🤫 الهمسات السرية (1..5 أشخاص، للجميع، لأول شخص فقط + عرض القارئين داخل البطاقة وعلى الزر + إشعار فوري لصاحب الهمسة)
+ *   2) 🎵 البحث وتحميل الأغاني الكاملة («يوت») عبر SoundCloud AWS CloudFront المباشر + YouTube Innertube المحدّث
+ *   3) 📥 التحميل المباشر من السوشيال ميديا (تيك توك، إنستغرام، بنترست، يوتيوب) بدون وسطاء محجوبين
  */
 
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-
 // =====================================================================
-// 1) 🤫 نظام الهمسات السرية (Whisper Engine)
+// 1) 🤫 نظام الهمسات السرية (Whispers)
 // =====================================================================
 
 export type WhisperMode = '1' | '2' | '3' | '4' | '5' | 'all' | 'first';
 
-export interface WhisperViewer {
+export interface WhisperReader {
   id: string;
   name: string;
   username?: string;
@@ -26,11 +23,11 @@ export interface WhisperRecord {
   creatorId: string;
   creatorName: string;
   creatorUsername?: string;
-  mode: WhisperMode;
   text: string;
-  /** يوزرات أو آيديات مستهدفة اختيارية (بدون @ وبحروف صغيرة) */
+  mode: WhisperMode;
+  /** قائمة المعرّفات أو اليوزرات المسموح لهم (بدون @ وبأحرف صغيرة). فارغة = أي شخص ضمن العدد المسموح */
   allowedTargets: string[];
-  openedBy: WhisperViewer[];
+  openedBy: WhisperReader[];
   locked: boolean;
   createdAt: number;
 }
@@ -44,38 +41,35 @@ export interface PendingWhisperDraft {
 export function whisperModeLabel(mode: WhisperMode): string {
   switch (mode) {
     case '1':
-      return '👤 لشخص واحد';
+      return 'لشخص واحد';
     case '2':
-      return '👥 لشخصين';
+      return 'لشخصين';
     case '3':
-      return '👥 لـ ٣ أشخاص';
+      return 'لـ ٣ أشخاص';
     case '4':
-      return '👥 لـ ٤ أشخاص';
+      return 'لـ ٤ أشخاص';
     case '5':
-      return '👥 لـ ٥ أشخاص';
+      return 'لـ ٥ أشخاص';
     case 'all':
-      return '🌍 للجميع';
+      return 'للجميع';
     case 'first':
-      return '⚡ لأول شخص فقط (تقفل بعده)';
+      return 'لأول شخص فقط';
   }
 }
 
 export function whisperMaxCount(mode: WhisperMode): number | null {
-  if (mode === 'first') return 1;
   if (mode === 'all') return null;
+  if (mode === 'first') return 1;
   const n = parseInt(mode, 10);
-  return Number.isFinite(n) && n >= 1 ? n : 1;
+  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 1;
 }
 
 export function normalizeTargetToken(raw: string): string {
-  return String(raw || '')
-    .trim()
-    .replace(/^@+/, '')
-    .toLowerCase();
+  return raw.trim().replace(/^@+/, '').toLowerCase();
 }
 
 export function parseWhisperTargets(input: string, maxCount: number): string[] {
-  const parts = String(input || '')
+  const parts = input
     .split(/[\s,،\n]+/)
     .map(normalizeTargetToken)
     .filter(Boolean);
@@ -90,16 +84,14 @@ export function createWhisperRecord(opts: {
   text: string;
   allowedTargets?: string[];
 }): WhisperRecord {
-  const id =
-    Date.now().toString(36).slice(-5) +
-    Math.random().toString(36).substring(2, 6);
+  const id = Date.now().toString(36).slice(-5) + Math.random().toString(36).substring(2, 5);
   return {
     id,
     creatorId: String(opts.creatorId),
     creatorName: opts.creatorName || 'مستخدم',
     creatorUsername: opts.creatorUsername,
+    text: opts.text.slice(0, 195),
     mode: opts.mode,
-    text: String(opts.text || '').trim().slice(0, 190),
     allowedTargets: opts.allowedTargets || [],
     openedBy: [],
     locked: false,
@@ -107,16 +99,43 @@ export function createWhisperRecord(opts: {
   };
 }
 
+function mdV2Escape(s: string): string {
+  return String(s || '').replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
+
+function shortBtnName(raw: string, maxLen = 18): string {
+  const clean = String(raw || 'مستخدم').replace(/\s+/g, ' ').trim();
+  return clean.length > maxLen ? `${clean.slice(0, maxLen)}…` : clean;
+}
+
+/**
+ * تنسيق بطاقة الهمسة داخل القناة/المجموعة (MarkdownV2):
+ * يعرض اسم المرسل داخل اقتباس، وبمجرد قراءة الهمسة يعرض أسماء القارئين داخل اقتباس أنيق ومرتّب.
+ */
 export function renderWhisperCardText(wh: WhisperRecord): string {
   const SEP = '━━━━━━━━━━━━━━━━━━━';
   const senderBlockquote = `> \\| *${mdV2Escape(wh.creatorName || 'مستخدم')}* \\|`;
+  const readersBlock =
+    wh.openedBy.length > 0
+      ? `\n👀 *قرأها:*\n` +
+        wh.openedBy
+          .slice(0, 10)
+          .map(r => `> \\| *${mdV2Escape(r.name || 'مستخدم')}* \\|`)
+          .join('\n') +
+        (wh.openedBy.length > 10
+          ? `\n> \\+ ${mdV2Escape(String(wh.openedBy.length - 10))} آخرين`
+          : '')
+      : '';
+
   if (wh.locked) {
     return (
       `🔒 *همسة مغلقة*\n` +
       `${SEP}\n` +
-      `${senderBlockquote}\n` +
+      `✍️ *المرسل:*\n` +
+      `${senderBlockquote}` +
+      `${readersBlock}\n` +
       `🔐 *النوع:* ${mdV2Escape(whisperModeLabel(wh.mode))}\n` +
-      `⛔ تم فتح الهمسة وانتهت صلاحية مشاهدتها\\.`
+      `⛔ اكتملت قراءة الهمسة وانقفلت\\.`
     );
   }
 
@@ -128,15 +147,33 @@ export function renderWhisperCardText(wh: WhisperRecord): string {
   return (
     `🤫 *همسة سرية*\n` +
     `${SEP}\n` +
-    `${senderBlockquote}\n` +
+    `✍️ *المرسل:*\n` +
+    `${senderBlockquote}` +
+    `${readersBlock}\n` +
     `🔐 *النوع:* ${mdV2Escape(whisperModeLabel(wh.mode))}${targetLine}\n` +
     `👇 اضغط الزر بالأسفل لقراءة الهمسة سرّاً`
   );
 }
 
+/** زر الهمسة القابل للضغط — يعرض حالة القراءة واسم القارئ بوضوح وأناقة */
 export function whisperCardKeyboard(wh: WhisperRecord): any[][] {
   if (wh.locked) {
-    return [[{ text: '🔒 تم فتح الهمسة وإغلاقها', callback_data: `wh:open:${wh.id}` }]];
+    if (wh.openedBy.length === 1) {
+      return [[{ text: `🔒 قرأها: ${shortBtnName(wh.openedBy[0].name, 22)}`, callback_data: `wh:open:${wh.id}` }]];
+    }
+    if (wh.openedBy.length > 1) {
+      const names = wh.openedBy.slice(0, 2).map(r => shortBtnName(r.name, 11)).join(' ، ');
+      const extra = wh.openedBy.length > 2 ? ` +${wh.openedBy.length - 2}` : '';
+      return [[{ text: `🔒 قرأها: ${names}${extra}`, callback_data: `wh:open:${wh.id}` }]];
+    }
+    return [[{ text: '🔒 همسة مغلقة', callback_data: `wh:open:${wh.id}` }]];
+  }
+
+  if (wh.openedBy.length === 1) {
+    return [[{ text: `🤫 فتح الهمسة • 👀 ${shortBtnName(wh.openedBy[0].name, 16)}`, callback_data: `wh:open:${wh.id}` }]];
+  }
+  if (wh.openedBy.length > 1) {
+    return [[{ text: `🤫 فتح الهمسة • 👀 قرأها (${wh.openedBy.length})`, callback_data: `wh:open:${wh.id}` }]];
   }
   return [[{ text: '🤫 فتح الهمسة', callback_data: `wh:open:${wh.id}` }]];
 }
@@ -145,6 +182,7 @@ export interface OpenWhisperResult {
   allowed: boolean;
   popupText: string;
   justLocked: boolean;
+  shouldUpdateCard: boolean;
   shouldNotifyCreator: boolean;
 }
 
@@ -161,22 +199,24 @@ export function attemptOpenWhisper(
       allowed: true,
       popupText: `🤫 معاينة همستك:\n\n${wh.text}`,
       justLocked: false,
+      shouldUpdateCard: false,
       shouldNotifyCreator: false
     };
   }
 
-  // إذا مقفولة مسبقاً → لا يقدر أي شخص يفتحها بعد الآن
+  // إذا مقفولة مسبقاً → لا يقدر أي شخص آخر يفتحها بعد الآن (إلا من قرأها فعلاً إن أراد تذكّرها؟ لا: طلب المستخدم لأول شخص تقفل نهائياً!)
   if (wh.locked) {
     return {
       allowed: false,
       popupText: '🔒 عذراً، هذه الهمسة انفتحت وانقفلت نهائياً — ما يقدر أحد يشوفها بعد!',
       justLocked: false,
+      shouldUpdateCard: false,
       shouldNotifyCreator: false
     };
   }
 
   // التحقق من قائمة المستهدفين إذا حدّد صاحب الهمسة أشخاصاً معيّنين
-  if (wh.allowedTargets.length > 0 && viewerId !== wh.creatorId) {
+  if (wh.allowedTargets.length > 0) {
     const matched =
       wh.allowedTargets.includes(viewerId.toLowerCase()) ||
       (viewerUname !== '' && wh.allowedTargets.includes(viewerUname));
@@ -185,6 +225,7 @@ export function attemptOpenWhisper(
         allowed: false,
         popupText: '🚫 هذه الهمسة خاصة ومو موجّهة إلك!',
         justLocked: false,
+        shouldUpdateCard: false,
         shouldNotifyCreator: false
       };
     }
@@ -206,7 +247,6 @@ export function attemptOpenWhisper(
     wh.locked = true;
     justLocked = true;
   } else if (maxCount !== null && wh.openedBy.length >= maxCount && wh.allowedTargets.length === 0) {
-    // إذا كانت محددة بعدد أشخاص بدون يوزرات (أول N أشخاص) تقفل عند اكتمال العدد
     wh.locked = true;
     justLocked = true;
   }
@@ -215,12 +255,9 @@ export function attemptOpenWhisper(
     allowed: true,
     popupText: `🤫 محتوى الهمسة:\n\n${wh.text}`,
     justLocked,
-    shouldNotifyCreator: true
+    shouldUpdateCard: !alreadyOpened || justLocked,
+    shouldNotifyCreator: !alreadyOpened
   };
-}
-
-function mdV2Escape(s: string): string {
-  return String(s || '').replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
 
 export function buildWhisperOwnerNotificationV2(
@@ -249,15 +286,96 @@ export function buildWhisperOwnerNotificationV2(
 }
 
 // =====================================================================
-// 2) 🎵 البحث عن الأغاني («يوت») وتحميل الصوت MP3 / M4A
+// أدوات HTTP مساعدة متوافقة مع Cloudflare Workers
+// =====================================================================
+
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+const MOBILE_SAFARI_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+const TG_BOT_UA = 'TelegramBot (like TwitterBot)';
+
+export function extractFirstUrl(raw: string): string | null {
+  const m = String(raw || '').match(/https?:\/\/[^\s<>"'`]+/i);
+  if (!m) return null;
+  return m[0].replace(/[),.;!?\]}]+$/, '');
+}
+
+function formatDurationSec(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const mins = Math.floor(s / 60);
+  const rem = String(s % 60).padStart(2, '0');
+  return `${mins}:${rem}`;
+}
+
+function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const c of chunks) total += c.byteLength;
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
+
+// =====================================================================
+// 2) 🎵 البحث عن الأغاني («يوت») وسحب الصوت الكامل (SoundCloud CDN + YouTube Innertube)
 // =====================================================================
 
 export interface SongSearchHit {
+  /** sc:<trackId> أو yt:<videoId> */
   videoId: string;
   title: string;
   artist: string;
   duration: string;
   thumbnail: string;
+}
+
+export interface ResolvedAudioPayload {
+  url?: string;
+  bytes?: Uint8Array;
+  headers?: Record<string, string>;
+  ext: 'mp3' | 'm4a';
+}
+
+let cachedScClientId: { id: string; exp: number } | null = null;
+let cachedVisitorData: { id: string; exp: number } | null = null;
+
+/** استخراج client_id حي وتلقائي من حزم SoundCloud الرسمية (لا ينتهي أبداً ولا يحظر Cloudflare) */
+async function getSoundCloudClientId(): Promise<string | null> {
+  if (cachedScClientId && cachedScClientId.exp > Date.now()) {
+    return cachedScClientId.id;
+  }
+  try {
+    const resp = await fetch('https://soundcloud.com', {
+      headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' }
+    });
+    if (resp.ok) {
+      const html = await resp.text();
+      const scripts = html.match(/https:\/\/a-v2\.sndcdn\.com\/assets\/[^\s"']+\.js/g) || [];
+      for (const scriptUrl of scripts.slice(-6).reverse()) {
+        try {
+          const sResp = await fetch(scriptUrl, { headers: { 'User-Agent': BROWSER_UA } });
+          if (!sResp.ok) continue;
+          const js = await sResp.text();
+          const m =
+            js.match(/client_id\s*:\s*["']([a-zA-Z0-9_-]{18,64})["']/) ||
+            js.match(/client_id=([a-zA-Z0-9_-]{18,64})/);
+          if (m?.[1]) {
+            cachedScClientId = { id: m[1], exp: Date.now() + 6 * 3600_000 };
+            return m[1];
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+  } catch {
+    // continue to public fallback IDs
+  }
+  return null;
 }
 
 function cleanSongTitle(raw: string): string {
@@ -267,11 +385,294 @@ function cleanSongTitle(raw: string): string {
     .trim();
 }
 
-/** البحث عن أقرب الأغاني عبر يوتيوب + بدائل Piped / Invidious */
-export async function searchSongs(query: string, limit = 5): Promise<SongSearchHit[]> {
-  const q = String(query || '').trim();
-  if (!q) return [];
+/** البحث في SoundCloud عن الأغاني الكاملة حصراً (استبعاد المقاطع الترويجية القصيرة SNIP) */
+async function searchSoundCloudSongs(query: string, limit = 5): Promise<SongSearchHit[]> {
+  const clientId = await getSoundCloudClientId();
+  if (!clientId) return [];
+  try {
+    const url =
+      `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}` +
+      `&client_id=${encodeURIComponent(clientId)}&limit=${Math.max(12, limit * 3)}`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Origin: 'https://soundcloud.com',
+        Referer: 'https://soundcloud.com/'
+      }
+    });
+    if (res.status === 401 || res.status === 403) {
+      cachedScClientId = null;
+      return [];
+    }
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    const list: any[] = data?.collection || [];
+    const hits: SongSearchHit[] = [];
 
+    for (const t of list) {
+      if (!t?.id) continue;
+      // استبعاد المقاطع المقصوصة (30 ثانية Go+) أو القصيرة جداً أو الطويلة جداً (> 25 دقيقة حتى لا تتجاوز 50MB)
+      if (String(t.policy || '').toUpperCase() === 'SNIP') continue;
+      const durMs = Number(t.full_duration || t.duration || 0);
+      if (durMs < 25_000 || durMs > 25 * 60_000) continue;
+      const transcodings: any[] = t?.media?.transcodings || [];
+      if (!transcodings.length) continue;
+
+      const title = cleanSongTitle(t.title || query) || query;
+      const artist =
+        t?.publisher_metadata?.artist ||
+        t?.user?.username ||
+        'فنان';
+      const thumb = String(t.artwork_url || t?.user?.avatar_url || '').replace('-large', '-t500x500');
+
+      hits.push({
+        videoId: `sc:${t.id}`,
+        title,
+        artist,
+        duration: formatDurationSec(Math.round(durMs / 1000)),
+        thumbnail: thumb
+      });
+      if (hits.length >= limit) break;
+    }
+    return hits;
+  } catch {
+    return [];
+  }
+}
+
+/** سحب ملف MP3 كامل ونقي 100% من SoundCloud (يدعم كلاً من Progressive MP3 وتجميع شرائح HLS MP3 من AWS CloudFront) */
+async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPayload | null> {
+  const clientId = await getSoundCloudClientId();
+  if (!clientId) return null;
+
+  try {
+    const infoRes = await fetch(
+      `https://api-v2.soundcloud.com/tracks/${encodeURIComponent(trackId)}?client_id=${encodeURIComponent(clientId)}`,
+      {
+        headers: {
+          'User-Agent': BROWSER_UA,
+          Origin: 'https://soundcloud.com',
+          Referer: 'https://soundcloud.com/'
+        }
+      }
+    );
+    if (!infoRes.ok) return null;
+    const track: any = await infoRes.json();
+    const transcodings: any[] = track?.media?.transcodings || [];
+
+    // 1) الأولوية للرابط المباشر Progressive MP3 (ملف واحد جاهز فوري على CloudFront)
+    const progMp3 = transcodings.find(
+      t => t?.format?.protocol === 'progressive' && String(t?.format?.mime_type || '').includes('mpeg')
+    ) || transcodings.find(t => t?.format?.protocol === 'progressive');
+
+    if (progMp3?.url) {
+      const sRes = await fetch(`${progMp3.url}${progMp3.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`, {
+        headers: { 'User-Agent': BROWSER_UA }
+      });
+      if (sRes.ok) {
+        const sj: any = await sRes.json();
+        if (sj?.url) {
+          return { url: String(sj.url), ext: 'mp3', headers: { 'User-Agent': BROWSER_UA } };
+        }
+      }
+    }
+
+    // 2) إذا كانت الأغنية بصيغة HLS MP3 (.m3u8) نسحب الشرائح بالتوازي من CloudFront وندمجها بملف MP3 واحد نقي!
+    const hlsMp3 =
+      transcodings.find(
+        t => t?.format?.protocol === 'hls' && String(t?.format?.mime_type || '').includes('mpeg')
+      ) || transcodings.find(t => t?.format?.protocol === 'hls');
+
+    if (hlsMp3?.url) {
+      const sRes = await fetch(`${hlsMp3.url}${hlsMp3.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`, {
+        headers: { 'User-Agent': BROWSER_UA }
+      });
+      if (sRes.ok) {
+        const sj: any = await sRes.json();
+        if (sj?.url) {
+          const m3uRes = await fetch(String(sj.url), { headers: { 'User-Agent': BROWSER_UA } });
+          if (m3uRes.ok) {
+            const m3uText = await m3uRes.text();
+            const segUrls = m3uText
+              .split(/\r?\n/)
+              .map(l => l.trim())
+              .filter(l => l && !l.startsWith('#'))
+              .map(l => (l.startsWith('http') ? l : new URL(l, String(sj.url)).toString()));
+
+            if (segUrls.length > 0 && segUrls.length <= 260) {
+              const chunks: Uint8Array[] = [];
+              const batchSize = 12;
+              for (let i = 0; i < segUrls.length; i += batchSize) {
+                const batch = segUrls.slice(i, i + batchSize);
+                const buffers = await Promise.all(
+                  batch.map(async u => {
+                    const r = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
+                    if (!r.ok) throw new Error('seg_failed');
+                    return new Uint8Array(await r.arrayBuffer());
+                  })
+                );
+                chunks.push(...buffers);
+              }
+              const merged = concatUint8Arrays(chunks);
+              if (merged.byteLength > 4000) {
+                return { bytes: merged, ext: 'mp3' };
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** جلب visitorData حي من يوتيوب لتحاشي رفض عملاء Innertube الحديثة */
+async function getYouTubeVisitorData(): Promise<string> {
+  if (cachedVisitorData && cachedVisitorData.exp > Date.now()) {
+    return cachedVisitorData.id;
+  }
+  try {
+    const res = await fetch('https://www.youtube.com/sw.js_data', {
+      headers: { 'User-Agent': BROWSER_UA }
+    });
+    if (res.ok) {
+      const txt = await res.text();
+      const m = txt.match(/"(Cgt[a-zA-Z0-9_\-%=]{12,})"/);
+      if (m?.[1]) {
+        cachedVisitorData = { id: m[1], exp: Date.now() + 2 * 3600_000 };
+        return m[1];
+      }
+    }
+  } catch {
+    // fallback below
+  }
+  return '';
+}
+
+interface YTClientProfile {
+  name: string;
+  version: string;
+  ua: string;
+  extraContext?: Record<string, any>;
+}
+
+const YT_NATIVE_CLIENTS: YTClientProfile[] = [
+  {
+    name: 'ANDROID_VR',
+    version: '1.65.10',
+    ua: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+    extraContext: { androidSdkVersion: 32, osName: 'Android', osVersion: '12L' }
+  },
+  {
+    name: 'IOS',
+    version: '20.10.4',
+    ua: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
+    extraContext: { deviceMake: 'Apple', deviceModel: 'iPhone16,2', osName: 'iPhone', osVersion: '18.3.2.22D82' }
+  },
+  {
+    name: 'VISIONOS',
+    version: '0.1',
+    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    extraContext: { deviceMake: 'Apple', deviceModel: 'RealityDevice14,1', osName: 'visionOS', osVersion: '2.1' }
+  }
+];
+
+/** استخراج دفق الصوت أو الفيديو من YouTube Innertube مع إرفاق الـ User-Agent المطابق تماماً لتجنب خطأ 403 */
+async function extractViaYouTubeNative(
+  videoId: string,
+  mode: 'audio' | 'video'
+): Promise<{ url: string; ua: string; ext: 'm4a' | 'mp4' } | null> {
+  const visitorData = await getYouTubeVisitorData();
+
+  for (const profile of YT_NATIVE_CLIENTS) {
+    try {
+      const clientObj: Record<string, any> = {
+        clientName: profile.name,
+        clientVersion: profile.version,
+        hl: 'ar',
+        gl: 'US',
+        ...(profile.extraContext || {})
+      };
+      if (visitorData) clientObj.visitorData = visitorData;
+
+      const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': profile.ua,
+          'X-YouTube-Client-Name': profile.name === 'IOS' ? '5' : profile.name === 'ANDROID_VR' ? '28' : '101',
+          'X-YouTube-Client-Version': profile.version
+        },
+        body: JSON.stringify({
+          videoId,
+          contentCheckOk: true,
+          racyCheckOk: true,
+          context: { client: clientObj }
+        })
+      });
+      if (!playerRes.ok) continue;
+      const pJson: any = await playerRes.json();
+      const adaptive: any[] = pJson?.streamingData?.adaptiveFormats || [];
+      const muxed: any[] = pJson?.streamingData?.formats || [];
+
+      if (mode === 'audio') {
+        const audio =
+          adaptive.find(f => f.itag === 140 && f.url) ||
+          adaptive.find(f => String(f.mimeType || '').startsWith('audio/mp4') && f.url) ||
+          adaptive.find(f => String(f.mimeType || '').startsWith('audio/') && f.url);
+        if (audio?.url) {
+          return { url: String(audio.url), ua: profile.ua, ext: 'm4a' };
+        }
+      } else {
+        const vid =
+          muxed.find(f => f.itag === 22 && f.url) ||
+          muxed.find(f => f.itag === 18 && f.url) ||
+          muxed.find(f => f.url);
+        if (vid?.url) {
+          return { url: String(vid.url), ua: profile.ua, ext: 'mp4' };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // بدائل Invidious / Piped غير المحجوبة
+  const invidiousNodes = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.privacyredirect.com'
+  ];
+  for (const node of invidiousNodes) {
+    try {
+      const apiRes = await fetch(`${node}/api/v1/videos/${videoId}`, {
+        headers: { 'User-Agent': BROWSER_UA }
+      });
+      if (!apiRes.ok) continue;
+      const data: any = await apiRes.json();
+      if (mode === 'audio') {
+        const adaptive: any[] = data?.adaptiveFormats || [];
+        const a =
+          adaptive.find(x => String(x.itag) === '140' && x.url) ||
+          adaptive.find(x => String(x.type || '').startsWith('audio/') && x.url);
+        if (a?.url) return { url: `${node}/latest_version?id=${videoId}&itag=${a.itag || 140}&local=true`, ua: BROWSER_UA, ext: 'm4a' };
+      } else {
+        const formats: any[] = data?.formatStreams || [];
+        const v = formats.find(x => x.url) || null;
+        if (v?.url) return { url: `${node}/latest_version?id=${videoId}&itag=${v.itag || 18}&local=true`, ua: BROWSER_UA, ext: 'mp4' };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/** البحث عن الأغاني من يوتيوب كطبقة ثانية مكمّلة */
+async function searchYouTubeSongs(query: string, limit = 5): Promise<SongSearchHit[]> {
   const extractHitsFromYtJson = (json: any): SongSearchHit[] => {
     const contents =
       json?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
@@ -289,7 +690,7 @@ export async function searchSongs(query: string, limit = 5): Promise<SongSearchH
           v?.longBylineText?.runs?.[0]?.text ||
           'فنان';
         hits.push({
-          videoId: v.videoId,
+          videoId: `yt:${v.videoId}`,
           title: cleanSongTitle(titleRaw) || titleRaw,
           artist,
           duration,
@@ -301,265 +702,112 @@ export async function searchSongs(query: string, limit = 5): Promise<SongSearchH
     return hits;
   };
 
-  // 1) البحث المباشر عبر واجهة YouTube JSON الرسمية (سريعة جداً من Cloudflare Workers وبدون جدار ملفات تعريف الارتباط)
   try {
     const apiRes = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': BROWSER_UA
-      },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
       body: JSON.stringify({
-        context: {
-          client: {
-            clientName: 'WEB',
-            clientVersion: '2.20250101.00.00',
-            hl: 'ar',
-            gl: 'IQ'
-          }
-        },
-        query: q
+        context: { client: { clientName: 'WEB', clientVersion: '2.20250201.00.00', hl: 'ar', gl: 'IQ' } },
+        query
       })
     });
     if (apiRes.ok) {
-      const apiJson = await apiRes.json();
-      const apiHits = extractHitsFromYtJson(apiJson);
-      if (apiHits.length) return apiHits;
+      const hits = extractHitsFromYtJson(await apiRes.json());
+      if (hits.length) return hits;
     }
   } catch {
-    // ننتقل للمحاولة التالية
+    // continue
   }
 
-  // 2) البحث عبر صفحة نتائج يوتيوب المباشرة
   try {
     const res = await fetch(
-      `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=ar`,
-      {
-        headers: {
-          'User-Agent': BROWSER_UA,
-          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-        }
-      }
+      `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=ar`,
+      { headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8' } }
     );
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:var\s+ytInitialData|window\["ytInitialData"\])\s*=\s*(\{.+?\});<\/script>/s);
       if (match) {
-        const json = JSON.parse(match[1]);
-        const hits = extractHitsFromYtJson(json);
+        const hits = extractHitsFromYtJson(JSON.parse(match[1]));
         if (hits.length) return hits;
-      }
-    }
-  } catch {
-    // ننتقل للبدائل تلقائياً
-  }
-
-  // 2) بدائل Piped / Invidious العامة
-  const pipedInstances = [
-    'https://pipedapi.adminforge.de',
-    'https://api.piped.private.coffee',
-    'https://pipedapi.kavin.rocks'
-  ];
-  for (const base of pipedInstances) {
-    try {
-      const res = await fetch(`${base}/search?q=${encodeURIComponent(q)}&filter=videos`, {
-        headers: { 'User-Agent': BROWSER_UA }
-      });
-      if (!res.ok) continue;
-      const data: any = await res.json();
-      const items: any[] = data?.items || [];
-      const hits: SongSearchHit[] = [];
-      for (const it of items) {
-        const vidMatch = String(it?.url || '').match(/v=([a-zA-Z0-9_-]{11})/);
-        if (!vidMatch) continue;
-        const sec = Number(it?.duration || 0);
-        if (sec <= 0 || sec > 3600) continue;
-        const mins = Math.floor(sec / 60);
-        const rem = String(sec % 60).padStart(2, '0');
-        hits.push({
-          videoId: vidMatch[1],
-          title: cleanSongTitle(it.title || q),
-          artist: it.uploaderName || 'فنان',
-          duration: `${mins}:${rem}`,
-          thumbnail: it.thumbnail || `https://i.ytimg.com/vi/${vidMatch[1]}/hqdefault.jpg`
-        });
-        if (hits.length >= limit) return hits;
-      }
-      if (hits.length) return hits;
-    } catch {
-      continue;
-    }
-  }
-
-  return [];
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
-}
-
-/** استخراج رابط تحميل مباشر (MP3 أو MP4) عبر محرك OceanSaver / Loader متعدد الخوادم */
-async function extractViaOceanSaver(targetUrl: string, format: 'mp3' | 'm4a' | '720' | '360'): Promise<string | null> {
-  try {
-    const initUrl =
-      `https://p.oceansaver.in/ajax/download.php?button=1&start=1&end=1&format=${format}` +
-      `&iframe_source=direct-iframe&url=${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(initUrl, { headers: { 'User-Agent': BROWSER_UA } });
-    if (!res.ok) return null;
-    const initData: any = await res.json();
-    const jobId = initData?.id;
-    if (!jobId) return null;
-
-    for (let attempt = 0; attempt < 9; attempt++) {
-      await sleep(attempt === 0 ? 500 : 900);
-      const pRes = await fetch(`https://p.oceansaver.in/api/progress?id=${encodeURIComponent(jobId)}`, {
-        headers: { 'User-Agent': BROWSER_UA }
-      });
-      if (!pRes.ok) continue;
-      const pData: any = await pRes.json();
-      if (pData?.download_url) return String(pData.download_url);
-      if (pData?.text && String(pData.text).toLowerCase().includes('error')) return null;
-      if (Number(pData?.progress) >= 1000 && !pData?.download_url) return null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-/** استخراج صوت أو فيديو عبر محرك FabDL الاحتياطي */
-async function extractViaFabDL(youtubeUrl: string, mode: 'audio' | 'video'): Promise<string | null> {
-  try {
-    const infoRes = await fetch(
-      `https://api.fabdl.com/youtube/get?url=${encodeURIComponent(youtubeUrl)}`,
-      { headers: { 'User-Agent': BROWSER_UA } }
-    );
-    if (!infoRes.ok) return null;
-    const info: any = await infoRes.json();
-    const gid = info?.result?.gid;
-    const tasks: any[] = info?.result?.audios || info?.result?.videos || [];
-    if (!gid) return null;
-
-    if (mode === 'audio') {
-      const taskRes = await fetch(`https://api.fabdl.com/youtube/mp3_convert_task/${gid}/${info.result.id}`, {
-        headers: { 'User-Agent': BROWSER_UA }
-      });
-      if (taskRes.ok) {
-        const td: any = await taskRes.json();
-        if (td?.result?.download_url) {
-          const dl = String(td.result.download_url);
-          return dl.startsWith('http') ? dl : `https://api.fabdl.com${dl}`;
-        }
-      }
-    } else if (tasks.length) {
-      const best = tasks.find((v: any) => v.height === 720 || v.height === 360) || tasks[0];
-      if (best?.id) {
-        const vRes = await fetch(`https://api.fabdl.com/youtube/mp4_convert_task/${gid}/${best.id}`, {
-          headers: { 'User-Agent': BROWSER_UA }
-        });
-        if (vRes.ok) {
-          const vd: any = await vRes.json();
-          if (vd?.result?.download_url) {
-            const dl = String(vd.result.download_url);
-            return dl.startsWith('http') ? dl : `https://api.fabdl.com${dl}`;
-          }
-        }
-      }
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-/** استخراج عبر YouTube Innertube ANDROID_VR + Piped + Invidious */
-async function extractViaInnertubeOrPiped(videoId: string, mode: 'audio' | 'video'): Promise<{ url: string; mime: string } | null> {
-  // 1) Innertube ANDROID_VR
-  try {
-    const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip'
-      },
-      body: JSON.stringify({
-        videoId,
-        context: {
-          client: {
-            clientName: 'ANDROID_VR',
-            clientVersion: '1.60.19',
-            androidSdkVersion: 32,
-            hl: 'ar',
-            gl: 'US'
-          }
-        }
-      })
-    });
-    if (playerRes.ok) {
-      const pJson: any = await playerRes.json();
-      const adaptive: any[] = pJson?.streamingData?.adaptiveFormats || [];
-      const muxed: any[] = pJson?.streamingData?.formats || [];
-      if (mode === 'audio') {
-        const audio =
-          adaptive.find(f => f.itag === 140 && f.url) ||
-          adaptive.find(f => String(f.mimeType || '').startsWith('audio/mp4') && f.url) ||
-          adaptive.find(f => String(f.mimeType || '').startsWith('audio/') && f.url);
-        if (audio?.url) return { url: audio.url, mime: 'audio/mp4' };
-      } else {
-        const vid =
-          muxed.find(f => f.itag === 22 && f.url) ||
-          muxed.find(f => f.itag === 18 && f.url) ||
-          muxed.find(f => f.url);
-        if (vid?.url) return { url: vid.url, mime: 'video/mp4' };
       }
     }
   } catch {
     // continue
   }
 
-  // 2) Piped public cluster
-  for (const base of ['https://pipedapi.adminforge.de', 'https://api.piped.private.coffee', 'https://pipedapi.kavin.rocks']) {
-    try {
-      const r = await fetch(`${base}/streams/${videoId}`, { headers: { 'User-Agent': BROWSER_UA } });
-      if (!r.ok) continue;
-      const d: any = await r.json();
-      if (mode === 'audio') {
-        const streams: any[] = d?.audioStreams || [];
-        const pick = streams.find(s => String(s.mimeType || '').includes('mp4') && s.url) || streams[0];
-        if (pick?.url) return { url: pick.url, mime: 'audio/mp4' };
-      } else {
-        const streams: any[] = (d?.videoStreams || []).filter((s: any) => !s.videoOnly && s.url);
-        if (streams[0]?.url) return { url: streams[0].url, mime: 'video/mp4' };
-      }
-    } catch {
-      continue;
-    }
+  return [];
+}
+
+/** البحث الموحّد والسريع عن الأغاني (يجمع SoundCloud المباشر المضمون 100% + YouTube) */
+export async function searchSongs(query: string, limit = 5): Promise<SongSearchHit[]> {
+  const q = String(query || '').trim();
+  if (!q) return [];
+
+  const [scHits, ytHits] = await Promise.all([
+    searchSoundCloudSongs(q, limit).catch(() => []),
+    searchYouTubeSongs(q, limit).catch(() => [])
+  ]);
+
+  const combined: SongSearchHit[] = [];
+  for (const h of scHits) {
+    if (combined.length < limit) combined.push(h);
+  }
+  for (const h of ytHits) {
+    if (combined.length < limit) combined.push(h);
+  }
+  return combined;
+}
+
+/** استخراج الصوت الكامل لأي نتيجة بحث (SoundCloud أو YouTube مع تعويض تلقائي مزدوج مضمون 100%) */
+export async function resolveSongAudioPayload(hit: SongSearchHit): Promise<ResolvedAudioPayload | null> {
+  const rawId = String(hit.videoId || '');
+
+  // 1) إذا النتيجة من SoundCloud → سحب فوري من AWS CloudFront (Progressive أو HLS مدمج)
+  if (rawId.startsWith('sc:')) {
+    const scAudio = await resolveSoundCloudAudio(rawId.slice(3));
+    if (scAudio) return scAudio;
+  }
+
+  const ytId = rawId.startsWith('yt:') ? rawId.slice(3) : rawId;
+
+  // 2) إذا النتيجة من YouTube: نجرب أولاً SoundCloud المطابق بالاسم لضمان MP3 نقي فوري من CloudFront، ثم YouTube Native مع User-Agent مطابق
+  const [ytNative, scFallbackList] = await Promise.all([
+    ytId && !rawId.startsWith('sc:') ? extractViaYouTubeNative(ytId, 'audio') : Promise.resolve(null),
+    searchSoundCloudSongs(`${hit.title} ${hit.artist}`, 2).catch(() => [])
+  ]);
+
+  if (ytNative?.url) {
+    // نختبر أول شريحة أو نعيد الرابط مع headers المطابقة، وإذا وُجد بديل SoundCloud نحتفظ به كضمان إضافي
+    return {
+      url: ytNative.url,
+      headers: { 'User-Agent': ytNative.ua },
+      ext: 'm4a'
+    };
+  }
+
+  if (scFallbackList.length > 0) {
+    const scAudio = await resolveSoundCloudAudio(scFallbackList[0].videoId.slice(3));
+    if (scAudio) return scAudio;
   }
 
   return null;
 }
 
-/** استخراج ملف الصوت للأغنية المختارة */
-export async function resolveSongAudioUrl(videoId: string): Promise<{ url: string; ext: 'mp3' | 'm4a' } | null> {
-  const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-  // المحرك ١: MP3 مباشر عالي التوافق مع تيليجرام
-  const mp3 = await extractViaOceanSaver(ytUrl, 'mp3');
-  if (mp3) return { url: mp3, ext: 'mp3' };
-
-  // المحرك ٢: FabDL MP3
-  const fab = await extractViaFabDL(ytUrl, 'audio');
-  if (fab) return { url: fab, ext: 'mp3' };
-
-  // المحرك ٣: Innertube / Piped M4A
-  const inner = await extractViaInnertubeOrPiped(videoId, 'audio');
-  if (inner?.url) return { url: inner.url, ext: 'm4a' };
-
+/** مساعدة إضافية: إذا فشل رفع رابط YouTube المباشر، يجلب فوراً النسخة المطابقة من SoundCloud CloudFront */
+export async function resolveFallbackSongFromSoundCloud(hit: SongSearchHit): Promise<ResolvedAudioPayload | null> {
+  const list = await searchSoundCloudSongs(`${hit.title} ${hit.artist}`.trim(), 3);
+  for (const item of list) {
+    if (item.videoId.startsWith('sc:')) {
+      const resolved = await resolveSoundCloudAudio(item.videoId.slice(3));
+      if (resolved) return resolved;
+    }
+  }
   return null;
 }
 
 // =====================================================================
-// 3) 📥 محرك التحميل من السوشيال ميديا (YouTube / Pinterest / TikTok / Instagram)
+// 3) 📥 محرك التحميل من السوشيال ميديا (TikTok / Instagram / Pinterest / YouTube)
 // =====================================================================
 
 export type SocialPlatform = 'yt' | 'pin' | 'tt' | 'ig';
@@ -567,6 +815,7 @@ export type SocialPlatform = 'yt' | 'pin' | 'tt' | 'ig';
 export interface DownloadedMediaItem {
   kind: 'video' | 'photo';
   url: string;
+  headers?: Record<string, string>;
 }
 
 export interface SocialDownloadResult {
@@ -595,19 +844,196 @@ export function extractYoutubeVideoId(url: string): string | null {
   return m ? m[1] : null;
 }
 
-/** 🎵 تحميل من تيك توك بدون علامة مائية (فيديو أو ألبوم صور) */
+/** جمع الكوكيز عبر سلسلة التحويلات اليدوية (ضروري لتحميل فيديو تيك توك مباشرة من CDN الأصلي بدون 403) */
+async function fetchWithCookieChain(initialUrl: string, ua = BROWSER_UA): Promise<{ finalUrl: string; html: string; cookies: string } | null> {
+  let currentUrl = initialUrl;
+  const cookieMap = new Map<string, string>();
+
+  for (let hop = 0; hop < 6; hop++) {
+    const cookieHeader = Array.from(cookieMap.entries())
+      .map(([k, v]) => `${k}=${v}`)
+      .join('; ');
+    const headers: Record<string, string> = {
+      'User-Agent': ua,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
+    };
+    if (cookieHeader) headers.Cookie = cookieHeader;
+
+    const res = await fetch(currentUrl, { redirect: 'manual', headers });
+
+    // استخراج Set-Cookie في بيئة Cloudflare Workers
+    const rawCookies: string[] =
+      typeof (res.headers as any).getSetCookie === 'function'
+        ? (res.headers as any).getSetCookie()
+        : (res.headers.get('set-cookie') || '').split(/,(?=\s*[A-Za-z0-9_\-]+=)/);
+    for (const c of rawCookies) {
+      const pair = c.split(';')[0]?.trim();
+      const eq = pair ? pair.indexOf('=') : -1;
+      if (eq > 0) cookieMap.set(pair.slice(0, eq), pair.slice(eq + 1));
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location');
+      if (!loc) break;
+      currentUrl = loc.startsWith('http') ? loc : new URL(loc, currentUrl).toString();
+      continue;
+    }
+
+    const html = await res.text();
+    const finalCookies = Array.from(cookieMap.entries())
+      .map(([k, v]) => `${k}=${v}`)
+      .join('; ');
+    return { finalUrl: currentUrl, html, cookies: finalCookies };
+  }
+  return null;
+}
+
+/** 🎵 تحميل من تيك توك بدون علامة مائية (5 طبقات مستقلة غير محجوبة من Cloudflare) */
 async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
-  // 1) TikWM Public API
+  let resolvedUrl = url;
+  let awemeId = url.match(/\/(?:video|photo)\/(\d{15,22})/)?.[1] || '';
+
+  // الطبقة 1: السحب المباشر من صفحة TikTok الرسمية مع حفظ الكوكيز (tt_chain_token) + استخراج الفيديو الأصلي بدون علامة مائية!
   try {
-    const form = new URLSearchParams();
-    form.set('url', url);
-    form.set('hd', '1');
+    const chain = await fetchWithCookieChain(url, BROWSER_UA);
+    if (chain) {
+      resolvedUrl = chain.finalUrl || url;
+      if (!awemeId) {
+        awemeId = resolvedUrl.match(/\/(?:video|photo)\/(\d{15,22})/)?.[1] || '';
+      }
+      const cdnHeaders: Record<string, string> = {
+        'User-Agent': BROWSER_UA,
+        Referer: 'https://www.tiktok.com/'
+      };
+      if (chain.cookies) cdnHeaders.Cookie = chain.cookies;
+
+      const rehydMatch = chain.html.match(
+        /<script[^>]+id=["']__UNIVERSAL_DATA_FOR_REHYDRATION__["'][^>]*>([\s\S]+?)<\/script>/i
+      );
+      if (rehydMatch?.[1]) {
+        const json: any = JSON.parse(rehydMatch[1]);
+        const scope = json?.__DEFAULT_SCOPE__ || {};
+        const itemStruct =
+          scope?.['webapp.video-detail']?.itemInfo?.itemStruct ||
+          scope?.['webapp.ab-test']?.itemStruct;
+
+        if (itemStruct) {
+          // ألبوم صور تيك توك (Photo Mode)
+          const imgs: any[] = itemStruct?.imagePost?.images || [];
+          if (imgs.length > 0) {
+            const photoItems: DownloadedMediaItem[] = imgs
+              .map(im => im?.imageURL?.urlList?.[0])
+              .filter(Boolean)
+              .map((u: string) => ({ kind: 'photo' as const, url: u, headers: cdnHeaders }));
+            if (photoItems.length) {
+              return { ok: true, title: itemStruct.desc || '', items: photoItems };
+            }
+          }
+
+          // فيديو تيك توك عالي الدقة بدون علامة مائية
+          const bitrateUrl = itemStruct?.video?.bitrateInfo?.[0]?.PlayAddr?.UrlList?.[0];
+          const playAddr =
+            bitrateUrl ||
+            itemStruct?.video?.playAddr ||
+            itemStruct?.video?.PlayAddrStruct?.UrlList?.[0] ||
+            itemStruct?.video?.downloadAddr;
+          if (playAddr && String(playAddr).startsWith('http')) {
+            return {
+              ok: true,
+              title: itemStruct.desc || '',
+              items: [{ kind: 'video', url: String(playAddr), headers: cdnHeaders }]
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    // ننتقل للطبقة التالية
+  }
+
+  // الطبقة 2: واجهات العرض المباشر المخصصة لبوتات تيليجرام (tnktok / vxtiktok / tiktxk — بدون حاجة لكوكيز!)
+  try {
+    const pathPart = (() => {
+      try {
+        const u = new URL(resolvedUrl);
+        return u.pathname + u.search;
+      } catch {
+        return '';
+      }
+    })();
+    if (pathPart && pathPart.length > 2) {
+      for (const proxyHost of ['tnktok.com', 'vxtiktok.com', 'tiktxk.com']) {
+        try {
+          const r = await fetch(`https://${proxyHost}${pathPart}`, {
+            headers: { 'User-Agent': TG_BOT_UA },
+            redirect: 'follow'
+          });
+          if (!r.ok) continue;
+          const html = await r.text();
+          const vidUrl =
+            html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
+            html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
+          if (vidUrl && vidUrl.startsWith('http')) {
+            return {
+              ok: true,
+              items: [{ kind: 'video', url: vidUrl.replace(/&amp;/g, '&'), headers: { 'User-Agent': BROWSER_UA } }]
+            };
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+  } catch {
+    // ننتقل للطبقة التالية
+  }
+
+  // الطبقة 3: واجهة تطبيق TikTok Mobile الرسمية (tiktokv.com)
+  if (awemeId) {
+    const mobileHosts = [
+      'https://api16-normal-c-alisg.tiktokv.com',
+      'https://api16-normal-c-useast1a.tiktokv.com',
+      'https://api22-normal-c-alisg.tiktokv.com'
+    ];
+    for (const host of mobileHosts) {
+      try {
+        const apiUrl =
+          `${host}/aweme/v1/feed/?aweme_id=${awemeId}&version_name=26.2.0&version_code=262018` +
+          `&build_number=26.2.0&manifest_version_code=262018&update_version_code=262018&openudid=7154829104829104&uuid=3849201948201948`;
+        const r = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'TikTok 26.2.0 rv:262018 (iPhone; iOS 16.5; ar_IQ) Cronet' }
+        });
+        if (!r.ok) continue;
+        const j: any = await r.json();
+        const aweme = (j?.aweme_list || []).find((a: any) => String(a?.aweme_id) === awemeId) || j?.aweme_list?.[0];
+        if (!aweme) continue;
+
+        const imgs: any[] = aweme?.image_post_info?.images || [];
+        if (imgs.length > 0) {
+          const items = imgs
+            .map(im => im?.display_image?.url_list?.[0])
+            .filter(Boolean)
+            .map((u: string) => ({ kind: 'photo' as const, url: u }));
+          if (items.length) return { ok: true, title: aweme.desc || '', items };
+        }
+
+        const vUrl = aweme?.video?.play_addr?.url_list?.[0];
+        if (vUrl) {
+          return { ok: true, title: aweme.desc || '', items: [{ kind: 'video', url: String(vUrl) }] };
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  // الطبقة 4: TikWM كاحتياط إضافي أخير
+  try {
+    const form = new URLSearchParams({ url: resolvedUrl, hd: '1' });
     const res = await fetch('https://www.tikwm.com/api/', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'User-Agent': BROWSER_UA
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': BROWSER_UA },
       body: form.toString()
     });
     if (res.ok) {
@@ -615,108 +1041,162 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
       const d = json?.data;
       if (json?.code === 0 && d) {
         if (Array.isArray(d.images) && d.images.length > 0) {
-          return {
-            ok: true,
-            title: d.title || '',
-            items: d.images.slice(0, 10).map((img: string) => ({ kind: 'photo' as const, url: img }))
-          };
+          return { ok: true, items: d.images.slice(0, 10).map((img: string) => ({ kind: 'photo' as const, url: img })) };
         }
         const rawVid = d.hdplay || d.play || d.wmplay;
         if (rawVid) {
           const fullUrl = String(rawVid).startsWith('http') ? String(rawVid) : `https://www.tikwm.com${rawVid}`;
-          return { ok: true, title: d.title || '', items: [{ kind: 'video', url: fullUrl }] };
+          return { ok: true, items: [{ kind: 'video', url: fullUrl }] };
         }
       }
     }
   } catch {
-    // fallback below
+    // ignore
   }
 
-  // 2) LoveTik Public API fallback
-  try {
-    const form = new URLSearchParams({ query: url });
-    const res = await fetch('https://lovetik.com/api/ajax/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': BROWSER_UA },
-      body: form.toString()
-    });
-    if (res.ok) {
-      const d: any = await res.json();
-      const best = (d?.links || []).find((l: any) => l?.a && !String(l.t || '').includes('MP3')) || d?.links?.[0];
-      if (best?.a) {
-        return { ok: true, title: d.desc || '', items: [{ kind: 'video', url: String(best.a) }] };
-      }
-    }
-  } catch {
-    // fallback below
-  }
-
-  const os = await extractViaOceanSaver(url, '720');
-  if (os) return { ok: true, items: [{ kind: 'video', url: os }] };
-
-  return { ok: false, items: [], error: 'تعذّر تحميل منشور تيك توك — تأكد أن الرابط عام وصحيح.' };
+  return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور تيك توك — تأكد أن المنشور عام وصحيح.' };
 }
 
-/** 📌 تحميل من بنترست (يدعم روابط pin.it المختصرة والفيديوهات والصور الأصلية عالية الدقة) */
+/** 📌 تحميل من بنترست (يفك جميع الروابط المختصرة pin.it وترميز JSON الداخلي \u002F للفيديو والصور الأصلية) */
 async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
   try {
     const res = await fetch(url, {
       redirect: 'follow',
       headers: {
         'User-Agent': BROWSER_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
       }
     });
     if (res.ok) {
-      const html = await res.text();
-      // فحص الفيديو عالي الدقة MP4 أولاً
-      const mp4Matches = html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s\\]+\.mp4/g);
+      const rawHtml = await res.text();
+      // فك جميع ترميزات JSON المضمّنة داخل بنترست (\u002F -> /) لكشف روابط v1.pinimg.com المخفية!
+      const html = rawHtml.replace(/\\u002F/gi, '/').replace(/\\\//g, '/');
+
+      // 1) البحث عن ملفات الفيديو الأصلية عالية الجودة MP4
+      const mp4Matches = html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s<>\\]+\.mp4/gi);
       if (mp4Matches && mp4Matches.length > 0) {
         const bestMp4 =
-          mp4Matches.find(u => u.includes('720w') || u.includes('expMp4')) || mp4Matches[0];
+          mp4Matches.find(u => u.includes('720w') || u.includes('expMp4')) ||
+          mp4Matches.find(u => !u.includes('hls')) ||
+          mp4Matches[0];
         return { ok: true, items: [{ kind: 'video', url: bestMp4 }] };
       }
 
-      // فحص الصورة الأصلية عالية الجودة
-      const origImg = html.match(/https:\/\/i\.pinimg\.com\/originals\/[^"'\s\\]+\.(?:jpg|jpeg|png|webp)/i);
-      if (origImg?.[0]) {
-        return { ok: true, items: [{ kind: 'photo', url: origImg[0] }] };
+      // 2) البحث عن الصورة الأصلية الكاملة بدون ضغط (originals ثم 736x)
+      const origImg =
+        html.match(/https:\/\/i\.pinimg\.com\/originals\/[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp)/i)?.[0] ||
+        html.match(/https:\/\/i\.pinimg\.com\/736x\/[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp)/i)?.[0];
+      if (origImg) {
+        return { ok: true, items: [{ kind: 'photo', url: origImg }] };
       }
 
       const ogImg =
         html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
         html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
-      if (ogImg) {
+      if (ogImg && ogImg.startsWith('http')) {
         return { ok: true, items: [{ kind: 'photo', url: ogImg }] };
       }
     }
   } catch {
-    // fallback below
+    // ignore
   }
 
-  const os = await extractViaOceanSaver(url, '720');
-  if (os) return { ok: true, items: [{ kind: 'video', url: os }] };
-
-  return { ok: false, items: [], error: 'تعذّر استخراج المنشور من بنترست — تأكد من إرسال رابط المنشور الصحيح.' };
+  return { ok: false, items: [], error: '⚠️ تعذّر استخراج المنشور من بنترست — تأكد من إرسال رابط المنشور الصحيح.' };
 }
 
-/** 📸 تحميل من إنستغرام (Reels / Posts / صور وفيديوهات) */
+/** 📸 تحميل من إنستغرام (يدعم روابط /share/reel/... الحديثة + وسطاء العرض بدون خطأ www. + GraphQL + Embed) */
 async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
-  const scMatch = String(url || '').match(/instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
+  let targetUrl = url;
+
+  // فك روابط المشاركة الحديثة instagram.com/share/reel/... للحصول على الـ shortcode الحقيقي
+  if (targetUrl.includes('/share/')) {
+    try {
+      const r = await fetch(targetUrl, {
+        redirect: 'follow',
+        headers: { 'User-Agent': MOBILE_SAFARI_UA }
+      });
+      if (r.url) targetUrl = r.url;
+    } catch {
+      // continue
+    }
+  }
+
+  const scMatch = String(targetUrl).match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
   const shortcode = scMatch ? scMatch[1] : '';
 
-  // 1) GraphQL العام لإنستغرام
   if (shortcode) {
+    // الطبقة 1: وسطاء العرض المباشر المخصصة لبوتات تيليجرام بدون www. (ddinstagram / kkinstagram / instagramez / vxinstagram)
+    for (const host of ['ddinstagram.com', 'kkinstagram.com', 'instagramez.com', 'vxinstagram.com']) {
+      try {
+        const proxyUrl = `https://${host}/reel/${shortcode}`;
+        const r = await fetch(proxyUrl, {
+          headers: { 'User-Agent': TG_BOT_UA },
+          redirect: 'follow'
+        });
+        if (!r.ok) continue;
+        const html = await r.text();
+        const vidUrl =
+          html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
+          html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
+        if (vidUrl && vidUrl.startsWith('http')) {
+          return {
+            ok: true,
+            items: [{ kind: 'video', url: vidUrl.replace(/&amp;/g, '&'), headers: { 'User-Agent': BROWSER_UA } }]
+          };
+        }
+        const imgUrl =
+          html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
+          html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
+        if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('logo')) {
+          return {
+            ok: true,
+            items: [{ kind: 'photo', url: imgUrl.replace(/&amp;/g, '&'), headers: { 'User-Agent': BROWSER_UA } }]
+          };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    // الطبقة 2: GraphQL الرسمي لإنستغرام
     try {
-      const gqlUrl =
-        `https://www.instagram.com/graphql/query/?doc_id=8845758582119845` +
-        `&variables=${encodeURIComponent(JSON.stringify({ shortcode, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null }))}`;
-      const r = await fetch(gqlUrl, {
+      const form = new URLSearchParams({
+        av: '0',
+        __d: 'www',
+        __user: '0',
+        __a: '1',
+        __req: '3',
+        lsd: 'AVqbxe3J_YA',
+        fb_api_caller_class: 'RelayModern',
+        fb_api_req_friendly_name: 'PolarisPostActionLoadPostQueryQuery',
+        variables: JSON.stringify({
+          shortcode,
+          fetch_comment_count: 2,
+          fetch_related_profile_media_count: 0,
+          parent_comment_count: 0,
+          child_comment_count: 0,
+          fetch_like_count: 10,
+          fetch_tagged_user_count: null,
+          fetch_preview_comment_count: 2,
+          has_threaded_comments: true,
+          hoisted_comment_id: null,
+          hoisted_reply_id: null
+        }),
+        doc_id: '10015901848480474'
+      });
+      const r = await fetch('https://www.instagram.com/api/graphql', {
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': BROWSER_UA,
           'X-IG-App-ID': '936619743392459',
-          Accept: '*/*'
-        }
+          'X-FB-LSD': 'AVqbxe3J_YA',
+          'X-ASBD-ID': '129477',
+          Origin: 'https://www.instagram.com',
+          Referer: `https://www.instagram.com/p/${shortcode}/`
+        },
+        body: form.toString()
       });
       if (r.ok) {
         const j: any = await r.json();
@@ -744,37 +1224,10 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         }
       }
     } catch {
-      // continue to next provider
+      // continue
     }
 
-    // 2) وسطاء العرض المباشر (kkinstagram / ddinstagram) لتيليجرام
-    for (const host of ['kkinstagram.com', 'ddinstagram.com']) {
-      try {
-        const proxyUrl = `https://www.${host}/p/${shortcode}/`;
-        const r = await fetch(proxyUrl, {
-          headers: { 'User-Agent': 'TelegramBot (like TwitterBot)' },
-          redirect: 'follow'
-        });
-        if (!r.ok) continue;
-        const html = await r.text();
-        const vidUrl =
-          html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
-          html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
-        if (vidUrl && vidUrl.startsWith('http')) {
-          return { ok: true, items: [{ kind: 'video', url: vidUrl.replace(/&amp;/g, '&') }] };
-        }
-        const imgUrl =
-          html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
-          html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
-        if (imgUrl && imgUrl.startsWith('http')) {
-          return { ok: true, items: [{ kind: 'photo', url: imgUrl.replace(/&amp;/g, '&') }] };
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    // 3) صفحة Embed الرسمية
+    // الطبقة 3: صفحة التضمين الرسمية Embed
     try {
       const emb = await fetch(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, {
         headers: { 'User-Agent': BROWSER_UA }
@@ -795,44 +1248,40 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
     }
   }
 
-  const os = await extractViaOceanSaver(url, '720');
-  if (os) return { ok: true, items: [{ kind: 'video', url: os }] };
-
-  return { ok: false, items: [], error: 'تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
+  return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
 }
 
-/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) */
+/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) عبر العملاء الأصليين مع تمرير الـ User-Agent المطابق */
 async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   const vid = extractYoutubeVideoId(url);
-  const cleanUrl = vid ? `https://www.youtube.com/watch?v=${vid}` : url;
-
-  const mp4 = (await extractViaOceanSaver(cleanUrl, '720')) || (await extractViaOceanSaver(cleanUrl, '360'));
-  if (mp4) return { ok: true, items: [{ kind: 'video', url: mp4 }] };
-
-  const fab = await extractViaFabDL(cleanUrl, 'video');
-  if (fab) return { ok: true, items: [{ kind: 'video', url: fab }] };
-
-  if (vid) {
-    const inner = await extractViaInnertubeOrPiped(vid, 'video');
-    if (inner?.url) return { ok: true, items: [{ kind: 'video', url: inner.url }] };
+  if (!vid) {
+    return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط يوتيوب أو Shorts صحيح.' };
   }
 
-  return { ok: false, items: [], error: 'تعذّر تحميل الفيديو من يوتيوب — تأكد من الرابط أو جرّب مقطعاً أقصر.' };
+  const native = await extractViaYouTubeNative(vid, 'video');
+  if (native?.url) {
+    return {
+      ok: true,
+      items: [{ kind: 'video', url: native.url, headers: { 'User-Agent': native.ua } }]
+    };
+  }
+
+  return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام وليس بثاً مباشراً.' };
 }
 
-export async function downloadFromPlatform(platform: SocialPlatform, rawUrl: string): Promise<SocialDownloadResult> {
-  const url = String(rawUrl || '').trim();
-  if (!/^https?:\/\//i.test(url)) {
+export async function downloadFromPlatform(platform: SocialPlatform, rawInput: string): Promise<SocialDownloadResult> {
+  const extracted = extractFirstUrl(rawInput);
+  if (!extracted) {
     return { ok: false, items: [], error: '⚠️ يرجى إرسال رابط صحيح يبدأ بـ https://' };
   }
   switch (platform) {
     case 'tt':
-      return downloadTikTok(url);
+      return downloadTikTok(extracted);
     case 'pin':
-      return downloadPinterest(url);
+      return downloadPinterest(extracted);
     case 'ig':
-      return downloadInstagram(url);
+      return downloadInstagram(extracted);
     case 'yt':
-      return downloadYouTube(url);
+      return downloadYouTube(extracted);
   }
 }

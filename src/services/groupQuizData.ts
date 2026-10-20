@@ -517,3 +517,65 @@ export const SONGS_EN: GQRow[] = [
   ['لمنو أغنية «All of Me»؟', 'John Legend', 'Sam Smith', 'Bruno Mars', 'Ed Sheeran'],
   ['لمنو أغنية «Sugar»؟', 'Maroon 5', 'OneRepublic', 'Coldplay', 'The Chainsmokers']
 ];
+
+// =====================================================================
+// 🔗 دمج الموسوعات الشاملة والأطلس الكامل للدول والجزر بدون أي تكرار
+// =====================================================================
+import {
+  WORLD_FLAGS_FULL,
+  WORLD_CAPITALS_FULL,
+  GEOGRAPHY_QUIZ_BANK,
+  HISTORY_QUIZ_BANK
+} from './worldAtlasData';
+import {
+  GENERAL_QUIZ_EXTRA,
+  EXTRA_COUNTRIES,
+  EXTRA_MOVIES,
+  EXTRA_SERIES,
+  EXTRA_FOODS,
+  EXTRA_PLAYERS,
+  EXTRA_POETS,
+  EXTRA_SONGS_AR,
+  EXTRA_SONGS_EN
+} from './generalTriviaBank';
+
+import {
+  MEGA_HISTORY,
+  MEGA_GEOGRAPHY,
+  MEGA_GENERAL,
+  MEGA_NUMBERS
+} from './megaExpansionPack';
+
+function appendUniqueRows(target: GQRow[], extra: GQRow[]) {
+  const seen = new Set(target.map(r => `${r[0]}::${r[1]}`));
+  for (const row of extra) {
+    const key = `${row[0]}::${row[1]}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      target.push(row);
+    }
+  }
+}
+
+appendUniqueRows(GENERAL, GENERAL_QUIZ_EXTRA);
+appendUniqueRows(GENERAL, MEGA_GENERAL);
+appendUniqueRows(NUMBERS, MEGA_NUMBERS);
+appendUniqueRows(COUNTRIES, EXTRA_COUNTRIES);
+appendUniqueRows(MOVIES, EXTRA_MOVIES);
+appendUniqueRows(SERIES, EXTRA_SERIES);
+appendUniqueRows(FOODS, EXTRA_FOODS);
+appendUniqueRows(FLAGS, WORLD_FLAGS_FULL);
+appendUniqueRows(CAPITALS, WORLD_CAPITALS_FULL);
+appendUniqueRows(PLAYERS, EXTRA_PLAYERS);
+appendUniqueRows(POETS, EXTRA_POETS);
+appendUniqueRows(SONGS_AR, EXTRA_SONGS_AR);
+appendUniqueRows(SONGS_EN, EXTRA_SONGS_EN);
+
+export const GEOGRAPHY: GQRow[] = [];
+appendUniqueRows(GEOGRAPHY, GEOGRAPHY_QUIZ_BANK);
+appendUniqueRows(GEOGRAPHY, MEGA_GEOGRAPHY);
+
+export const HISTORY: GQRow[] = [];
+appendUniqueRows(HISTORY, HISTORY_QUIZ_BANK);
+appendUniqueRows(HISTORY, MEGA_HISTORY);
+
