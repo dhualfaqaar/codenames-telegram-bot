@@ -3145,7 +3145,7 @@ export class TelegramBotManager {
     }
   }
 
-  /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد ١٠ ثواني أو بعد شاشة النتيجة القصيرة) */
+  /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد ١٥ ثانية أو بعد شاشة النتيجة القصيرة) */
   public async processQuizTimers(): Promise<void> {
     const now = Date.now();
     for (const g of Array.from(this.gqGames.values())) {
@@ -3158,9 +3158,6 @@ export class TelegramBotManager {
         this.recordGroupQuizFinish(g);
       }
       await this.paintQuiz(g);
-      if (adv.over && adv.smart) {
-        await this.sendMessage(g.chatId, '🧠 *نهاية مبكرة* — المتصدر بطل رسمي، ما يكدر أحد يلحقه! 🏆');
-      }
     }
     this.scheduleLocalQuizTimer();
   }
@@ -5078,9 +5075,30 @@ export class TelegramBotManager {
     }
   }
 
-  private async sendWKCurrentPrompt(game: WK.WKGame, userId: string) {
+  private async sendWKCurrentPrompt(game: WK.WKGame, userId: string, editMsgId?: number) {
+    const player = game.players.find(p => p.id === userId);
     const prompt = WK.renderWKPrompt(game, userId);
-    if (!prompt) return;
+    if (!player || !prompt) return;
+
+    // في مرحلة التخمين: نحدّث نفس الرسالة بمكانها (editMessageText) بدل إرسال رسائل متكررة
+    if (game.status === 'guessing') {
+      const targetMsgId = editMsgId || player.guessMsgId;
+      if (targetMsgId) {
+        const edited = await this.editMessageText(userId, targetMsgId, prompt.text, prompt.keyboard, 'MarkdownV2');
+        if (edited?.ok || String(edited?.description || '').includes('not modified')) {
+          player.guessMsgId = targetMsgId;
+          this.wkGames.set(game.chatId, game);
+          return;
+        }
+      }
+      const sent = await this.sendMessage(userId, prompt.text, prompt.keyboard, 'MarkdownV2');
+      if (sent?.result?.message_id) {
+        player.guessMsgId = sent.result.message_id;
+        this.wkGames.set(game.chatId, game);
+      }
+      return;
+    }
+
     await this.sendMessage(userId, prompt.text, prompt.keyboard, 'MarkdownV2');
   }
 
@@ -5193,7 +5211,7 @@ export class TelegramBotManager {
     await this.sendMessage(dmChatId, '✅ خاصك جاهز! بانتظار انضمام اللاعب الثاني وبدء التحدي.');
   }
 
-  private async advanceWhoKnowsStep(game: WK.WKGame, userId: string, rawInput: string) {
+  private async advanceWhoKnowsStep(game: WK.WKGame, userId: string, rawInput: string, editMsgId?: number) {
     if (game.status === 'answering') {
       const res = WK.wkSubmitSelfAnswer(game, userId, rawInput);
       if (!res.ok) return;
@@ -5201,18 +5219,13 @@ export class TelegramBotManager {
       await this.paintWKBoard(game);
 
       if (res.phaseComplete) {
-        await this.sendMessage(
-          userId,
-          '🔒 تم تثبيت جميع إجاباتك! الآن تبدأ مرحلة تخمين إجابات الطرف الثاني 🃏'
-        );
         const partner = WK.wkPartner(game, userId);
         if (partner) {
-          await this.sendMessage(
-            partner.id,
-            '🃏 الطرف الثاني أكمل تثبيت إجاباته! ابدأ الآن بتخمين بطاقاته 👇'
-          );
+          partner.guessMsgId = undefined;
           await this.sendWKCurrentPrompt(game, partner.id);
         }
+        const me = game.players.find(p => p.id === userId);
+        if (me) me.guessMsgId = undefined;
         await this.sendWKCurrentPrompt(game, userId);
         return;
       }
@@ -5220,7 +5233,7 @@ export class TelegramBotManager {
       if (res.playerDone) {
         await this.sendMessage(
           userId,
-          '✅ تم تثبيت جميع إجاباتك السرية عند البوت 🔒\n⏳ بانتظار إكمال الطرف الثاني لتثبيت إجاباته حتى يبدأ التخمين!'
+          '✅ تم تثبيت جميع إجاباتك السرية عند البوت 🔒\n⏳ بانتظار إكمال الطرف الثاني حتى تبدأ مرحلة التخمين!'
         );
         return;
       }
@@ -5230,37 +5243,45 @@ export class TelegramBotManager {
     }
 
     if (game.status === 'guessing') {
+      const player = game.players.find(p => p.id === userId);
       const res = WK.wkSubmitGuess(game, userId, rawInput);
       if (!res.ok) return;
+      if (player && editMsgId) player.guessMsgId = editMsgId;
       this.wkGames.set(game.chatId, game);
 
       if (res.gameOver) {
         this.recordWhoKnowsFinish(game);
         await this.paintWKBoard(game);
-        const total = game.questions.length;
+        const privateReveal = await this.withBotFooter(WK.renderWKPrivateReveal(game), true);
         for (const p of game.players) {
-          const other = WK.wkPartner(game, p.id);
-          await this.sendMessage(
-            p.id,
-            `🏁 انتهى التحدي وتم كشف جميع البطاقات في القناة!\n\n` +
-              `🎯 نتيجتك: عرفت *${p.score}* من *${total}* صح\n` +
-              (other ? `🤝 الطرف الثاني عرف: *${other.score}* من *${total}* صح\n` : '') +
-              `📢 ارجع للقناة لمشاهدة البطاقات المكشوفة بالتفصيل!`
-          );
+          if (p.guessMsgId) {
+            const edited = await this.editMessageText(p.id, p.guessMsgId, privateReveal, [], 'MarkdownV2');
+            if (edited?.ok || String(edited?.description || '').includes('not modified')) continue;
+          }
+          await this.sendMessage(p.id, privateReveal, [], 'MarkdownV2');
         }
         return;
       }
 
       await this.paintWKBoard(game);
       if (res.playerDone) {
-        await this.sendMessage(
-          userId,
-          '✅ أنهيت تخمين جميع البطاقات! ⏳ بانتظار انتهاء الطرف الثاني لكشف البطاقات في القناة 🃏'
-        );
+        const waitText =
+          `✅ *أنهيت تخمين جميع البطاقات\\!*\n` +
+          `⏳ _بانتظار انتهاء الطرف الثاني حتى توصلكم بطاقات الكشف هنا بالخاص_ 🃏`;
+        const targetId = editMsgId || player?.guessMsgId;
+        if (targetId) {
+          const edited = await this.editMessageText(userId, targetId, waitText, [], 'MarkdownV2');
+          if (edited?.ok || String(edited?.description || '').includes('not modified')) return;
+        }
+        const sent = await this.sendMessage(userId, waitText, [], 'MarkdownV2');
+        if (player && sent?.result?.message_id) {
+          player.guessMsgId = sent.result.message_id;
+          this.wkGames.set(game.chatId, game);
+        }
         return;
       }
 
-      await this.sendWKCurrentPrompt(game, userId);
+      await this.sendWKCurrentPrompt(game, userId, editMsgId || player?.guessMsgId);
     }
   }
 
@@ -5295,42 +5316,20 @@ export class TelegramBotManager {
         return;
       }
 
-      if (mode === 'a') {
-        if (game.status !== 'answering' || player.answers.length !== qIdx) {
-          await this.answerCallbackQuery(cb.id, 'تم تثبيت هذا السؤال مسبقاً ✅');
-          return;
-        }
-        const sIdx = parseInt(token, 10);
-        const val = game.questions[qIdx]?.suggestions[sIdx] || '';
-        if (!val) {
-          await this.answerCallbackQuery(cb.id, '');
-          return;
-        }
-        await this.answerCallbackQuery(cb.id, `🔒 تثبّتت: ${val}`);
-        await this.advanceWhoKnowsStep(game, uid, val);
-        return;
-      }
-
       if (mode === 'g') {
         if (game.status !== 'guessing' || player.guesses.length !== qIdx) {
           await this.answerCallbackQuery(cb.id, 'تم تخمين هذه البطاقة مسبقاً ✅');
           return;
         }
-        const q = game.questions[qIdx];
-        const realAns = other.answers[qIdx] || '';
-        const pool = (q?.suggestions || []).filter(s2 => !WK.answersMatch(realAns, s2));
-        const chosen =
-          token === 'real'
-            ? realAns
-            : token.startsWith('d')
-              ? pool[parseInt(token.slice(1), 10)] || ''
-              : '';
+        const sets = WK.ensureChoiceSets(game, player);
+        const cIdx = parseInt(token, 10);
+        const chosen = !Number.isNaN(cIdx) ? sets[qIdx]?.[cIdx] || '' : '';
         if (!chosen) {
           await this.answerCallbackQuery(cb.id, '');
           return;
         }
         await this.answerCallbackQuery(cb.id, `🃏 اخترت: ${chosen}`);
-        await this.advanceWhoKnowsStep(game, uid, chosen);
+        await this.advanceWhoKnowsStep(game, uid, chosen, cb.message?.message_id);
         return;
       }
       return;

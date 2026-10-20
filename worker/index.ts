@@ -116,7 +116,7 @@ export class BotState {
     return bot;
   }
 
-  /** يضبط منبّه الـ Durable Object على أقرب موعد جولة شغّالة (١٠ ثواني للسؤال / ٢ ثانية للنتيجة) */
+  /** يضبط منبّه الـ Durable Object على أقرب موعد جولة شغّالة (١٥ ثانية للسؤال / ٢ ثانية للنتيجة) */
   private async syncAlarm(bot: TelegramBotManager): Promise<void> {
     try {
       const nextAt = bot.getNextQuizDeadline();
