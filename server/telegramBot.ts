@@ -2689,7 +2689,7 @@ export class TelegramBotManager {
 
       const keyboard: any[][] = list.map(g => [
         {
-          text: `${g.emoji} ${g.title}${g.ready ? '' : ' 🔜'}`,
+          text: `${g.emoji} ${g.title}`,
           callback_data: `hub:g:${g.id}`
         }
       ]);
@@ -2704,47 +2704,42 @@ export class TelegramBotManager {
       return { text, keyboard };
     }
 
-    // 🎯 قائمة اللعبة: أزرار (شرح / إحصائيات / قناة / لعب مع البوت)
+    // 🎯 قائمة اللعبة
     if (section.startsWith('g:')) {
       const game = findBotGame(section.slice(2));
       if (!game) {
         return {
-          text: `⚠️ ما لكيت هاي اللعبة — ارجع واختار من القائمة.`,
-          keyboard: [back]
+          text: `ما لكيت هاي اللعبة — ارجع واختار من القائمة.`,
+          keyboard: [[{ text: 'رجوع', callback_data: 'hub:main' }]]
         };
       }
 
-      const lines = [`${game.emoji} *${game.title}*`, `👥 ${game.players}`, `📍 ${game.where}`];
-      const money = Economy.moneyNote(game.id);
-      if (money) lines.push(money);
+      const lines = [`${game.emoji} *${game.title}*`];
+
+      if (game.ready) {
+        if (game.players) lines.push(game.players);
+      } else {
+        lines.push('قريباً');
+      }
+
       const keyboard: any[][] = [];
 
-      // 1) شرح اللعبة
-      keyboard.push([{ text: '📖 شرح اللعبة', callback_data: `hub:how:${game.id}` }]);
-
-      // 2) إحصائيات اللعبة نفسها
       if (game.ready) {
-        keyboard.push([{ text: '📊 إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
+        // إحصائيات اللعبة نفسها
+        keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
+
+        // زر يحوّل اللعبة للقناة
+        if (game.channel) {
+          keyboard.push([{ text: 'نزّل اللعبة بقناتك', callback_data: 'hub:channel' }]);
+        }
+
+        // العب مع البوت
+        if (game.play) {
+          keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
+        }
       }
 
-      // 3) زر يحوّل اللعبة للقناة (ألعاب الفرق — بس إذا جاهزة)
-      if (game.channel && game.ready) {
-        keyboard.push([{ text: '📣 نزّل اللعبة بقناتك', callback_data: 'hub:channel' }]);
-      }
-
-      // 4) اللعبة اللي بعدها ما نزلت
-      if (!game.ready) {
-        lines.push(`━━━━━━━━━━━━━━━━━━━`);
-        lines.push(`🔜 *قريباً* — اللعبة بالطريق.`);
-        keyboard.push([{ text: '🔜 قريباً', callback_data: 'hub:soon' }]);
-      }
-
-      // 5) وأخيراً: إذا اللعبة تنلعب مع البوت نفسه
-      if (game.play) {
-        keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
-      }
-
-      keyboard.push([{ text: '🔙 رجوع', callback_data: `hub:${game.category}` }]);
+      keyboard.push([{ text: 'رجوع', callback_data: `hub:${game.category}` }]);
 
       return { text: lines.join('\n'), keyboard };
     }
@@ -2756,32 +2751,29 @@ export class TelegramBotManager {
         return { text: `⚠️ ما لكيت هاي اللعبة.`, keyboard: [back] };
       }
 
-      const lines = [`📖 *شرح: ${game.title}*`, `━━━━━━━━━━━━━━━━━━━`, game.about];
+      const lines = [`${game.emoji} *${game.title}*`, `━━━━━━━━━━━━━━━━━━━`, game.about];
       if (game.goal) lines.push(`🎯 *الهدف:* ${game.goal}`);
       if (game.reward) lines.push(`🏆 *النقاط:* ${game.reward}`);
       if (!game.ready) lines.push(`🔜 *قريباً* — اللعبة بعدها ما نزلت.`);
 
       return {
         text: lines.join('\n'),
-        keyboard: [[{ text: '🔙 رجوع', callback_data: `hub:g:${game.id}` }]]
+        keyboard: [[{ text: 'رجوع', callback_data: `hub:g:${game.id}` }]]
       };
     }
 
     // ❓ الشرح
     if (section === 'help') {
       const text =
-        `❓ *كيف ألعب؟*\n` +
+        `كيف ألعب؟\n` +
         `كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `1️⃣ اختار *الصنف* من الشاشة الرئيسية.\n` +
-        `2️⃣ اختار *اللعبة* من الصنف.\n` +
-        `3️⃣ بلعبة تلكى أزرارها: 📖 شرح اللعبة • 📊 إحصائيات اللعبة • 📣 نزّل اللعبة بقناتك • 🤖 العب مع البوت (إذا تنلعب مع البوت).\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
-        `🏆 *النقاط:* كل لعبة تكسبها تجمعلك نقاط.\n` +
-        `🔜 *الألعاب اللي بيها 🔜* بعدها ما جاهزة — ننزّلها وحدة وحدة.`;
+        `1️⃣ اختار الصنف من الشاشة الرئيسية.\n` +
+        `2️⃣ اختار اللعبة من الصنف.\n` +
+        `3️⃣ اختر من الأزرار حسب اللعبة.\n`;
       return {
         text,
-        keyboard: [[{ text: '🔙 رجوع', callback_data: 'hub:main' }]]
+        keyboard: [[{ text: 'رجوع', callback_data: 'hub:main' }]]
       };
     }
 
