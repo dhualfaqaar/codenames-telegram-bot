@@ -28,9 +28,6 @@ pinned: false
 
 ## نشر التعديلات تلقائياً
 
-ملف `.github/workflows/deploy-bot.yml` يفحص الكود وينشر الـ Cloudflare Worker عند دفع تعديل إلى فرع `arena/**` أو `main`. حتى يشتغل، أضف **من إعدادات مستودع GitHub** → Settings → Secrets and variables → Actions → New repository secret:
+البوت مربوط مع GitHub عبر **Cloudflare Workers Builds**؛ ما يحتاج إعداد GitHub Actions أو إضافة توكنات Cloudflare إلى GitHub. بعد كل تعديل نختبر الكود ونسوي commit ونرفع فرع المحادثة إلى GitHub، وتبدأ Cloudflare بناء النسخة من الفرع المنشور. حفظ الملفات محلياً وحده ما ينشر البوت.
 
-- `CLOUDFLARE_API_TOKEN`: توكن Cloudflare بصلاحية نشر Workers على حسابك.
-- `CLOUDFLARE_ACCOUNT_ID`: معرّف حساب Cloudflare الذي يستضيف البوت.
-
-لا ترسل قيمها بالمحادثة ولا تضعها بالكود. أبقِ `TELEGRAM_BOT_TOKEN` و`WEBHOOK_SECRET` مخزّنين كأسرار في Cloudflare Worker مثل ما هما. كل تعديل يصير مباشر **بعد** حفظه في commit ودفعه إلى GitHub ونجاح الاختبارات؛ تعديل الملفات محلياً وحده ما ينشر البوت. راقب نتيجة النشر في تبويب **Actions** على GitHub.
+إذا تريد تعديل فرع المحادثة يظهر فوراً بالبوت المباشر، تأكد من لوحة **Cloudflare Workers & Pages → codenames-telegram-bot → Settings → Builds** أن *فرع الإنتاج* هو فرع المحادثة الحالي. إذا كان الإنتاج مربوط بـ `main` فقط، التعديلات على فرع المحادثة ما تصير مباشرة إلا بعد دمجها في `main` أو تغيير فرع الإنتاج في Cloudflare. بعد الدفع تأكد من نجاح فحص **Workers Builds** في GitHub؛ إذا فشل، افتح سجل البناء في Cloudflare لمعرفة السبب. أسرار البوت تبقى في Cloudflare ولا تُكتب هنا.
