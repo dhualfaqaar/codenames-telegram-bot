@@ -45,15 +45,24 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
       body: payload ? JSON.stringify(payload) : undefined
     }).then(r => r.json());
 
+  // أنواع التحديثات اللي البوت يحتاجها — ضروري إن inline_query بيها حتى
+  // يقدر يرد على منتقي «العب بالقناة» (بدونها يدور ويطلع ✖)، وchannel_post
+  // حتى يستلم بطاقات الإنلاين لما تنزل بالقناة ويحوّلها لألعاب حيّة.
+  const REQUIRED_UPDATES = ['message', 'channel_post', 'callback_query', 'my_chat_member', 'inline_query'];
+
   try {
     const info = await call('getWebhookInfo');
     const current: string = info?.result?.url || '';
-    if (current === expected) return { url: current, repaired: false };
+    // هل القائمة الحالية ناقصها شي؟ (القائمة الفاضية تعني "كل الأنواع" — إذن ما ناقص شي)
+    const currentUpdates: string[] = info?.result?.allowed_updates || [];
+    const updatesMissing = currentUpdates.length > 0 && REQUIRED_UPDATES.some(u => !currentUpdates.includes(u));
+
+    if (current === expected && !updatesMissing) return { url: current, repaired: false };
 
     const set = await call('setWebhook', {
       url: expected,
       secret_token: env.WEBHOOK_SECRET || undefined,
-      allowed_updates: ['message', 'callback_query', 'my_chat_member'],
+      allowed_updates: REQUIRED_UPDATES,
       drop_pending_updates: false
     });
 
