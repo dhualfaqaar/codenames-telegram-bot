@@ -73,51 +73,71 @@ export class CodenamesEngine {
     const existingIndex = game.players.findIndex(p => String(p.id) === String(player.id));
     const alreadyIn = existingIndex >= 0;
 
-    // Every team has exactly 2 seats: one spymaster + one operative.
-    const seatTaken = game.players.find(
-      p => p.team === player.team && p.role === player.role && String(p.id) !== String(player.id)
+    let targetTeam: Team = player.team;
+    let targetRole: PlayerRole = player.role;
+
+    const allSeats: Array<[Team, PlayerRole]> = [
+      ['blue', 'operative'],
+      ['red', 'operative'],
+      ['blue', 'spymaster'],
+      ['red', 'spymaster']
+    ];
+    const freeSeats = allSeats.filter(
+      ([t, r]) => !game.players.some(p => p.team === t && p.role === r && String(p.id) !== String(player.id))
     );
-    if (seatTaken) {
-      const seatName = player.role === 'spymaster' ? 'الجاسوس 🕵️' : 'العميل 👤';
+
+    // إذا اللاعب الجديد ضغط زر «انضم» العام أو ضغط بالغلط مقعد محجوز واكو مقعد فاضي → نجلسه تلقائياً بالمقعد الفاضي!
+    const seatTaken = game.players.find(
+      p => p.team === targetTeam && p.role === targetRole && String(p.id) !== String(player.id)
+    );
+    const wantsAuto = (player.team as string) === 'auto' || (player.role as string) === 'auto';
+
+    if (wantsAuto || (!alreadyIn && seatTaken)) {
+      const openSeats = allSeats.filter(([t, r]) => !game.players.some(p => p.team === t && p.role === r));
+      if (!openSeats.length) {
+        return {
+          success: false,
+          message: '⚠️ اكتملت المقاعد الأربعة (4/4)! المشرف يقدر يضغط «ابدأ اللعبة 🚀».',
+          game
+        };
+      }
+      [targetTeam, targetRole] = openSeats[0];
+    } else if (seatTaken) {
+      const seatName = targetRole === 'spymaster' ? 'الجاسوس 🕵️' : 'العميل 👤';
       return {
         success: false,
-        message:
-          `⚠️ ما يصير — ${seatName} بالفريق ${teamColor} ماخوذه (${this.nameTag(seatTaken.name)}).\n` +
-          `اختار ${player.role === 'spymaster' ? '«عميل 👤»' : '«جاسوس 🕵️»'} أو الفريق الثاني.`,
+        message: `⚠️ مقعد ${seatName} (${teamColor}) محجوز — اختار مقعد فاضي ⬜.`,
         game
       };
     }
 
-    if (!alreadyIn && game.players.filter(p => p.team === player.team).length >= 2) {
-      return {
-        success: false,
-        message:
-          `⚠️ الفريق ${teamColor} مكتمل (جاسوس + عميل).\n` +
-          `انضم للفريق الثاني، أو انتظر جولة جديدة.`,
-        game
-      };
-    }
+    const finalTeamColor = targetTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+    const finalPlayer = { ...player, team: targetTeam, role: targetRole };
 
     const updatedPlayers = [...game.players];
     if (existingIndex >= 0) {
-      updatedPlayers[existingIndex] = { ...updatedPlayers[existingIndex], ...player };
+      updatedPlayers[existingIndex] = { ...updatedPlayers[existingIndex], ...finalPlayer };
     } else {
-      updatedPlayers.push(player);
+      updatedPlayers.push(finalPlayer);
     }
 
-    const roleText = player.role === 'spymaster' ? 'جاسوس 🕵️' : 'عميل ميداني 👤';
+    const roleText = targetRole === 'spymaster' ? 'جاسوس 🕵️' : 'عميل 👤';
 
     const logEntry: GameLogEntry = {
       id: Math.random().toString(36).substring(7),
       timestamp: Date.now(),
       type: 'lobby',
-      team: player.team,
-      message: `انضم ${this.nameTag(player.name)} إلى الفريق ${teamColor} بصفة ${roleText}`
+      team: targetTeam,
+      message: `انضم ${this.nameTag(player.name)} إلى الفريق ${finalTeamColor} بصفة ${roleText}`
     };
+
+    const autoRedirectNote = !wantsAuto && !alreadyIn && seatTaken
+      ? `✅ المقعد المختار محجوز — سجّلناك تلقائياً (${roleText} — ${finalTeamColor})!`
+      : `✅ سُجّلت بالفريق ${finalTeamColor} كـ ${roleText}!`;
 
     return {
       success: true,
-      message: `تم انضمامك إلى الفريق ${teamColor} كـ ${roleText}!`,
+      message: autoRedirectNote,
       game: {
         ...game,
         players: updatedPlayers,
@@ -756,19 +776,23 @@ export class CodenamesEngine {
    */
   public static getTelegramInlineKeyboard(game: CodenamesGame): any[][] {
     if (game.status === 'lobby') {
-      return [
-        [
-          { text: `عميل أزرق 🔵`, callback_data: `join:blue:operative:${game.id}` },
-          { text: `عميل أحمر 🔴`, callback_data: `join:red:operative:${game.id}` }
-        ],
-        [
-          { text: `جاسوس أزرق 🕵️‍♂️`, callback_data: `join:blue:spymaster:${game.id}` },
-          { text: `جاسوس أحمر 🕵️‍♀️`, callback_data: `join:red:spymaster:${game.id}` }
-        ],
-        [
-          { text: 'ابدأ اللعبة 🚀', callback_data: `game:start:${game.id}` }
-        ]
-      ];
+      const hasSeat = (team: Team, role: PlayerRole) =>
+        game.players.some(p => p.team === team && p.role === role);
+      const seatMark = (team: Team, role: PlayerRole) => (hasSeat(team, role) ? '✅' : '⬜');
+      const rows: any[][] = [];
+      if (game.players.length < 4) {
+        rows.push([{ text: 'انضم', callback_data: `join:auto:auto:${game.id}` }]);
+      }
+      rows.push([
+        { text: `${seatMark('blue', 'operative')} عميل أزرق 🔵`, callback_data: `join:blue:operative:${game.id}` },
+        { text: `${seatMark('red', 'operative')} عميل أحمر 🔴`, callback_data: `join:red:operative:${game.id}` }
+      ]);
+      rows.push([
+        { text: `${seatMark('blue', 'spymaster')} جاسوس أزرق 🕵️`, callback_data: `join:blue:spymaster:${game.id}` },
+        { text: `${seatMark('red', 'spymaster')} جاسوس أحمر 🕵️`, callback_data: `join:red:spymaster:${game.id}` }
+      ]);
+      rows.push([{ text: 'ابدأ اللعبة 🚀', callback_data: `game:start:${game.id}` }]);
+      return rows;
     }
 
     if (game.status === 'game_over') {

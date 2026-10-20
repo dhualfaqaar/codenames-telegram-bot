@@ -769,30 +769,36 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
     return lines.join('\n');
   }
 
-  // 🏁 النتيجة النهائية بالقناة: بسيطة ومرتبة للطرفين (تفاصيل البطاقات وصلت بالخاص)
+  // 🏁 النتيجة النهائية بالقناة: كل لاعب باقتباس مستقل لوحده وبترتيب واضح ومفهوم فوراً
   const total = game.questions.length;
   const sorted = game.players.slice().sort((a, b) => b.score - a.score);
   const winner = game.winnerId ? game.players.find(p => p.id === game.winnerId) : undefined;
 
-  lines.push(`🏁 *انتهت الجولة\\!*`);
-  lines.push('');
-  if (winner) {
-    lines.push(`🏆 *الفائز:*`);
-    lines.push(`> \\| *${wkMd(winner.name)}* \\|`);
-  } else {
-    lines.push(`🤝 *تعادل بين الطرفين\\!*`);
+  lines.push(`🏁 *انتهى التحدي\\!*`);
+  lines.push(SEP);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const p = sorted[i];
+    const other = wkPartner(game, p.id);
+    const wrong = Math.max(0, total - p.score);
+    lines.push(
+      `> 👤 \\| *${wkMd(p.name)}* \\|\n` +
+      `> ✅ عرف عن \\| *${wkMd(other?.name || 'الطرف الثاني')}* \\|: *${p.score} من ${total}*\n` +
+      `> ❌ أخطأ بـ: *${wrong}*`
+    );
+    if (i < sorted.length - 1) {
+      lines.push('');
+    }
   }
 
   lines.push(SEP);
-  lines.push(
-    sorted
-      .map(p => {
-        const other = wkPartner(game, p.id);
-        return `> \\| *${wkMd(p.name)}* \\| — *${p.score}/${total}* حزر من أشياء *${wkMd(other?.name || 'الطرف الثاني')}*`;
-      })
-      .join('\n')
-  );
-  lines.push(`_🃏 تم إرسال كشف البطاقات الكامل بالخاص للمشاركين_`);
+  if (winner) {
+    lines.push(`🏆 *الفائز:*`);
+    lines.push(`> 🥇 \\| *${wkMd(winner.name)}* \\|`);
+  } else {
+    lines.push(`🤝 *النتيجة:* تعادل متكافئ بين الطرفين\\!`);
+  }
+  lines.push(`_📩 تفاصيل البطاقات كاملة وصلت بالخاص للمشاركين_`);
 
   return lines.join('\n');
 }
