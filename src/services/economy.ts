@@ -85,7 +85,13 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
   wordle: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
   poet: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
   wheel: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
-  guess_player: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
+  guess_player: {
+    maxMoney: 0.12,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: 'من يخمن أول يفوز — *0.03 – 0.12* 💵'
+  },
   guess_song: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' }
 };
 
