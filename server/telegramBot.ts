@@ -170,7 +170,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: '0.011 💵 للفائز فقط',
     about:
       'اللعبة بالقناة: ينضغط زر العب، ينضم لاعبين (2 لاعبين)، يطلع لكل لاعب 3 أزرار (حجرة ✊ • ورقة ✋ • مقص ✌️) ويختارونهم، البوت يكشف النتيجة ويحسب الجولات (أفضل من 3 جولات) والتعادل يعيد الجولة.',
-    play: { label: '🎮 العب بالقناة', data: 'chan:start:rps' },
+    play: { label: '🎮 العب بالقناة', data: 'hub:channel' },
     channel: true,
     ready: true
   },
@@ -2720,14 +2720,16 @@ export class TelegramBotManager {
         // إحصائيات اللعبة نفسها
         keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
 
-        // زر يحوّل اللعبة للقناة
+        // العب في القناة
         if (game.channel) {
-          keyboard.push([{ text: 'نزّل اللعبة بقناتك', callback_data: 'hub:channel' }]);
+          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
         }
 
         // العب مع البوت
-        if (game.play) {
+        if (game.play && !game.channel) {
           keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
+        } else if (game.play && game.channel) {
+          // إذا اللعبة بالقناة، نستخدم زر القناة
         }
       }
 
