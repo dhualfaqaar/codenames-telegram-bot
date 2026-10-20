@@ -153,9 +153,9 @@ export function answer(round: PoetRound, index: number): PoetRound {
 
 /** نص الرسالة (البيت + الخيارات أو النتيجة) */
 export function renderMessage(round: PoetRound): string {
-  const lines = [`🎭 *خمّن الشاعر*`, `━━━━━━━━━━━━━━━━━━━`];
+  const lines = [`🎭 *خمّن الشاعر*`, `━━━━━━━━━━`];
   lines.push(`❝ ${round.verse} ❞`);
-  lines.push(`━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`━━━━━━━━━━`);
 
   if (!round.done) {
     lines.push(`👤 منو ناظم هاي البيت؟`);

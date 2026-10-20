@@ -628,12 +628,16 @@ export class TelegramBotManager {
   private rhymeGames: Map<string, WordGame.RhymeRound> = new Map();
   /** 📏 جولات أطول كلمة (Key: user id) */
   private longestGames: Map<string, WordGame.LongestRound> = new Map();
+  /** هل البيئة الخارجية (Cloudflare Durable Object Alarm) تدير المؤقت؟ */
+  private externalScheduler: boolean = false;
+  private localQuizTimer: any = null;
 
-  constructor(initialToken?: string, ownerId?: string) {
+  constructor(initialToken?: string, ownerId?: string, externalScheduler: boolean = false) {
     if (initialToken) {
       this.token = initialToken.trim();
     }
     if (ownerId) this.ownerId = String(ownerId);
+    this.externalScheduler = externalScheduler;
     this.seedInitialMatchHistory();
   }
 
@@ -892,7 +896,7 @@ export class TelegramBotManager {
 
     game.rewarded = true;
 
-    const lines: string[] = [`💰 *جوائز المباراة* — ${game.winner === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} فاز`, `━━━━━━━━━━━━━━━━━━━`];
+    const lines: string[] = [`💰 *جوائز المباراة* — ${game.winner === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} فاز`, `━━━━━━━━━━`];
     gained.forEach((g, i) => {
       const bits = [`${this.statMedal(i)} ${this.mdSafe(g.name)}`];
       if (g.money > 0) bits.push(`*+${Economy.formatMoney(g.money)}* 💵`);
@@ -905,7 +909,7 @@ export class TelegramBotManager {
       lines.push(bits.join(' • '));
     });
     if (loserParts.length) {
-      lines.push(`━━━━━━━━━━━━━━━━━━━`);
+      lines.push(`━━━━━━━━━━`);
       lines.push(`_خبرة الخصم: ${loserParts.join(' • ')} — بلا أي فلوس 💸_`);
     }
     if (gained.every(g => g.money === 0) && gained.some(g => g.capped)) {
@@ -1593,9 +1597,9 @@ export class TelegramBotManager {
           `🛡️ *حظر تلقائي (سباب)*\n` +
             `👤 ${this.linkUser(rec)}\n` +
             `🆔 \`${rec.id}\`\n` +
-            `━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━\n` +
             `${this.escapeMd(text)}\n` +
-            `━━━━━━━━━━━━━━━━━━━\n` +
+            `━━━━━━━━━━\n` +
             `📴 البوت صار يتجاهله تماماً.\n` +
             `_(إذا تريد ترجّعه: رد هنا واكتب: الغاء الحظر)_`
         );
@@ -2306,7 +2310,7 @@ export class TelegramBotManager {
     if (!botUser) return text;
     // بصيغة MarkdownV2 (لوحات الألعاب الجماعية) لازم نهرّب الشرطة السفلية باليوزرنيم
     const shown = v2 ? botUser.replace(/_/g, '\\_') : botUser;
-    return text + `\n━━━━━━━━━━━━━━━━━━━\n` + `🤖 *البوت:* @${shown}`;
+    return text + `\n━━━━━━━━━━\n` + `🤖 *البوت:* @${shown}`;
   }
 
   /**
@@ -2511,7 +2515,7 @@ export class TelegramBotManager {
     await this.paintMenuView(cb, {
       text:
         `${game.emoji} *${game.title}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🎯 اختار كم راوند تلعبون بالقناة:`,
       keyboard: [
         [{ text: '🎮 بالقناة — ٥ راوندات', switch_inline_query: 'rps 5' }],
@@ -2532,7 +2536,7 @@ export class TelegramBotManager {
     await this.paintMenuView(cb, {
       text:
         `${game.emoji} *${game.title}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `💬 هاللعبة *خاصة*: تنلعبها هنا مع البوت — ما تننشر بقناة.\n\n` +
         `👇 اضغط زر اللعب حتى تبدأ هسه:`,
       keyboard
@@ -2625,7 +2629,7 @@ export class TelegramBotManager {
       type: 'article',
       id: `gq:${k}`,
       title,
-      description: 'بطولة جماعية — من ٣ لاعبين لحد ١٠، تبدأ بالأزرار',
+      description: 'بطولة جماعية — من لاعبين إلى ١٠ لاعبين',
       input_message_content: {
         message_text:
           `${meta.emoji} *${meta.title} — تحضير البطولة…*\n` +
@@ -2642,7 +2646,7 @@ export class TelegramBotManager {
       type: 'article',
       id: 'gq:mm',
       title: '🔐 ماسترمايند — كسر الرقم السري',
-      description: 'لعبة تخمين رقم سري جماعية — ٣ لاعبين فأكثر',
+      description: 'لعبة تخمين رقم سري جماعية — من لاعبين إلى ١٠ لاعبين',
       input_message_content: {
         message_text:
           `🔐 *ماسترمايند — تحضير اللعبة…*\n` +
@@ -2791,16 +2795,16 @@ export class TelegramBotManager {
         await this.deleteMessage(chatId, oldRps.messageId);
       }
 
-      const game = RPS.createGame(
+      let game = RPS.createGame(
         chatId,
         message.chat.title || 'المحادثة',
         rounds,
         message.from ? String(message.from.id) : ''
       );
-      game.messageId = message.message_id;
       if (message.from?.id) {
-        RPS.join(game, String(message.from.id), message.from.first_name || 'الناشر');
+        game = RPS.join(game, String(message.from.id), message.from.first_name || 'الناشر');
       }
+      game.messageId = message.message_id;
       this.rpsGames.set(chatId, game);
 
       const res = await this.editMessageText(
@@ -2881,6 +2885,55 @@ export class TelegramBotManager {
 
   private sleep(ms: number): Promise<void> {
     return new Promise(r => setTimeout(r, ms));
+  }
+
+  /** أقرب موعد انتهاء جولة أو شاشة نتيجة (للمنبّه التلقائي ١٠ ثواني) */
+  public getNextQuizDeadline(): number | null {
+    let earliest = Infinity;
+    const now = Date.now();
+    for (const g of this.gqGames.values()) {
+      if (g.status === 'playing') {
+        const d = g.roundDeadline ?? (g.roundDeadline = now + GG.ROUND_MS);
+        if (d < earliest) earliest = d;
+      } else if (g.status === 'result') {
+        const d = g.resultDeadline ?? (g.resultDeadline = now + GG.RESULT_MS);
+        if (d < earliest) earliest = d;
+      }
+    }
+    return Number.isFinite(earliest) ? earliest : null;
+  }
+
+  /** جدولة محلية عند التشغيل خارج Cloudflare Durable Object */
+  private scheduleLocalQuizTimer() {
+    if (this.externalScheduler) return;
+    if (this.localQuizTimer) {
+      clearTimeout(this.localQuizTimer);
+      this.localQuizTimer = null;
+    }
+    const nextAt = this.getNextQuizDeadline();
+    if (nextAt === null) return;
+    const delay = Math.max(50, nextAt - Date.now());
+    this.localQuizTimer = setTimeout(() => {
+      this.localQuizTimer = null;
+      this.processQuizTimers().catch(err => console.error('localQuizTimer error:', err));
+    }, delay);
+  }
+
+  /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد ١٠ ثواني أو بعد شاشة النتيجة القصيرة) */
+  public async processQuizTimers(): Promise<void> {
+    const now = Date.now();
+    for (const g of Array.from(this.gqGames.values())) {
+      const roundExpired = g.status === 'playing' && g.roundDeadline !== undefined && now >= g.roundDeadline;
+      const resultExpired = g.status === 'result' && g.resultDeadline !== undefined && now >= g.resultDeadline;
+      if (!roundExpired && !resultExpired) continue;
+
+      const adv = GG.quizAdvance(g);
+      await this.paintQuiz(g);
+      if (adv.over && adv.smart) {
+        await this.sendMessage(g.chatId, '🧠 *نهاية مبكرة* — المتصدر بطل رسمي، ما يكدر أحد يلحقه! 🏆');
+      }
+    }
+    this.scheduleLocalQuizTimer();
   }
 
   /** يعيد رسم لوحة لعبة جماعية — بنفس الرسالة إن كانت عادية، أو بمعرّف الإنلاين إن كانت أصلها تحويل */
@@ -2977,12 +3030,7 @@ export class TelegramBotManager {
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) {
         await this.paintQuiz(game);
-        const g = this.gqGames.get(cbChatId);
-        if (g) {
-          await this.sleep(3000);
-          GG.quizAdvance(g);
-          await this.paintQuiz(g);
-        }
+        this.scheduleLocalQuizTimer();
       }
       return;
     }
@@ -2991,6 +3039,7 @@ export class TelegramBotManager {
     if (op === 'gqn') {
       const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind);
       fresh.messageId = game.messageId;
+      fresh.inlineMessageId = game.inlineMessageId;
       this.gqGames.set(game.chatId, fresh);
       await this.paintQuiz(fresh);
       await this.answerCallbackQuery(cb.id, '🔄 بطولة جديدة — انضموا!');
@@ -3009,7 +3058,10 @@ export class TelegramBotManager {
     if (op === 'gqs') {
       const r = GG.quizStart(game);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
-      if (r.ok) await this.paintQuiz(game);
+      if (r.ok) {
+        await this.paintQuiz(game);
+        this.scheduleLocalQuizTimer();
+      }
       return;
     }
 
@@ -3018,18 +3070,9 @@ export class TelegramBotManager {
       const idx = parseInt(parts[1] || '0', 10);
       const r = GG.quizAnswer(game, playerId, playerName, idx);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok && r.msg.startsWith('🚫'));
-      await this.paintQuiz(game);
-
-      if (r.roundClosed) {
-        // مهلة قصيرة حتى يشوفون النتيجة، وبعدها الجولة الجاية أو الختام
-        const g = this.gqGames.get(cbChatId);
-        if (!g) return;
-        await this.sleep(3000);
-        const adv = GG.quizAdvance(g);
-        await this.paintQuiz(g);
-        if (adv.over && adv.smart) {
-          await this.sendMessage(g.chatId, '🧠 *نهاية مبكرة* — المتصدر بطل رسمي، ما يكدر أحد يلحقه! 🏆');
-        }
+      if (r.ok) {
+        await this.paintQuiz(game);
+        this.scheduleLocalQuizTimer();
       }
       return;
     }
@@ -3376,7 +3419,7 @@ export class TelegramBotManager {
 
     // 👤 إحصائيات اللاعب نفسه — تطلع أول شي، وبعدها خط فاصل وبعدها إحصائيات اللعبة العامة
     const personal = this.personalGameStats(gameId, viewerId, n);
-    const personalBlock = personal ? `${personal}\n━━━━━━━━━━━━━━━━━━━\n` : '';
+    const personalBlock = personal ? `${personal}\n━━━━━━━━━━\n` : '';
 
     // 🟩 إحصائيات خمّن الكلمة
     if (gameId === 'wordle') {
@@ -3397,12 +3440,12 @@ export class TelegramBotManager {
 
       const text =
         `🟩 *إحصائيات خمّن الكلمة*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         personalBlock +
         `✅ انحلّت: *${n.solved}* مرة\n` +
         `👥 لاعبون حلّوها: *${n.solvers.length}*\n` +
         `⏳ يلعبونها هسه: *${playingNow}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🥇 *أكثر من حلّها:*\n${lines}`;
 
       return { text, keyboard: [gameBack] };
@@ -3433,13 +3476,13 @@ export class TelegramBotManager {
 
       const text =
         `🎭 *إحصائيات خمّن الشاعر*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         personalBlock +
         `✅ أبيات انحلّت: *${solved}*\n` +
         `🎯 أبيات انلعبت: *${played}*\n` +
         `📈 دقة التخمين: *${accuracy}%*\n` +
         `⏳ يلعبونها هسه: *${playingNow}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🥇 *أخبر من عرف الشعراء:*\n${lines}`;
 
       return { text, keyboard: [gameBack] };
@@ -3472,11 +3515,11 @@ export class TelegramBotManager {
 
       const text =
         `🏆 *لوحة الأبطال*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `⭐ *الأكثر نقاط:*\n${pointsLines}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🧠 *أكثر من حلّ «خمّن الكلمة»:*\n${wordleLines}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `⭐ مجموع نقاط كل اللاعبين: *${n.totalPoints}*`;
 
       return { text, keyboard: [backStats] };
@@ -3531,18 +3574,18 @@ export class TelegramBotManager {
 
       const text =
         `⚔️ *إحصائيات كود نيمز (2 ضد 2)*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         personalBlock +
         `🏁 مباريات مكتملة: *${n.matches.length}*\n` +
         `⏳ جارية الآن: *${n.active.length}*\n` +
         `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
         `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n` +
         `💀 خسارة بالقاتل: *${n.assassinLosses}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🏆 *أكثر لاعب فاز:*\n${winLines}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🕵️ *أفضل الجواسيس:*\n${spyLines}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `📣 *أكثر القنوات لعباً:*\n${chatLines}`;
 
       return { text, keyboard: [fromGame ? gameBack : backStats] };
@@ -3575,12 +3618,12 @@ export class TelegramBotManager {
 
       const text =
         `✊ *إحصائيات حجرة ورقة مقص*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         personalBlock +
         `🎮 مباريات انلعبت: *${totalGames}*\n` +
         `🏆 مجموع الفوزات: *${totalWins}*\n` +
         `⏳ شغّالة هسه: *${liveNow}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🥇 *أكثر من فاز:*\n${lines}`;
 
       return { text, keyboard: [fromGame ? gameBack : backStats] };
@@ -3615,13 +3658,13 @@ export class TelegramBotManager {
 
       const text =
         `${conf.emoji} *إحصائيات ${conf.title}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         personalBlock +
         `🎯 مجموع الجولات: *${played}*\n` +
         `🏆 مجموع الفوزات: *${solved}*\n` +
         `📈 نسبة الفوز: *${accuracy}%*\n` +
         `👥 لاعبون: *${players.length}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🥇 *أكثر من فاز:*\n${lines}`;
 
       return { text, keyboard: [fromGame ? gameBack : backStats] };
@@ -3633,7 +3676,7 @@ export class TelegramBotManager {
       return {
         text:
           `${game ? `${game.emoji} *إحصائيات ${game.title}*` : '📊 *إحصائيات اللعبة*'}\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
+          `━━━━━━━━━━\n` +
           `🔜 اللعبة بعدها ما نزلت — أول ما نجهّزها نفتح إحصائياتها الخاصة.`,
         keyboard: [gameBack]
       };
@@ -3674,7 +3717,7 @@ export class TelegramBotManager {
 
     const text =
       `📊 *إحصائيات الألعاب*\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `🎮 *المجموع:* ${n.matches.length + n.solved + poetSolved + soloPlayed + rpsPlayed} لعبة مكتملة • ${n.active.length + Array.from(this.poet.values()).filter(p => !p.done).length} جارية الآن\n\n` +
       `⚔️ *كود نيمز (2 ضد 2)*\n` +
       `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
@@ -3687,9 +3730,9 @@ export class TelegramBotManager {
       `✅ أبيات انحلّت: *${poetSolved}* • 👥 لاعبون: *${poetPlayers}*\n\n` +
       `🤖 *ألعاب مع البوت*\n` +
       `🎯 جولات: *${soloPlayed}* • 🏆 فوزات: *${soloWon}*\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `🏆 *أقوى 5 بالنقاط:*\n${topLines}\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `⭐ مجموع نقاط اللاعبين: *${n.totalPoints}*`;
 
     const keyboard: any[][] = [
@@ -3777,11 +3820,11 @@ export class TelegramBotManager {
 
       const text = [
         `🎖️ *متصدرين بالمستوى* (أعلى 5)`,
-        '━━━━━━━━━━━━━━━━━━━',
+        '━━━━━━━━━━',
         lines,
         '───────────',
         myBlock,
-        '━━━━━━━━━━━━━━━━━━━',
+        '━━━━━━━━━━',
         `_ملاحظة: الفلوس والمستوى ما يزيدان إلا باللعب مع ناس حقيقيين (أونلاين)._`
       ].join('\n');
 
@@ -3793,7 +3836,7 @@ export class TelegramBotManager {
       const rec = this.users.get(String(viewerId));
       if (!rec) {
         return {
-          text: `👤 *ملفي*\n━━━━━━━━━━━━━━━━━━━\nما عندي معلومات عنك بعد — اضغط /start أول 🙂`,
+          text: `👤 *ملفي*\n━━━━━━━━━━\nما عندي معلومات عنك بعد — اضغط /start أول 🙂`,
           keyboard: tabs
         };
       }
@@ -3807,14 +3850,14 @@ export class TelegramBotManager {
 
       const lines = [
         `👤 *ملفي* — ${this.mdSafe(rec.name)}`,
-        `━━━━━━━━━━━━━━━━━━━`,
+        `━━━━━━━━━━`,
         `🎖️ المستوى: *${p.level}* (${Economy.levelTitle(p.level)})`,
         `${this.statBar(p.into, p.span)} *${p.into}* / ${p.span} XP • باقي *${p.left}* للمستوى ${p.level + 1}`,
         `_${Economy.walletVibe({ level: p.level, money, onlineGames: games, wins })}_`,
         `💵 رصيدي: *${Economy.formatMoney(money)}* 💵`,
         `🎮 مباريات أونلاين: *${games}* • 🏆 فوز: *${wins}* (${this.statPct(wins, games)})`,
         `🧠 نقاط ألعاب البوت: *${rec.points || 0}*`,
-        `━━━━━━━━━━━━━━━━━━━`,
+        `━━━━━━━━━━`,
         `💰 ربحت اليوم: *${Economy.formatMoney(today)}* من *${Economy.formatMoney(
           Economy.DAILY_MONEY_CAP
         )}*`,
@@ -3848,11 +3891,11 @@ export class TelegramBotManager {
 
     const text2 = [
       `💰 *متصدرين بالفلوس* (أعلى 5)`,
-      '━━━━━━━━━━━━━━━━━━━',
+      '━━━━━━━━━━',
       lines,
       '───────────',
       myBlock2,
-      '━━━━━━━━━━━━━━━━━━━',
+      '━━━━━━━━━━',
       `_ملاحظة: الفلوس ما تزيد إلا باللعب مع ناس حقيقيين (أونلاين)._`
     ].join('\n');
 
@@ -3937,7 +3980,7 @@ export class TelegramBotManager {
       const text =
         `${cat.emoji} *${cat.title}*\n` +
         `${cat.intro}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `👇 اختار اللعبة:`;
 
       return { text, keyboard };
@@ -4003,7 +4046,7 @@ export class TelegramBotManager {
         return { text: `⚠️ ما لكيت هاي اللعبة.`, keyboard: [back] };
       }
 
-      const lines = [`${game.emoji} *${game.title}*`, `━━━━━━━━━━━━━━━━━━━`, game.about];
+      const lines = [`${game.emoji} *${game.title}*`, `━━━━━━━━━━`, game.about];
       if (game.goal) lines.push(`🎯 *الهدف:* ${game.goal}`);
       if (game.reward) lines.push(`🏆 *النقاط:* ${game.reward}`);
       if (!game.ready) lines.push(`🔜 *قريباً* — اللعبة بعدها ما نزلت.`);
@@ -4019,7 +4062,7 @@ export class TelegramBotManager {
       const text =
         `كيف ألعب؟\n` +
         `كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `1️⃣ اختار الصنف من الشاشة الرئيسية.\n` +
         `2️⃣ اختار اللعبة من الصنف.\n` +
         `3️⃣ اختر من الأزرار حسب اللعبة.\n`;
@@ -4857,11 +4900,11 @@ export class TelegramBotManager {
       await this.sendMessage(
         String(player.id),
         `🚀 *بدأت الجولة!*\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
+          `━━━━━━━━━━\n` +
           `👥 فريقك: ${teamName}\n` +
           `🎭 دورك: ${roleName}\n` +
           `🎯 يبدأ: ${firstTeam}\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
+          `━━━━━━━━━━\n` +
           tail
       );
     }
@@ -4880,7 +4923,7 @@ export class TelegramBotManager {
     const res = await this.sendMessageRaw(
       String(spy.id),
       `🎯 *دورك يا جاسوس الفريق ${teamName}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `✍️ ارسل *التلميح* اللي يوصل لصديقك (بالمربع بالأسفل):\n` +
         `• كلمة *وحدة* فقط، بلا أي كلمة ثانية.\n` +
         `• ممنوع تستخدم كلمات فريقك الموجودة بالبوكسات.\n\n` +
@@ -4940,7 +4983,7 @@ export class TelegramBotManager {
     await this.sendMessage(
       userId,
       `✅ *تلميحك:* «${this.mdSafe(word)}»\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
+        `━━━━━━━━━━\n` +
         `🔢 كم كلمة من كلمات فريقك تربطهن بهذا التلميح؟\n` +
         `خلي الرقم متساوي لعدد الكلمات اللي قصدتها.\n\n` +
         `👇 اختار الرقم:`,
@@ -5280,9 +5323,9 @@ export class TelegramBotManager {
       (warn ? `⚠️ *يبدو بيها كلام مسيء* — راجعها وقرّر.\n` : '') +
       `👤 ${this.linkUser(rec)}\n` +
       `🆔 \`${rec.id}\`\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `${body}\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `↩️ ردّ على هذه الرسالة واكتب *حظر* حتى تحظره.`;
 
     const sent = await this.sendMessage(String(this.ownerId), header);
@@ -5337,10 +5380,10 @@ export class TelegramBotManager {
       `✅ *العدد كمل — ${game.players.length} من 4!*\n\n` +
       `🎮 *اللعبة:* «${title}»\n` +
       `👥 الجواسيس والعملاء كلهن حاضرين:\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `${CodenamesEngine.teamRoster(game, 'blue')}\n\n` +
       `${CodenamesEngine.teamRoster(game, 'red')}\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `👇 ارجع للمحادثة واضغط *(ابدأ اللعبة 🚀)*\n` +
       `_إنت وحدك المشرف اللي يكدر يبدأ الجولة._`;
     await this.sendMessage(String(game.createdBy), text);
@@ -5430,7 +5473,7 @@ export class TelegramBotManager {
 
     return (
       `📊 *إحصائيات البوت*\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `👥 *المستخدمون:* ${users.length}\n` +
       `✅ شغّلوا البوت: ${started}\n` +
       `🚫 حظروا البوت: ${blocked}\n` +
@@ -5440,7 +5483,7 @@ export class TelegramBotManager {
       `💬 *المحادثات:* ${chats.length}\n` +
       `📣 القنوات: ${channels.length} — البوت مشرف بـ ${adminIn}\n` +
       `👥 المجموعات: ${groups.length}\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `📊 إحصائيات الألعاب: من زر «📊 إحصائيات الألعاب» تحت.\n` +
       `🕒 آخر تحديث: ${this.stamp(Date.now())}`
     );
@@ -5548,7 +5591,7 @@ export class TelegramBotManager {
 
     const body =
       `👤 ${this.linkUser(u)}\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
+      `━━━━━━━━━━\n` +
       `🆔 \`${u.id}\`\n` +
       `📅 أول ظهور: ${this.stamp(u.firstSeen)}\n` +
       `🕒 آخر نشاط: ${this.stamp(u.lastSeen)}\n` +
@@ -5727,13 +5770,26 @@ export class TelegramBotManager {
         body.reply_markup = { inline_keyboard: inlineKeyboard };
       }
 
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+      let res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
-      return await res.json();
+      let data: any = await res.json();
+      if (!data?.ok && data?.error_code === 429) {
+        const waitSec = Number(data?.parameters?.retry_after || 0);
+        if (waitSec > 0 && waitSec <= 5) {
+          await this.sleep(waitSec * 1000 + 150);
+          res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          data = await res.json();
+        }
+      }
+      return data;
     } catch (e) {
       return null;
     }
@@ -5754,13 +5810,26 @@ export class TelegramBotManager {
         body.reply_markup = { inline_keyboard: inlineKeyboard };
       }
 
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+      let res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
-      return await res.json();
+      let data: any = await res.json();
+      if (!data?.ok && data?.error_code === 429) {
+        const waitSec = Number(data?.parameters?.retry_after || 0);
+        if (waitSec > 0 && waitSec <= 5) {
+          await this.sleep(waitSec * 1000 + 150);
+          res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          data = await res.json();
+        }
+      }
+      return data;
     } catch (e) {
       return null;
     }

@@ -104,7 +104,7 @@ export class BotState {
   private async getBot(): Promise<TelegramBotManager> {
     if (this.bot) return this.bot;
 
-    const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID);
+    const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, true);
     try {
       const saved = await this.state.storage.get('state');
       if (saved) bot.importState(saved);
@@ -114,6 +114,35 @@ export class BotState {
 
     this.bot = bot;
     return bot;
+  }
+
+  /** يضبط منبّه الـ Durable Object على أقرب موعد جولة شغّالة (١٠ ثواني للسؤال / ٢ ثانية للنتيجة) */
+  private async syncAlarm(bot: TelegramBotManager): Promise<void> {
+    try {
+      const nextAt = bot.getNextQuizDeadline();
+      if (nextAt !== null) {
+        await this.state.storage.setAlarm(nextAt);
+      } else {
+        await this.state.storage.deleteAlarm();
+      }
+    } catch (e) {
+      console.error('Failed to sync alarm:', e);
+    }
+  }
+
+  async alarm(): Promise<void> {
+    const bot = await this.getBot();
+    try {
+      await bot.processQuizTimers();
+    } catch (e) {
+      console.error('Quiz alarm error:', e);
+    }
+    try {
+      await this.state.storage.put('state', bot.exportState());
+    } catch (e) {
+      console.error('Failed to persist state in alarm:', e);
+    }
+    await this.syncAlarm(bot);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -143,6 +172,8 @@ export class BotState {
     } catch (e) {
       console.error('Failed to persist state:', e);
     }
+
+    await this.syncAlarm(bot);
 
     return new Response('ok');
   }
