@@ -2720,9 +2720,18 @@ export class TelegramBotManager {
         // إحصائيات اللعبة نفسها
         keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
 
-        // العب في القناة
+        // العب في القناة - يفتح picker القنوات مباشرة
         if (game.channel) {
-          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
+          keyboard.push([
+            {
+              text: '🎮 العب بالقناة',
+              request_chat: {
+                request_id: 3001 + parseInt(game.id.length.toString()),
+                chat_is_channel: true,
+                bot_is_member: false
+              }
+            }
+          ]);
         }
 
         // العب مع البوت
