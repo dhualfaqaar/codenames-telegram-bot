@@ -939,7 +939,9 @@ export class TelegramBotManager {
       bannedWords: this.bannedWords,
       autoBan: this.autoBan,
       wordle: Array.from(this.wordle.entries()),
-      poet: Array.from(this.poet.entries())
+      poet: Array.from(this.poet.entries()),
+      rpsGames: Array.from(this.rpsGames.entries()),
+      pendingChannelGame: Array.from(this.pendingChannelGame.entries())
     };
   }
 
@@ -964,6 +966,8 @@ export class TelegramBotManager {
     if (typeof state.autoBan === 'boolean') this.autoBan = state.autoBan;
     if (Array.isArray(state.wordle)) this.wordle = new Map(state.wordle);
     if (Array.isArray(state.poet)) this.poet = new Map(state.poet);
+    if (Array.isArray(state.rpsGames)) this.rpsGames = new Map(state.rpsGames);
+    if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
   }
 
   public setToken(token: string) {
@@ -2783,17 +2787,22 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // إحصائيات اللعبة نفسها
-        keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
-
-        // حجرة ورقة مقص: خيارات الروندات تظهر مباشرةً بصفحة اللعبة
+        // حجرة ورقة مقص: خيارات الروندات مع إحصائيات اللعبة جوّاها
         if (game.channel && game.id === 'rps') {
-          keyboard.push([{ text: '٣ راوندات', callback_data: 'hub:rpschan:3' }]);
+          keyboard.push([
+            { text: '٣ راوندات', callback_data: 'hub:rpschan:3' },
+            { text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }
+          ]);
           keyboard.push([{ text: '٥ راوندات', callback_data: 'hub:rpschan:5' }]);
           keyboard.push([{ text: '١٣ راوندات', callback_data: 'hub:rpschan:13' }]);
-        } else if (game.channel) {
-          // العب في القناة (باقي الألعاب)
-          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
+        } else {
+          // إحصائيات اللعبة نفسها
+          keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
+
+          if (game.channel) {
+            // العب في القناة (باقي الألعاب)
+            keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
+          }
         }
 
         // العب مع البوت
@@ -3267,8 +3276,11 @@ export class TelegramBotManager {
     // شنو اللعبة اللي اختارها المستخدم؟
     const pending = byUser ? this.pendingChannelGame.get(byUser) : undefined;
     if (byUser) this.pendingChannelGame.delete(byUser);
-    const gameId = pending?.gameId;
-    const rounds = pending?.rounds;
+    // نتجاهل الاختيار القديم (أكثر من 15 دقيقة) حتى ما ينشر لعبة غلط
+    const fresh = pending && Date.now() - pending.at < 15 * 60 * 1000 ? pending : undefined;
+    const gameId = fresh?.gameId;
+    const rounds = fresh?.rounds;
+    console.log('CHAT_SHARED', JSON.stringify({ byUser, channelId, gameId, rounds, hasPending: Boolean(pending) }));
 
     // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
     if (gameId === 'rps') {
