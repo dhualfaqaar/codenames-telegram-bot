@@ -1,6 +1,7 @@
 import { CodenamesEngine } from '../src/services/codenamesEngine';
 import * as Wordle from '../src/services/wordleEngine';
 import * as Poet from '../src/services/poetEngine';
+import * as RPS from '../src/services/rpsEngine';
 import * as Economy from '../src/services/economy';
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
@@ -332,6 +333,10 @@ interface BotUserRecord {
   poetWins?: number;
   /** كم بيت لعبه بـ«خمّن الشاعر» (فاز أو خسر) */
   poetGames?: number;
+  /** ✊ كم مباراة حجرة ورقة مقص فاز */
+  rpsWins?: number;
+  /** ✊ كم مباراة حجرة ورقة مقص لعب (فاز أو خسر) */
+  rpsGames?: number;
   /** 💵 رصيد الفلوس (غالية — بس من الألعاب مع ناس حقيقيين) */
   money?: number;
   /** 🎖️ نقاط الخبرة (تزيد بكل لعبة أونلاين) */
@@ -409,6 +414,10 @@ export class TelegramBotManager {
   private wordle: Map<string, Wordle.WordleState> = new Map();
   /** 🎭 «خمّن الشاعر» — جولة لكل لاعب (Key: User ID) */
   private poet: Map<string, Poet.PoetRound> = new Map();
+  /** أي لعبة راح تنشرها بالقناة (Key: User ID) */
+  private pendingChannelGame: Map<string, { gameId: string; rounds?: number; at: number }> = new Map();
+  /** ✊✋✌️ مباريات حجرة ورقة مقص بالقنوات (Key: chatId) */
+  private rpsGames: Map<string, RPS.RPSGame> = new Map();
 
   constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
@@ -1493,6 +1502,16 @@ export class TelegramBotManager {
       return;
     }
 
+    // ---- ✊✋✌️ حجرة ورقة مقص ----
+    if (data.startsWith('rpsb:')) {
+      await this.handleRPSBoard(cb, data.slice(5));
+      return;
+    }
+    if (data.startsWith('rpsm:')) {
+      await this.handleRPSMove(cb, data.slice(5));
+      return;
+    }
+
     // Number chosen for a private clue (no-command flow) — this comes from the DM, not the game chat
     if (data.startsWith('setclue:')) {
       await this.handleClueNumberChoice(cb, parseInt(data.split(':')[1], 10));
@@ -1887,8 +1906,40 @@ export class TelegramBotManager {
   private async startNewGameLobby(
     chatId: string,
     chatTitle: string,
-    createdBy?: number | string
+    createdBy?: number | string,
+    forcedGameId?: string,
+    rounds?: number
   ): Promise<{ messageId: number | null; error?: string }> {
+    // ── ✊✋✌️ حجرة ورقة مقص ──
+    if (forcedGameId === 'rps') {
+      const game = RPS.createGame(chatId, chatTitle, rounds ?? 5, String(createdBy ?? ''));
+      const prevRps = this.rpsGames.get(chatId);
+      this.rpsGames.set(chatId, game);
+      const text = await this.withBotFooter(RPS.renderGame(game));
+      const keyboard = RPS.boardKeyboard(game);
+
+      if (prevRps?.messageId) {
+        const res = await this.editMessageText(chatId, prevRps.messageId, text, keyboard);
+        const unchanged = String(res?.description || '').includes('not modified');
+        if (res?.ok || unchanged) {
+          game.messageId = prevRps.messageId;
+          this.rpsGames.set(chatId, game);
+          return { messageId: prevRps.messageId };
+        }
+      }
+
+      const sent = await this.sendMessage(chatId, text, keyboard);
+      const msgId = sent?.result?.message_id;
+      if (msgId) {
+        game.messageId = msgId;
+        this.rpsGames.set(chatId, game);
+        return { messageId: msgId };
+      }
+      const reason = sent?.description || 'ما وصل رد من تلجرام';
+      console.error('startRPSLobby failed for', chatId, reason);
+      return { messageId: null, error: reason };
+    }
+
     const existing = this.games.get(chatId);
     const game = CodenamesEngine.createLobby(
       chatId,
@@ -2066,6 +2117,21 @@ export class TelegramBotManager {
     // «🎮 العب بالقناة» → يرسل مباشرة اختيار القناة
     if (section === 'channel') {
       await this.answerCallbackQuery(cb.id);
+      await this.sendChannelKeyboard(chatId);
+      return;
+    }
+
+    // حجرة ورقة مقص: اختار عدد الروندات → يحذف الرسالة ويطلع اختيار القناة
+    if (section.startsWith('rpschan:')) {
+      const r = parseInt(section.split(':')[1] || '5', 10);
+      const rounds = [3, 5, 13].includes(r) ? r : 5;
+      await this.answerCallbackQuery(cb.id);
+      if (this.pendingChannelGame) {
+        this.pendingChannelGame.set(String(cb.from.id), { gameId: 'rps', rounds, at: Date.now() });
+      }
+      if (messageId) {
+        await this.deleteMessage(chatId, messageId);
+      }
       await this.sendChannelKeyboard(chatId);
       return;
     }
@@ -2720,16 +2786,19 @@ export class TelegramBotManager {
         // إحصائيات اللعبة نفسها
         keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
 
-        // العب في القناة
-        if (game.channel) {
+        // حجرة ورقة مقص: خيارات الروندات تظهر مباشرةً بصفحة اللعبة
+        if (game.channel && game.id === 'rps') {
+          keyboard.push([{ text: '٣ راوندات', callback_data: 'hub:rpschan:3' }]);
+          keyboard.push([{ text: '٥ راوندات', callback_data: 'hub:rpschan:5' }]);
+          keyboard.push([{ text: '١٣ راوندات', callback_data: 'hub:rpschan:13' }]);
+        } else if (game.channel) {
+          // العب في القناة (باقي الألعاب)
           keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
         }
 
         // العب مع البوت
         if (game.play && !game.channel) {
           keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
-        } else if (game.play && game.channel) {
-          // إذا اللعبة بالقناة، نستخدم زر القناة
         }
       }
 
@@ -2806,20 +2875,23 @@ export class TelegramBotManager {
 
   /** اختيار القناة مباشرة يفتح picker القنوات فوراً */
   private async sendChannelKeyboard(chatId: string) {
-    const inline_keyboard = [
+    // ملاحظة: request_chat يشتغل بس داخل ReplyKeyboard (مو inline)
+    const keyboard = [
       [
         {
-          text: '🎮 نشر اللعبة للقناة',
+          text: '📢 اختيار القناة ونشر اللعبة',
           request_chat: {
-            request_id: Date.now() % 1000000,
+            request_id: 1001,
             chat_is_channel: true,
             bot_is_member: false
           }
         }
       ]
     ];
-    await this.sendMessageRaw(chatId, '🎮 اختر القناة لنشر اللعبة:', {
-      inline_keyboard
+    await this.sendMessageRaw(chatId, '📢 اضغط الزر تحت لاختيار قناتك:', {
+      keyboard,
+      resize_keyboard: true,
+      one_time_keyboard: true
     });
   }
 
@@ -3010,6 +3082,154 @@ export class TelegramBotManager {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // ✊✋✌️ حجرة ورقة مقص
+  // ---------------------------------------------------------------------
+
+  /** تحديث رسالة لوحة RPS بالقناة */
+  private async paintRPSBoard(game: RPS.RPSGame) {
+    const text = await this.withBotFooter(RPS.renderGame(game));
+    const keyboard = RPS.boardKeyboard(game);
+    if (game.messageId) {
+      await this.editMessageText(game.chatId, game.messageId, text, keyboard);
+    } else {
+      const sent = await this.sendMessage(game.chatId, text, keyboard);
+      const msgId = sent?.result?.message_id;
+      if (msgId) game.messageId = msgId;
+      this.rpsGames.set(game.chatId, game);
+    }
+  }
+
+  /** أزرار لوحة حجرة ورقة مقص (انضم/ابدأ/حركة/جديدة) */
+  private async handleRPSBoard(cb: TelegramCallbackQuery, body: string) {
+    const parts = body.split(':');
+    const action = parts[0];
+    const chatId = parts.slice(1).join(':');
+    const game = this.rpsGames.get(chatId);
+    const userId = String(cb.from.id);
+    const userName = cb.from.first_name || 'لاعب';
+
+    if (!game) {
+      await this.answerCallbackQuery(cb.id, 'خلصت هاي المباراة — ابدأ وحدة جديدة.', true);
+      return;
+    }
+
+    if (action === 'join') {
+      const before = game.players.length;
+      const next = RPS.join(game, userId, userName);
+      this.rpsGames.set(chatId, next);
+      if (next.players.length === before) {
+        await this.answerCallbackQuery(cb.id, 'ما گدرت تنضم (اللعبة فل أو بدأت)', true);
+      } else {
+        await this.answerCallbackQuery(cb.id, '✅ انضميت!');
+      }
+      await this.paintRPSBoard(next);
+      return;
+    }
+
+    if (action === 'start') {
+      if (game.status !== 'lobby') {
+        await this.answerCallbackQuery(cb.id, 'المباراة شغّالة بالفعل', true);
+        return;
+      }
+      if (game.players.length < 2) {
+        await this.answerCallbackQuery(cb.id, 'يحتاج لاعبين اثنين', true);
+        return;
+      }
+      const started = RPS.start(game);
+      this.rpsGames.set(chatId, started);
+      await this.answerCallbackQuery(cb.id, '🚀 بدت المباراة!');
+      await this.paintRPSBoard(started);
+      return;
+    }
+
+    if (action === 'pick') {
+      // نرسل أزرار الحركة بالخاص للاعب
+      const player = game.players.find(p => p.id === userId);
+      if (!player) {
+        await this.answerCallbackQuery(cb.id, 'إنت مو منضم للمباراة', true);
+        return;
+      }
+      await this.sendMessage(userId, '✊✋✌️ اختر حركتك:', RPS.moveKeyboard(chatId));
+      await this.answerCallbackQuery(cb.id, '📩 شيك الخاص');
+      return;
+    }
+
+    if (action === 'again') {
+      const fresh = RPS.createGame(chatId, game.chatTitle, game.totalRounds);
+      this.rpsGames.set(chatId, fresh);
+      await this.answerCallbackQuery(cb.id, '🔄 مباراة جديدة');
+      await this.paintRPSBoard(fresh);
+      return;
+    }
+
+    await this.answerCallbackQuery(cb.id, '');
+  }
+
+  /** اختيار حجرة/ورقة/مقص من الخاص */
+  private async handleRPSMove(cb: TelegramCallbackQuery, body: string) {
+    const parts = body.split(':');
+    const move = parts[0] as RPS.RPSMove;
+    const chatId = parts.slice(1).join(':');
+    const game = this.rpsGames.get(chatId);
+    const userId = String(cb.from.id);
+
+    if (!game || game.status !== 'playing') {
+      await this.answerCallbackQuery(cb.id, 'المباراة مو شغّالة', true);
+      return;
+    }
+
+    const player = game.players.find(p => p.id === userId);
+    if (!player) {
+      await this.answerCallbackQuery(cb.id, 'إنت مو منضم', true);
+      return;
+    }
+
+    let next = RPS.setMove(game, userId, move);
+    let reveal = false;
+    if (RPS.allMoved(next)) {
+      next = RPS.resolveRound(next);
+      reveal = true;
+    }
+    this.rpsGames.set(chatId, next);
+
+    await this.answerCallbackQuery(cb.id, `✅ اخترت ${RPS.MOVE_LABEL[move]}`);
+    if (cb.message?.message_id) {
+      await this.editMessageText(
+        String(cb.from.id),
+        cb.message.message_id,
+        `✅ اخترت ${RPS.MOVE_LABEL[move]} — ننتظر الخصم…`,
+        [[{ text: '🔙 رجوع', callback_data: `hub:g:rps` }]]
+      );
+    }
+
+    if (reveal) {
+      await this.paintRPSBoard(next);
+
+      // خلصت المباراة؟ نوزع الجوائز
+      if (next.status === 'game_over') {
+        await this.awardRPS(next);
+      }
+    }
+  }
+
+  /** توزيع الفلوس/XP على فائز حجرة ورقة مقص */
+  private async awardRPS(game: RPS.RPSGame) {
+    const winner = game.players.find(p => p.id === game.winnerId);
+    if (!winner) return;
+    const rec = this.users.get(winner.id);
+    if (!rec) return;
+    rec.rpsGames = (rec.rpsGames || 0) + 1;
+    rec.rpsWins = (rec.rpsWins || 0) + 1;
+    rec.money = (rec.money || 0) + Economy.RPS_REWARD;
+    rec.xp = (rec.xp || 0) + Economy.RPS_XP;
+    this.users.set(rec.id, rec);
+    await this.sendMessage(
+      winner.id,
+      `🏆 *فزت بمباراة حجرة ورقة مقص!*\n+${Economy.RPS_REWARD} 💵\n+${Economy.RPS_XP} XP`
+    );
+  }
+
   /**
    * Private /start welcome, with a button that lets the user pick a channel to play in.
    */
@@ -3044,18 +3264,29 @@ export class TelegramBotManager {
     const title = shared.title || 'القناة';
     const byUser = message.from ? String(message.from.id) : '';
 
+    // شنو اللعبة اللي اختارها المستخدم؟
+    const pending = byUser ? this.pendingChannelGame.get(byUser) : undefined;
+    if (byUser) this.pendingChannelGame.delete(byUser);
+    const gameId = pending?.gameId;
+    const rounds = pending?.rounds;
 
     // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
-    const existing = this.games.get(channelId);
-    if (existing && existing.status === 'lobby' && existing.messageId) {
-      await this.deleteMessage(channelId, existing.messageId);
-      this.games.delete(channelId);
+    if (gameId === 'rps') {
+      const oldRps = this.rpsGames.get(channelId);
+      if (oldRps?.messageId) await this.deleteMessage(channelId, oldRps.messageId);
+      this.rpsGames.delete(channelId);
+    } else {
+      const existing = this.games.get(channelId);
+      if (existing && existing.status === 'lobby' && existing.messageId) {
+        await this.deleteMessage(channelId, existing.messageId);
+        this.games.delete(channelId);
+      }
     }
 
-    let result = await this.startNewGameLobby(channelId, title, message.from?.id);
+    let result = await this.startNewGameLobby(channelId, title, message.from?.id, gameId, rounds);
     // Right after the bot is added to a channel Telegram sometimes needs a second try.
     if (!result.messageId) {
-      result = await this.startNewGameLobby(channelId, title, message.from?.id);
+      result = await this.startNewGameLobby(channelId, title, message.from?.id, gameId, rounds);
     }
 
     if (!byUser) return;
