@@ -21,6 +21,12 @@ interface Env {
 const DEFAULT_WEBHOOK_URL = 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev';
 
 /**
+ * المالك الوحيد (أحمد) — التنبيهات تروح له بس.
+ * مكتوب هنا على طول حتى تنبيه الإصلاح ما يوصل أبداً لغيرك حتى لو تغيّر الإعداد.
+ */
+const OWNER_ONLY_ID = '8885518661';
+
+/**
  * ضمان أن وصلة الاستقبال (Webhook) مسجّلة عند تيليجرام.
  *
  * إذا مسحتها أي نسخة ثانية (مثلاً التشغيل المحلي اللي يمسح الوصلة قبل البولينج)،
@@ -54,12 +60,12 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
     if (set?.result) {
       console.log(`webhook repaired: "${current}" -> "${expected}"`);
       if (notify) {
-        // إرسال بدون webhook — يشتغل حتى وهي مكسورة
+        // رسالة خاصة بحصة المالك فقط (chat_id واحد مكتوب بالكود) — لا إذاعة ولا غيرك أبداً
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            chat_id: env.OWNER_ID,
+            chat_id: OWNER_ONLY_ID,
             text: '🔧 البوت: وصلة تيليجرام كانت مفقودة (مسحتها نسخة ثانية) ورجعناها تلقائياً — البوت يشتغل طبيعي الآن ✅'
           })
         }).catch(() => undefined);
@@ -146,7 +152,12 @@ export default {
       const webhook = await ensureWebhook(env, true);
       const status = await stub.fetch('https://bot.internal/status');
       const data: any = await status.clone().json().catch(() => ({}));
-      return Response.json({ ...data, webhook });
+      return Response.json({
+        ...data,
+        webhook,
+        // تأكيد أن إعداد المالك مضبوط على حسابك (رقم واحد فقط)
+        ownerIsYou: String(env.OWNER_ID || '') === OWNER_ONLY_ID
+      });
     }
 
     const secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token') || '';
