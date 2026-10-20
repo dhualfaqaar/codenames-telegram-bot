@@ -91,7 +91,13 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
   // ── ألعاب البوت: صفر لكل شي (بلا فلوس بلا مستوى بلا إحصائيات أونلاين) ──
   wordle: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
   poet: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
-  wheel: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
+  wheel: {
+    maxMoney: 0.003,
+    winXp: 0,
+    loseXp: 0,
+    online: false,
+    note: 'حظّية — ممكن تربح *0.001 – 0.003* 💵 أو ما تربح شي'
+  },
   guess_player: {
     maxMoney: 0.012,
     winXp: 8,
@@ -106,6 +112,13 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
 export function moneyNote(gameId: string): string {
   const eco = GAME_ECONOMY[gameId];
   if (!eco) return '';
+  if (gameId === 'wheel') {
+    return (
+      `💰 الفلوس: ${eco.note}\n` +
+      `🎖️ المستوى: ما يزيد من العجلة\n` +
+      `_العجلة حظّية بحتة — دورة وحدة باليوم_`
+    );
+  }
   if (!eco.online) {
     return '💰 الفلوس والمستوى: من الألعاب اللي مع *ناس حقيقيين* بس 🚫 (لعبة البوت ما تزيدهم)';
   }

@@ -2,6 +2,10 @@ import { CodenamesEngine } from '../src/services/codenamesEngine';
 import * as Wordle from '../src/services/wordleEngine';
 import * as Poet from '../src/services/poetEngine';
 import * as RPS from '../src/services/rpsEngine';
+import * as Song from '../src/services/songEngine';
+import * as Wheel from '../src/services/wheelEngine';
+import * as MathGame from '../src/services/mathEngine';
+import * as WordGame from '../src/services/wordGameEngine';
 import * as Economy from '../src/services/economy';
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
@@ -127,10 +131,11 @@ const BOT_GAMES: BotGameCard[] = [
     goal: 'أسرع واحد يضغط الجواب الصح',
     reward: 'نقطة لكل جواب صح، وأول من يجمع 5 يفوز',
     about:
-      'تظهر نفس المسألة الحسابية للاثنين بنفس اللحظة (جمع وطرح وضرب)،\n' +
-      'وأسرع واحد يضغط الجواب الصح ياخذ النقطة — واللي يجمع 5 نقاط أول يفوز 🏆.\n' +
+      'تظهر نفس المسألة الحسابية (جمع وطرح وضرب)،\n' +
+      'وإنت تضغط الجواب الصح بأسرع وقت — وأول ما تجمع 5 نقاط تفوز 🏆.\n' +
       'اللعبة تقيس سرعتك ودقتك، والغلط يخليك تخسر الثانية.',
-    ready: false
+    play: { label: '🤖 العب مع البوت', data: 'ma:new' },
+    ready: true
   },
   {
     id: 'rhyme',
@@ -141,10 +146,11 @@ const BOT_GAMES: BotGameCard[] = [
     where: 'هنا بالخاص',
     goal: 'أكثر كلمات تقافي الكلمة المعطاة',
     about:
-      'البوت يعطيكم كلمة (مثلاً: *كتاب*)، وعندكم وقت محدد تكتب كل واحد كلمات تقافيها\n' +
-      '(باب، شباب، حساب…)، والكلمة المكررة ما تنحسب.\n' +
-      'اللي يجيب كلمات صح أكثر يفوز 🏆.',
-    ready: false
+      'البوت يعطيك كلمة (مثلاً: *كتاب*)، وعندك كلمات تقافيها\n' +
+      '(باب، شباب، حساب…).\n' +
+      'اختار كل الكلمات الصح من الأزرار، وكل كلمة صح تزيد نقاطك 🏆.',
+    play: { label: '🥊 ابدأ التحدي', data: 'rh:new' },
+    ready: true
   },
   {
     id: 'longest',
@@ -155,10 +161,11 @@ const BOT_GAMES: BotGameCard[] = [
     where: 'هنا بالخاص',
     goal: 'أطول كلمة من نفس الحروف',
     about:
-      'البوت يعطيكم مجموعة حروف، وكل واحد يحاول يكوّن منها أطول كلمة عربية صحيحة،\n' +
+      'البوت يعطيك مجموعة حروف، وإنت تختار أطول كلمة عربية صحيحة تتكوّن منها،\n' +
       'والكلمة لازم تكون من نفس الحروف المعطاة بلا زيادة.\n' +
       'أطول كلمة صحيحة تفوز 🏆.',
-    ready: false
+    play: { label: '📏 ابدأ', data: 'lg:new' },
+    ready: true
   },
   {
     id: 'rps',
@@ -250,10 +257,11 @@ const BOT_GAMES: BotGameCard[] = [
     where: 'هنا بالخاص',
     goal: 'تعرف الأغنية من كلماتها',
     about:
-      'البوت يوريك مقطع من كلمات أغنية مشهورة، وإنت تخمّن اسم الأغنية أو المطرب\n' +
+      'البوت يوريك مقطع من كلمات أغنية مشهورة، وإنت تخمّن المطرب\n' +
       'من أزرار الاختيارات.\n' +
-      'كل ما خمّنت بسرعة وبأقل تلميحات، نقاطك أكثر 🎶.',
-    ready: false
+      'كل ما خمّنت بأقل محاولات، نقاطك أكثر 🎶.',
+    play: { label: '🎵 ابدأ', data: 'sg:new' },
+    ready: true
   },
 
   // ─────────────── 🎲 ألعاب الحظ ───────────────
@@ -266,9 +274,10 @@ const BOT_GAMES: BotGameCard[] = [
     where: 'هنا بالخاص',
     goal: 'ضاعف نقاطك أو اخسرها',
     about:
-      'تدوّر العجلة مرة باليوم، والنتيجة إما تزيد نقاطك أو تنقصها (حظك وحظك 😅).\n' +
+      'تدوّر العجلة مرة باليوم، والنتيجة إما تزيد نقاطك أو تخسر شي (حظك وحظك 😅).\n' +
       'فيها جوايز مخفية ومضاعفات نادرة.',
-    ready: false
+    play: { label: '🎰 دوّر العجلة', data: 'wh:spin' },
+    ready: true
   }
 ];
 
@@ -337,6 +346,24 @@ interface BotUserRecord {
   rpsWins?: number;
   /** ✊ كم مباراة حجرة ورقة مقص لعب (فاز أو خسر) */
   rpsGames?: number;
+  /** 🎵 كم أغنية عرف بـ«خمّن الأغنية» */
+  guessSongWins?: number;
+  /** 🎵 كم أغنية لعب بـ«خمّن الأغنية» */
+  guessSongGames?: number;
+  /** 🔢 كم جولة فاز بـ«تحدي الحساب» */
+  mathWins?: number;
+  /** 🔢 كم جولة لعب بـ«تحدي الحساب» */
+  mathGames?: number;
+  /** 🥊 كم جولة خلّص بـ«تحدي القافية» */
+  rhymeWins?: number;
+  /** 🥊 كم جولة لعب بـ«تحدي القافية» */
+  rhymeGames?: number;
+  /** 📏 كم جولة فاز بـ«أطول كلمة» */
+  longestWins?: number;
+  /** 📏 كم جولة لعب بـ«أطول كلمة» */
+  longestGames?: number;
+  /** 🎰 كم مرة دوّر عجلة الحظ */
+  wheelSpins?: number;
   /** 💵 رصيد الفلوس (غالية — بس من الألعاب مع ناس حقيقيين) */
   money?: number;
   /** 🎖️ نقاط الخبرة (تزيد بكل لعبة أونلاين) */
@@ -418,6 +445,16 @@ export class TelegramBotManager {
   private pendingChannelGame: Map<string, { gameId: string; rounds?: number; at: number }> = new Map();
   /** ✊✋✌️ مباريات حجرة ورقة مقص بالقنوات (Key: chatId) */
   private rpsGames: Map<string, RPS.RPSGame> = new Map();
+  /** 🎵 جولات خمّن الأغنية (Key: user id) */
+  private song: Map<string, Song.SongRound> = new Map();
+  /** 🔢 جولات تحدي الحساب (Key: user id) */
+  private mathGames: Map<string, MathGame.MathRound> = new Map();
+  /** 🥊 جولات تحدي القافية (Key: user id) */
+  private rhymeGames: Map<string, WordGame.RhymeRound> = new Map();
+  /** 📏 جولات أطول كلمة (Key: user id) */
+  private longestGames: Map<string, WordGame.LongestRound> = new Map();
+  /** 🎰 آخر يوم دوّر فيه اللاعب العجلة (Key: user id → يوم) */
+  private wheelSpins: Map<string, string> = new Map();
 
   constructor(initialToken?: string, ownerId?: string) {
     if (initialToken) {
@@ -941,6 +978,11 @@ export class TelegramBotManager {
       wordle: Array.from(this.wordle.entries()),
       poet: Array.from(this.poet.entries()),
       rpsGames: Array.from(this.rpsGames.entries()),
+      song: Array.from(this.song.entries()),
+      mathGames: Array.from(this.mathGames.entries()),
+      rhymeGames: Array.from(this.rhymeGames.entries()),
+      longestGames: Array.from(this.longestGames.entries()),
+      wheelSpins: Array.from(this.wheelSpins.entries()),
       pendingChannelGame: Array.from(this.pendingChannelGame.entries())
     };
   }
@@ -967,6 +1009,11 @@ export class TelegramBotManager {
     if (Array.isArray(state.wordle)) this.wordle = new Map(state.wordle);
     if (Array.isArray(state.poet)) this.poet = new Map(state.poet);
     if (Array.isArray(state.rpsGames)) this.rpsGames = new Map(state.rpsGames);
+    if (Array.isArray(state.song)) this.song = new Map(state.song);
+    if (Array.isArray(state.mathGames)) this.mathGames = new Map(state.mathGames);
+    if (Array.isArray(state.rhymeGames)) this.rhymeGames = new Map(state.rhymeGames);
+    if (Array.isArray(state.longestGames)) this.longestGames = new Map(state.longestGames);
+    if (Array.isArray(state.wheelSpins)) this.wheelSpins = new Map(state.wheelSpins);
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
   }
 
@@ -1513,6 +1560,32 @@ export class TelegramBotManager {
     }
     if (data.startsWith('rpsm:')) {
       await this.handleRPSMove(cb, data.slice(5));
+      return;
+    }
+
+    // ---- 🎵 خمّن الأغنية ----
+    if (data.startsWith('sg:')) {
+      await this.handleSongKey(cb, data.slice(3));
+      return;
+    }
+    // ---- 🔢 تحدي الحساب ----
+    if (data.startsWith('ma:')) {
+      await this.handleMathKey(cb, data.slice(3));
+      return;
+    }
+    // ---- 🥊 تحدي القافية ----
+    if (data.startsWith('rh:')) {
+      await this.handleRhymeKey(cb, data.slice(3));
+      return;
+    }
+    // ---- 📏 أطول كلمة ----
+    if (data.startsWith('lg:')) {
+      await this.handleLongestKey(cb, data.slice(3));
+      return;
+    }
+    // ---- 🎰 عجلة الحظ ----
+    if (data.startsWith('wh:')) {
+      await this.handleWheelKey(cb, data.slice(3));
       return;
     }
 
@@ -2324,6 +2397,71 @@ export class TelegramBotManager {
         .sort((a, b) => (b.rpsWins || 0) - (a.rpsWins || 0));
       const rank = board.findIndex(u => u.id === rec.id);
       if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
+    }
+
+    // 🎵 خمّن الأغنية
+    else if (gameId === 'guess_song') {
+      const played = rec.guessSongGames || 0;
+      const wins = rec.guessSongWins || 0;
+      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «🎵 ابدأ» وسمّعنا 😉_`;
+      lines.push(`🎵 عرفتها: *${wins}* من *${played}* أغنية`);
+      lines.push(`🎯 دقتك: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
+      const board = n.users
+        .filter(u => (u.guessSongGames || 0) > 0)
+        .sort((a, b) => (b.guessSongWins || 0) - (a.guessSongWins || 0));
+      const rank = board.findIndex(u => u.id === rec.id);
+      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
+    }
+
+    // 🔢 تحدي الحساب
+    else if (gameId === 'math') {
+      const played = rec.mathGames || 0;
+      const wins = rec.mathWins || 0;
+      if (!played) return `${head}\n_بعدك ما لعبتها — اضغط «🤖 العب مع البوت» وجرّب سرعتك 😉_`;
+      lines.push(`🏆 فزت: *${wins}* من *${played}* جولة`);
+      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
+      const board = n.users
+        .filter(u => (u.mathGames || 0) > 0)
+        .sort((a, b) => (b.mathWins || 0) - (a.mathWins || 0));
+      const rank = board.findIndex(u => u.id === rec.id);
+      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
+    }
+
+    // 🥊 تحدي القافية
+    else if (gameId === 'rhyme') {
+      const played = rec.rhymeGames || 0;
+      const wins = rec.rhymeWins || 0;
+      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «🥊 ابدأ التحدي» 😉_`;
+      lines.push(`🥊 جولات: *${played}* • جبت فيها كلمات: *${wins}* جولة`);
+      lines.push(`🎯 دقتك: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
+      const board = n.users
+        .filter(u => (u.rhymeGames || 0) > 0)
+        .sort((a, b) => (b.rhymeWins || 0) - (a.rhymeWins || 0));
+      const rank = board.findIndex(u => u.id === rec.id);
+      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
+    }
+
+    // 📏 أطول كلمة
+    else if (gameId === 'longest') {
+      const played = rec.longestGames || 0;
+      const wins = rec.longestWins || 0;
+      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «📏 ابدأ» 😉_`;
+      lines.push(`📏 جولات: *${played}* • فزت: *${wins}*`);
+      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
+      const board = n.users
+        .filter(u => (u.longestGames || 0) > 0)
+        .sort((a, b) => (b.longestWins || 0) - (a.longestWins || 0));
+      const rank = board.findIndex(u => u.id === rec.id);
+      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
+    }
+
+    // 🎰 عجلة الحظ
+    else if (gameId === 'wheel') {
+      const spins = rec.wheelSpins || 0;
+      if (!spins) return `${head}\n_بعدك ما دوّرت العجلة — اضغط «🎰 دوّر العجلة» وجرّب حظك 😉_`;
+      lines.push(`🎰 دورات العجلة: *${spins}*`);
+      lines.push(`🎁 نقاطك الحالية: *${rec.points || 0}*`);
+      return `${head}\n${lines.join('\n')}`;
     } else {
       return '';
     }
@@ -2552,6 +2690,77 @@ export class TelegramBotManager {
 
       return { text, keyboard: [fromGame ? gameBack : backStats] };
     }
+
+    // ───────── إحصائيات الألعاب الجديدة (فردية مع البوت) ─────────
+    const soloConfig: Record<string, { title: string; emoji: string; gamesKey: keyof BotUserRecord; winsKey: keyof BotUserRecord; verb: string }> = {
+      guess_song: { title: 'خمّن الأغنية', emoji: '🎵', gamesKey: 'guessSongGames', winsKey: 'guessSongWins', verb: 'عرفها' },
+      math: { title: 'تحدي الحساب', emoji: '🔢', gamesKey: 'mathGames', winsKey: 'mathWins', verb: 'فاز' },
+      rhyme: { title: 'تحدي القافية', emoji: '🥊', gamesKey: 'rhymeGames', winsKey: 'rhymeWins', verb: 'جاب كلمات' },
+      longest: { title: 'أطول كلمة', emoji: '📏', gamesKey: 'longestGames', winsKey: 'longestWins', verb: 'فاز' }
+    };
+    if (gameId && soloConfig[gameId]) {
+      const conf = soloConfig[gameId];
+      const played = n.users.reduce((s, u) => s + ((u[conf.gamesKey] as number) || 0), 0);
+      const solved = n.users.reduce((s, u) => s + ((u[conf.winsKey] as number) || 0), 0);
+      const players = n.users.filter(u => ((u[conf.gamesKey] as number) || 0) > 0);
+      const top = players
+        .slice()
+        .sort((a, b) => ((b[conf.winsKey] as number) || 0) - ((a[conf.winsKey] as number) || 0))
+        .slice(0, 10);
+      const accuracy = played ? Math.round((solved / played) * 100) : 0;
+
+      const lines = top.length
+        ? top
+            .map((u, i) => {
+              const games = (u[conf.gamesKey] as number) || 0;
+              const wins = (u[conf.winsKey] as number) || 0;
+              const pct = games ? Math.round((wins / games) * 100) : 0;
+              return `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${wins}* ${conf.verb} (${pct}%)`;
+            })
+            .join('\n')
+        : '_ما بعد أحد لعبها — كون أول واحد!_';
+
+      const text =
+        `${conf.emoji} *إحصائيات ${conf.title}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        personalBlock +
+        `🎯 مجموع الجولات: *${played}*\n` +
+        `🏆 مجموع الفوزات: *${solved}*\n` +
+        `📈 نسبة الفوز: *${accuracy}%*\n` +
+        `👥 لاعبون: *${players.length}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🥇 *أكثر من فاز:*\n${lines}`;
+
+      return { text, keyboard: [fromGame ? gameBack : backStats] };
+    }
+
+    // 🎰 إحصائيات عجلة الحظ
+    if (gameId === 'wheel') {
+      const spins = n.users.reduce((s, u) => s + (u.wheelSpins || 0), 0);
+      const spinners = n.users.filter(u => (u.wheelSpins || 0) > 0);
+      const top = spinners
+        .slice()
+        .sort((a, b) => (b.wheelSpins || 0) - (a.wheelSpins || 0))
+        .slice(0, 10);
+      const lines = top.length
+        ? top
+            .map((u, i) => `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${u.wheelSpins || 0}* دورة`)
+            .join('\n')
+        : '_ما بعد أحد دوّرها — جرّب حظك!_';
+
+      const text =
+        `🎰 *إحصائيات عجلة الحظ*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        personalBlock +
+        `🎡 مجموع الدورات: *${spins}*\n` +
+        `👥 لاعبون: *${spinners.length}*\n` +
+        `_دورة وحدة كل يوم لكل لاعب_ ⏳\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🥇 *أكثر من دوّر:*\n${lines}`;
+
+      return { text, keyboard: [fromGame ? gameBack : backStats] };
+    }
+
     // 🔜 لعبة بعدها ما نزلت
     if (gameId) {
       const game = findBotGame(gameId);
@@ -2577,18 +2786,44 @@ export class TelegramBotManager {
           .join('\n')
       : '_ما بعد أحد جمع نقاط — العبوا وارجعوا تشوفون اسمكم هنا!_';
 
+    const soloPlayed = n.users.reduce(
+      (s, u) =>
+        s +
+        (u.mathGames || 0) +
+        (u.rhymeGames || 0) +
+        (u.longestGames || 0) +
+        (u.guessSongGames || 0),
+      0
+    );
+    const soloWon = n.users.reduce(
+      (s, u) =>
+        s +
+        (u.mathWins || 0) +
+        (u.rhymeWins || 0) +
+        (u.longestWins || 0) +
+        (u.guessSongWins || 0),
+      0
+    );
+    const wheelTotal = n.users.reduce((s, u) => s + (u.wheelSpins || 0), 0);
+    const rpsPlayed = n.users.reduce((s, u) => s + (u.rpsGames || 0), 0);
+
     const text =
       `📊 *إحصائيات الألعاب*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
-      `🎮 *المجموع:* ${n.matches.length + n.solved + poetSolved} لعبة مكتملة • ${n.active.length + Array.from(this.poet.values()).filter(p => !p.done).length} جارية الآن\n\n` +
+      `🎮 *المجموع:* ${n.matches.length + n.solved + poetSolved + soloPlayed + rpsPlayed} لعبة مكتملة • ${n.active.length + Array.from(this.poet.values()).filter(p => !p.done).length} جارية الآن\n\n` +
       `⚔️ *كود نيمز (2 ضد 2)*\n` +
       `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
       `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n\n` +
+      `✊ *حجرة ورقة مقص*\n` +
+      `🎮 مباريات: *${rpsPlayed}*\n\n` +
       `🧠 *خمّن الكلمة*\n` +
       `✅ انحلّت: *${n.solved}* مرة • 👥 فازوا: *${n.solvers.length}*\n\n` +
       `🎭 *خمّن الشاعر*\n` +
       `✅ أبيات انحلّت: *${poetSolved}* • 👥 لاعبون: *${poetPlayers}*\n\n` +
-      `👥 *ألعاب ثنائية:* 🔜 قريباً • 🎲 *ألعاب الحظ:* 🔜 قريباً\n` +
+      `🤖 *ألعاب مع البوت*\n` +
+      `🎯 جولات: *${soloPlayed}* • 🏆 فوزات: *${soloWon}*\n\n` +
+      `🎲 *عجلة الحظ*\n` +
+      `🎡 دورات: *${wheelTotal}*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `🏆 *أقوى 5 بالنقاط:*\n${topLines}\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
@@ -2598,6 +2833,18 @@ export class TelegramBotManager {
       [
         { text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' },
         { text: '⚔️ تفاصيل كود نيمز', callback_data: 'gstat:cn' }
+      ],
+      [
+        { text: '✊ تفاصيل حجرة ورقة', callback_data: 'gstat:g:rps' },
+        { text: '🎵 تفاصيل خمّن الأغنية', callback_data: 'gstat:g:guess_song' }
+      ],
+      [
+        { text: '🔢 تفاصيل الحساب', callback_data: 'gstat:g:math' },
+        { text: '🥊 تفاصيل القافية', callback_data: 'gstat:g:rhyme' }
+      ],
+      [
+        { text: '📏 تفاصيل أطول كلمة', callback_data: 'gstat:g:longest' },
+        { text: '🎰 تفاصيل العجلة', callback_data: 'gstat:g:wheel' }
       ],
       [
         { text: '🟩 تفاصيل خمّن الكلمة', callback_data: 'gstat:g:wordle' },
@@ -3139,6 +3386,369 @@ export class TelegramBotManager {
     } else {
       await this.sendMessage(chatId, text, Poet.keyboard(round));
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🎵 خمّن الأغنية
+  // ---------------------------------------------------------------------
+
+  /** زر من أزرار «خمّن الأغنية» */
+  private async handleSongKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const previous = this.song.get(userId);
+      const fresh = Song.createRound(previous?.snippet);
+      this.song.set(userId, fresh);
+      await this.paintSong(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '🎵 أغنية جديدة — منو المطرب؟');
+      return;
+    }
+
+    if (key === 'noop') {
+      await this.answerCallbackQuery(cb.id, '❌ هذا الخيار غلط — اختار غيره.', true);
+      return;
+    }
+
+    const round = this.song.get(userId);
+    if (!round) {
+      await this.answerCallbackQuery(cb.id, 'اضغط «🎵 خمّن الأغنية» من قائمة الألعاب.', true);
+      return;
+    }
+
+    const index = Number(key);
+    if (!Number.isFinite(index)) {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const wasDone = round.done;
+    const next = Song.answer(round, index);
+    this.song.set(userId, next);
+
+    if (!wasDone && next.done) {
+      const rec = this.users.get(userId);
+      if (rec) {
+        rec.guessSongGames = (rec.guessSongGames || 0) + 1;
+        if (next.won) {
+          rec.guessSongWins = (rec.guessSongWins || 0) + 1;
+          rec.points = (rec.points || 0) + Song.pointsFor(next);
+        }
+        this.users.set(rec.id, rec);
+      }
+    }
+
+    await this.paintSong(cb, next);
+
+    if (next.done) {
+      await this.answerCallbackQuery(cb.id, next.won ? '🎉 عرفتها!' : '😅 الجواب كان: ' + next.answer);
+    } else if (next.wrong.length) {
+      await this.answerCallbackQuery(cb.id, '❌ غلط — بقيتلك محاولة وحدة!', true);
+    } else {
+      await this.answerCallbackQuery(cb.id, '');
+    }
+  }
+
+  /** يعرض/يحدّث لوحة «خمّن الأغنية» */
+  private async paintSong(cb: TelegramCallbackQuery, round: Song.SongRound) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    let text = Song.renderMessage(round);
+
+    if (round.done) {
+      const rec = this.users.get(String(cb.from.id));
+      const gained = Song.pointsFor(round);
+      const total = rec?.points || 0;
+      text += round.won
+        ? `\n\n🏆 *نقاطك:* ${total} _(+${gained})_`
+        : `\n\n🏆 *نقاطك:* ${total}\n_الله يعوّضك — جرّب أغنية ثانية!_`;
+    }
+
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, Song.keyboard(round));
+    } else {
+      await this.sendMessage(chatId, text, Song.keyboard(round));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🔢 تحدي الحساب
+  // ---------------------------------------------------------------------
+
+  /** زر من أزرار «تحدي الحساب» */
+  private async handleMathKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const fresh = MathGame.createGame();
+      this.mathGames.set(userId, fresh);
+      await this.paintMath(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '🔢 يلا — أسرع بالحساب!');
+      return;
+    }
+
+    const round = this.mathGames.get(userId);
+    if (!round) {
+      await this.answerCallbackQuery(cb.id, 'اضغط «🔢 تحدي الحساب» من قائمة الألعاب.', true);
+      return;
+    }
+
+    const value = Number(key);
+    if (!Number.isFinite(value)) {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const wasDone = round.done;
+    const { state: next, correct } = MathGame.answer(round, value);
+    this.mathGames.set(userId, next);
+
+    if (!wasDone && next.done) {
+      const rec = this.users.get(userId);
+      if (rec) {
+        rec.mathGames = (rec.mathGames || 0) + 1;
+        if (next.won) {
+          rec.mathWins = (rec.mathWins || 0) + 1;
+          rec.points = (rec.points || 0) + MathGame.pointsFor(next);
+        }
+        this.users.set(rec.id, rec);
+      }
+    }
+
+    await this.paintMath(cb, next);
+
+    if (next.done) {
+      await this.answerCallbackQuery(cb.id, next.won ? '🏆 فزت! 🎉' : '😅');
+    } else {
+      await this.answerCallbackQuery(cb.id, correct ? '✅ صح!' : '❌ غلط!', !correct);
+    }
+  }
+
+  /** يعرض/يحدّث لوحة «تحدي الحساب» */
+  private async paintMath(cb: TelegramCallbackQuery, round: MathGame.MathRound) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    let text = MathGame.renderMessage(round);
+
+    if (round.done && round.won) {
+      const rec = this.users.get(String(cb.from.id));
+      text += `\n\n🏆 *نقاطك:* ${rec?.points || 0}`;
+    }
+
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, MathGame.keyboard(round));
+    } else {
+      await this.sendMessage(chatId, text, MathGame.keyboard(round));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🥊 تحدي القافية
+  // ---------------------------------------------------------------------
+
+  /** زر من أزرار «تحدي القافية» */
+  private async handleRhymeKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const previous = this.rhymeGames.get(userId);
+      const fresh = WordGame.createRhyme(previous?.word);
+      this.rhymeGames.set(userId, fresh);
+      await this.paintRhyme(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '🥊 يلا — لكّل الكلمات اللي تقافي!');
+      return;
+    }
+
+    if (key === 'noop') {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const round = this.rhymeGames.get(userId);
+    if (!round) {
+      await this.answerCallbackQuery(cb.id, 'اضغط «🥊 تحدي القافية» من قائمة الألعاب.', true);
+      return;
+    }
+
+    const index = Number(key);
+    if (!Number.isFinite(index)) {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const wasDone = round.done;
+    const next = WordGame.pickRhyme(round, index);
+    this.rhymeGames.set(userId, next);
+
+    if (!wasDone && next.done) {
+      const rec = this.users.get(userId);
+      if (rec) {
+        rec.rhymeGames = (rec.rhymeGames || 0) + 1;
+        if (next.score > 0) {
+          rec.rhymeWins = (rec.rhymeWins || 0) + 1;
+          rec.points = (rec.points || 0) + WordGame.rhymePoints(next);
+        }
+        this.users.set(rec.id, rec);
+      }
+    }
+
+    await this.paintRhyme(cb, next);
+
+    if (next.done) {
+      await this.answerCallbackQuery(cb.id, `🏁 جبت ${next.score} كلمة صح!`);
+    } else {
+      const hit = next.picked.includes(index);
+      await this.answerCallbackQuery(cb.id, hit ? '✅ صح!' : '❌ ما تقافيها', !hit);
+    }
+  }
+
+  /** يعرض/يحدّث لوحة «تحدي القافية» */
+  private async paintRhyme(cb: TelegramCallbackQuery, round: WordGame.RhymeRound) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    let text = WordGame.renderRhyme(round);
+
+    if (round.done) {
+      const rec = this.users.get(String(cb.from.id));
+      text += `\n\n🏆 *نقاطك:* ${rec?.points || 0}`;
+    }
+
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, WordGame.rhymeKeyboard(round));
+    } else {
+      await this.sendMessage(chatId, text, WordGame.rhymeKeyboard(round));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 📏 أطول كلمة
+  // ---------------------------------------------------------------------
+
+  /** زر من أزرار «أطول كلمة» */
+  private async handleLongestKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const previous = this.longestGames.get(userId);
+      const fresh = WordGame.createLongest(previous?.letters.join(''));
+      this.longestGames.set(userId, fresh);
+      await this.paintLongest(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '📏 يلا — كون أطول كلمة!');
+      return;
+    }
+
+    const round = this.longestGames.get(userId);
+    if (!round) {
+      await this.answerCallbackQuery(cb.id, 'اضغط «📏 أطول كلمة» من قائمة الألعاب.', true);
+      return;
+    }
+
+    const wasDone = round.done;
+    const next = WordGame.pickLongest(round, key);
+    this.longestGames.set(userId, next);
+
+    if (!wasDone && next.done) {
+      const rec = this.users.get(userId);
+      if (rec) {
+        rec.longestGames = (rec.longestGames || 0) + 1;
+        if (next.won) {
+          rec.longestWins = (rec.longestWins || 0) + 1;
+          rec.points = (rec.points || 0) + WordGame.longestPoints(next);
+        }
+        this.users.set(rec.id, rec);
+      }
+    }
+
+    await this.paintLongest(cb, next);
+
+    if (next.done) {
+      await this.answerCallbackQuery(cb.id, next.won ? '✅ صح! 🎉' : '❌ غلط — الأطول: ' + next.longest, !next.won);
+    } else {
+      await this.answerCallbackQuery(cb.id, '');
+    }
+  }
+
+  /** يعرض/يحدّث لوحة «أطول كلمة» */
+  private async paintLongest(cb: TelegramCallbackQuery, round: WordGame.LongestRound) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    let text = WordGame.renderLongest(round);
+
+    if (round.done) {
+      const rec = this.users.get(String(cb.from.id));
+      text += `\n\n🏆 *نقاطك:* ${rec?.points || 0}`;
+    }
+
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, WordGame.longestKeyboard(round));
+    } else {
+      await this.sendMessage(chatId, text, WordGame.longestKeyboard(round));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🎰 عجلة الحظ
+  // ---------------------------------------------------------------------
+
+  /** زر «عجلة الحظ» */
+  private async handleWheelKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key !== 'spin') {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const rec = this.users.get(userId);
+    if (!rec) {
+      await this.answerCallbackQuery(cb.id, 'اضغط /start أول.', true);
+      return;
+    }
+
+    const today = Wheel.dayKey();
+    const last = this.wheelSpins.get(userId);
+    if (last === today) {
+      await this.answerCallbackQuery(cb.id, '⏳ دوّرت العجلة اليوم — تعال باجر!', true);
+      return;
+    }
+    this.wheelSpins.set(userId, today);
+
+    const outcome = Wheel.spin();
+    if (outcome.kind === 'points') {
+      rec.points = (rec.points || 0) + outcome.amount;
+    } else if (outcome.kind === 'money') {
+      const room = Math.max(0, Economy.DAILY_MONEY_CAP - Economy.earnedToday(rec));
+      const gain = Math.min(outcome.amount, room);
+      if (gain > 0) {
+        rec.money = Economy.roundMoney((rec.money || 0) + gain);
+        Economy.addEarned(rec, gain);
+      }
+    } else if (outcome.kind === 'xp') {
+      rec.xp = (rec.xp || 0) + outcome.amount;
+    }
+    rec.wheelSpins = (rec.wheelSpins || 0) + 1;
+    this.users.set(rec.id, rec);
+
+    const text =
+      `🎰 *عجلة الحظ*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `العجلة وقفت على:\n\n` +
+      `➡️ ${outcome.label}\n\n` +
+      `_تعال باجر تدوّرها مرة ثانية_ ⏳`;
+
+    const keyboard = [
+      [{ text: '🔙 رجوع', callback_data: 'hub:g:wheel' }]
+    ];
+
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, keyboard);
+    } else {
+      await this.sendMessage(chatId, text, keyboard);
+    }
+
+    await this.answerCallbackQuery(cb.id, '🎰');
   }
 
   // ---------------------------------------------------------------------
