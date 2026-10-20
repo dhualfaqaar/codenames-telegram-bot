@@ -2557,7 +2557,7 @@ export class TelegramBotManager {
         `_ملاحظة: الفلوس والمستوى ما يزيدان إلا باللعب مع ناس حقيقيين (أونلاين)._`
       ].join('\n');
 
-      return { text, keyboard: [[{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]] };
+      return { text, keyboard: [[{ text: 'رجوع', callback_data: 'hub:main' }]] };
     }
 
     // 👤 ملف اللاعب نفسه
@@ -2628,7 +2628,7 @@ export class TelegramBotManager {
       `_ملاحظة: الفلوس ما تزيد إلا باللعب مع ناس حقيقيين (أونلاين)._`
     ].join('\n');
 
-    return { text: text2, keyboard: [[{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]] };
+    return { text: text2, keyboard: [[{ text: 'رجوع', callback_data: 'hub:main' }]] };
   }
 
   /** يفتح/يحدّث شاشات الفلوس والمستوى (أي واحد يكدر يشوفها) */
