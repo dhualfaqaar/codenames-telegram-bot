@@ -9,6 +9,7 @@ import * as Economy from '../src/services/economy';
 import * as WK from '../src/services/whoKnowsEngine';
 import * as MF from '../src/services/mafiaEngine';
 import * as OOL from '../src/services/outOfLoopEngine';
+import * as MS from '../src/services/mediaServicesEngine';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
 function encodeHiddenTag(payload: string): string {
@@ -716,6 +717,10 @@ export class TelegramBotManager {
   private wkGames: Map<string, WK.WKGame> = new Map();
   private mafiaGames: Map<string, MF.MafiaGame> = new Map();
   private oolGames: Map<string, OOL.OOLGame> = new Map();
+  private whispers: Map<string, MS.WhisperRecord> = new Map();
+  private pendingWhispers: Map<string, MS.PendingWhisperDraft> = new Map();
+  private pendingSocialDl: Map<string, MS.SocialPlatform> = new Map();
+  private songSearches: Map<string, MS.SongSearchHit[]> = new Map();
   private lastInlineDeployer?: { id: string; at: number };
   private commandsSyncVer: number = 0;
   /** هل البيئة الخارجية (Cloudflare Durable Object Alarm) تدير المؤقت؟ */
@@ -1323,6 +1328,10 @@ export class TelegramBotManager {
       wkGames: Array.from(this.wkGames.entries()),
       mafiaGames: Array.from(this.mafiaGames.entries()),
       oolGames: Array.from(this.oolGames.entries()),
+      whispers: Array.from(this.whispers.entries()).slice(-300),
+      pendingWhispers: Array.from(this.pendingWhispers.entries()),
+      pendingSocialDl: Array.from(this.pendingSocialDl.entries()),
+      songSearches: Array.from(this.songSearches.entries()).slice(-200),
       commandsSyncVer: this.commandsSyncVer,
       pendingChannelGame: Array.from(this.pendingChannelGame.entries())
     };
@@ -1357,6 +1366,10 @@ export class TelegramBotManager {
     if (Array.isArray(state.wkGames)) this.wkGames = new Map(state.wkGames);
     if (Array.isArray(state.mafiaGames)) this.mafiaGames = new Map(state.mafiaGames);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
+    if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
+    if (Array.isArray(state.pendingWhispers)) this.pendingWhispers = new Map(state.pendingWhispers);
+    if (Array.isArray(state.pendingSocialDl)) this.pendingSocialDl = new Map(state.pendingSocialDl);
+    if (Array.isArray(state.songSearches)) this.songSearches = new Map(state.songSearches);
     if (typeof state.commandsSyncVer === 'number') this.commandsSyncVer = state.commandsSyncVer;
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
   }
@@ -1656,6 +1669,26 @@ export class TelegramBotManager {
       return;
     }
 
+    // 🎵 أمر البحث عن الأغاني «يوت <اسم الأغنية>» (يشتغل بالخاص والكروبات والقنوات!)
+    const youtMatch = text.match(/^(?:\/?(?:يوت|yout))(?:\s+|:)(.+)$/i);
+    if (youtMatch && youtMatch[1].trim()) {
+      await this.handleYoutSongSearch(chatId, youtMatch[1].trim(), message.message_id);
+      return;
+    }
+
+    // 🤫 إكمال خطوات إنشاء همسة بالخاص + 📥 استقبال رابط التحميل من السوشيال ميديا بالخاص
+    if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
+      const uid = String(sender.id);
+      if (this.pendingWhispers.has(uid)) {
+        await this.handleWhisperTextStep(uid, sender, text);
+        return;
+      }
+      if (this.pendingSocialDl.has(uid)) {
+        await this.handleSocialDownloadInput(uid, text);
+        return;
+      }
+    }
+
     // 🤝 إذا المستخدم يشارك حالياً بلعبة «منو يعرف الثاني أكثر؟» بالخاص → نثبّت جوابه/تخمينه فوراً
     if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
       if (!message.reply_to_message && !this.awaitingClueWord.get(String(sender.id))) {
@@ -1758,6 +1791,10 @@ export class TelegramBotManager {
     // /start command
     if (lower.startsWith('/start')) {
       if (message.chat.type === 'private') {
+        if (sender) {
+          this.pendingWhispers.delete(String(sender.id));
+          this.pendingSocialDl.delete(String(sender.id));
+        }
         const rawPayload = (text.split(/\s+/)[1] || '').trim();
         const payload = rawPayload.toLowerCase();
         if (payload === 'spy') {
@@ -1952,6 +1989,12 @@ export class TelegramBotManager {
     // ---- 💰 المتصدرون بالفلوس / المستوى / ملفي (عامة — قراءة بس) ----
     if (data.startsWith('rank:')) {
       await this.handleRanking(cb, data.slice(5));
+      return;
+    }
+
+    // ---- ✨ الخدمات الإضافية + الهمسات + تحميل السوشيال ميديا + الأغاني ----
+    if (data.startsWith('svc:') || data.startsWith('wh:') || data.startsWith('dl:') || data.startsWith('yts:')) {
+      await this.handleExtraServicesCb(cb, data);
       return;
     }
 
@@ -2910,6 +2953,30 @@ export class TelegramBotManager {
     }
     const deployerId = iq.from?.id ? String(iq.from.id) : '';
     const uid = deployerId ? `|${deployerId}` : '';
+
+    // ── 🤫 همسة سرية ──
+    if (q.startsWith('wh:')) {
+      const whId = q.slice(3).trim();
+      const wh = this.whispers.get(whId);
+      if (wh) {
+        await this.answerInlineQuery(iq.id, [
+          {
+            type: 'article',
+            id: `wh:${wh.id}`,
+            title: `🤫 إرسال همستك (${MS.whisperModeLabel(wh.mode)})`,
+            description: `اضغط لإرسال الهمسة الآن: «${wh.text.slice(0, 45)}${wh.text.length > 45 ? '…' : ''}»`,
+            input_message_content: {
+              message_text: MS.renderWhisperCardText(wh),
+              parse_mode: 'MarkdownV2'
+            },
+            reply_markup: {
+              inline_keyboard: MS.whisperCardKeyboard(wh)
+            }
+          }
+        ]);
+        return;
+      }
+    }
 
     // ── 🕵️ المافيا ──
     if (q === 'mf' || q.includes('مافيا')) {
@@ -4829,9 +4896,12 @@ export class TelegramBotManager {
         }
       ]);
     }
-    // 💵 الفلوس والمستوى + القناة
+    // 💵 المتصدرون + خدمات إضافية، وتحتهم زر القناة العريض
     keyboard.push([
       { text: '🏅 المتصدرون', callback_data: 'rank:menu' },
+      { text: '✨ خدمات إضافية', callback_data: 'svc:main' }
+    ]);
+    keyboard.push([
       { text: '📢 القناة', url: 'https://t.me/pleasegodimtired' }
     ]);
     return { text, keyboard };
@@ -5233,6 +5303,547 @@ export class TelegramBotManager {
   // ---------------------------------------------------------------------
   // 🤝 «منو يعرف الثاني أكثر؟» — هيكل خاص كامل (قناة + رسائل بالخاص + كشف البطاقات)
   // ---------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------
+  // ✨ الخدمات الإضافية: 🤫 همسة | 📥 تحميل سوشيال ميديا | 🎵 الأغاني («يوت»)
+  // ---------------------------------------------------------------------
+
+  private async handleExtraServicesCb(cb: TelegramCallbackQuery, data: string) {
+    const userId = String(cb.from.id);
+    const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
+    const chatId = String(cb.message?.chat.id || userId);
+    const messageId = cb.message?.message_id;
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+
+    // ── 1) فتح همسة منشورة بالكروب أو القناة (تعمل للرسائل العادية ورسائل الإنلاين!) ──
+    if (data.startsWith('wh:open:')) {
+      const whId = data.slice(8).trim();
+      const wh = this.whispers.get(whId);
+      if (!wh) {
+        await this.answerCallbackQuery(cb.id, '⚠️ انتهت صلاحية هذه الهمسة.', true);
+        return;
+      }
+
+      const res = MS.attemptOpenWhisper(wh, {
+        id: userId,
+        name: userName,
+        username: cb.from.username
+      });
+      this.whispers.set(wh.id, wh);
+
+      // إذا انقفلت الهمسة للتو (مثل «لأول شخص فقط» أو اكتمل عدد الفاتحين) نحدّث شكل الرسالة فوراً
+      if (res.justLocked) {
+        const lockedText = MS.renderWhisperCardText(wh);
+        const lockedKb = MS.whisperCardKeyboard(wh);
+        if (cb.inline_message_id) {
+          await this.editInlineMessageText(cb.inline_message_id, lockedText, lockedKb, 'MarkdownV2');
+        } else if (cb.message?.chat?.id && cb.message?.message_id) {
+          await this.editMessageText(
+            String(cb.message.chat.id),
+            cb.message.message_id,
+            lockedText,
+            lockedKb,
+            'MarkdownV2'
+          );
+        }
+      }
+
+      // إرسال إشعار فوري بالخاص لصاحب الهمسة يوضّح منو فتحها ومحتواها وحالتها
+      if (res.shouldNotifyCreator) {
+        const notifText = MS.buildWhisperOwnerNotificationV2(wh, {
+          id: userId,
+          name: userName,
+          username: cb.from.username
+        });
+        await this.sendMessage(wh.creatorId, notifText, undefined, 'MarkdownV2');
+      }
+
+      await this.answerCallbackQuery(cb.id, res.popupText, true);
+      return;
+    }
+
+    // ── 2) اختيار أغنية من نتائج أمر «يوت» → إرسال ملف صوتي صافي فقط (أغنية وبس!) ──
+    if (data.startsWith('yts:')) {
+      const parts = data.split(':');
+      const searchKey = parts[1] || '';
+      const idx = parseInt(parts[2] || '0', 10);
+      const list = this.songSearches.get(searchKey);
+      const hit = list?.[idx];
+      if (!hit) {
+        await this.answerCallbackQuery(cb.id, '⚠️ انتهت صلاحية البحث — اكتب «يوت» واسم الأغنية من جديد.', true);
+        return;
+      }
+
+      await this.answerCallbackQuery(cb.id, '🎶 جاري تجهيز الأغنية...');
+      if (messageId) {
+        await this.editMessageText(chatId, messageId, `⏳ جاري إرسال الأغنية: *${this.mdSafe(hit.title)}* ...`);
+      }
+
+      const audioInfo = await MS.resolveSongAudioUrl(hit.videoId);
+      if (!audioInfo) {
+        if (messageId) {
+          await this.editMessageText(
+            chatId,
+            messageId,
+            '⚠️ تعذّر سحب ملف الصوت حالياً — جرّب اختيار نتيجة ثانية من البحث.'
+          );
+        }
+        return;
+      }
+
+      const sentOk = await this.sendAudioPure(chatId, audioInfo.url, hit.title, hit.artist, audioInfo.ext);
+      if (sentOk) {
+        if (messageId) {
+          await this.deleteMessage(chatId, messageId);
+        }
+      } else if (messageId) {
+        await this.editMessageText(
+          chatId,
+          messageId,
+          '⚠️ تعذّر إرسال الملف الصوتي — جرّب نتيجة أخرى.'
+        );
+      }
+      return;
+    }
+
+    if (data.startsWith('svc:')) {
+      this.pendingWhispers.delete(userId);
+      this.pendingSocialDl.delete(userId);
+    }
+
+    // ── القائمة الرئيسية للخدمات الإضافية ──
+    if (data === 'svc:main') {
+      const text =
+        `✨ *الخدمات الإضافية*\n` +
+        `${SEP}\n` +
+        `اختر الخدمة التي تريد استخدامها 👇`;
+      const keyboard = [
+        [{ text: '🤫 همسة', callback_data: 'svc:whisper' }],
+        [{ text: '📥 تحميل من السوشيال ميديا', callback_data: 'svc:dl' }],
+        [{ text: '🎵 الأغاني', callback_data: 'svc:songs' }],
+        [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, await this.withBotFooter(text), keyboard);
+      else await this.sendMessage(chatId, await this.withBotFooter(text), keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ── قائمة إنشاء همسة جديدة ──
+    if (data === 'svc:whisper') {
+      const text =
+        `🤫 *إنشاء همسة سرية*\n` +
+        `${SEP}\n` +
+        `اختر لمن تريد توجيه الهمسة، وستصلك رسالة فورية من البوت تخبرك بمن فتحها مع محتوى الهمسة 👇`;
+      const keyboard = [
+        [
+          { text: '👤 لشخص واحد', callback_data: 'wh:m:1' },
+          { text: '👥 لشخصين', callback_data: 'wh:m:2' }
+        ],
+        [
+          { text: '👥 لـ ٣ أشخاص', callback_data: 'wh:m:3' },
+          { text: '👥 لـ ٤ أشخاص', callback_data: 'wh:m:4' }
+        ],
+        [
+          { text: '👥 لـ ٥ أشخاص', callback_data: 'wh:m:5' },
+          { text: '🌍 للجميع', callback_data: 'wh:m:all' }
+        ],
+        [{ text: '⚡ لأول شخص فقط (تقفل بعده)', callback_data: 'wh:m:first' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ── اختيار نوع الهمسة ──
+    if (data.startsWith('wh:m:')) {
+      const mode = data.slice(5) as MS.WhisperMode;
+      this.pendingSocialDl.delete(userId);
+      this.pendingWhispers.set(userId, { step: 'awaiting_text', mode });
+      const text =
+        `🤫 *همسة جديدة — ${MS.whisperModeLabel(mode)}*\n` +
+        `${SEP}\n` +
+        `✍️ اكتب الآن *نص الهمسة* وأرسله هنا بالمحادثة:`;
+      const keyboard = [[{ text: '🔙 إلغاء ورجوع', callback_data: 'svc:whisper' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ── تخطي تحديد اليوزرات (لأول N أشخاص يفتحوها) ──
+    if (data === 'wh:notarget') {
+      const draft = this.pendingWhispers.get(userId);
+      if (!draft || !draft.text) {
+        await this.answerCallbackQuery(cb.id, 'اكتب نص الهمسة أولاً.', true);
+        return;
+      }
+      this.pendingWhispers.delete(userId);
+      const wh = MS.createWhisperRecord({
+        creatorId: userId,
+        creatorName: userName,
+        creatorUsername: cb.from.username,
+        mode: draft.mode,
+        text: draft.text,
+        allowedTargets: []
+      });
+      this.whispers.set(wh.id, wh);
+      const readyText =
+        `✅ *همستك جاهزة للإرسال!*\n` +
+        `${SEP}\n` +
+        `🔐 *النوع:* ${MS.whisperModeLabel(wh.mode)}\n` +
+        `💬 *المحتوى:* «${this.mdSafe(wh.text)}»\n\n` +
+        `👇 اضغط الزر بالأسفل لاختيار الكروب أو القناة وإرسالها فوراً:`;
+      const readyKb = [
+        [{ text: '📤 إرسال الهمسة للكروب أو القناة', switch_inline_query: `wh:${wh.id}` }],
+        [{ text: '🤫 إنشاء همسة أخرى', callback_data: 'svc:whisper' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, readyText, readyKb);
+      else await this.sendMessage(chatId, readyText, readyKb);
+      await this.answerCallbackQuery(cb.id, '✅ جاهزة للإرسال!');
+      return;
+    }
+
+    // ── قائمة التحميل من السوشيال ميديا ──
+    if (data === 'svc:dl') {
+      const text =
+        `📥 *التحميل من السوشيال ميديا*\n` +
+        `${SEP}\n` +
+        `اختر المنصة التي تريد تحميل المنشور منها 👇`;
+      const keyboard = [
+        [
+          { text: '▶️ تحميل من يوتيوب', callback_data: 'dl:yt' },
+          { text: '📌 تحميل من بنترست', callback_data: 'dl:pin' }
+        ],
+        [
+          { text: '🎵 تحميل من تيك توك', callback_data: 'dl:tt' },
+          { text: '📸 تحميل من إنستغرام', callback_data: 'dl:ig' }
+        ],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ── اختيار منصة التحميل ──
+    if (data.startsWith('dl:')) {
+      const platform = data.slice(3) as MS.SocialPlatform;
+      this.pendingWhispers.delete(userId);
+      this.pendingSocialDl.set(userId, platform);
+      const text =
+        `📥 *التحميل من ${MS.socialPlatformLabel(platform)}*\n` +
+        `${SEP}\n` +
+        `🔗 أرسل الآن *رابط المنشور* هنا بالمحادثة ليتم تحميله وإرساله لك مباشرة 👇`;
+      const keyboard = [[{ text: '🔙 رجوع للمنصات', callback_data: 'svc:dl' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ── شرح خدمة الأغاني («يوت») ──
+    if (data === 'svc:songs') {
+      const text =
+        `🎵 *البحث وتحميل الأغاني*\n` +
+        `${SEP}\n` +
+        `تقدر تبحث وتحمّل أي أغنية بسهولة في أي مكان:\n` +
+        `• 💬 في المحادثة الخاصة مع البوت\n` +
+        `• 👥 في الكروبات والمجموعات\n` +
+        `• 📢 في القنوات\n\n` +
+        `📝 *طريقة الاستخدام:*\n` +
+        `اكتب كلمة *يوت* وبعدها اسم الأغنية، مثل:\n` +
+        `\`يوت كاظم الساهر كتاب الحب\`\n` +
+        `\`يوت فيروز نسم علينا الهوى\`\n\n` +
+        `🔍 راح يبحث البوت ويعرضلك أقرب النتائج لكتابتك، وبمجرد ضغطك على الأغنية تنرسل على شكل أغنية صوتية وبس 🎶`;
+      const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+  }
+
+  /** معالجة رسائل المستخدم بالخاص أثناء إنشاء همسة */
+  private async handleWhisperTextStep(userId: string, sender: TelegramUser, rawText: string) {
+    const draft = this.pendingWhispers.get(userId);
+    if (!draft) return;
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    const creatorName = sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '');
+
+    if (draft.step === 'awaiting_text') {
+      const clean = rawText.trim().slice(0, 190);
+      if (draft.mode === 'all' || draft.mode === 'first') {
+        this.pendingWhispers.delete(userId);
+        const wh = MS.createWhisperRecord({
+          creatorId: userId,
+          creatorName,
+          creatorUsername: sender.username,
+          mode: draft.mode,
+          text: clean,
+          allowedTargets: []
+        });
+        this.whispers.set(wh.id, wh);
+        await this.sendMessage(
+          userId,
+          `✅ *همستك جاهزة للإرسال!*\n` +
+            `${SEP}\n` +
+            `🔐 *النوع:* ${MS.whisperModeLabel(wh.mode)}\n` +
+            `💬 *المحتوى:* «${this.mdSafe(wh.text)}»\n\n` +
+            `👇 اضغط الزر بالأسفل لاختيار الكروب أو القناة وإرسالها فوراً:`,
+          [
+            [{ text: '📤 إرسال الهمسة للكروب أو القناة', switch_inline_query: `wh:${wh.id}` }],
+            [{ text: '🤫 إنشاء همسة أخرى', callback_data: 'svc:whisper' }],
+            [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+          ]
+        );
+        return;
+      }
+
+      const count = MS.whisperMaxCount(draft.mode) || 1;
+      const example = count > 1 ? '`@user1 @user2`' : '`@username`';
+      draft.step = 'awaiting_targets';
+      draft.text = clean;
+      this.pendingWhispers.set(userId, draft);
+      await this.sendMessage(
+        userId,
+        `🎯 *تحديد المستلمين (${MS.whisperModeLabel(draft.mode)})*\n` +
+          `${SEP}\n` +
+          `أرسل الآن يوزرات الأشخاص المسموح لهم قراءة الهمسة (مثلاً: ${example})،\n` +
+          `أو اضغط الزر بالأسفل إذا تريد أي *${count}* يفتحوها وبعدهم تقفل تلقائياً:`,
+        [
+          [{ text: `🔓 لأول ${count} يفتحوها (بدون تحديد يوزر)`, callback_data: 'wh:notarget' }],
+          [{ text: '🔙 إلغاء', callback_data: 'svc:whisper' }]
+        ]
+      );
+      return;
+    }
+
+    const maxCount = MS.whisperMaxCount(draft.mode) || 1;
+    const targets = MS.parseWhisperTargets(rawText, maxCount);
+    this.pendingWhispers.delete(userId);
+    const wh = MS.createWhisperRecord({
+      creatorId: userId,
+      creatorName,
+      creatorUsername: sender.username,
+      mode: draft.mode,
+      text: draft.text || '',
+      allowedTargets: targets
+    });
+    this.whispers.set(wh.id, wh);
+    await this.sendMessage(
+      userId,
+      `✅ *همستك جاهزة للإرسال!*\n` +
+        `${SEP}\n` +
+        `🔐 *النوع:* ${MS.whisperModeLabel(wh.mode)}\n` +
+        (targets.length ? `🎯 *المستلمون:* ${targets.map(t => (/^\d+$/.test(t) ? t : `@${t}`)).join(' ، ')}\n` : '') +
+        `💬 *المحتوى:* «${this.mdSafe(wh.text)}»\n\n` +
+        `👇 اضغط الزر بالأسفل لاختيار الكروب أو القناة وإرسالها فوراً:`,
+      [
+        [{ text: '📤 إرسال الهمسة للكروب أو القناة', switch_inline_query: `wh:${wh.id}` }],
+        [{ text: '🤫 إنشاء همسة أخرى', callback_data: 'svc:whisper' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ]
+    );
+  }
+
+  /** معالجة رابط التحميل المرسل بالخاص من يوتيوب / بنترست / تيك توك / إنستغرام */
+  private async handleSocialDownloadInput(userId: string, rawUrl: string) {
+    const platform = this.pendingSocialDl.get(userId);
+    if (!platform) return;
+
+    const statusMsg = await this.sendMessage(userId, `⏳ جاري تحميل المنشور من *${MS.socialPlatformLabel(platform)}* ...`);
+    const statusMsgId = statusMsg?.result?.message_id;
+
+    const result = await MS.downloadFromPlatform(platform, rawUrl);
+    if (!result.ok || !result.items.length) {
+      const errText = result.error || '⚠️ تعذّر تحميل هذا الرابط — تأكد أنه رابط منشور عام وصحيح.';
+      if (statusMsgId) {
+        await this.editMessageText(userId, statusMsgId, errText, [
+          [{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]
+        ]);
+      } else {
+        await this.sendMessage(userId, errText, [[{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]]);
+      }
+      return;
+    }
+
+    let delivered = 0;
+    for (const item of result.items.slice(0, 5)) {
+      const ok = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url);
+      if (ok) delivered += 1;
+    }
+
+    if (delivered > 0) {
+      this.pendingSocialDl.delete(userId);
+      if (statusMsgId) {
+        await this.deleteMessage(userId, statusMsgId);
+      }
+      await this.sendMessage(userId, '✅ تم تحميل وإرسال المنشور بنجاح!', [
+        [{ text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' }],
+        [{ text: '🔙 الخدمات الإضافية', callback_data: 'svc:main' }]
+      ]);
+    } else if (statusMsgId) {
+      await this.editMessageText(
+        userId,
+        statusMsgId,
+        '⚠️ تعذّر رفع الملف إلى تيليجرام (قد يتجاوز حجم الفيديو الحد المسموح 50MB).',
+        [[{ text: '🔙 رجوع', callback_data: 'svc:dl' }]]
+      );
+    }
+  }
+
+  /** البحث بأمر «يوت <اسم الأغنية>» بالخاص أو الكروبات أو القنوات */
+  private async handleYoutSongSearch(chatId: string, query: string, replyToMessageId?: number) {
+    const hits = await MS.searchSongs(query, 5);
+    if (!hits.length) {
+      await this.sendMessage(chatId, `⚠️ ما لكيت نتائج مطابقة لـ «${this.mdSafe(query)}» — جرّب كتابة اسم الأغنية أو الفنان بوضوح.`);
+      return;
+    }
+
+    const searchKey = Date.now().toString(36).slice(-5) + Math.random().toString(36).substring(2, 5);
+    this.songSearches.set(searchKey, hits);
+
+    const kb = hits.map((h, i) => [
+      {
+        text: `🎵 ${h.title.slice(0, 46)}${h.duration ? ` (${h.duration})` : ''}`,
+        callback_data: `yts:${searchKey}:${i}`
+      }
+    ]);
+
+    const body: any = {
+      chat_id: chatId,
+      text: `🎶 *نتائج البحث عن:* «${this.mdSafe(query)}»\nاختر الأغنية لإرسالها:`,
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: kb }
+    };
+    if (replyToMessageId) {
+      body.reply_parameters = { message_id: replyToMessageId, allow_sending_without_reply: true };
+    }
+    await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).catch(() => null);
+  }
+
+  /** إرسال ملف صوتي صافي 100% على شكل أغنية فقط بدون أي نص أو كليشة */
+  private async sendAudioPure(
+    chatId: string,
+    audioUrl: string,
+    title: string,
+    performer: string,
+    ext: 'mp3' | 'm4a'
+  ): Promise<boolean> {
+    if (!this.token) return false;
+
+    try {
+      const mediaRes = await fetch(audioUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        },
+        redirect: 'follow'
+      });
+      if (mediaRes.ok) {
+        const buf = await mediaRes.arrayBuffer();
+        if (buf.byteLength > 1000 && buf.byteLength <= 49 * 1024 * 1024) {
+          const mime = ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
+          const blob = new Blob([buf], { type: mime });
+          const form = new FormData();
+          form.append('chat_id', chatId);
+          form.append('title', title);
+          form.append('performer', performer);
+          form.append('audio', blob, `${title.replace(/[\\/:*?"<>|]/g, '').slice(0, 60) || 'song'}.${ext}`);
+
+          const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
+            method: 'POST',
+            body: form
+          });
+          const upJson: any = await up.json();
+          if (upJson?.ok) return true;
+        }
+      }
+    } catch {
+      // ننتقل للمحاولة المباشرة عبر الرابط
+    }
+
+    try {
+      const direct = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          audio: audioUrl,
+          title,
+          performer
+        })
+      });
+      const dj: any = await direct.json();
+      return Boolean(dj?.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  /** إرسال فيديو أو صورة (سحب ثنائي + بديل رابط مباشر) لخدمة التحميل من السوشيال ميديا */
+  private async sendMediaBinaryOrUrl(
+    chatId: string,
+    kind: 'video' | 'photo',
+    mediaUrl: string
+  ): Promise<boolean> {
+    if (!this.token) return false;
+    const method = kind === 'video' ? 'sendVideo' : 'sendPhoto';
+    const field = kind === 'video' ? 'video' : 'photo';
+
+    try {
+      const r = await fetch(mediaUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        },
+        redirect: 'follow'
+      });
+      if (r.ok) {
+        const buf = await r.arrayBuffer();
+        if (buf.byteLength > 500 && buf.byteLength <= 49 * 1024 * 1024) {
+          const mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
+          const ext = kind === 'video' ? 'mp4' : 'jpg';
+          const form = new FormData();
+          form.append('chat_id', chatId);
+          form.append(field, new Blob([buf], { type: mime }), `media.${ext}`);
+          if (kind === 'video') form.append('supports_streaming', 'true');
+
+          const up = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+            method: 'POST',
+            body: form
+          });
+          const upJson: any = await up.json();
+          if (upJson?.ok) return true;
+        }
+      }
+    } catch {
+      // ننتقل للمحاولة الثانية عبر الرابط المباشر
+    }
+
+    try {
+      const payload: any = { chat_id: chatId, [field]: mediaUrl };
+      if (kind === 'video') payload.supports_streaming = true;
+      const direct = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const dj: any = await direct.json();
+      return Boolean(dj?.ok);
+    } catch {
+      return false;
+    }
+  }
 
   // ---------------------------------------------------------------------
   // 🕵️ «المافيا» — لعبة جماعية متكاملة بالقناة + الخاص
