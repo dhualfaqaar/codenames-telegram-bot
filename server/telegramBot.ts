@@ -3080,7 +3080,8 @@ export class TelegramBotManager {
     const personal = this.playerStatusText(viewer);
     const text =
       `🎮 *بوت الألعاب*\n` +
-      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇` +
+      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇\n` +
+      `_النسخة 2 — انضاف قسم «الجماعية» 🎉_` +
       (personal ? `\n\n${personal}` : '');
     const keyboard: any[][] = [
       [
