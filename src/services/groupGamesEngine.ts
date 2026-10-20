@@ -8,12 +8,12 @@
  *   gqj / gqs / gqa / gqn  → ألعاب الأسئلة (سرعة، معلومات، وألعاب خمّن)
  *   mmj / mms / mmd / mmb / mmc / mmn → ماسترمايند
  */
-import { GQRow, GENERAL, COUNTRIES, MOVIES, SERIES, NUMBERS, FOODS } from './groupQuizData';
+import { GQRow, GENERAL, COUNTRIES, MOVIES, SERIES, NUMBERS, FOODS, FLAGS, CAPITALS, CONTINENTS } from './groupQuizData';
 
 // ---------------------------------------------------------------------
 // 🧩 أنواع الألعاب
 // ---------------------------------------------------------------------
-export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food' | 'math';
+export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food' | 'math' | 'flags' | 'capitals' | 'continents';
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
   speed: {
@@ -55,6 +55,21 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🧮',
     title: 'تحدي الحساب',
     intro: 'جمع وطرح وضرب — أسرع صح يسجّل النقطة ⚡'
+  },
+  flags: {
+    emoji: '🚩',
+    title: 'خمّن العلم',
+    intro: 'علم إيموجي وأربع دول — عرفت منو؟ 🚩'
+  },
+  capitals: {
+    emoji: '🏛️',
+    title: 'خمّن العاصمة',
+    intro: 'شنو عاصمة هالدولة؟ أربع عواصم — اختار الصح 🏛️'
+  },
+  continents: {
+    emoji: '🌍',
+    title: 'دولة القارة',
+    intro: 'أنهي دولة تقع بالقارة المعطاة؟ وحدة بس صح 🌍'
   }
 };
 
@@ -150,6 +165,9 @@ function packFor(kind: QuizKind): GQRow[] {
     case 'series': return SERIES;
     case 'number': return NUMBERS;
     case 'food': return FOODS;
+    case 'flags': return FLAGS;
+    case 'capitals': return CAPITALS;
+    case 'continents': return CONTINENTS;
     case 'math': return mathRows();
     default: return GENERAL; // speed + trivia
   }
@@ -249,10 +267,8 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
   }
 
   game.status = 'result';
-  const winners = game.players.filter(x => x.roundHit).map(x => x.name);
-  game.lastLine = winners.length
-    ? `✅ الصح كان: *${correctText}*\n👏 جاوبوها صح: ${winners.join('، ')}`
-    : `💔 محد جاوبها صح!\n✅ الصح كان: *${correctText}*`;
+  // بلا كشف الجواب — علامة ✓/✗ بجنب كل لاعب بسطر النقاط، والجولة الجاية تجي بعد لحظات
+  game.lastLine = '';
   return { ok: true, msg: isRight ? '✅ صح! +١ نقطة' : '❌ غلط', roundClosed: true };
 }
 
@@ -263,13 +279,8 @@ export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string
   if (!p) return { ok: false, msg: '🚫 مو مشترك بهالبطولة' };
   if (!p.done) return { ok: false, msg: '⚠️ جاوب أول وبعدين ختم الجولة' };
 
-  const row = game.deck[game.qIndex];
-  const correctText = row[1];
   game.status = 'result';
-  const winners = game.players.filter(x => x.roundHit).map(x => x.name);
-  game.lastLine = winners.length
-    ? `⏭️ انختمت الجولة!\n✅ الصح كان: *${correctText}*\n👏 جاوبوها: ${winners.join('، ')}`
-    : `⏭️ انختمت الجولة بلا إجابة صحيحة 💔\n✅ الصح كان: *${correctText}*`;
+  game.lastLine = '⏭️ انختمت الجولة!';
   return { ok: true, msg: '⏭️ انختمت الجولة' };
 }
 
@@ -332,8 +343,7 @@ export function renderQuiz(game: QuizGame): string {
   lines.push(`━━━━━━━━━━━━━━━━━━━`);
 
   if (game.status === 'result') {
-    lines.push(game.lastLine);
-    lines.push(`━━━━━━━━━━━━━━━━━━━`);
+    if (game.lastLine) lines.push(game.lastLine);
   }
 
   if (game.status === 'playing') {

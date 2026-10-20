@@ -258,7 +258,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '⚡',
     title: 'مسابقة السرعة',
     category: 'group',
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'كن أول واحد يجاوب صح — أسرع لاعب يجمع أكثر نقاط',
     reward: 'أول جواب صحيح بكل جولة يسجّل نقطة — الأعلى بالنهاية يفوز',
@@ -275,7 +275,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🧠',
     title: 'معركة المعلومات',
     category: 'group',
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'جاوب أكثر أسئلة صح — الأذكى يتصدر اللوحة',
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية ياخذ اللقب 🏆',
@@ -295,7 +295,7 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'خمّن الدولة',
     category: 'group',
     guess: true,
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'اعرف الدولة من المعلومة قبل غيرك',
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
@@ -313,7 +313,7 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'خمّن الفيلم',
     category: 'group',
     guess: true,
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'اعرف الفيلم من الوصف الخفيف',
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
@@ -331,7 +331,7 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'خمّن المسلسل',
     category: 'group',
     guess: true,
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'اعرف المسلسل من الوصف الخفيف',
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
@@ -349,7 +349,7 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'خمّن الرقم',
     category: 'group',
     guess: true,
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'اعرف الرقم الصح — حساب ومعلومات خفيفة',
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
@@ -367,7 +367,7 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'خمّن الأكلة',
     category: 'group',
     guess: true,
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — الكل من اللوحة',
     goal: 'اعرف الأكلة من الوصف — جوعان ما يلعب 🍽️',
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
@@ -380,12 +380,67 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
+    id: 'gq_flags',
+    emoji: '🚩',
+    title: 'خمّن العلم',
+    category: 'group',
+    guess: true,
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'القناة — الكل من اللوحة',
+    goal: 'اعرف دولة العلم من ٤ خيارات',
+    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    about:
+      'البوت يعرض *علم إيموجي* وتحته *٤ دول بمربعات صغيرة (٢×٢)* 🚩\n' +
+      'والكل يختار دولة العلم — الجواب ما ينكشف، بس ✓جانب الصاحي.\n' +
+      '١٠ جولات وأعلى نقاط يفوز 🏆.',
+    channel: true,
+    inline: 'gq flags',
+    ready: true
+  },
+  {
+    id: 'gq_capitals',
+    emoji: '🏛️',
+    title: 'خمّن العاصمة',
+    category: 'group',
+    guess: true,
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'القناة — الكل من اللوحة',
+    goal: 'اعرف عاصمة الدولة من ٤ خيارات',
+    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    about:
+      'سؤال: *شنو عاصمة هالدولة؟* وتحته *٤ عواصم* 🏛️\n' +
+      'الكل يختار — النتيجة تطلع علامات بس (✓/✗) بلا كشف الجواب.\n' +
+      '١٠ جولات وأعلى نقاط يفوز 🏆.',
+    channel: true,
+    inline: 'gq capitals',
+    ready: true
+  },
+  {
+    id: 'gq_continents',
+    emoji: '🌍',
+    title: 'دولة القارة',
+    category: 'group',
+    guess: true,
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'القناة — الكل من اللوحة',
+    goal: 'اعرف الدولة اللي بالقارة المعطاة — وحدة بس صح!',
+    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يتصدر الترتيب 🏆',
+    about:
+      'البوت يقول قارة (آسيا؟ أفريقيا؟ أوروبا؟…) ويعرض *٤ دول* 🌍\n' +
+      'ثلاثة منقار ثانية و*وحدة بس* من القارة المعطاة — اختارها!\n' +
+      'بعد ما الكل يختار: علامات ✓/✗ جنب كل اسم لمدة ٣ ثواني،\n' +
+      'والجواب الصح ما ينكشف — وجولة قارة ثانية. ١٠ جولات والأعلى يفوز 🏆.',
+    channel: true,
+    inline: 'gq continents',
+    ready: true
+  },
+  {
     id: 'mastermind',
     emoji: '🔐',
     title: 'ماسترمايند — كسر الرقم السري',
     category: 'group',
     guess: true,
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى ١٠ لاعبين',
     where: 'القناة — بالتناوب من اللوحة',
     goal: 'اكسر الرقم السري المخفي قبل الجميع',
     reward: 'اللي يطلع ⚫⚫⚫⚫ يكسر الرقم وياخذ اللقب 👑',
@@ -2687,6 +2742,9 @@ export class TelegramBotManager {
       if (kind === 'mm') {
         const game = GG.mmCreate(chatId, message.chat.title || 'المحادثة');
         game.messageId = message.message_id;
+        if (message.from?.id) {
+          GG.mmJoin(game, String(message.from.id), message.from.first_name || 'الناشر');
+        }
         this.mmGames.set(chatId, game);
         const res = await this.editMessageText(
           chatId,
@@ -2703,6 +2761,10 @@ export class TelegramBotManager {
         : 'speed';
       const game = GG.createQuiz(chatId, message.chat.title || 'المحادثة', kind2);
       game.messageId = message.message_id;
+      // 🤝 اللي نزّل البطولة مشارك تلقائياً — مو لازم يدوس انضم لنفسه
+      if (message.from?.id) {
+        GG.quizJoin(game, String(message.from.id), message.from.first_name || 'الناشر');
+      }
       this.gqGames.set(chatId, game);
       const res = await this.editMessageText(
         chatId,
@@ -2732,6 +2794,9 @@ export class TelegramBotManager {
         message.from ? String(message.from.id) : ''
       );
       game.messageId = message.message_id;
+      if (message.from?.id) {
+        RPS.join(game, String(message.from.id), message.from.first_name || 'الناشر');
+      }
       this.rpsGames.set(chatId, game);
 
       const res = await this.editMessageText(
@@ -2768,13 +2833,37 @@ export class TelegramBotManager {
       creator
     );
     game.messageId = message.message_id;
-    this.games.set(chatId, game);
+
+    // 🤝 الناشر ينجلس تلقائياً بأول مقعد فاضي (عملاء أولاً، جواسيس بعدين)
+    let seated: CodenamesGame = game;
+    if (message.from?.id) {
+      const seats: Array<[Team, PlayerRole]> = [
+        ['blue', 'operative'],
+        ['red', 'operative'],
+        ['blue', 'spymaster'],
+        ['red', 'spymaster']
+      ];
+      for (const [team, role] of seats) {
+        if (!seated.players.some(pl => pl.team === team && pl.role === role)) {
+          const joined = CodenamesEngine.joinGame(seated, {
+            id: message.from.id,
+            name: message.from.first_name || 'الناشر',
+            username: message.from.username,
+            team,
+            role
+          });
+          if (joined.success) seated = joined.game;
+          break;
+        }
+      }
+    }
+    this.games.set(chatId, seated);
 
     const res = await this.editMessageText(
       chatId,
       message.message_id,
-      await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game)),
-      await this.buildKeyboard(game)
+      await this.withBotFooter(CodenamesEngine.getTelegramMessageText(seated)),
+      await this.buildKeyboard(seated)
     );
     if (!res?.ok) {
       this.games.delete(chatId);
@@ -2885,7 +2974,7 @@ export class TelegramBotManager {
         await this.paintQuiz(game);
         const g = this.gqGames.get(cbChatId);
         if (g) {
-          await this.sleep(2500);
+          await this.sleep(3000);
           GG.quizAdvance(g);
           await this.paintQuiz(g);
         }
@@ -2930,7 +3019,7 @@ export class TelegramBotManager {
         // مهلة قصيرة حتى يشوفون النتيجة، وبعدها الجولة الجاية أو الختام
         const g = this.gqGames.get(cbChatId);
         if (!g) return;
-        await this.sleep(2500);
+        await this.sleep(3000);
         const adv = GG.quizAdvance(g);
         await this.paintQuiz(g);
         if (adv.over && adv.smart) {
