@@ -2804,12 +2804,12 @@ export class TelegramBotManager {
     return { text, keyboard };
   }
 
-  /** رسالة كيبورد لاختيار القناة مباشرة (يفتح picker القنوات فوراً) */
+  /** اختيار القناة مباشرة (Inline) يفتح picker القنوات فوراً بدون رسالة إضافية */
   private async sendChannelKeyboard(chatId: string) {
     const rows: any[][] = [
       [
         {
-          text: '🎮 اختيار القناة لنشر اللعبة',
+          text: '🎮 اختيار القناة ونشر اللعبة',
           request_chat: {
             request_id: 1,
             chat_is_channel: true,
@@ -2818,12 +2818,7 @@ export class TelegramBotManager {
         }
       ]
     ];
-    await this.sendMessageRaw(
-      chatId,
-      `🎮 *اختر القناة لنشر اللعبة*\n\n` +
-        `اضغط الزر بالأسفل 👇 يطلع لك قائمة قنواتك مباشرة، اختار القناة اللي تريد تنشر اللعبة فيها (البوت لازم يكون مشرف بالقناة).`,
-      { keyboard: rows, resize_keyboard: true, one_time_keyboard: true }
-    );
+    await this.sendMessage(chatId, 'اضغط الزر بالأسفل لاختيار القناة ونشر اللعبة هناك:', rows);
   }
 
   // ---------------------------------------------------------------------
