@@ -171,7 +171,7 @@ export function resolveRound(game: RPSGame): RPSGame {
 
 /** نص رسالة المباراة بلوحة (للقناة) */
 export function renderGame(game: RPSGame): string {
-  const SEP = '━━━━━━━━━━';
+  const SEP = '━━━━━━━━━━━━━━━━━━━';
   const lines = [`✊ *حجرة ورقة مقص*`];
 
   if (game.status === 'lobby') {

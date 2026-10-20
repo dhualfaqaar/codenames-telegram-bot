@@ -949,7 +949,7 @@ export class TelegramBotManager {
 
     game.rewarded = true;
 
-    const lines: string[] = [`💰 *جوائز المباراة* — ${game.winner === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} فاز`, `━━━━━━━━━━`];
+    const lines: string[] = [`💰 *جوائز المباراة* — ${game.winner === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} فاز`, `━━━━━━━━━━━━━━━━━━━`];
     gained.forEach((g, i) => {
       const details: string[] = [];
       if (g.money > 0) details.push(`+${Economy.formatMoney(g.money)} 💵`);
@@ -961,7 +961,7 @@ export class TelegramBotManager {
       lines.push(this.quoteRow(i + 1, g.name, `(${details.join(' • ')})`));
     });
     if (loserLines.length) {
-      lines.push(`━━━━━━━━━━`);
+      lines.push(`━━━━━━━━━━━━━━━━━━━`);
       lines.push(`🎖️ *خبرة الفريق الثاني:*`);
       lines.push(...loserLines);
     }
@@ -1649,9 +1649,9 @@ export class TelegramBotManager {
           `🛡️ *حظر تلقائي (سباب)*\n` +
             `👤 ${this.linkUser(rec)}\n` +
             `🆔 \`${rec.id}\`\n` +
-            `━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━━━\n` +
             `${this.escapeMd(text)}\n` +
-            `━━━━━━━━━━\n` +
+            `━━━━━━━━━━━━━━━━━━━\n` +
             `📴 البوت صار يتجاهله تماماً.\n` +
             `_(إذا تريد ترجّعه: رد هنا واكتب: الغاء الحظر)_`
         );
@@ -2367,7 +2367,7 @@ export class TelegramBotManager {
     if (!botUser) return text;
     // بصيغة MarkdownV2 (لوحات الألعاب الجماعية) لازم نهرّب الشرطة السفلية باليوزرنيم
     const shown = v2 ? botUser.replace(/_/g, '\\_') : botUser;
-    return text + `\n━━━━━━━━━━\n` + `🤖 *البوت:* @${shown}`;
+    return text + `\n━━━━━━━━━━━━━━━━━━━\n` + `🤖 *البوت:* @${shown}`;
   }
 
   /**
@@ -2572,7 +2572,7 @@ export class TelegramBotManager {
     await this.paintMenuView(cb, {
       text:
         `${game.emoji} *${game.title}*\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `🎯 اختار كم راوند تلعبون بالقناة:`,
       keyboard: [
         [{ text: '🎮 بالقناة — ٥ راوندات', switch_inline_query: 'rps 5' }],
@@ -2593,7 +2593,7 @@ export class TelegramBotManager {
     await this.paintMenuView(cb, {
       text:
         `${game.emoji} *${game.title}*\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `💬 هاللعبة *خاصة*: تنلعبها هنا مع البوت — ما تننشر بقناة.\n\n` +
         `👇 اضغط زر اللعب حتى تبدأ هسه:`,
       keyboard
@@ -3395,200 +3395,59 @@ export class TelegramBotManager {
   }
 
   /**
-   * 👤 إحصائيات اللاعب الشخصية بلعبة معينة.
-   * تنعرض أول شي (فوق إحصائيات اللعبة العامة) وترجع نص فاضي إذا ما نعرض شي.
+   * 👤 قسم إحصائية اللاعب نفسه ومقارنته المباشرة بالمتصدرين (يظهر تحت الخط الفاصل بكل لعبة).
    */
-  private personalGameStats(
-    gameId: string,
-    viewerId: string,
-    n: { users: BotUserRecord[]; matches: CodenamesGame[] }
-  ): string {
-    if (!gameId || !viewerId) return '';
-    const rec = this.users.get(String(viewerId));
-    if (!rec) return '';
+  private buildPersonalComparison(opts: {
+    viewerId: string;
+    myScore: number;
+    myGames: number;
+    unitLabel: string;
+    badge: string;
+    detailLine?: string;
+    board: { id: string; score: number }[];
+  }): string {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    if (!opts.viewerId) return '';
+    const rec = this.users.get(String(opts.viewerId));
+    const myName = rec?.name || 'أنت';
+    const rankIdx = opts.board.findIndex(x => String(x.id) === String(opts.viewerId));
+    const rankLabel = rankIdx >= 0 ? `#${rankIdx + 1}` : '--';
 
-    const head = `👤 *إحصائياتك:*\n> \\| *${GG.md(rec.name || 'أنت')}* \\|`;
-    const lines: string[] = [];
+    const out: string[] = [
+      SEP,
+      `👤 *إحصائيتك ومقارنتك بالمتصدرين:*`,
+      this.quoteRow(rankLabel, myName, `(${opts.badge})`)
+    ];
+    if (opts.detailLine) out.push(opts.detailLine);
 
-    // 🎉 البطولات والألعاب الجماعية بالقناة (الـ ١١ نوع كلها)
-    const gqKind = TelegramBotManager.GQ_GAME_KIND[gameId];
-    if (gqKind) {
-      const st = this.userGqStat(rec, gqKind);
-      if (!st.games) return `${head}\n_بعدك ما لعبتها — نزّلها بقناتك والعب ويا جماعتك 🎮_`;
-      lines.push(`🎮 مرات اللعب: *${st.games}* • 🏆 الفوز: *${st.wins}*`);
-      lines.push(`⭐ مجموع نقاطك بيها: *${st.points}*`);
-      lines.push(`🎯 نسبة الفوز: *${this.statPct(st.wins, st.games)}* ${this.statBar(st.wins, st.games)}`);
-      const board = n.users
-        .map(u => ({ id: u.id, st: this.userGqStat(u, gqKind) }))
-        .filter(x => x.st.games > 0)
-        .sort((a, b) => b.st.wins - a.st.wins || b.st.points - a.st.points);
-      const rank = board.findIndex(x => x.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-      return `${head}\n${lines.join('\n')}`;
-    }
-
-    // 🔐 ماسترمايند
-    if (gameId === 'mastermind') {
-      const played = rec.mmGames || 0;
-      const wins = rec.mmWins || 0;
-      if (!played) return `${head}\n_بعدك ما لعبتها — نزّلها بقناتك وجرّب تكسر الرقم السري 🔐_`;
-      lines.push(`🎮 مرات اللعب: *${played}* • 👑 كسرت الرقم: *${wins}*`);
-      if (rec.mmBestTries) lines.push(`⚡ أسرع كسر إلك: *${rec.mmBestTries}* محاولات`);
-      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      const board = n.users
-        .filter(u => (u.mmGames || 0) > 0)
-        .sort((a, b) => (b.mmWins || 0) - (a.mmWins || 0) || (a.mmBestTries || 99) - (b.mmBestTries || 99));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-      return `${head}\n${lines.join('\n')}`;
-    }
-
-    // ⚽ خمّن اللاعب
-    if (gameId === 'guess_player') {
-      const played = rec.guessPlayerGames || 0;
-      const wins = rec.guessPlayerWins || 0;
-      if (!played) return `${head}\n_بعدك ما لعبتها — ابدأ جولة جديدة وجرّب ⚽_`;
-      lines.push(`🎮 مباريات: *${played}* • 🏆 فوز: *${wins}*`);
-      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      return `${head}\n${lines.join('\n')}`;
-    }
-
-    // 🟩 خمّن الكلمة
-    if (gameId === 'wordle') {
-      const played = rec.wordleGames || 0;
-      const wins = rec.wordleWins || 0;
-      if (!played) return `${head}\n_بعدك ما حلّيتها — اضغط «🤖 العب مع البوت» وجرّب 😉_`;
-      lines.push(`✅ حلّيت: *${wins}* من *${played}* كلمة`);
-      lines.push(`🎯 نسبة النجاح: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      const board = n.users
-        .filter(u => (u.wordleWins || 0) > 0)
-        .sort((a, b) => (b.wordleWins || 0) - (a.wordleWins || 0));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-    }
-
-    // 🎭 خمّن الشاعر
-    else if (gameId === 'poet') {
-      const played = rec.poetGames || 0;
-      const wins = rec.poetWins || 0;
-      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «🤖 العب مع البوت» ويطلعلك بيت 😉_`;
-      lines.push(`🧠 حلّيت: *${wins}* من *${played}* بيت`);
-      lines.push(`🎯 دقتك: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      const board = n.users
-        .filter(u => (u.poetGames || 0) > 0)
-        .sort((a, b) => (b.poetWins || 0) - (a.poetWins || 0));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-    }
-
-    // 🎮 كود نيمز
-    else if (gameId === 'codenames') {
-      const id = String(rec.id);
-      const mine = n.matches.filter(g => (g.players || []).some(p => String(p.id) === id));
-      if (!mine.length) {
-        return `${head}\n_بعدك ما لعبت كود نيمز — نزّلها بقناتك والعب مع ناس حقيقيين 🎮_`;
+    if (!opts.board.length) {
+      out.push(`🚀 ماكو متصدر بعد — العب جولة وحدة وتاخذ المركز الأول!`);
+    } else if (rankIdx === 0) {
+      const lead = opts.board[1] ? opts.myScore - opts.board[1].score : -1;
+      if (lead > 0) {
+        out.push(`🥇 إنت المتصدر الأول! متقدم بـ *${lead} ${opts.unitLabel}* عن المركز الثاني`);
+      } else {
+        out.push(`🥇 إنت بالمركز الأول بـ *${opts.myScore} ${opts.unitLabel}*!`);
       }
-      const won = mine.filter(g => (g.players || []).some(p => String(p.id) === id && p.team === g.winner));
-      const asSpy = won.filter(g =>
-        (g.players || []).some(p => String(p.id) === id && p.role === 'spymaster')
-      ).length;
-
-      lines.push(
-        `🎮 مباريات: *${mine.length}* • 🏆 فوز: *${won.length}* (${this.statPct(won.length, mine.length)})`
-      );
-      if (won.length) lines.push(`🕵️ جاسوس: *${asSpy}* فوز • 👤 عميل: *${won.length - asSpy}* فوز`);
-
-      let correct = 0;
-      let wrong = 0;
-      for (const g of mine) {
-        for (const c of g.cards || []) {
-          if (!c.revealed || !c.revealedBy || c.revealedBy.playerName !== rec.name) continue;
-          if ((c.type === 'blue' || c.type === 'red') && c.type === c.revealedBy.team) correct++;
-          else wrong++;
-        }
+    } else if (!opts.myGames) {
+      out.push(`📊 المركز الأول عنده *${opts.board[0].score} ${opts.unitLabel}* — العب هسه ونافسه!`);
+    } else {
+      const gap = opts.board[0].score - opts.myScore;
+      if (gap <= 0) {
+        out.push(`🥇 متعادل ويا المركز الأول بـ *${opts.myScore} ${opts.unitLabel}* — فوز واحد وتنفرد بالصدارة!`);
+      } else {
+        out.push(
+          `📊 فرقك عن المركز الأول: *${gap} ${opts.unitLabel}* • ترتيبك *#${rankIdx >= 0 ? rankIdx + 1 : opts.board.length + 1}* من *${Math.max(opts.board.length, 1)}*`
+        );
       }
-      if (correct || wrong) {
-        lines.push(`🃏 كشفت: *${correct}* بطاقة${wrong ? ` _(و${wrong} غلط)_` : ''}`);
-      }
-      lines.push(
-        `💰 رصيدك: *${Economy.formatMoney(rec.money || 0)}* 💵 • 🎖️ مستوى *${Economy.levelFromXp(
-          rec.xp || 0
-        )}*`
-      );
-
-      const board = this.codenamesWinBoard(0);
-      const rank = board.findIndex(u => u.id === id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
     }
 
-    // ✊ حجرة ورقة مقص
-    else if (gameId === 'rps') {
-      const played = rec.rpsGames || 0;
-      const wins = rec.rpsWins || 0;
-      if (!played) {
-        return `${head}\n_بعدك ما لعبتها — نزّلها بقناتك والعب مع ناس حقيقيين ✊_`;
-      }
-      lines.push(`🎮 مباريات: *${played}* • 🏆 فوز: *${wins}* (${this.statPct(wins, played)})`);
-      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-
-      const board = n.users
-        .filter(u => (u.rpsGames || 0) > 0)
-        .sort((a, b) => (b.rpsWins || 0) - (a.rpsWins || 0));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-    }
-
-    // 🎵 خمّن الأغنية
-    else if (gameId === 'guess_song') {
-      const played = rec.guessSongGames || 0;
-      const wins = rec.guessSongWins || 0;
-      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «🎵 ابدأ» وسمّعنا 😉_`;
-      lines.push(`🎵 عرفتها: *${wins}* من *${played}* أغنية`);
-      lines.push(`🎯 دقتك: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      const board = n.users
-        .filter(u => (u.guessSongGames || 0) > 0)
-        .sort((a, b) => (b.guessSongWins || 0) - (a.guessSongWins || 0));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-    }
-
-    // 🥊 تحدي القافية
-    else if (gameId === 'rhyme') {
-      const played = rec.rhymeGames || 0;
-      const wins = rec.rhymeWins || 0;
-      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «🥊 ابدأ التحدي» 😉_`;
-      lines.push(`🥊 جولات: *${played}* • جبت فيها كلمات: *${wins}* جولة`);
-      lines.push(`🎯 دقتك: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      const board = n.users
-        .filter(u => (u.rhymeGames || 0) > 0)
-        .sort((a, b) => (b.rhymeWins || 0) - (a.rhymeWins || 0));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-    }
-
-    // 📏 أطول كلمة
-    else if (gameId === 'longest') {
-      const played = rec.longestGames || 0;
-      const wins = rec.longestWins || 0;
-      if (!played) return `${head}\n_بعدك ما جرّبتها — اضغط «📏 ابدأ» 😉_`;
-      lines.push(`📏 جولات: *${played}* • فزت: *${wins}*`);
-      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
-      const board = n.users
-        .filter(u => (u.longestGames || 0) > 0)
-        .sort((a, b) => (b.longestWins || 0) - (a.longestWins || 0));
-      const rank = board.findIndex(u => u.id === rec.id);
-      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
-    }
-
-    else {
-      return '';
-    }
-
-    return `${head}\n${lines.join('\n')}`;
+    return out.join('\n');
   }
 
-  /** نصوص الإحصائيات: main / top / cat:<group|guess> / g:<id> / f:<id> */
+  /** نصوص الإحصائيات: عامة أولاً + المتصدرون + خط كامل واحد + إحصائيتك ومقارنتك بالمتصدرين (للأشخاص فقط بدون القنوات) */
   private async buildGameStats(section: string, viewerId = ''): Promise<{ text: string; keyboard: any[][] }> {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
     const n = this.gameStatsNumbers();
     const backStats = [{ text: '🔙 رجوع للإحصائيات', callback_data: 'gstat:main' }];
 
@@ -3609,8 +3468,8 @@ export class TelegramBotManager {
       kb.push(backStats);
       return {
         text: isGuess
-          ? `🧩 *إحصائيات ألعاب خمّن*\n━━━━━━━━━━\n👇 اختار اللعبة حتى تشوف إحصائياتها الكاملة وأبطالها:`
-          : `🎉 *إحصائيات الألعاب الجماعية*\n━━━━━━━━━━\n👇 اختار اللعبة حتى تشوف إحصائياتها الكاملة وأبطالها:`,
+          ? `🧩 *إحصائيات ألعاب خمّن*\n${SEP}\n👇 اختار اللعبة حتى تشوف إحصائياتها العامة ومقارنتك بالمتصدرين:`
+          : `🎉 *إحصائيات الألعاب الجماعية*\n${SEP}\n👇 اختار اللعبة حتى تشوف إحصائياتها العامة ومقارنتك بالمتصدرين:`,
         keyboard: kb
       };
     }
@@ -3634,61 +3493,59 @@ export class TelegramBotManager {
           })()
         : backStats;
 
-    // 👤 إحصائيات اللاعب نفسه — تطلع أول شي، وبعدها خط فاصل وبعدها إحصائيات اللعبة العامة
-    const personal = this.personalGameStats(gameId, viewerId, n);
-    const personalBlock = personal ? `${personal}\n━━━━━━━━━━\n` : '';
+    const myRec = viewerId ? this.users.get(String(viewerId)) : undefined;
 
-    // 🎉 إحصائيات أي لعبة من الألعاب الجماعية الـ ١١ (سرعة / معلومات / حساب / دول / أفلام / مسلسلات / أرقام / أكلات / أعلام / عواصم / قارات)
+    // 🎉 1) الألعاب الجماعية الـ ١١
     const gqKind = gameId ? TelegramBotManager.GQ_GAME_KIND[gameId] : undefined;
     if (gqKind) {
       const meta = GG.QUIZ_KINDS[gqKind];
       const rows = n.users
         .map(u => ({ u, st: this.userGqStat(u, gqKind) }))
-        .filter(x => x.st.games > 0);
+        .filter(x => x.st.games > 0)
+        .sort((a, b) => b.st.wins - a.st.wins || b.st.points - a.st.points);
+
       const totalParticipations = rows.reduce((s, x) => s + x.st.games, 0);
       const totalWins = rows.reduce((s, x) => s + x.st.wins, 0);
       const totalPts = rows.reduce((s, x) => s + x.st.points, 0);
-      const liveNow = Array.from(this.gqGames.values()).filter(
-        g => g.kind === gqKind && g.status !== 'game_over'
-      ).length;
-
-      const top = rows
-        .slice()
-        .sort((a, b) => b.st.wins - a.st.wins || b.st.points - a.st.points)
-        .slice(0, 10);
+      const top = rows.slice(0, 10);
 
       const lines = top.length
         ? top
             .map((x, i) => this.quoteRow(i + 1, x.u.name, `(🏆 ${x.st.wins} فوز • ⭐ ${x.st.points} نقطة)`))
             .join('\n')
-        : '_ما بعد أحد فاز بيها — نزّلوها بالقناة وكونوا أول الأبطال!_';
+        : '_ما بعد أحد فاز بيها — العبوا وكونوا أول الأبطال!_';
+
+      const mySt = myRec ? this.userGqStat(myRec, gqKind) : { games: 0, wins: 0, points: 0 };
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: mySt.wins,
+        myGames: mySt.games,
+        unitLabel: 'فوز',
+        badge: mySt.games ? `🏆 ${mySt.wins} فوز • ⭐ ${mySt.points} نقطة` : 'بعدك ما لاعبها',
+        detailLine: mySt.games
+          ? `🎮 لعبك: *${mySt.games}* • 🎯 فوزك: *${this.statPct(mySt.wins, mySt.games)}* ${this.statBar(mySt.wins, mySt.games)}`
+          : undefined,
+        board: rows.map(x => ({ id: x.u.id, score: x.st.wins }))
+      });
 
       const text =
         `${meta.emoji} *إحصائيات ${meta.title}*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `🎮 مشاركات مكتملة: *${totalParticipations}*\n` +
-        `🏆 مرات الفوز: *${totalWins}*\n` +
-        `⭐ مجموع الإجابات الصحيحة: *${totalPts}*\n` +
-        `👥 لاعبون شاركوا: *${rows.length}*\n` +
-        `⏳ شغّالة هسه بالقنوات: *${liveNow}*\n` +
-        `━━━━━━━━━━\n` +
-        `🥇 *المتصدرون:*\n${lines}`;
+        `👥 لاعبون: *${rows.length}* • 🎮 مشاركات: *${totalParticipations}*\n` +
+        `🏆 مرات الفوز: *${totalWins}* • ⭐ إجابات صحيحة: *${totalPts}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // 🔐 إحصائيات ماسترمايند
+    // 🔐 2) ماسترمايند
     if (gameId === 'mastermind') {
-      const players = n.users.filter(u => (u.mmGames || 0) > 0);
+      const players = n.users
+        .filter(u => (u.mmGames || 0) > 0)
+        .sort((a, b) => (b.mmWins || 0) - (a.mmWins || 0) || (a.mmBestTries || 99) - (b.mmBestTries || 99));
       const totalPlayed = players.reduce((s, u) => s + (u.mmGames || 0), 0);
       const totalWins = players.reduce((s, u) => s + (u.mmWins || 0), 0);
-      const liveNow = Array.from(this.mmGames.values()).filter(g => g.status !== 'game_over').length;
-
-      const top = players
-        .slice()
-        .sort((a, b) => (b.mmWins || 0) - (a.mmWins || 0) || (a.mmBestTries || 99) - (b.mmBestTries || 99))
-        .slice(0, 10);
+      const top = players.slice(0, 10);
 
       const lines = top.length
         ? top
@@ -3697,29 +3554,41 @@ export class TelegramBotManager {
               return this.quoteRow(i + 1, u.name, `(👑 ${u.mmWins || 0} فوز${best})`);
             })
             .join('\n')
-        : '_ما بعد أحد كسر الرقم السري — نزّلوها بالقناة وجرّبوا!_';
+        : '_ما بعد أحد كسر الرقم السري — كونوا أول الأبطال!_';
+
+      const myGames = myRec?.mmGames || 0;
+      const myWins = myRec?.mmWins || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'فوز',
+        badge: myGames
+          ? `👑 ${myWins} فوز${myRec?.mmBestTries ? ` • أسرع كسر ${myRec.mmBestTries}` : ''}`
+          : 'بعدك ما لاعبها',
+        detailLine: myGames
+          ? `🎮 لعبك: *${myGames}* • 🎯 فوزك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
+          : undefined,
+        board: players.map(u => ({ id: u.id, score: u.mmWins || 0 }))
+      });
 
       const text =
         `🔐 *إحصائيات ماسترمايند*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `🎮 مشاركات مكتملة: *${totalPlayed}*\n` +
-        `🔑 أرقام سرية انكسرت: *${totalWins}*\n` +
-        `👥 لاعبون شاركوا: *${players.length}*\n` +
-        `⏳ شغّالة هسه بالقنوات: *${liveNow}*\n` +
-        `━━━━━━━━━━\n` +
-        `🥇 *أقوى كاسري الأرقام:*\n${lines}`;
+        `👥 لاعبون: *${players.length}* • 🎮 مشاركات: *${totalPlayed}*\n` +
+        `🔑 أرقام سرية انكسرت: *${totalWins}*\n\n` +
+        `🥇 *أقوى كاسري الأرقام:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // 🟩 إحصائيات خمّن الكلمة
+    // 🟩 3) خمّن الكلمة
     if (gameId === 'wordle') {
-      const topSolvers = n.users
-        .filter(u => (u.wordleWins || 0) > 0)
-        .sort((a, b) => (b.wordleWins || 0) - (a.wordleWins || 0))
-        .slice(0, 10);
-      const playingNow = Array.from(this.wordle.values()).filter(w => !w.done).length;
+      const board = n.users
+        .filter(u => (u.wordleGames || 0) > 0 || (u.wordleWins || 0) > 0)
+        .sort((a, b) => (b.wordleWins || 0) - (a.wordleWins || 0));
+      const topSolvers = board.filter(u => (u.wordleWins || 0) > 0).slice(0, 10);
+      const totalPlayed = board.reduce((s, u) => s + (u.wordleGames || 0), 0);
 
       const lines = topSolvers.length
         ? topSolvers
@@ -3727,30 +3596,39 @@ export class TelegramBotManager {
             .join('\n')
         : '_ما بعد أحد حلّها — كون أول واحد!_';
 
+      const myGames = myRec?.wordleGames || 0;
+      const myWins = myRec?.wordleWins || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'كلمة',
+        badge: myGames ? `✅ ${myWins} من ${myGames} كلمة` : 'بعدك ما لاعبها',
+        detailLine: myGames
+          ? `🎯 نجاحك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
+          : undefined,
+        board: topSolvers.map(u => ({ id: u.id, score: u.wordleWins || 0 }))
+      });
+
       const text =
         `🟩 *إحصائيات خمّن الكلمة*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `✅ انحلّت: *${n.solved}* مرة\n` +
-        `👥 لاعبون حلّوها: *${n.solvers.length}*\n` +
-        `⏳ يلعبونها هسه: *${playingNow}*\n` +
-        `━━━━━━━━━━\n` +
-        `🥇 *أكثر من حلّها:*\n${lines}`;
+        `👥 لاعبون: *${board.length}* • 🎮 محاولات: *${totalPlayed}*\n` +
+        `✅ كلمات انحلّت: *${n.solved}*\n\n` +
+        `🥇 *أكثر من حلّها:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // 🎭 إحصائيات خمّن الشاعر
+    // 🎭 4) خمّن الشاعر
     if (gameId === 'poet') {
-      const played = n.users.reduce((sum, u) => sum + (u.poetGames || 0), 0);
-      const solved = n.users.reduce((sum, u) => sum + (u.poetWins || 0), 0);
-      const experts = n.users.filter(u => (u.poetGames || 0) > 0);
-      const topExperts = experts
-        .slice()
-        .sort((a, b) => (b.poetWins || 0) - (a.poetWins || 0))
-        .slice(0, 10);
-      const playingNow = Array.from(this.poet.values()).filter(p => !p.done).length;
+      const experts = n.users
+        .filter(u => (u.poetGames || 0) > 0)
+        .sort((a, b) => (b.poetWins || 0) - (a.poetWins || 0));
+      const played = experts.reduce((sum, u) => sum + (u.poetGames || 0), 0);
+      const solved = experts.reduce((sum, u) => sum + (u.poetWins || 0), 0);
       const accuracy = played ? Math.round((solved / played) * 100) : 0;
+      const topExperts = experts.slice(0, 10);
 
       const lines = topExperts.length
         ? topExperts
@@ -3763,60 +3641,37 @@ export class TelegramBotManager {
             .join('\n')
         : '_ما بعد أحد خمّن — كون أول واحد!_';
 
+      const myGames = myRec?.poetGames || 0;
+      const myWins = myRec?.poetWins || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'بيت',
+        badge: myGames ? `🧠 ${myWins} من ${myGames} بيت` : 'بعدك ما لاعبها',
+        detailLine: myGames
+          ? `🎯 دقتك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
+          : undefined,
+        board: experts.map(u => ({ id: u.id, score: u.poetWins || 0 }))
+      });
+
       const text =
         `🎭 *إحصائيات خمّن الشاعر*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `✅ أبيات انحلّت: *${solved}*\n` +
-        `🎯 أبيات انلعبت: *${played}*\n` +
-        `📈 دقة التخمين: *${accuracy}%*\n` +
-        `⏳ يلعبونها هسه: *${playingNow}*\n` +
-        `━━━━━━━━━━\n` +
-        `🥇 *أخبر من عرف الشعراء:*\n${lines}`;
+        `👥 لاعبون: *${experts.length}* • 🎯 أبيات انلعبت: *${played}*\n` +
+        `✅ أبيات انحلّت: *${solved}* • 📈 الدقة العامة: *${accuracy}%*\n\n` +
+        `🥇 *أخبر من عرف الشعراء:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // 🏆 لوحة الأبطال
-    if (section === 'top') {
-      const topPoints = n.users
-        .filter(u => (u.points || 0) > 0)
-        .sort((a, b) => (b.points || 0) - (a.points || 0))
-        .slice(0, 10);
-      const topWordle = n.users
-        .filter(u => (u.wordleWins || 0) > 0)
-        .sort((a, b) => (b.wordleWins || 0) - (a.wordleWins || 0))
-        .slice(0, 5);
-
-      const pointsLines = topPoints.length
-        ? topPoints
-            .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
-            .join('\n')
-        : '_ما بعد أحد جمع نقاط — كونوا أول الأبطال!_';
-
-      const wordleLines = topWordle.length
-        ? topWordle
-            .map((u, i) => this.quoteRow(i + 1, u.name, `(${u.wordleWins || 0} فوز)`))
-            .join('\n')
-        : '_ما بعد أحد حلّ «خمّن الكلمة»._';
-
-      const text =
-        `🏆 *لوحة الأبطال*\n` +
-        `━━━━━━━━━━\n` +
-        `⭐ *الأكثر نقاط:*\n${pointsLines}\n` +
-        `━━━━━━━━━━\n` +
-        `🧠 *أكثر من حلّ «خمّن الكلمة»:*\n${wordleLines}\n` +
-        `━━━━━━━━━━\n` +
-        `⭐ مجموع نقاط كل اللاعبين: *${n.totalPoints}*`;
-
-      return { text, keyboard: [backStats] };
-    }
-
-    // ⚔️ إحصائيات كود نيمز
+    // ⚔️ 5) كود نيمز (خاص بالأشخاص واللاعبين فقط — بدون أي قنوات!)
     if (gameId === 'codenames') {
       const spyWins = new Map<string, { name: string; wins: number }>();
+      const uniquePlayers = new Set<string>();
       for (const g of n.matches) {
         for (const p of g.players || []) {
+          uniquePlayers.add(String(p.id));
           if (p.role !== 'spymaster' || p.team !== g.winner) continue;
           const key = String(p.id);
           const cur = spyWins.get(key) || { name: p.name, wins: 0 };
@@ -3829,67 +3684,59 @@ export class TelegramBotManager {
         .sort((a, b) => b.wins - a.wins)
         .slice(0, 5);
 
-      const chatPlays = new Map<string, number>();
-      for (const g of n.matches) {
-        const title = g.chatTitle || 'قناة';
-        chatPlays.set(title, (chatPlays.get(title) || 0) + 1);
-      }
-      const topChats = Array.from(chatPlays.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
-
-      const winBoard = this.codenamesWinBoard(5);
+      const fullBoard = this.codenamesWinBoard(0);
+      const winBoard = fullBoard.slice(0, 5);
 
       const spyLines = topSpies.length
         ? topSpies
-            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز)`))
+            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز جاسوس)`))
             .join('\n')
-        : '_ما بعد أكو جاسوس فاز — ننتظر أول مباراة!_';
+        : '_ما بعد أكو جاسوس فاز._';
 
       const winLines = winBoard.length
         ? winBoard
-            .map((w, i) => this.quoteRow(i + 1, w.name, `(${w.wins} فوز)`))
+            .map((w, i) => this.quoteRow(i + 1, w.name, `(🏆 ${w.wins} فوز)`))
             .join('\n')
         : '_ما بعد فاز أحد — ننتظر أول مباراة!_';
 
-      const chatLines = topChats.length
-        ? topChats
-            .map(([title, count], i) => `> ${i + 1} - \\| *${GG.md(title)}* \\| (${count} مباراة)`)
-            .join('\n')
-        : '_ما بعد انلعبت مباراة بقناة._';
+      const myId = String(viewerId);
+      const mine = viewerId ? n.matches.filter(g => (g.players || []).some(p => String(p.id) === myId)) : [];
+      const myWins = mine.filter(g => (g.players || []).some(p => String(p.id) === myId && p.team === g.winner)).length;
+      const mySpyWins = mine.filter(g =>
+        (g.players || []).some(p => String(p.id) === myId && p.team === g.winner && p.role === 'spymaster')
+      ).length;
+
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames: mine.length,
+        unitLabel: 'فوز',
+        badge: mine.length ? `🏆 ${myWins} فوز من ${mine.length}` : 'بعدك ما لاعبها',
+        detailLine: mine.length
+          ? `🕵️ جاسوس: *${mySpyWins}* فوز • 👤 عميل: *${myWins - mySpyWins}* فوز • 🎯 *${this.statPct(myWins, mine.length)}*`
+          : undefined,
+        board: fullBoard.map(w => ({ id: w.id, score: w.wins }))
+      });
 
       const text =
-        `⚔️ *إحصائيات كود نيمز (2 ضد 2)*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `🏁 مباريات مكتملة: *${n.matches.length}*\n` +
-        `⏳ جارية الآن: *${n.active.length}*\n` +
-        `🔵 الأزرق: *${n.blueWins}* ${this.statBar(n.blueWins, n.matches.length)} ${this.statPct(n.blueWins, n.matches.length)}\n` +
-        `🔴 الأحمر: *${n.redWins}* ${this.statBar(n.redWins, n.matches.length)} ${this.statPct(n.redWins, n.matches.length)}\n` +
-        `💀 خسارة بالقاتل: *${n.assassinLosses}*\n` +
-        `━━━━━━━━━━\n` +
-        `🏆 *أكثر لاعب فاز:*\n${winLines}\n` +
-        `━━━━━━━━━━\n` +
-        `🕵️ *أفضل الجواسيس:*\n${spyLines}\n` +
-        `━━━━━━━━━━\n` +
-        `📣 *أكثر القنوات لعباً:*\n${chatLines}`;
+        `⚔️ *إحصائيات كود نيمز*\n` +
+        `👥 لاعبون: *${uniquePlayers.size}* • 🏁 مباريات مكتملة: *${n.matches.length}*\n` +
+        `🔵 فوز الأزرق: *${n.blueWins}* • 🔴 فوز الأحمر: *${n.redWins}* • 💀 بالقاتل: *${n.assassinLosses}*\n\n` +
+        `🏆 *أكثر اللاعبين فوزاً:*\n${winLines}\n\n` +
+        `🕵️ *أفضل الجواسيس:*\n${spyLines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // ✊ إحصائيات حجرة ورقة مقص
+    // ✊ 6) حجرة ورقة مقص
     if (gameId === 'rps') {
-      const players = n.users.filter(u => (u.rpsGames || 0) > 0);
+      const players = n.users
+        .filter(u => (u.rpsGames || 0) > 0)
+        .sort((a, b) => (b.rpsWins || 0) - (a.rpsWins || 0));
       const totalGames = players.reduce((s, u) => s + (u.rpsGames || 0), 0);
       const totalWins = players.reduce((s, u) => s + (u.rpsWins || 0), 0);
-      const liveNow = Array.from(this.rpsGames.values()).filter(
-        g => g.status === 'playing' || g.status === 'lobby'
-      ).length;
-
-      const topPlayers = players
-        .slice()
-        .sort((a, b) => (b.rpsWins || 0) - (a.rpsWins || 0))
-        .slice(0, 10);
+      const topPlayers = players.slice(0, 10);
 
       const lines = topPlayers.length
         ? topPlayers
@@ -3897,69 +3744,50 @@ export class TelegramBotManager {
               const games = u.rpsGames || 0;
               const wins = u.rpsWins || 0;
               const pct = games ? Math.round((wins / games) * 100) : 0;
-              return this.quoteRow(i + 1, u.name, `(${wins} فوز • ${pct}%)`);
+              return this.quoteRow(i + 1, u.name, `(🏆 ${wins} فوز • ${pct}%)`);
             })
             .join('\n')
         : '_ما بعد أحد لعبها — كون أول بطل!_';
 
+      const myGames = myRec?.rpsGames || 0;
+      const myWins = myRec?.rpsWins || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'فوز',
+        badge: myGames ? `🏆 ${myWins} فوز من ${myGames}` : 'بعدك ما لاعبها',
+        detailLine: myGames
+          ? `🎯 فوزك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
+          : undefined,
+        board: players.map(u => ({ id: u.id, score: u.rpsWins || 0 }))
+      });
+
       const text =
         `✊ *إحصائيات حجرة ورقة مقص*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `🎮 مباريات انلعبت: *${totalGames}*\n` +
-        `🏆 مجموع الفوزات: *${totalWins}*\n` +
-        `⏳ شغّالة هسه: *${liveNow}*\n` +
-        `━━━━━━━━━━\n` +
-        `🥇 *أكثر من فاز:*\n${lines}`;
+        `👥 لاعبون: *${players.length}* • 🎮 مشاركات: *${totalGames}* • 🏆 فوزات: *${totalWins}*\n\n` +
+        `🥇 *أكثر من فاز:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // ───────── إحصائيات بقية الألعاب (أغنية / قافية / أطول كلمة / خمّن اللاعب) ─────────
-    const soloConfig: Record<string, { title: string; emoji: string; gamesKey: keyof BotUserRecord; winsKey: keyof BotUserRecord; verb: string; liveCount: () => number }> = {
-      guess_song: {
-        title: 'خمّن الأغنية',
-        emoji: '🎵',
-        gamesKey: 'guessSongGames',
-        winsKey: 'guessSongWins',
-        verb: 'عرفها',
-        liveCount: () => Array.from(this.song.values()).filter(r => !r.done).length
-      },
-      rhyme: {
-        title: 'تحدي القافية',
-        emoji: '🥊',
-        gamesKey: 'rhymeGames',
-        winsKey: 'rhymeWins',
-        verb: 'فاز',
-        liveCount: () => Array.from(this.rhymeGames.values()).filter(r => !r.done).length
-      },
-      longest: {
-        title: 'أطول كلمة',
-        emoji: '📏',
-        gamesKey: 'longestGames',
-        winsKey: 'longestWins',
-        verb: 'فاز',
-        liveCount: () => Array.from(this.longestGames.values()).filter(r => !r.done).length
-      },
-      guess_player: {
-        title: 'خمّن اللاعب',
-        emoji: '⚽',
-        gamesKey: 'guessPlayerGames',
-        winsKey: 'guessPlayerWins',
-        verb: 'فوز',
-        liveCount: () => 0
-      }
+    // 🎵🥊📏⚽ 7) بقية الألعاب (خمّن الأغنية / تحدي القافية / أطول كلمة / خمّن اللاعب)
+    const soloConfig: Record<string, { title: string; emoji: string; gamesKey: keyof BotUserRecord; winsKey: keyof BotUserRecord; verb: string }> = {
+      guess_song: { title: 'خمّن الأغنية', emoji: '🎵', gamesKey: 'guessSongGames', winsKey: 'guessSongWins', verb: 'أغنية' },
+      rhyme: { title: 'تحدي القافية', emoji: '🥊', gamesKey: 'rhymeGames', winsKey: 'rhymeWins', verb: 'فوز' },
+      longest: { title: 'أطول كلمة', emoji: '📏', gamesKey: 'longestGames', winsKey: 'longestWins', verb: 'فوز' },
+      guess_player: { title: 'خمّن اللاعب', emoji: '⚽', gamesKey: 'guessPlayerGames', winsKey: 'guessPlayerWins', verb: 'فوز' }
     };
     if (gameId && soloConfig[gameId]) {
       const conf = soloConfig[gameId];
-      const played = n.users.reduce((s, u) => s + ((u[conf.gamesKey] as number) || 0), 0);
-      const solved = n.users.reduce((s, u) => s + ((u[conf.winsKey] as number) || 0), 0);
-      const players = n.users.filter(u => ((u[conf.gamesKey] as number) || 0) > 0);
-      const top = players
-        .slice()
-        .sort((a, b) => ((b[conf.winsKey] as number) || 0) - ((a[conf.winsKey] as number) || 0))
-        .slice(0, 10);
+      const players = n.users
+        .filter(u => ((u[conf.gamesKey] as number) || 0) > 0)
+        .sort((a, b) => ((b[conf.winsKey] as number) || 0) - ((a[conf.winsKey] as number) || 0));
+      const played = players.reduce((s, u) => s + ((u[conf.gamesKey] as number) || 0), 0);
+      const solved = players.reduce((s, u) => s + ((u[conf.winsKey] as number) || 0), 0);
       const accuracy = played ? Math.round((solved / played) * 100) : 0;
+      const top = players.slice(0, 10);
 
       const lines = top.length
         ? top
@@ -3972,43 +3800,68 @@ export class TelegramBotManager {
             .join('\n')
         : '_ما بعد أحد لعبها — كون أول واحد!_';
 
+      const myGames = myRec ? ((myRec[conf.gamesKey] as number) || 0) : 0;
+      const myWins = myRec ? ((myRec[conf.winsKey] as number) || 0) : 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: conf.verb,
+        badge: myGames ? `🏆 ${myWins} ${conf.verb} من ${myGames}` : 'بعدك ما لاعبها',
+        detailLine: myGames
+          ? `🎯 نسبتك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
+          : undefined,
+        board: players.map(u => ({ id: u.id, score: ((u[conf.winsKey] as number) || 0) }))
+      });
+
       const text =
         `${conf.emoji} *إحصائيات ${conf.title}*\n` +
-        `━━━━━━━━━━\n` +
-        personalBlock +
-        `🎯 مجموع الجولات: *${played}*\n` +
-        `🏆 مجموع الفوزات: *${solved}*\n` +
-        `📈 النسبة: *${accuracy}%*\n` +
-        `👥 لاعبون: *${players.length}*\n` +
-        `⏳ شغّالة هسه: *${conf.liveCount()}*\n` +
-        `━━━━━━━━━━\n` +
-        `🥇 *أكثر من فاز:*\n${lines}`;
+        `👥 لاعبون: *${players.length}* • 🎯 جولات: *${played}* • 🏆 فوزات: *${solved}* (*${accuracy}%*)\n\n` +
+        `🥇 *أكثر من فاز:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // 📊 الشاشة الرئيسية للإحصائيات (شاملة كل الألعاب)
+    // 🏆 لوحة الأبطال الشاملة (للأشخاص فقط + مقارنتك بالمتصدرين)
+    if (section === 'top') {
+      const pointsBoard = n.users
+        .filter(u => (u.points || 0) > 0)
+        .sort((a, b) => (b.points || 0) - (a.points || 0));
+      const topPoints = pointsBoard.slice(0, 10);
+
+      const pointsLines = topPoints.length
+        ? topPoints
+            .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
+            .join('\n')
+        : '_ما بعد أحد جمع نقاط — كونوا أول الأبطال!_';
+
+      const myPts = myRec?.points || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myPts,
+        myGames: (myRec?.onlineGames || 0) + myPts,
+        unitLabel: 'نقطة',
+        badge: `⭐ ${myPts} نقطة`,
+        board: pointsBoard.map(u => ({ id: u.id, score: u.points || 0 }))
+      });
+
+      const text =
+        `🏆 *لوحة الأبطال*\n` +
+        `👥 أبطال مسجلون: *${pointsBoard.length}* • ⭐ مجموع النقاط: *${n.totalPoints}*\n\n` +
+        `🥇 *الأكثر نقاطاً بكل الألعاب:*\n${pointsLines}` +
+        (bottom ? `\n${bottom}` : '');
+
+      return { text, keyboard: [backStats] };
+    }
+
+    // 📊 الشاشة الرئيسية للإحصائيات (إحصائيات عامة للأشخاص فوق + خط فاصل كامل + مقارنتك بالمتصدرين تحت)
     const poetSolved = n.users.reduce((sum, u) => sum + (u.poetWins || 0), 0);
-    const poetPlayers = n.users.filter(u => (u.poetWins || 0) > 0).length;
     const gqTotal = n.users.reduce((s, u) => {
       if (!u.gqStats) return s;
       return s + Object.values(u.gqStats).reduce((acc, v) => acc + (v.games || 0), 0);
     }, 0);
     const mmTotal = n.users.reduce((s, u) => s + (u.mmGames || 0), 0);
-    const gqLive = Array.from(this.gqGames.values()).filter(g => g.status !== 'game_over').length;
-    const mmLive = Array.from(this.mmGames.values()).filter(g => g.status !== 'game_over').length;
-    const rpsLive = Array.from(this.rpsGames.values()).filter(g => g.status !== 'game_over').length;
-
-    const topPoints = n.users
-      .filter(u => (u.points || 0) > 0)
-      .sort((a, b) => (b.points || 0) - (a.points || 0))
-      .slice(0, 5);
-    const topLines = topPoints.length
-      ? topPoints
-          .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
-          .join('\n')
-      : '_ما بعد أحد جمع نقاط — العبوا وارجعوا تشوفون اسمكم هنا!_';
-
     const soloPlayed = n.users.reduce(
       (s, u) =>
         s +
@@ -4020,18 +3873,34 @@ export class TelegramBotManager {
     );
     const rpsPlayed = n.users.reduce((s, u) => s + (u.rpsGames || 0), 0);
     const totalCompleted = n.matches.length + n.solved + poetSolved + soloPlayed + rpsPlayed + gqTotal + mmTotal;
-    const totalLive = n.active.length + gqLive + mmLive + rpsLive;
+
+    const pointsBoard = n.users
+      .filter(u => (u.points || 0) > 0)
+      .sort((a, b) => (b.points || 0) - (a.points || 0));
+    const topPoints = pointsBoard.slice(0, 5);
+    const topLines = topPoints.length
+      ? topPoints
+          .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
+          .join('\n')
+      : '_ما بعد أحد جمع نقاط — العبوا وارجعوا تشوفون اسمكم هنا!_';
+
+    const myPts = myRec?.points || 0;
+    const bottom = this.buildPersonalComparison({
+      viewerId,
+      myScore: myPts,
+      myGames: (myRec?.onlineGames || 0) + myPts,
+      unitLabel: 'نقطة',
+      badge: `⭐ ${myPts} نقطة • 🏆 ${myRec?.onlineWins || 0} فوز`,
+      board: pointsBoard.map(u => ({ id: u.id, score: u.points || 0 }))
+    });
 
     const text =
       `📊 *إحصائيات الألعاب*\n` +
-      `━━━━━━━━━━\n` +
-      `🎮 *المجموع:* *${totalCompleted}* مكتملة • *${totalLive}* شغّالة هسه\n\n` +
-      `⚔️ *كود نيمز:* أزرق *${n.blueWins}* • أحمر *${n.redWins}*\n` +
-      `🎉 *الألعاب الجماعية وماسترمايند:* *${gqTotal + mmTotal}* مشاركة\n` +
-      `✊ *حجرة ورقة مقص:* *${rpsPlayed}* مشاركة\n` +
-      `🧠 *خمّن الكلمة والشاعر والخاص:* *${n.solved + poetSolved + soloPlayed}* جولة\n` +
-      `━━━━━━━━━━\n` +
-      `🏆 *أقوى 5 بالنقاط:*\n${topLines}`;
+      `👥 اللاعبون: *${n.users.length}* • 🎮 مشاركات مكتملة: *${totalCompleted}*\n` +
+      `⚔️ كود نيمز: أزرق *${n.blueWins}* / أحمر *${n.redWins}* • 🎉 جماعية: *${gqTotal + mmTotal}*\n` +
+      `✊ حجرة ورقة مقص: *${rpsPlayed}* • 🧠 تخمين وفردية: *${n.solved + poetSolved + soloPlayed}*\n\n` +
+      `🏆 *أقوى 5 لاعبين بالنقاط:*\n${topLines}` +
+      (bottom ? `\n${bottom}` : '');
 
     const keyboard: any[][] = [
       [
@@ -4046,9 +3915,7 @@ export class TelegramBotManager {
         { text: '🥊 تحدي القافية', callback_data: 'gstat:f:rhyme' },
         { text: '📏 أطول كلمة', callback_data: 'gstat:f:longest' }
       ],
-      [
-        { text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }
-      ],
+      [{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }],
       [{ text: '🔙 رجوع', callback_data: 'hub:main' }],
       [{ text: '👑 لوحة التحكم', callback_data: 'admin:panel' }]
     ];
@@ -4057,17 +3924,17 @@ export class TelegramBotManager {
   }
 
   // ---------------------------------------------------------------------
-  // 💰 الفلوس والمستوى: لوحة المتصدرين + ملف اللاعب
+  // 💰 الفلوس والمستوى: بدون زر «ملفي» منفصل — المقارنة تطلع مباشرة جوا كل تصنيف!
   // ---------------------------------------------------------------------
 
   private buildRanking(section: string, viewerId: string): { text: string; keyboard: any[][] } {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
     if (section === 'menu') {
       return {
-        text: `🏅 *المتصدرون*\nاختار لوحة الترتيب اللي تبيها 👇`,
+        text: `🏅 *المتصدرون*\n${SEP}\nاختار التصنيف حتى تشوف المتصدرين ومقارنتك بيهم 👇`,
         keyboard: [
           [{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }],
           [{ text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }],
-          [{ text: '👤 ملفي', callback_data: 'rank:me' }],
           [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
         ]
       };
@@ -4075,18 +3942,15 @@ export class TelegramBotManager {
 
     const users = Array.from(this.users.values()).filter(u => !u.banned);
     const rich = users
-      .filter(u => (u.money || 0) > 0 || u.id === viewerId)
+      .filter(u => (u.money || 0) > 0)
       .sort((a, b) => (b.money || 0) - (a.money || 0));
     const ranked = users
-      .filter(u => (u.onlineGames || 0) > 0 || u.id === viewerId)
+      .filter(u => (u.xp || 0) > 0 || (u.onlineGames || 0) > 0)
       .sort((a, b) => (b.xp || 0) - (a.xp || 0) || (b.onlineWins || 0) - (a.onlineWins || 0));
 
-    const tabs: any[][] = section === 'money'
-      ? [[{ text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }], [{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: '🔙 رجوع', callback_data: 'hub:main' }]]
-      : section === 'level'
-        ? [[{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }], [{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: '🔙 رجوع', callback_data: 'hub:main' }]]
-        : [[{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }, { text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }], [{ text: '🔙 رجوع', callback_data: 'hub:main' }]];
+    const myRec = this.users.get(String(viewerId));
 
+    // 🎖️ متصدرين بالمستوى + ملفك ومقارنتك المباشرة بيهم
     if (section === 'level') {
       const top = ranked.slice(0, 10);
       const lines = top.length
@@ -4104,68 +3968,53 @@ export class TelegramBotManager {
             .join('\n')
         : '_ما بعد أحد لعب مباراة أونلاين._';
 
-      const myRec = this.users.get(String(viewerId));
-      let myBlock = '_ما عندي معلومات عنك بعد — ابدأ /start أولاً_';
-      if (myRec) {
-        const myIdx = ranked.findIndex(u => u.id === myRec.id);
-        const p2 = Economy.levelProgress(myRec.xp || 0);
-        const g2 = myRec.onlineGames || 0;
-        const w2 = myRec.onlineWins || 0;
-        const rankLabel = myIdx >= 0 ? `#${myIdx + 1}` : '--';
-        myBlock =
-          `👤 *ترتيبي:*\n` +
-          this.quoteRow(rankLabel, myRec.name, `(مستوى ${p2.level} • ${myRec.xp || 0} XP • ${g2}م/${w2}ف)`);
+      const myXp = myRec?.xp || 0;
+      const p2 = Economy.levelProgress(myXp);
+      const g2 = myRec?.onlineGames || 0;
+      const w2 = myRec?.onlineWins || 0;
+      const myIdx = myRec ? ranked.findIndex(u => u.id === myRec.id) : -1;
+      const rankLabel = myIdx >= 0 ? `#${myIdx + 1}` : '--';
+
+      let cmpLine = '🚀 ماكو متصدر بعد — العب أول مباراة وتتصدر!';
+      if (top.length) {
+        if (myIdx === 0) {
+          const leadXp = top[1] ? myXp - (top[1].xp || 0) : -1;
+          cmpLine = leadXp > 0
+            ? `🥇 إنت المتصدر الأول بالمستوى! متقدم بـ *+${leadXp} XP* عن المركز الثاني`
+            : `🥇 إنت بالمركز الأول بالمستوى!`;
+        } else {
+          const xpGap = (top[0].xp || 0) - myXp;
+          cmpLine = xpGap <= 0 && myXp > 0
+            ? `🥇 متعادل ويا المركز الأول بـ *${myXp} XP*!`
+            : `📊 فرقك عن المركز الأول: *${Math.max(1, xpGap)} XP*${myIdx > 0 ? ` • ترتيبك *#${myIdx + 1}* من *${ranked.length}*` : ''}`;
+        }
       }
+
+      const myBlock = [
+        `👤 *إحصائيتك ومقارنتك بالمتصدرين:*`,
+        this.quoteRow(rankLabel, myRec?.name || 'أنت', `(مستوى ${p2.level} ${Economy.levelTitle(p2.level)} • ${myXp} XP)`),
+        `${this.statBar(p2.into, p2.span)} *${p2.into}* / ${p2.span} XP • باقي *${p2.left}* للمستوى ${p2.level + 1}`,
+        `🎮 مبارياتك: *${g2}* • 🏆 فوزك: *${w2}* (${this.statPct(w2, g2)}) • 💵 *${Economy.formatMoney(myRec?.money || 0)}*`,
+        cmpLine
+      ].join('\n');
 
       const text = [
         `🎖️ *متصدرين بالمستوى*`,
-        '━━━━━━━━━━',
         lines,
-        '━━━━━━━━━━',
+        SEP,
         myBlock
       ].join('\n');
 
-      return { text, keyboard: tabs };
+      return {
+        text,
+        keyboard: [
+          [{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }],
+          [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
+        ]
+      };
     }
 
-    // 👤 ملف اللاعب نفسه
-    if (section === 'me') {
-      const rec = this.users.get(String(viewerId));
-      if (!rec) {
-        return {
-          text: `👤 *ملفي*\n━━━━━━━━━━\nما عندي معلومات عنك بعد — اضغط /start أول 🙂`,
-          keyboard: tabs
-        };
-      }
-
-      const p = Economy.levelProgress(rec.xp || 0);
-      const games = rec.onlineGames || 0;
-      const wins = rec.onlineWins || 0;
-      const money = rec.money || 0;
-      const myRank = rich.findIndex(u => u.id === rec.id);
-      const today = Economy.earnedToday(rec);
-
-      const lines = [
-        `👤 *ملفي*`,
-        this.quoteRow('', rec.name),
-        `━━━━━━━━━━`,
-        `🎖️ المستوى: *${p.level}* (${Economy.levelTitle(p.level)})`,
-        `${this.statBar(p.into, p.span)} *${p.into}* / ${p.span} XP • باقي *${p.left}* للمستوى ${p.level + 1}`,
-        `_${Economy.walletVibe({ level: p.level, money, onlineGames: games, wins })}_`,
-        `💵 رصيدي: *${Economy.formatMoney(money)}* 💵`,
-        `🎮 مباريات أونلاين: *${games}* • 🏆 فوز: *${wins}* (${this.statPct(wins, games)})`,
-        `🧠 نقاط ألعاب البوت: *${rec.points || 0}*`,
-        `━━━━━━━━━━`,
-        `💰 ربحت اليوم: *${Economy.formatMoney(today)}* من *${Economy.formatMoney(Economy.DAILY_MONEY_CAP)}*`,
-        myRank >= 0
-          ? `🏅 ترتيبي بالفلوس: *#${myRank + 1}* من *${rich.length}*`
-          : `🏅 ما بعدك على لوحة الفلوس — الفوز بالقناة يخليك تصعد 💪`
-      ];
-
-      return { text: lines.join('\n'), keyboard: tabs };
-    }
-
-    // 💰 متصدرين بالفلوس
+    // 💰 متصدرين بالفلوس + ملفك ومقارنتك المباشرة بيهم
     const top = rich.slice(0, 10);
     const lines = top.length
       ? top
@@ -4176,32 +4025,55 @@ export class TelegramBotManager {
           .join('\n')
       : '_ما بعد أحد ربح فلوس._';
 
-    const myRec2 = this.users.get(String(viewerId));
-    let myBlock2 = '_ما عندي معلومات عنك بعد — ابدأ /start أولاً_';
-    if (myRec2) {
-      const myIdx2 = rich.findIndex(u => u.id === myRec2.id);
-      const level2 = Economy.levelFromXp(myRec2.xp || 0);
-      const rankLabel2 = myIdx2 >= 0 ? `#${myIdx2 + 1}` : '--';
-      myBlock2 =
-        `👤 *ترتيبي:*\n` +
-        this.quoteRow(rankLabel2, myRec2.name, `(${Economy.formatMoney(myRec2.money || 0)} 💵 • مستوى ${level2})`);
+    const myMoney = myRec?.money || 0;
+    const myLevel = Economy.levelFromXp(myRec?.xp || 0);
+    const myToday = myRec ? Economy.earnedToday(myRec) : 0;
+    const myIdx2 = myRec ? rich.findIndex(u => u.id === myRec.id) : -1;
+    const rankLabel2 = myIdx2 >= 0 ? `#${myIdx2 + 1}` : '--';
+
+    let cmpLine2 = '🚀 ماكو متصدر بعد — أول فوز بالقناة يخليك المركز الأول!';
+    if (top.length) {
+      if (myIdx2 === 0) {
+        const leadMoney = top[1] ? Economy.roundMoney(myMoney - (top[1].money || 0)) : -1;
+        cmpLine2 = leadMoney > 0
+          ? `🥇 إنت المتصدر الأول بالفلوس! متقدم بـ *${Economy.formatMoney(leadMoney)}* 💵 عن المركز الثاني`
+          : `🥇 إنت بالمركز الأول بالفلوس!`;
+      } else {
+        const rawGap = Economy.roundMoney((top[0].money || 0) - myMoney);
+        cmpLine2 = rawGap <= 0 && myMoney > 0
+          ? `🥇 متعادل ويا المركز الأول بـ *${Economy.formatMoney(myMoney)}* 💵!`
+          : `📊 فرقك عن المركز الأول: *${Economy.formatMoney(Math.max(0.001, rawGap))}* 💵${myIdx2 > 0 ? ` • ترتيبك *#${myIdx2 + 1}* من *${rich.length}*` : ''}`;
+      }
     }
+
+    const myBlock2 = [
+      `👤 *إحصائيتك ومقارنتك بالمتصدرين:*`,
+      this.quoteRow(rankLabel2, myRec?.name || 'أنت', `(${Economy.formatMoney(myMoney)} 💵 • مستوى ${myLevel})`),
+      `💰 ربحت اليوم: *${Economy.formatMoney(myToday)}* من *${Economy.formatMoney(Economy.DAILY_MONEY_CAP)}* 💵 • 🎮 فوزك: *${myRec?.onlineWins || 0}*`,
+      cmpLine2
+    ].join('\n');
 
     const text2 = [
       `💰 *متصدرين بالفلوس*`,
-      '━━━━━━━━━━',
       lines,
-      '━━━━━━━━━━',
+      SEP,
       myBlock2
     ].join('\n');
 
-    return { text: text2, keyboard: tabs };
+    return {
+      text: text2,
+      keyboard: [
+        [{ text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }],
+        [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
+      ]
+    };
   }
 
   /** يفتح/يحدّث شاشات الفلوس والمستوى بصيغة MarkdownV2 لدعم الاقتباسات الملوّنة */
   private async handleRanking(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
+    this.ensureUser(cb.from.id, cb.from.first_name, cb.from.username);
 
     const view = this.buildRanking(section || 'money', String(cb.from.id));
     const text = GG.toV2(await this.withBotFooter(view.text, true));
@@ -4220,6 +4092,7 @@ export class TelegramBotManager {
   private async handleGameStats(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
+    this.ensureUser(cb.from.id, cb.from.first_name, cb.from.username);
 
     const viewerId = cb.message?.chat.type === 'private' ? String(cb.from.id) : '';
     const view = await this.buildGameStats(section || 'main', viewerId);
@@ -4275,7 +4148,7 @@ export class TelegramBotManager {
       const text =
         `${cat.emoji} *${cat.title}*\n` +
         `${cat.intro}\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `👇 اختار اللعبة:`;
 
       return { text, keyboard };
@@ -4341,7 +4214,7 @@ export class TelegramBotManager {
         return { text: `⚠️ ما لكيت هاي اللعبة.`, keyboard: [back] };
       }
 
-      const lines = [`${game.emoji} *${game.title}*`, `━━━━━━━━━━`, game.about];
+      const lines = [`${game.emoji} *${game.title}*`, `━━━━━━━━━━━━━━━━━━━`, game.about];
       if (game.goal) lines.push(`🎯 *الهدف:* ${game.goal}`);
       if (game.reward) lines.push(`🏆 *النقاط:* ${game.reward}`);
       if (!game.ready) lines.push(`🔜 *قريباً* — اللعبة بعدها ما نزلت.`);
@@ -4357,7 +4230,7 @@ export class TelegramBotManager {
       const text =
         `كيف ألعب؟\n` +
         `كل شي بالأزرار — ما تحتاج تكتب ولا أمر (بس /start).\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `1️⃣ اختار الصنف من الشاشة الرئيسية.\n` +
         `2️⃣ اختار اللعبة من الصنف.\n` +
         `3️⃣ اختر من الأزرار حسب اللعبة.\n`;
@@ -5198,11 +5071,11 @@ export class TelegramBotManager {
       await this.sendMessage(
         String(player.id),
         `🚀 *بدأت الجولة!*\n` +
-          `━━━━━━━━━━\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
           `👥 فريقك: ${teamName}\n` +
           `🎭 دورك: ${roleName}\n` +
           `🎯 يبدأ: ${firstTeam}\n` +
-          `━━━━━━━━━━\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
           tail
       );
     }
@@ -5221,7 +5094,7 @@ export class TelegramBotManager {
     const res = await this.sendMessageRaw(
       String(spy.id),
       `🎯 *دورك يا جاسوس الفريق ${teamName}*\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `✍️ ارسل *التلميح* اللي يوصل لصديقك (بالمربع بالأسفل):\n` +
         `• كلمة *وحدة* فقط، بلا أي كلمة ثانية.\n` +
         `• ممنوع تستخدم كلمات فريقك الموجودة بالبوكسات.\n\n` +
@@ -5281,7 +5154,7 @@ export class TelegramBotManager {
     await this.sendMessage(
       userId,
       `✅ *تلميحك:* «${this.mdSafe(word)}»\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `🔢 كم كلمة من كلمات فريقك تربطهن بهذا التلميح؟\n` +
         `خلي الرقم متساوي لعدد الكلمات اللي قصدتها.\n\n` +
         `👇 اختار الرقم:`,
@@ -5621,9 +5494,9 @@ export class TelegramBotManager {
       (warn ? `⚠️ *يبدو بيها كلام مسيء* — راجعها وقرّر.\n` : '') +
       `👤 ${this.linkUser(rec)}\n` +
       `🆔 \`${rec.id}\`\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `${body}\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `↩️ ردّ على هذه الرسالة واكتب *حظر* حتى تحظره.`;
 
     const sent = await this.sendMessage(String(this.ownerId), header);
@@ -5678,10 +5551,10 @@ export class TelegramBotManager {
       `✅ *العدد كمل — ${game.players.length} من 4!*\n\n` +
       `🎮 *اللعبة:* «${title}»\n` +
       `👥 الجواسيس والعملاء كلهن حاضرين:\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `${CodenamesEngine.teamRoster(game, 'blue')}\n\n` +
       `${CodenamesEngine.teamRoster(game, 'red')}\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `👇 ارجع للمحادثة واضغط *(ابدأ اللعبة 🚀)*\n` +
       `_إنت وحدك المشرف اللي يكدر يبدأ الجولة._`;
     await this.sendMessage(String(game.createdBy), GG.toV2(text), undefined, 'MarkdownV2');
@@ -5771,7 +5644,7 @@ export class TelegramBotManager {
 
     return (
       `📊 *إحصائيات البوت*\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `👥 *المستخدمون:* ${users.length}\n` +
       `✅ شغّلوا البوت: ${started}\n` +
       `🚫 حظروا البوت: ${blocked}\n` +
@@ -5781,7 +5654,7 @@ export class TelegramBotManager {
       `💬 *المحادثات:* ${chats.length}\n` +
       `📣 القنوات: ${channels.length} — البوت مشرف بـ ${adminIn}\n` +
       `👥 المجموعات: ${groups.length}\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `📊 إحصائيات الألعاب: من زر «📊 إحصائيات الألعاب» تحت.\n` +
       `🕒 آخر تحديث: ${this.stamp(Date.now())}`
     );
@@ -5889,7 +5762,7 @@ export class TelegramBotManager {
 
     const body =
       `👤 ${this.linkUser(u)}\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `🆔 \`${u.id}\`\n` +
       `📅 أول ظهور: ${this.stamp(u.firstSeen)}\n` +
       `🕒 آخر نشاط: ${this.stamp(u.lastSeen)}\n` +

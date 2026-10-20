@@ -81,11 +81,11 @@ export function rhymePoints(round: RhymeRound): number {
 }
 
 export function renderRhyme(round: RhymeRound): string {
-  const lines = [`🥊 *تحدي القافية*`, `━━━━━━━━━━`];
+  const lines = [`🥊 *تحدي القافية*`, `━━━━━━━━━━━━━━━━━━━`];
   lines.push(`🔤 الكلمة: *${round.word}*`);
   lines.push(`👇 اختار الكلمات اللي تقافيها:`);
   if (round.done) {
-    lines.push(`━━━━━━━━━━`);
+    lines.push(`━━━━━━━━━━━━━━━━━━━`);
     lines.push(`🏁 خلصت — جبت *${round.score}* كلمة صح`);
     lines.push(`⭐ +${rhymePoints(round)} نقطة`);
   } else {
@@ -177,11 +177,11 @@ export function longestPoints(round: LongestRound): number {
 }
 
 export function renderLongest(round: LongestRound): string {
-  const lines = [`📏 *أطول كلمة*`, `━━━━━━━━━━`];
+  const lines = [`📏 *أطول كلمة*`, `━━━━━━━━━━━━━━━━━━━`];
   lines.push(`🔡 الحروف: *${round.letters.join(' ')}*`);
   lines.push(`👇 اختار أطول كلمة صحيحة منها:`);
   if (round.done) {
-    lines.push(`━━━━━━━━━━`);
+    lines.push(`━━━━━━━━━━━━━━━━━━━`);
     if (round.won) {
       lines.push(`✅ صح! *${round.longest}* هي الأطول`);
       lines.push(`⭐ +${longestPoints(round)} نقطة`);
