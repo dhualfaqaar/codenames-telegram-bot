@@ -660,18 +660,18 @@ export class CodenamesEngine {
         ? `🔵 *الفريق الأزرق* (${list.length}/2)`
         : `🔴 *الفريق الأحمر* (${list.length}/2)`;
 
-    const seat = (role: PlayerRole, roleLabel: string, index: number) => {
-      const player = list.find(p => p.role === role);
-      return player
-        ? `> ${index} - ${this.nameTag(player.name)} (${roleLabel})`
-        : `⬜ ${roleLabel}`;
-    };
+    const spy = list.find(p => p.role === 'spymaster');
+    const op = list.find(p => p.role === 'operative');
+    const joined: string[] = [];
+    const empty: string[] = [];
 
-    return [
-      title,
-      seat('spymaster', 'جاسوس 🕵️', 1),
-      seat('operative', 'عميل 👤', 2)
-    ].join('\n');
+    if (spy) joined.push(`> ${joined.length + 1} - ${this.nameTag(spy.name)} (جاسوس 🕵️)`);
+    else empty.push(`⬜ جاسوس 🕵️`);
+
+    if (op) joined.push(`> ${joined.length + 1} - ${this.nameTag(op.name)} (عميل 👤)`);
+    else empty.push(`⬜ عميل 👤`);
+
+    return [title, ...joined, ...empty].join('\n');
   }
 
   /**

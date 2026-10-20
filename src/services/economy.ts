@@ -87,6 +87,22 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'لعبة بسيطة — الفائز ياخذ *0.001* 💵 بس، وبحد يومي صغير'
   },
+  // 🤝 منو يعرف الثاني أكثر — تحدي ثنائي بالخاص والقناة
+  who_knows: {
+    maxMoney: 0.018,
+    winXp: 10,
+    loseXp: 5,
+    online: true,
+    note: 'الفائز ياخذ فلوس وخبرة حسب عدد البطاقات الصحيحة'
+  },
+  // 🕵️ الكلمة الغريبة
+  odd_word: {
+    maxMoney: 0.015,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: '+10 نقاط بالخاص أو جوائز وخبرة بالقناة'
+  },
 
   // ── ألعاب البوت: صفر لكل شي (بلا فلوس بلا مستوى بلا إحصائيات أونلاين) ──
   wordle: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },

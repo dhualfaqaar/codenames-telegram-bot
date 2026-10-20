@@ -180,7 +180,7 @@ export function renderGame(game: RPSGame): string {
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      game.players.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score)));
+      lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
     }
     lines.push(`🎯 الجولات: *${game.totalRounds}*`);
     return lines.join('\n');
@@ -188,18 +188,23 @@ export function renderGame(game: RPSGame): string {
 
   if (game.status === 'game_over') {
     const sorted = game.players.slice().sort((a, b) => b.score - a.score);
+    const winner = sorted[0];
     lines.push(`🏁 *خلصت المباراة\\!*`);
+    if (winner) {
+      lines.push('');
+      lines.push(`🏆 *الفائز:*`);
+      lines.push(`> \\| *${md(winner.name)}* \\|`);
+    }
     lines.push(SEP);
-    sorted.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score, i === 0 ? ' 🏆' : '')));
+    lines.push(`📊 *النتيجة النهائية:*`);
+    lines.push(sorted.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
     return lines.join('\n');
   }
 
   lines.push(`🎯 الجولة *${game.round}* من *${game.totalRounds}*`);
   lines.push(SEP);
   lines.push(`🏆 *النقاط:*`);
-  game.players.forEach((p, i) => {
-    lines.push(scoreLine(i + 1, p.name, p.score, p.move ? ' ✅' : ' ⏳'));
-  });
+  lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score, p.move ? ' ✅' : ' ⏳')).join('\n\n'));
   return lines.join('\n');
 }
 
