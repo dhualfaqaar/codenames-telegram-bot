@@ -646,14 +646,12 @@ export class CodenamesEngine {
    * (Markdown-breaking characters are stripped first.)
    */
   public static nameTag(name: string): string {
-    const clean = String(name || '').replace(/[*_`\[\]]/g, '').trim();
-    return `*${clean}*`;
+    const clean = String(name || '').replace(/[*_`\[\]\\|]/g, '').trim();
+    return `| *${clean}* |`;
   }
 
   /**
-   * One team's roster: always shows the two seats of the team
-   * (جاسوس + عميل). An empty seat is shown as «مقعد فاضي» so everyone
-   * knows exactly which role is still free.
+   * One team's roster: each joined player sits inside a colored blockquote
    */
   public static teamRoster(game: CodenamesGame, team: Team): string {
     const list = game.players.filter(p => p.team === team);
@@ -665,8 +663,8 @@ export class CodenamesEngine {
     const seat = (role: PlayerRole, roleLabel: string, index: number) => {
       const player = list.find(p => p.role === role);
       return player
-        ? `${index}. ${this.nameTag(player.name)} — ${roleLabel}`
-        : `${index}. ⬜ — ${roleLabel} _(فارغ)_`;
+        ? `> ${index} - ${this.nameTag(player.name)} (${roleLabel})`
+        : `⬜ ${roleLabel}`;
     };
 
     return [
@@ -747,7 +745,7 @@ export class CodenamesEngine {
     }
 
     if (lastEvent) {
-      header += `\n\n━━━━━━━━━━\n📢 *آخر حدث:* ${lastEvent}`;
+      header += `\n━━━━━━━━━━\n📢 *آخر حدث:*\n> ${lastEvent}`;
     }
 
     return header;

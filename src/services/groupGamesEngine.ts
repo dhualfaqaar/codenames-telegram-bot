@@ -134,6 +134,55 @@ export function scoreLine(rank: number, name: string, score: number, mark = ''):
   return `> ${rank} \\- \\| *${md(name)}* \\| \\(p ${score}\\)${mark}`;
 }
 
+/** يحوّل نص بعلامات عريض/مائل واقتباسات > إلى MarkdownV2 سليم ١٠٠٪ بلا أي رمز غير مهروّب */
+function convertV2Inline(seg: string): string {
+  let out = '';
+  let i = 0;
+  while (i < seg.length) {
+    const ch = seg[i];
+    if (ch === '\\' && i + 1 < seg.length) {
+      out += seg.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (ch === '*' || ch === '_' || ch === '`') {
+      let close = -1;
+      for (let j = i + 1; j < seg.length; j++) {
+        if (seg[j] === '\\') { j++; continue; }
+        if (seg[j] === ch) { close = j; break; }
+      }
+      if (close > i + 1) {
+        const inner = seg.slice(i + 1, close);
+        if (ch === '`') {
+          out += '`' + inner.replace(/([`\\])/g, '\\$1') + '`';
+        } else {
+          out += ch + convertV2Inline(inner) + ch;
+        }
+        i = close + 1;
+        continue;
+      }
+      out += '\\' + ch;
+      i += 1;
+      continue;
+    }
+    if ('[]()~>#+-=|{}.!'.includes(ch)) {
+      out += '\\' + ch;
+      i += 1;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+export function toV2(text: string): string {
+  return String(text || '')
+    .split('\n')
+    .map(line => (line.startsWith('>') ? '>' + convertV2Inline(line.slice(1)) : convertV2Inline(line)))
+    .join('\n');
+}
+
 // ---------------------------------------------------------------------
 // 🎮 ألعاب الأسئلة
 // ---------------------------------------------------------------------
@@ -170,6 +219,7 @@ export interface QuizGame {
   roundDeadline?: number;
   /** موعد الانتقال التلقائي بعد شاشة النتيجة القصيرة */
   resultDeadline?: number;
+  rewarded?: boolean;
   createdAt: number;
 }
 
@@ -217,11 +267,11 @@ export function createQuiz(chatId: string, chatName: string, kind: QuizKind): Qu
 }
 
 export function quizJoin(game: QuizGame, id: string, name: string): { ok: boolean; msg: string } {
-  if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت — شارك بالبطولة الجاية' };
+  if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت — شارك بالجاية' };
   if (game.players.some(p => p.id === id)) return { ok: false, msg: '✅ أنت مشترك' };
-  if (game.players.length >= MAX_PLAYERS) return { ok: false, msg: '🚫 البطولة امتلأت (١٠ لاعبين)' };
+  if (game.players.length >= MAX_PLAYERS) return { ok: false, msg: '🚫 اكتمل العدد (١٠ لاعبين)' };
   game.players.push({ id, name, score: 0, done: false });
-  return { ok: true, msg: '✅ انضميت للبطولة!' };
+  return { ok: true, msg: '✅ انضميت!' };
 }
 
 /** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين ويبدأ مؤقت ١٠ ثواني */
@@ -248,7 +298,7 @@ export function quizStart(game: QuizGame): { ok: boolean; msg: string } {
   game.qIndex = 0;
   game.round = 1;
   loadRound(game);
-  return { ok: true, msg: '🎮 بدأت البطولة!' };
+  return { ok: true, msg: '🎮 بدأت اللعبة!' };
 }
 
 export interface QuizAnswerResult {
@@ -261,7 +311,7 @@ export interface QuizAnswerResult {
 export function quizAnswer(game: QuizGame, id: string, name: string, idx: number): QuizAnswerResult {
   if (game.status !== 'playing') return { ok: false, msg: '⏳ ماكو جولة مفتوحة هسه', roundClosed: false };
   const p = game.players.find(x => x.id === id);
-  if (!p) return { ok: false, msg: '🚫 مو مشترك بهالبطولة', roundClosed: false };
+  if (!p) return { ok: false, msg: '🚫 مو مشترك بهاللعبة', roundClosed: false };
   if (p.done) return { ok: false, msg: '❌ جاوبت هالجولة خلاص', roundClosed: false };
 
   const isRight = idx === game.correctIdx;
@@ -288,7 +338,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
     game.status = 'result';
     game.roundDeadline = undefined;
     game.resultDeadline = Date.now() + RESULT_MS;
-    game.lastLine = `⚡ *${md(p.name)}* سبق الكل وجاوب صح\\!\n✅ الجواب: *${md(correctText)}*`;
+    game.lastLine = `> ⚡ \\| *${md(p.name)}* \\| سبق الكل — الجواب: *${md(correctText)}*`;
     return { ok: true, msg: '⚡ صح وسباق! +١ نقطة', roundClosed: true };
   }
 
@@ -313,7 +363,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
 export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string } {
   if (game.status !== 'playing') return { ok: false, msg: '⏳ ماكو جولة مفتوحة' };
   const p = game.players.find(x => x.id === id);
-  if (!p) return { ok: false, msg: '🚫 مو مشترك بهالبطولة' };
+  if (!p) return { ok: false, msg: '🚫 مو مشترك بهاللعبة' };
   if (!p.done) return { ok: false, msg: '⚠️ جاوب أول وبعدين ختم الجولة' };
 
   game.status = 'result';
@@ -375,7 +425,7 @@ export function renderQuiz(game: QuizGame): string {
     const sorted = game.players.slice().sort((a, b) => b.score - a.score);
     const lines = [
       `${meta.emoji} *${meta.title}*`,
-      `🏁 *خلصت البطولة\\!*`,
+      `🏁 *خلصت اللعبة\\!*`,
       SEP,
       `🏆 *الترتيب النهائي:*`
     ];
@@ -414,7 +464,7 @@ export function quizKeyboard(game: QuizGame): any[][] {
 
   if (game.status === 'lobby') {
     return [
-      [{ text: '➕ انضم للبطولة', callback_data: `gqj:${game.kind}:${chatId}` }],
+      [{ text: 'انضم', callback_data: `gqj:${game.kind}:${chatId}` }],
       [{ text: '🎮 ابدأ اللعبة', callback_data: `gqs:${game.kind}:${chatId}` }]
     ];
   }
@@ -434,7 +484,7 @@ export function quizKeyboard(game: QuizGame): any[][] {
     return [[{ text: '⏳ الجولة الجاية…', callback_data: `gqv:${game.kind}:${chatId}` }]];
   }
 
-  return [[{ text: '🔄 بطولة جديدة', callback_data: `gqn:${game.kind}:${chatId}` }]];
+  return [[{ text: '🔄 لعبة جديدة', callback_data: `gqn:${game.kind}:${chatId}` }]];
 }
 
 function cut(s: string, n: number): string {
@@ -462,6 +512,7 @@ export interface MMGame {
   entry: string;
   history: { name: string; guess: string; black: number; white: number }[];
   winnerId?: string;
+  rewarded?: boolean;
   createdAt: number;
 }
 
@@ -625,7 +676,7 @@ export function renderMM(game: MMGame): string {
     lines.push(SEP);
     if (game.winnerId) {
       const w = game.players.find(p => p.id === game.winnerId);
-      lines.push(`👑 الفائز: \\| *${md(w?.name || 'مجهول')}* \\|`);
+      lines.push(`> 👑 الفائز: \\| *${md(w?.name || 'مجهول')}* \\|`);
       lines.push(`كسّر الرقم بـ *${w?.tries}* محاولات\\!`);
     } else {
       lines.push(`💔 محد كسر الرقم — البوت غلبكم هالمرة 😎`);
@@ -642,7 +693,7 @@ export function renderMM(game: MMGame): string {
   }
 
   const cur = mmCurrent(game);
-  lines.push(`🎯 الدور على: \\| *${md(cur?.name || '')}* \\| \\(باقي إله ${MM_MAX_TRIES_EACH - (cur?.tries || 0)} محاولات\\)`);
+  lines.push(`> 🎯 الدور على: \\| *${md(cur?.name || '')}* \\| \\(باقي إله ${MM_MAX_TRIES_EACH - (cur?.tries || 0)} محاولات\\)`);
   lines.push(`✍️ تخمينك: *${game.entry ? game.entry.split('').join(' ') : '◻ ◻ ◻ ◻'}*`);
   lines.push(SEP);
   if (game.history.length) {
@@ -662,7 +713,7 @@ export function mmKeyboard(game: MMGame): any[][] {
 
   if (game.status === 'lobby') {
     return [
-      [{ text: '➕ انضم', callback_data: `mmj:${chatId}` }],
+      [{ text: 'انضم', callback_data: `mmj:${chatId}` }],
       [{ text: '🔐 ابدأ كسر الرقم', callback_data: `mms:${chatId}` }]
     ];
   }
