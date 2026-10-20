@@ -139,33 +139,17 @@ interface BotGameCard {
 const BOT_GAMES: BotGameCard[] = [
   // ─────────────── 👥 ألعاب ثنائية (1 ضد 1) ───────────────
   {
-    id: 'math',
-    emoji: '🧮',
-    title: 'تحدي الحساب',
-    category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — تنلعب جماعي بالقناة',
-    goal: 'أسرع واحد يجاوب صح ياخذ النقطة',
-    reward: 'أول جواب صحيح بكل جولة يسجّل نقطة — الأعلى بالنهاية يفوز',
-    about:
-      'مسائل حسابية (جمع وطرح وضرب) تنزل بالقناة وياها *٤ خيارات* 🧮\n' +
-      'وأول واحد يضغط الجواب الصح ياخذ نقطة الجولة ⚡ — غلطت؟ تخرج من هالجولة بس.\n' +
-      '١٠ جولات — وإذا المتصدر صار مستحيل ينلحق، البطولة تخلص بالمكان 🧠.',
-    channel: true,
-    inline: 'gq math',
-    ready: true
-  },
-  {
     id: 'rps',
     emoji: '✊',
     title: 'حجرة ورقة مقص',
     category: 'duo',
-    players: 'لاعبين — إنت وواحد ثاني',
-    where: 'بالقناة أو المجموعة',
-    goal: 'تفوز على خصمك بأفضل من 3 جولات',
-    reward: '0.011 💵 للفائز فقط',
+    players: 'لاعبان (1 ضد 1)',
+    where: 'في القناة أو المجموعة',
+    goal: 'الفوز بأغلبية الجولات على منافسك',
+    reward: '0.011 💵 للفائز',
     about:
-      'اللعبة بالقناة: ينضغط زر العب، ينضم لاعبين (2 لاعبين)، يطلع لكل لاعب 3 أزرار (حجرة ✊ • ورقة ✋ • مقص ✌️) ويختارونهم، البوت يكشف النتيجة ويحسب الجولات (أفضل من 3 جولات) والتعادل يعيد الجولة.',
+      'مواجهة ثنائية كلاسيكية: الحجرة تكسر المقص، والمقص يقص الورقة، والورقة تغطي الحجرة.\n' +
+      'التعادل يعيد الجولة، وصاحب أعلى نقاط في النهاية يحسم الفوز.',
     play: { label: '🎮 العب بالقناة', data: 'hub:channel' },
     channel: true,
     ready: true
@@ -177,33 +161,32 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🎮',
     title: 'كود نيمز (Codenames)',
     category: 'team',
-    players: '4 لاعبين — فريقين 2 ضد 2 (جاسوس 🕵️ + عميل 👤 لكل فريق)',
-    where: 'بقناة أو كروب — إنت المشرف تنزّلها والأعضاء يشتركون بالأزرار',
-    goal: 'أول فريق يكشف كل بطاقاته',
+    players: '4 لاعبين — فريقان (جاسوس 🕵️ + عميل 👤 لكل فريق)',
+    where: 'في القناة أو المجموعة',
+    goal: 'كشف جميع بطاقات فريقك قبل الفريق المنافس',
     about:
-      'فريقين: أزرق 🔵 وأحمر 🔴، وكل فريق جاسوس 🕵️ وعميل 👤 (2 ضد 2).\n' +
-      'الجاسوس يشوف خريطة البطاقات الملوّنة بالخاص، ويكتب تلميح *بكلمة وحدة + رقم* (مثلاً: بحر 2)،\n' +
-      'والعملاء يخمّنون البطاقات بالقناة من ضغط الأزرار.\n' +
-      'اللي يكشف كل بطاقات فريقه أول يفوز 🏁 — وإذا أحد كشف بطاقة القاتل 💀 يخسر فريقه فوراً!',
+      'يتنافس الفريقان الأزرق 🔵 والأحمر 🔴 لكشف بطاقاتهما السرية على اللوحة.\n' +
+      'يعطي الجاسوس تلميحاً من كلمة واحدة مع عدد البطاقات المرتبطة بها، ويخمّن العميل البطاقات المقصودة.\n' +
+      'الفريق الذي يكشف جميع بطاقاته أولاً يفوز، ومن يكشف بطاقة القاتل 💀 يخسر فوراً.',
     channel: true,
     ready: true
   },
 
-  // ─────────────── 🎉 الألعاب الجماعية ───────────────
+  // ─────────────── 🧩 ألعاب الفردي والتخمين ───────────────
   {
     id: 'wordle',
     emoji: '🟩',
     title: 'خمّن الكلمة',
     category: 'guess',
-    players: 'لاعب واحد — إنت والبوت',
-    where: 'هنا بالخاص',
-    goal: 'تكتشف الكلمة بـ 6 محاولات',
-    reward: 'من 5 إلى 25 نقطة — كل ما كانت محاولاتك أقل نقاطك أكثر',
+    players: 'لاعب واحد',
+    where: 'في المحادثة الخاصة مع البوت',
+    goal: 'اكتشاف الكلمة السرية خلال 6 محاولات',
+    reward: 'من 5 إلى 25 نقطة حسب سرعة الحل',
     about:
-      'كلمة عربية من *5 حروف*، وعندك *6 محاولات*. تكتب بالضغط على الحروف من اللوحة،\n' +
-      'وكل محاولة تتلوّن حتى تعرف وين غلطك:\n' +
-      '🟩 الحرف بمكانه الصح • 🟨 الحرف موجود بس بمكان ثاني • ⬜ الحرف مو بالكلمة.\n' +
-      'كل ما حلّيت بمحاولات أقل، نقاطك أكثر ⭐.',
+      'اكتشف الكلمة العربية السرية المكوّنة من 5 حروف خلال 6 محاولات:\n' +
+      '🟩 الحرف في مكانه الصحيح\n' +
+      '🟨 الحرف موجود في الكلمة لكن بمكان آخر\n' +
+      '⬜ الحرف غير موجود في الكلمة',
     play: { label: '🤖 العب مع البوت', data: 'wl:new' },
     ready: true
   },
@@ -212,15 +195,12 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🎭',
     title: 'خمّن الشاعر',
     category: 'guess',
-    players: 'لاعب واحد — إنت والبوت',
-    where: 'هنا بالخاص',
-    goal: 'تعرف منو ناظم البيت الشعري',
-    reward: '10 نقاط إذا عرفتها من أول محاولة، و5 إذا من الثانية',
+    players: 'لاعب واحد',
+    where: 'في المحادثة الخاصة مع البوت',
+    goal: 'معرفة الشاعر قائل البيت',
+    reward: '10 نقاط من المحاولة الأولى، و5 نقاط من الثانية',
     about:
-      'البوت يعرضلك *بيت شعر* مشهور، وتحتّه أربعة أسماء لشعراء عرب،\n' +
-      'وإنت تختار منو ناظم البيت بالضغط على اسمه.\n' +
-      'عندك *محاولتين* بس — إذا غلطت بالأولى نعلّم الغلط ❌ وتكمّل.\n' +
-      'عرفتها من أول مرة؟ 10 نقاط ⭐ — من الثانية؟ 5 نقاط.',
+      'يُعرض لك بيت شعر عربي شهير، وعليك معرفة الشاعر القائل خلال محاولتين.',
     play: { label: '🤖 العب مع البوت', data: 'po:new' },
     ready: true
   },
@@ -229,10 +209,11 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '⚽',
     title: 'خمّن اللاعب',
     category: 'guess',
-    players: 'لاعبين — إنت وواحد ثاني',
-    where: 'هنا بالخاص',
-    goal: 'من يخمن اسم اللاعب أول يفوز',
-    about: 'البوت يعطي تلميحات أو صورة، كل واحد يحاول يخمن اسم اللاعب أولاً — من يخمن صح أول يفوز.',
+    players: 'لاعبان (1 ضد 1)',
+    where: 'أونلاين عبر البوت',
+    goal: 'معرفة اسم اللاعب قبل منافسك',
+    about:
+      'تحدٍّ كروي لمعرفة اسم اللاعب من المعلومات والتلميحات المقدّمة عنه قبل خصمك.',
     play: { label: '🌐 العب أونلاين', data: 'room:create:guess_player' },
     ready: true
   },
@@ -241,31 +222,72 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🎵',
     title: 'خمّن الأغنية',
     category: 'guess',
-    players: 'لاعب واحد — إنت والبوت',
-    where: 'هنا بالخاص',
-    goal: 'تعرف الأغنية من كلماتها',
+    players: 'لاعب واحد',
+    where: 'في المحادثة الخاصة مع البوت',
+    goal: 'معرفة الفنان صاحب الأغنية من كلماتها',
     about:
-      'البوت يوريك مقطع من كلمات أغنية مشهورة، وإنت تخمّن المطرب\n' +
-      'من أزرار الاختيارات.\n' +
-      'كل ما خمّنت بأقل محاولات، نقاطك أكثر 🎶.',
+      'يُعرض مقطع من كلمات أغنية معروفة، وعليك معرفة الفنان الذي غنّاها خلال محاولتين.',
     play: { label: '🎵 ابدأ', data: 'sg:new' },
     ready: true
   },
+  {
+    id: 'rhyme',
+    emoji: '🥊',
+    title: 'تحدي القافية',
+    category: 'guess',
+    players: 'لاعب واحد',
+    where: 'في المحادثة الخاصة مع البوت',
+    goal: 'اختيار جميع الكلمات التي على وزن الكلمة المعروضة',
+    reward: 'نقطتان لكل كلمة صحيحة',
+    about:
+      'تظهر لك كلمة عربية، وعليك اختيار جميع الكلمات التي توافقها في القافية.',
+    play: { label: '🥊 ابدأ التحدي', data: 'rh:new' },
+    ready: true
+  },
+  {
+    id: 'longest',
+    emoji: '📏',
+    title: 'أطول كلمة',
+    category: 'guess',
+    players: 'لاعب واحد',
+    where: 'في المحادثة الخاصة مع البوت',
+    goal: 'اختيار أطول كلمة صحيحة مكوّنة من الحروف المعطاة',
+    reward: '8 نقاط للإجابة الصحيحة',
+    about:
+      'تُعرض مجموعة حروف، وعليك اختيار أطول كلمة صحيحة يمكن تكوينها منها.',
+    play: { label: '📏 ابدأ', data: 'lg:new' },
+    ready: true
+  },
 
-  // ─────────────── 🎉 ألعاب الجماعة بالقنوات (٣ لاعبين فما فوق → ١٠) ───────────────
+  // ─────────────── 🎉 الألعاب الجماعية بالقناة (من لاعبين إلى ١٠ لاعبين) ───────────────
+  {
+    id: 'math',
+    emoji: '🧮',
+    title: 'تحدي الحساب',
+    category: 'group',
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'حصد أعلى نقاط عبر سرعة الحل الصحيح',
+    reward: 'نقطة لأسرع إجابة صحيحة في كل جولة',
+    about:
+      'مسائل حسابية سريعة في الجمع والطرح والضرب من ١٠ جولات.\n' +
+      'يكسب نقطة الجولة أسرع لاعب يختار الناتج الصحيح، وصاحب أعلى رصيد في النهاية يفوز.',
+    channel: true,
+    inline: 'gq math',
+    ready: true
+  },
   {
     id: 'speed_quiz',
     emoji: '⚡',
     title: 'مسابقة السرعة',
     category: 'group',
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'كن أول واحد يجاوب صح — أسرع لاعب يجمع أكثر نقاط',
-    reward: 'أول جواب صحيح بكل جولة يسجّل نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'حصد أعلى نقاط عبر سرعة الإجابة الصحيحة',
+    reward: 'نقطة لأسرع إجابة صحيحة في كل جولة',
     about:
-      'سؤال عام ينزل بالقناة وياه *٤ خيارات*، والكل يضغط بنفس اللحظة ⚡.\n' +
-      '*أول* واحد يجاوب صح ياخذ نقطة الجولة والباقي ياكلون غبار 🏃💨 — غلطت؟ تخرج من هالجولة بس.\n' +
-      '١٠ جولات — وإذا المتصدر صار مستحيل ينلحق، البطولة تخلص بالمكان 🧠.',
+      'أسئلة ثقافية سريعة من ١٠ جولات.\n' +
+      'أسرع لاعب يختار الإجابة الصحيحة يكسب نقطة الجولة، والأعلى نقاطاً يفوز.',
     channel: true,
     inline: 'gq speed',
     ready: true
@@ -276,19 +298,16 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'معركة المعلومات',
     category: 'group',
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'جاوب أكثر أسئلة صح — الأذكى يتصدر اللوحة',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية ياخذ اللقب 🏆',
+    where: 'في القناة أو المجموعة',
+    goal: 'تحقيق أعلى مجموع نقاط في ١٠ جولات',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'سؤال معلومات عامة ينزل بالقناة مع *٤ خيارات*، والكل يجاوب 🧠.\n' +
-      'مو سباق سرعة — خذ وقتك: كل جواب صحيح يحسب نقطة.\n' +
-      '١٠ جولات واللي جمع أكثر نقاط يفوز بالبطولة 👑.',
+      'منافسة معلومات عامة من ١٠ جولات في مختلف المجالات.\n' +
+      'كل إجابة صحيحة تمنح صاحبها نقطة، وصاحب أعلى مجموع في النهاية يفوز.',
     channel: true,
     inline: 'gq trivia',
     ready: true
   },
-
-  // ─────────────── 🧩 ألعاب خمّن — قسم داخلي داخل الجماعية ───────────────
   {
     id: 'gq_country',
     emoji: '🏳️',
@@ -296,13 +315,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف الدولة من المعلومة قبل غيرك',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من الدول الصحيحة',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'البوت يعطيك *معلومة قصيرة* عن دولة (عاصمتها، معلمها، اشتهارها…) 🌍\n' +
-      'وياها *٤ دول* — اختار الصحيحة واجمع النقاط.\n' +
-      '١٠ جولات جماعية بالقناة وأعلى نقاط يفوز 🏆.',
+      'تُعرض معلومة مميزة عن دولة من دول العالم في كل جولة، وعليك معرفة الدولة المقصودة.',
     channel: true,
     inline: 'gq country',
     ready: true
@@ -314,13 +331,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف الفيلم من الوصف الخفيف',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من الأفلام الصحيحة',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'البوت يوصلك *وصف خفيف بدون حرق* لفيلم مشهور 🍿\n' +
-      'وياه *٤ أفلام* — خمّن أنهي واحد.\n' +
-      '١٠ جولات بالقناة ويا الأصدقاء وأعلى نقاط يفوز 🏆.',
+      'نبذة موجزة عن قصة فيلم شهير دون حرق للأحداث، وعليك معرفة اسم الفيلم الصحيح.',
     channel: true,
     inline: 'gq movie',
     ready: true
@@ -332,13 +347,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف المسلسل من الوصف الخفيف',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من المسلسلات الصحيحة',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'البوت يوصلك *وصف خفيف* لمسلسل مشهور (عربي وأجنبي) 📺\n' +
-      'وياه *٤ مسلسلات* — خمّن أنهي واحد.\n' +
-      '١٠ جولات بالقناة ويا الأصدقاء وأعلى نقاط يفوز 🏆.',
+      'نبذة موجزة عن مسلسل عربي أو عالمي شهير، وعليك معرفة اسم المسلسل الصحيح.',
     channel: true,
     inline: 'gq series',
     ready: true
@@ -350,13 +363,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف الرقم الصح — حساب ومعلومات خفيفة',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من الأرقام الصحيحة',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'سؤال جوابه *رقم* (حساب خفيف، معلومة، عدد مشهور…) 🔢\n' +
-      'وياه *٤ أرقام* — اختار الصح.\n' +
-      '١٠ جولات بالقناة وأعلى نقاط يفوز 🏆.',
+      'أسئلة ثقافية وحقائق رقمية ممتعة، وعليك معرفة الرقم الصحيح في كل جولة.',
     channel: true,
     inline: 'gq number',
     ready: true
@@ -368,13 +379,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف الأكلة من الوصف — جوعان ما يلعب 🍽️',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من الأكلات الصحيحة',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'وصف *أكلة عربية مشهورة* (عراقية، شامية، خليجية، مصرية…) 🍲\n' +
-      'وياه *٤ أكلات* — اختار الصح.\n' +
-      '١٠ جولات بالقناة وأعلى نقاط يفوز 🏆.',
+      'وصف لأشهر الأكلات العربية والعالمية، وعليك معرفة اسم الأكلة الصحيحة.',
     channel: true,
     inline: 'gq food',
     ready: true
@@ -386,13 +395,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف دولة العلم من ٤ خيارات',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من أعلام الدول',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'البوت يعرض *علم إيموجي* وتحته *٤ دول بمربعات صغيرة (٢×٢)* 🚩\n' +
-      'والكل يختار دولة العلم — الجواب ما ينكشف، بس ✓جانب الصاحي.\n' +
-      '١٠ جولات وأعلى نقاط يفوز 🏆.',
+      'يُعرض علم إحدى الدول في كل جولة، وعليك معرفة الدولة صاحبة هذا العلم.',
     channel: true,
     inline: 'gq flags',
     ready: true
@@ -404,13 +411,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف عاصمة الدولة من ٤ خيارات',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة أكبر عدد من عواصم الدول',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'سؤال: *شنو عاصمة هالدولة؟* وتحته *٤ عواصم* 🏛️\n' +
-      'الكل يختار — النتيجة تطلع علامات بس (✓/✗) بلا كشف الجواب.\n' +
-      '١٠ جولات وأعلى نقاط يفوز 🏆.',
+      'تُذكر دولة في كل جولة، وعليك معرفة عاصمتها الصحيحة.',
     channel: true,
     inline: 'gq capitals',
     ready: true
@@ -422,14 +427,11 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — الكل من اللوحة',
-    goal: 'اعرف الدولة اللي بالقارة المعطاة — وحدة بس صح!',
-    reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يتصدر الترتيب 🏆',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة الدولة التي تقع ضمن القارة المطلوبة',
+    reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'البوت يقول قارة (آسيا؟ أفريقيا؟ أوروبا؟…) ويعرض *٤ دول* 🌍\n' +
-      'ثلاثة منقار ثانية و*وحدة بس* من القارة المعطاة — اختارها!\n' +
-      'بعد ما الكل يختار: علامات ✓/✗ جنب كل اسم لمدة ٣ ثواني،\n' +
-      'والجواب الصح ما ينكشف — وجولة قارة ثانية. ١٠ جولات والأعلى يفوز 🏆.',
+      'تُحدَّد قارة في كل جولة، وعليك معرفة الدولة التي تقع ضمن هذه القارة من بين الدول المعروضة.',
     channel: true,
     inline: 'gq continents',
     ready: true
@@ -441,42 +443,41 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     guess: true,
     players: 'من لاعبين إلى ١٠ لاعبين',
-    where: 'القناة — بالتناوب من اللوحة',
-    goal: 'اكسر الرقم السري المخفي قبل الجميع',
-    reward: 'اللي يطلع ⚫⚫⚫⚫ يكسر الرقم وياخذ اللقب 👑',
+    where: 'في القناة أو المجموعة',
+    goal: 'كشف الرقم السري قبل بقية اللاعبين',
+    reward: 'الفوز لمن يكشف الأرقام الأربعة بأماكنها الصحيحة 👑',
     about:
-      'البوت يخبّي *رقم سري من ٤ أرقام مختلفة* 🔒\n' +
-      'كل واحد بدوره يخمّن من لوحة الأرقام، والبوت يرد عليه:\n' +
-      '⚫ = رقم صحيح بمكانه الصحيح • ⚪ = رقم موجود بس بمكان غلط.\n' +
-      'أول واحد يطلع ⚫⚫⚫⚫ يفوز — عند كل لاعب ٦ محاولات فقط 🧠.',
+      'تحدٍّ لكشف رقم سري مكوّن من ٤ أرقام مختلفة بالتناوب بين اللاعبين:\n' +
+      '⚫ رقم صحيح في مكانه الصحيح\n' +
+      '⚪ رقم صحيح في مكان مختلف\n' +
+      'أول لاعب يكتشف الترتيب الكامل يفوز.',
     channel: true,
     inline: 'gq mm',
     ready: true
   }
 ];
 
-/** معلومات الأصناف (الترتيب هنا = ترتيب الشاشة) */
+/** معلومات الأصناف */
 const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: string }> = {
   duo: {
     emoji: '👥',
     title: 'ألعاب ثنائية (1 ضد 1)',
-    intro: 'تتحدى واحد ثاني — واحد يفوز وواحد يخسر.'
+    intro: 'منافسات ثنائية مباشرة وجهاً لوجه.'
   },
   team: {
     emoji: '⚔️',
     title: 'ألعاب الفرق (2 ضد 2)',
-    intro: 'تنلعب بقناة أو كروب — إنت المشرف تنزّلها والأعضاء يشتركون بالأزرار.'
+    intro: 'منافسات جماعية بنظام الفريقين في القنوات والمجموعات.'
   },
   group: {
     emoji: '🎉',
     title: 'الألعاب الجماعية',
-    intro: 'بطولات جماعية بالقناة — من *لاعبين* لحد *١٠*.' + '\n' +
-      'وداخلها قسم *🧩 ألعاب خمّن* لعشاق التخمين 👇'
+    intro: 'ألعاب جماعية في القناة من لاعبين إلى ١٠ لاعبين.'
   },
   guess: {
     emoji: '🧩',
     title: 'ألعاب خمّن',
-    intro: 'اختار لعبة الخمّن — ألعاب القناة الجماعية (٣ لاعبين فأكثر، ب٤ خيارات) وألعاب الخاص مع البوت 👇'
+    intro: 'تحديات تخمين فردية وجماعية متنوعة.'
   }
 };
 
@@ -3395,15 +3396,14 @@ export class TelegramBotManager {
   }
 
   /**
-   * 👤 قسم إحصائية اللاعب نفسه ومقارنته المباشرة بالمتصدرين (يظهر تحت الخط الفاصل بكل لعبة).
+   * 👤 قسم إحصائية اللاعب نفسه ومقارنته المباشرة بالمتصدرين — كل معلومة بسطر مستقل واضح.
    */
   private buildPersonalComparison(opts: {
     viewerId: string;
     myScore: number;
     myGames: number;
     unitLabel: string;
-    badge: string;
-    detailLine?: string;
+    statLines: string[];
     board: { id: string; score: number }[];
   }): string {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
@@ -3411,47 +3411,52 @@ export class TelegramBotManager {
     const rec = this.users.get(String(opts.viewerId));
     const myName = rec?.name || 'أنت';
     const rankIdx = opts.board.findIndex(x => String(x.id) === String(opts.viewerId));
-    const rankLabel = rankIdx >= 0 ? `#${rankIdx + 1}` : '--';
 
     const out: string[] = [
       SEP,
       `👤 *إحصائيتك ومقارنتك بالمتصدرين:*`,
-      this.quoteRow(rankLabel, myName, `(${opts.badge})`)
+      this.quoteRow('', myName)
     ];
-    if (opts.detailLine) out.push(opts.detailLine);
+
+    if (rankIdx >= 0) {
+      out.push(`🏅 ترتيبك: *#${rankIdx + 1}* من *${opts.board.length}*`);
+    } else {
+      out.push(`🏅 ترتيبك: غير مصنّف بعد`);
+    }
+
+    for (const ln of opts.statLines) {
+      if (ln) out.push(ln);
+    }
 
     if (!opts.board.length) {
-      out.push(`🚀 ماكو متصدر بعد — العب جولة وحدة وتاخذ المركز الأول!`);
+      out.push(`📊 المقارنة: لا يوجد متصدر بعد — العب جولة وتصدّر!`);
     } else if (rankIdx === 0) {
       const lead = opts.board[1] ? opts.myScore - opts.board[1].score : -1;
       if (lead > 0) {
-        out.push(`🥇 إنت المتصدر الأول! متقدم بـ *${lead} ${opts.unitLabel}* عن المركز الثاني`);
+        out.push(`🥇 الصدارة: أنت المركز الأول بفارق *${lead} ${opts.unitLabel}* عن الثاني`);
       } else {
-        out.push(`🥇 إنت بالمركز الأول بـ *${opts.myScore} ${opts.unitLabel}*!`);
+        out.push(`🥇 الصدارة: أنت في المركز الأول بـ *${opts.myScore} ${opts.unitLabel}*`);
       }
     } else if (!opts.myGames) {
-      out.push(`📊 المركز الأول عنده *${opts.board[0].score} ${opts.unitLabel}* — العب هسه ونافسه!`);
+      out.push(`📊 المتصدر الأول: *${opts.board[0].score} ${opts.unitLabel}*`);
     } else {
       const gap = opts.board[0].score - opts.myScore;
       if (gap <= 0) {
-        out.push(`🥇 متعادل ويا المركز الأول بـ *${opts.myScore} ${opts.unitLabel}* — فوز واحد وتنفرد بالصدارة!`);
+        out.push(`🥇 المقارنة: متعادل مع المركز الأول بـ *${opts.myScore} ${opts.unitLabel}*`);
       } else {
-        out.push(
-          `📊 فرقك عن المركز الأول: *${gap} ${opts.unitLabel}* • ترتيبك *#${rankIdx >= 0 ? rankIdx + 1 : opts.board.length + 1}* من *${Math.max(opts.board.length, 1)}*`
-        );
+        out.push(`📊 الفرق عن المركز الأول: *${gap} ${opts.unitLabel}*`);
       }
     }
 
     return out.join('\n');
   }
 
-  /** نصوص الإحصائيات: عامة أولاً + المتصدرون + خط كامل واحد + إحصائيتك ومقارنتك بالمتصدرين (للأشخاص فقط بدون القنوات) */
+  /** نصوص الإحصائيات: كل بند بسطر مستقل — عامة أولاً + المتصدرون + خط كامل + إحصائيتك ومقارنتك */
   private async buildGameStats(section: string, viewerId = ''): Promise<{ text: string; keyboard: any[][] }> {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     const n = this.gameStatsNumbers();
     const backStats = [{ text: '🔙 رجوع للإحصائيات', callback_data: 'gstat:main' }];
 
-    // 📂 قوائم فرعية لإحصائيات كل لعبة بدون استثناء
     if (section === 'cat:group' || section === 'cat:guess') {
       const isGuess = section === 'cat:guess';
       const list = isGuess
@@ -3468,13 +3473,12 @@ export class TelegramBotManager {
       kb.push(backStats);
       return {
         text: isGuess
-          ? `🧩 *إحصائيات ألعاب خمّن*\n${SEP}\n👇 اختار اللعبة حتى تشوف إحصائياتها العامة ومقارنتك بالمتصدرين:`
-          : `🎉 *إحصائيات الألعاب الجماعية*\n${SEP}\n👇 اختار اللعبة حتى تشوف إحصائياتها العامة ومقارنتك بالمتصدرين:`,
+          ? `🧩 *إحصائيات ألعاب خمّن*\n${SEP}\nاختر اللعبة لعرض إحصائياتها ومقارنتك بالمتصدرين:`
+          : `🎉 *إحصائيات الألعاب الجماعية*\n${SEP}\nاختر اللعبة لعرض إحصائياتها ومقارنتك بالمتصدرين:`,
         keyboard: kb
       };
     }
 
-    // 📊 إحصائيات لعبة معينة — توصل من صفحة اللعبة (g:<id>) أو من شاشة الإحصائيات (f:<id>)
     const fromGame = section.startsWith('g:');
     const fromHub = section.startsWith('f:');
     const gameId = fromGame || fromHub ? section.slice(2) : section === 'cn' ? 'codenames' : '';
@@ -3513,7 +3517,7 @@ export class TelegramBotManager {
         ? top
             .map((x, i) => this.quoteRow(i + 1, x.u.name, `(🏆 ${x.st.wins} فوز • ⭐ ${x.st.points} نقطة)`))
             .join('\n')
-        : '_ما بعد أحد فاز بيها — العبوا وكونوا أول الأبطال!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const mySt = myRec ? this.userGqStat(myRec, gqKind) : { games: 0, wins: 0, points: 0 };
       const bottom = this.buildPersonalComparison({
@@ -3521,17 +3525,21 @@ export class TelegramBotManager {
         myScore: mySt.wins,
         myGames: mySt.games,
         unitLabel: 'فوز',
-        badge: mySt.games ? `🏆 ${mySt.wins} فوز • ⭐ ${mySt.points} نقطة` : 'بعدك ما لاعبها',
-        detailLine: mySt.games
-          ? `🎮 لعبك: *${mySt.games}* • 🎯 فوزك: *${this.statPct(mySt.wins, mySt.games)}* ${this.statBar(mySt.wins, mySt.games)}`
-          : undefined,
+        statLines: [
+          `🎮 مبارياتك: *${mySt.games}*`,
+          `🏆 فوزك: *${mySt.wins}*`,
+          `⭐ نقاطك: *${mySt.points}*`,
+          `🎯 نسبة الفوز: *${this.statPct(mySt.wins, mySt.games)}*`
+        ],
         board: rows.map(x => ({ id: x.u.id, score: x.st.wins }))
       });
 
       const text =
         `${meta.emoji} *إحصائيات ${meta.title}*\n` +
-        `👥 لاعبون: *${rows.length}* • 🎮 مشاركات: *${totalParticipations}*\n` +
-        `🏆 مرات الفوز: *${totalWins}* • ⭐ إجابات صحيحة: *${totalPts}*\n\n` +
+        `👥 اللاعبون المشاركون: *${rows.length}*\n` +
+        `🎮 المشاركات المكتملة: *${totalParticipations}*\n` +
+        `🏆 إجمالي مرات الفوز: *${totalWins}*\n` +
+        `⭐ إجمالي الإجابات الصحيحة: *${totalPts}*\n\n` +
         `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
@@ -3554,29 +3562,32 @@ export class TelegramBotManager {
               return this.quoteRow(i + 1, u.name, `(👑 ${u.mmWins || 0} فوز${best})`);
             })
             .join('\n')
-        : '_ما بعد أحد كسر الرقم السري — كونوا أول الأبطال!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.mmGames || 0;
       const myWins = myRec?.mmWins || 0;
+      const statLines = [
+        `🎮 مبارياتك: *${myGames}*`,
+        `👑 فوزك: *${myWins}*`
+      ];
+      if (myRec?.mmBestTries) statLines.push(`⚡ أسرع كسر للرقم: *${myRec.mmBestTries}* محاولات`);
+      statLines.push(`🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`);
+
       const bottom = this.buildPersonalComparison({
         viewerId,
         myScore: myWins,
         myGames,
         unitLabel: 'فوز',
-        badge: myGames
-          ? `👑 ${myWins} فوز${myRec?.mmBestTries ? ` • أسرع كسر ${myRec.mmBestTries}` : ''}`
-          : 'بعدك ما لاعبها',
-        detailLine: myGames
-          ? `🎮 لعبك: *${myGames}* • 🎯 فوزك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
-          : undefined,
+        statLines,
         board: players.map(u => ({ id: u.id, score: u.mmWins || 0 }))
       });
 
       const text =
         `🔐 *إحصائيات ماسترمايند*\n` +
-        `👥 لاعبون: *${players.length}* • 🎮 مشاركات: *${totalPlayed}*\n` +
-        `🔑 أرقام سرية انكسرت: *${totalWins}*\n\n` +
-        `🥇 *أقوى كاسري الأرقام:*\n${lines}` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎮 المشاركات المكتملة: *${totalPlayed}*\n` +
+        `🔑 الأرقام السرية المكسورة: *${totalWins}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
@@ -3594,7 +3605,7 @@ export class TelegramBotManager {
         ? topSolvers
             .map((u, i) => this.quoteRow(i + 1, u.name, `(${u.wordleWins || 0} كلمة)`))
             .join('\n')
-        : '_ما بعد أحد حلّها — كون أول واحد!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.wordleGames || 0;
       const myWins = myRec?.wordleWins || 0;
@@ -3603,18 +3614,20 @@ export class TelegramBotManager {
         myScore: myWins,
         myGames,
         unitLabel: 'كلمة',
-        badge: myGames ? `✅ ${myWins} من ${myGames} كلمة` : 'بعدك ما لاعبها',
-        detailLine: myGames
-          ? `🎯 نجاحك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
-          : undefined,
+        statLines: [
+          `🎮 جولاتك: *${myGames}*`,
+          `✅ الكلمات المحلولة: *${myWins}*`,
+          `🎯 نسبة النجاح: *${this.statPct(myWins, myGames)}*`
+        ],
         board: topSolvers.map(u => ({ id: u.id, score: u.wordleWins || 0 }))
       });
 
       const text =
         `🟩 *إحصائيات خمّن الكلمة*\n` +
-        `👥 لاعبون: *${board.length}* • 🎮 محاولات: *${totalPlayed}*\n` +
-        `✅ كلمات انحلّت: *${n.solved}*\n\n` +
-        `🥇 *أكثر من حلّها:*\n${lines}` +
+        `👥 اللاعبون المشاركون: *${board.length}*\n` +
+        `🎮 إجمالي الجولات: *${totalPlayed}*\n` +
+        `✅ الكلمات المحلولة: *${n.solved}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
@@ -3639,7 +3652,7 @@ export class TelegramBotManager {
               return this.quoteRow(i + 1, u.name, `(${wins} بيت • ${pct}%)`);
             })
             .join('\n')
-        : '_ما بعد أحد خمّن — كون أول واحد!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.poetGames || 0;
       const myWins = myRec?.poetWins || 0;
@@ -3648,24 +3661,27 @@ export class TelegramBotManager {
         myScore: myWins,
         myGames,
         unitLabel: 'بيت',
-        badge: myGames ? `🧠 ${myWins} من ${myGames} بيت` : 'بعدك ما لاعبها',
-        detailLine: myGames
-          ? `🎯 دقتك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
-          : undefined,
+        statLines: [
+          `🎮 جولاتك: *${myGames}*`,
+          `✅ الأبيات الصحيحة: *${myWins}*`,
+          `🎯 دقتك: *${this.statPct(myWins, myGames)}*`
+        ],
         board: experts.map(u => ({ id: u.id, score: u.poetWins || 0 }))
       });
 
       const text =
         `🎭 *إحصائيات خمّن الشاعر*\n` +
-        `👥 لاعبون: *${experts.length}* • 🎯 أبيات انلعبت: *${played}*\n` +
-        `✅ أبيات انحلّت: *${solved}* • 📈 الدقة العامة: *${accuracy}%*\n\n` +
-        `🥇 *أخبر من عرف الشعراء:*\n${lines}` +
+        `👥 اللاعبون المشاركون: *${experts.length}*\n` +
+        `🎯 الأبيات الملعوبة: *${played}*\n` +
+        `✅ الأبيات المحلولة: *${solved}*\n` +
+        `📈 الدقة العامة: *${accuracy}%*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // ⚔️ 5) كود نيمز (خاص بالأشخاص واللاعبين فقط — بدون أي قنوات!)
+    // ⚔️ 5) كود نيمز (خاص بالأشخاص فقط)
     if (gameId === 'codenames') {
       const spyWins = new Map<string, { name: string; wins: number }>();
       const uniquePlayers = new Set<string>();
@@ -3689,15 +3705,15 @@ export class TelegramBotManager {
 
       const spyLines = topSpies.length
         ? topSpies
-            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز جاسوس)`))
+            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز)`))
             .join('\n')
-        : '_ما بعد أكو جاسوس فاز._';
+        : '_لا يوجد جواسيس متصدرون بعد_';
 
       const winLines = winBoard.length
         ? winBoard
             .map((w, i) => this.quoteRow(i + 1, w.name, `(🏆 ${w.wins} فوز)`))
             .join('\n')
-        : '_ما بعد فاز أحد — ننتظر أول مباراة!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myId = String(viewerId);
       const mine = viewerId ? n.matches.filter(g => (g.players || []).some(p => String(p.id) === myId)) : [];
@@ -3711,17 +3727,23 @@ export class TelegramBotManager {
         myScore: myWins,
         myGames: mine.length,
         unitLabel: 'فوز',
-        badge: mine.length ? `🏆 ${myWins} فوز من ${mine.length}` : 'بعدك ما لاعبها',
-        detailLine: mine.length
-          ? `🕵️ جاسوس: *${mySpyWins}* فوز • 👤 عميل: *${myWins - mySpyWins}* فوز • 🎯 *${this.statPct(myWins, mine.length)}*`
-          : undefined,
+        statLines: [
+          `🎮 مبارياتك: *${mine.length}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🕵️ فوزك كجاسوس: *${mySpyWins}*`,
+          `👤 فوزك كعميل: *${myWins - mySpyWins}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, mine.length)}*`
+        ],
         board: fullBoard.map(w => ({ id: w.id, score: w.wins }))
       });
 
       const text =
         `⚔️ *إحصائيات كود نيمز*\n` +
-        `👥 لاعبون: *${uniquePlayers.size}* • 🏁 مباريات مكتملة: *${n.matches.length}*\n` +
-        `🔵 فوز الأزرق: *${n.blueWins}* • 🔴 فوز الأحمر: *${n.redWins}* • 💀 بالقاتل: *${n.assassinLosses}*\n\n` +
+        `👥 اللاعبون المشاركون: *${uniquePlayers.size}*\n` +
+        `🏁 المباريات المكتملة: *${n.matches.length}*\n` +
+        `🔵 فوز الفريق الأزرق: *${n.blueWins}*\n` +
+        `🔴 فوز الفريق الأحمر: *${n.redWins}*\n` +
+        `💀 الخسارة ببطاقة القاتل: *${n.assassinLosses}*\n\n` +
         `🏆 *أكثر اللاعبين فوزاً:*\n${winLines}\n\n` +
         `🕵️ *أفضل الجواسيس:*\n${spyLines}` +
         (bottom ? `\n${bottom}` : '');
@@ -3747,7 +3769,7 @@ export class TelegramBotManager {
               return this.quoteRow(i + 1, u.name, `(🏆 ${wins} فوز • ${pct}%)`);
             })
             .join('\n')
-        : '_ما بعد أحد لعبها — كون أول بطل!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.rpsGames || 0;
       const myWins = myRec?.rpsWins || 0;
@@ -3756,17 +3778,20 @@ export class TelegramBotManager {
         myScore: myWins,
         myGames,
         unitLabel: 'فوز',
-        badge: myGames ? `🏆 ${myWins} فوز من ${myGames}` : 'بعدك ما لاعبها',
-        detailLine: myGames
-          ? `🎯 فوزك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
-          : undefined,
+        statLines: [
+          `🎮 مبارياتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`
+        ],
         board: players.map(u => ({ id: u.id, score: u.rpsWins || 0 }))
       });
 
       const text =
         `✊ *إحصائيات حجرة ورقة مقص*\n` +
-        `👥 لاعبون: *${players.length}* • 🎮 مشاركات: *${totalGames}* • 🏆 فوزات: *${totalWins}*\n\n` +
-        `🥇 *أكثر من فاز:*\n${lines}` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎮 المشاركات المكتملة: *${totalGames}*\n` +
+        `🏆 إجمالي مرات الفوز: *${totalWins}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
@@ -3798,7 +3823,7 @@ export class TelegramBotManager {
               return this.quoteRow(i + 1, u.name, `(${wins} ${conf.verb} • ${pct}%)`);
             })
             .join('\n')
-        : '_ما بعد أحد لعبها — كون أول واحد!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec ? ((myRec[conf.gamesKey] as number) || 0) : 0;
       const myWins = myRec ? ((myRec[conf.winsKey] as number) || 0) : 0;
@@ -3807,23 +3832,27 @@ export class TelegramBotManager {
         myScore: myWins,
         myGames,
         unitLabel: conf.verb,
-        badge: myGames ? `🏆 ${myWins} ${conf.verb} من ${myGames}` : 'بعدك ما لاعبها',
-        detailLine: myGames
-          ? `🎯 نسبتك: *${this.statPct(myWins, myGames)}* ${this.statBar(myWins, myGames)}`
-          : undefined,
+        statLines: [
+          `🎮 جولاتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`
+        ],
         board: players.map(u => ({ id: u.id, score: ((u[conf.winsKey] as number) || 0) }))
       });
 
       const text =
         `${conf.emoji} *إحصائيات ${conf.title}*\n` +
-        `👥 لاعبون: *${players.length}* • 🎯 جولات: *${played}* • 🏆 فوزات: *${solved}* (*${accuracy}%*)\n\n` +
-        `🥇 *أكثر من فاز:*\n${lines}` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎯 إجمالي الجولات: *${played}*\n` +
+        `🏆 إجمالي الفوز: *${solved}*\n` +
+        `📈 النسبة العامة: *${accuracy}%*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backRow] };
     }
 
-    // 🏆 لوحة الأبطال الشاملة (للأشخاص فقط + مقارنتك بالمتصدرين)
+    // 🏆 لوحة الأبطال الشاملة
     if (section === 'top') {
       const pointsBoard = n.users
         .filter(u => (u.points || 0) > 0)
@@ -3834,28 +3863,35 @@ export class TelegramBotManager {
         ? topPoints
             .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
             .join('\n')
-        : '_ما بعد أحد جمع نقاط — كونوا أول الأبطال!_';
+        : '_لا يوجد متصدرون بعد_';
 
       const myPts = myRec?.points || 0;
+      const myGames = myRec?.onlineGames || 0;
+      const myWins = myRec?.onlineWins || 0;
       const bottom = this.buildPersonalComparison({
         viewerId,
         myScore: myPts,
-        myGames: (myRec?.onlineGames || 0) + myPts,
+        myGames: myGames + myPts,
         unitLabel: 'نقطة',
-        badge: `⭐ ${myPts} نقطة`,
+        statLines: [
+          `⭐ نقاطك الكلية: *${myPts}*`,
+          `🎮 مبارياتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`
+        ],
         board: pointsBoard.map(u => ({ id: u.id, score: u.points || 0 }))
       });
 
       const text =
         `🏆 *لوحة الأبطال*\n` +
-        `👥 أبطال مسجلون: *${pointsBoard.length}* • ⭐ مجموع النقاط: *${n.totalPoints}*\n\n` +
-        `🥇 *الأكثر نقاطاً بكل الألعاب:*\n${pointsLines}` +
+        `👥 اللاعبون المسجلون: *${pointsBoard.length}*\n` +
+        `⭐ مجموع نقاط اللاعبين: *${n.totalPoints}*\n\n` +
+        `🥇 *الأكثر نقاطاً:*\n${pointsLines}` +
         (bottom ? `\n${bottom}` : '');
 
       return { text, keyboard: [backStats] };
     }
 
-    // 📊 الشاشة الرئيسية للإحصائيات (إحصائيات عامة للأشخاص فوق + خط فاصل كامل + مقارنتك بالمتصدرين تحت)
+    // 📊 الشاشة الرئيسية للإحصائيات
     const poetSolved = n.users.reduce((sum, u) => sum + (u.poetWins || 0), 0);
     const gqTotal = n.users.reduce((s, u) => {
       if (!u.gqStats) return s;
@@ -3882,23 +3918,32 @@ export class TelegramBotManager {
       ? topPoints
           .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
           .join('\n')
-      : '_ما بعد أحد جمع نقاط — العبوا وارجعوا تشوفون اسمكم هنا!_';
+      : '_لا يوجد متصدرون بعد_';
 
     const myPts = myRec?.points || 0;
+    const myGames = myRec?.onlineGames || 0;
+    const myWins = myRec?.onlineWins || 0;
     const bottom = this.buildPersonalComparison({
       viewerId,
       myScore: myPts,
-      myGames: (myRec?.onlineGames || 0) + myPts,
+      myGames: myGames + myPts,
       unitLabel: 'نقطة',
-      badge: `⭐ ${myPts} نقطة • 🏆 ${myRec?.onlineWins || 0} فوز`,
+      statLines: [
+        `⭐ نقاطك: *${myPts}*`,
+        `🎮 مبارياتك: *${myGames}*`,
+        `🏆 فوزك: *${myWins}*`
+      ],
       board: pointsBoard.map(u => ({ id: u.id, score: u.points || 0 }))
     });
 
     const text =
       `📊 *إحصائيات الألعاب*\n` +
-      `👥 اللاعبون: *${n.users.length}* • 🎮 مشاركات مكتملة: *${totalCompleted}*\n` +
-      `⚔️ كود نيمز: أزرق *${n.blueWins}* / أحمر *${n.redWins}* • 🎉 جماعية: *${gqTotal + mmTotal}*\n` +
-      `✊ حجرة ورقة مقص: *${rpsPlayed}* • 🧠 تخمين وفردية: *${n.solved + poetSolved + soloPlayed}*\n\n` +
+      `👥 اللاعبون: *${n.users.length}*\n` +
+      `🎮 المشاركات المكتملة: *${totalCompleted}*\n` +
+      `⚔️ مباريات كود نيمز: *${n.matches.length}*\n` +
+      `🎉 الألعاب الجماعية: *${gqTotal + mmTotal}*\n` +
+      `✊ حجرة ورقة مقص: *${rpsPlayed}*\n` +
+      `🧠 ألعاب التخمين الفردية: *${n.solved + poetSolved + soloPlayed}*\n\n` +
       `🏆 *أقوى 5 لاعبين بالنقاط:*\n${topLines}` +
       (bottom ? `\n${bottom}` : '');
 
@@ -3924,14 +3969,14 @@ export class TelegramBotManager {
   }
 
   // ---------------------------------------------------------------------
-  // 💰 الفلوس والمستوى: بدون زر «ملفي» منفصل — المقارنة تطلع مباشرة جوا كل تصنيف!
+  // 💰 الفلوس والمستوى: كل معلومة بسطر مستقل بدون زر «ملفي» منفصل
   // ---------------------------------------------------------------------
 
   private buildRanking(section: string, viewerId: string): { text: string; keyboard: any[][] } {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     if (section === 'menu') {
       return {
-        text: `🏅 *المتصدرون*\n${SEP}\nاختار التصنيف حتى تشوف المتصدرين ومقارنتك بيهم 👇`,
+        text: `🏅 *المتصدرون*\n${SEP}\nاختر التصنيف لعرض المتصدرين ومقارنتك بهم:`,
         keyboard: [
           [{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }],
           [{ text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }],
@@ -3950,51 +3995,53 @@ export class TelegramBotManager {
 
     const myRec = this.users.get(String(viewerId));
 
-    // 🎖️ متصدرين بالمستوى + ملفك ومقارنتك المباشرة بيهم
+    // 🎖️ متصدرين بالمستوى — كل بند بسطر مستقل واضح
     if (section === 'level') {
       const top = ranked.slice(0, 10);
       const lines = top.length
         ? top
             .map((u, i) => {
               const p = Economy.levelProgress(u.xp || 0);
-              const games = u.onlineGames || 0;
-              const wins = u.onlineWins || 0;
               return this.quoteRow(
                 i + 1,
                 u.name,
-                `(مستوى ${p.level} ${Economy.levelTitle(p.level)} • ${u.xp || 0} XP • ${games}م/${wins}ف)`
+                `(مستوى ${p.level} • ${u.xp || 0} XP)`
               );
             })
             .join('\n')
-        : '_ما بعد أحد لعب مباراة أونلاين._';
+        : '_لا يوجد متصدرون بالمستوى بعد_';
 
       const myXp = myRec?.xp || 0;
       const p2 = Economy.levelProgress(myXp);
       const g2 = myRec?.onlineGames || 0;
       const w2 = myRec?.onlineWins || 0;
       const myIdx = myRec ? ranked.findIndex(u => u.id === myRec.id) : -1;
-      const rankLabel = myIdx >= 0 ? `#${myIdx + 1}` : '--';
 
-      let cmpLine = '🚀 ماكو متصدر بعد — العب أول مباراة وتتصدر!';
+      let cmpLine = '📊 المقارنة: لا يوجد متصدر بعد — العب أول مباراة وتصدّر!';
       if (top.length) {
         if (myIdx === 0) {
           const leadXp = top[1] ? myXp - (top[1].xp || 0) : -1;
           cmpLine = leadXp > 0
-            ? `🥇 إنت المتصدر الأول بالمستوى! متقدم بـ *+${leadXp} XP* عن المركز الثاني`
-            : `🥇 إنت بالمركز الأول بالمستوى!`;
+            ? `🥇 الصدارة: أنت المركز الأول بفارق *+${leadXp} XP* عن الثاني`
+            : `🥇 الصدارة: أنت في المركز الأول بالمستوى!`;
         } else {
           const xpGap = (top[0].xp || 0) - myXp;
           cmpLine = xpGap <= 0 && myXp > 0
-            ? `🥇 متعادل ويا المركز الأول بـ *${myXp} XP*!`
-            : `📊 فرقك عن المركز الأول: *${Math.max(1, xpGap)} XP*${myIdx > 0 ? ` • ترتيبك *#${myIdx + 1}* من *${ranked.length}*` : ''}`;
+            ? `🥇 المقارنة: متعادل مع المركز الأول بـ *${myXp} XP*`
+            : `📊 الفرق عن المركز الأول: *${Math.max(1, xpGap)} XP*`;
         }
       }
 
       const myBlock = [
         `👤 *إحصائيتك ومقارنتك بالمتصدرين:*`,
-        this.quoteRow(rankLabel, myRec?.name || 'أنت', `(مستوى ${p2.level} ${Economy.levelTitle(p2.level)} • ${myXp} XP)`),
-        `${this.statBar(p2.into, p2.span)} *${p2.into}* / ${p2.span} XP • باقي *${p2.left}* للمستوى ${p2.level + 1}`,
-        `🎮 مبارياتك: *${g2}* • 🏆 فوزك: *${w2}* (${this.statPct(w2, g2)}) • 💵 *${Economy.formatMoney(myRec?.money || 0)}*`,
+        this.quoteRow('', myRec?.name || 'أنت'),
+        myIdx >= 0 ? `🏅 ترتيبك: *#${myIdx + 1}* من *${ranked.length}*` : `🏅 ترتيبك: غير مصنّف بعد`,
+        `🎖️ مستواك: *${p2.level}* (${Economy.levelTitle(p2.level)})`,
+        `✨ خبرتك الحالية: *${p2.into}* من *${p2.span} XP*`,
+        `⏳ المتبقي للمستوى القادم: *${p2.left} XP*`,
+        `🎮 مبارياتك: *${g2}*`,
+        `🏆 فوزك: *${w2}*`,
+        `🎯 نسبة الفوز: *${this.statPct(w2, g2)}*`,
         cmpLine
       ].join('\n');
 
@@ -4014,7 +4061,7 @@ export class TelegramBotManager {
       };
     }
 
-    // 💰 متصدرين بالفلوس + ملفك ومقارنتك المباشرة بيهم
+    // 💰 متصدرين بالفلوس — كل بند بسطر مستقل واضح
     const top = rich.slice(0, 10);
     const lines = top.length
       ? top
@@ -4023,33 +4070,39 @@ export class TelegramBotManager {
             return this.quoteRow(i + 1, u.name, `(${Economy.formatMoney(u.money || 0)} 💵 • مستوى ${level})`);
           })
           .join('\n')
-      : '_ما بعد أحد ربح فلوس._';
+      : '_لا يوجد متصدرون بالفلوس بعد_';
 
     const myMoney = myRec?.money || 0;
     const myLevel = Economy.levelFromXp(myRec?.xp || 0);
     const myToday = myRec ? Economy.earnedToday(myRec) : 0;
+    const myGames = myRec?.onlineGames || 0;
+    const myWins = myRec?.onlineWins || 0;
     const myIdx2 = myRec ? rich.findIndex(u => u.id === myRec.id) : -1;
-    const rankLabel2 = myIdx2 >= 0 ? `#${myIdx2 + 1}` : '--';
 
-    let cmpLine2 = '🚀 ماكو متصدر بعد — أول فوز بالقناة يخليك المركز الأول!';
+    let cmpLine2 = '📊 المقارنة: لا يوجد متصدر بعد — أول فوز يضعك في الصدارة!';
     if (top.length) {
       if (myIdx2 === 0) {
         const leadMoney = top[1] ? Economy.roundMoney(myMoney - (top[1].money || 0)) : -1;
         cmpLine2 = leadMoney > 0
-          ? `🥇 إنت المتصدر الأول بالفلوس! متقدم بـ *${Economy.formatMoney(leadMoney)}* 💵 عن المركز الثاني`
-          : `🥇 إنت بالمركز الأول بالفلوس!`;
+          ? `🥇 الصدارة: أنت المركز الأول بفارق *${Economy.formatMoney(leadMoney)}* 💵 عن الثاني`
+          : `🥇 الصدارة: أنت في المركز الأول بالفلوس!`;
       } else {
         const rawGap = Economy.roundMoney((top[0].money || 0) - myMoney);
         cmpLine2 = rawGap <= 0 && myMoney > 0
-          ? `🥇 متعادل ويا المركز الأول بـ *${Economy.formatMoney(myMoney)}* 💵!`
-          : `📊 فرقك عن المركز الأول: *${Economy.formatMoney(Math.max(0.001, rawGap))}* 💵${myIdx2 > 0 ? ` • ترتيبك *#${myIdx2 + 1}* من *${rich.length}*` : ''}`;
+          ? `🥇 المقارنة: متعادل مع المركز الأول بـ *${Economy.formatMoney(myMoney)}* 💵`
+          : `📊 الفرق عن المركز الأول: *${Economy.formatMoney(Math.max(0.001, rawGap))}* 💵`;
       }
     }
 
     const myBlock2 = [
       `👤 *إحصائيتك ومقارنتك بالمتصدرين:*`,
-      this.quoteRow(rankLabel2, myRec?.name || 'أنت', `(${Economy.formatMoney(myMoney)} 💵 • مستوى ${myLevel})`),
-      `💰 ربحت اليوم: *${Economy.formatMoney(myToday)}* من *${Economy.formatMoney(Economy.DAILY_MONEY_CAP)}* 💵 • 🎮 فوزك: *${myRec?.onlineWins || 0}*`,
+      this.quoteRow('', myRec?.name || 'أنت'),
+      myIdx2 >= 0 ? `🏅 ترتيبك: *#${myIdx2 + 1}* من *${rich.length}*` : `🏅 ترتيبك: غير مصنّف بعد`,
+      `💵 رصيدك الكلي: *${Economy.formatMoney(myMoney)}* 💵`,
+      `💰 ربحك اليوم: *${Economy.formatMoney(myToday)}* من *${Economy.formatMoney(Economy.DAILY_MONEY_CAP)}* 💵`,
+      `🎖️ مستواك: *${myLevel}* (${Economy.levelTitle(myLevel)})`,
+      `🎮 مبارياتك: *${myGames}*`,
+      `🏆 فوزك: *${myWins}*`,
       cmpLine2
     ].join('\n');
 

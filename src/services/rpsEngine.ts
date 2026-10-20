@@ -183,7 +183,6 @@ export function renderGame(game: RPSGame): string {
       game.players.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score)));
     }
     lines.push(`🎯 الجولات: *${game.totalRounds}*`);
-    if (game.players.length < 2) lines.push(`_يحتاج لاعب ثاني يدوس «انضم»_`);
     return lines.join('\n');
   }
 
