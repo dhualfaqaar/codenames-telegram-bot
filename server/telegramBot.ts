@@ -2806,12 +2806,12 @@ export class TelegramBotManager {
 
   /** اختيار القناة مباشرة يفتح picker القنوات فوراً */
   private async sendChannelKeyboard(chatId: string) {
-    const keyboard = [
+    const inline_keyboard = [
       [
         {
-          text: '🎮 اختيار القناة ونشر اللعبة',
+          text: '🎮 نشر اللعبة للقناة',
           request_chat: {
-            request_id: 1001,
+            request_id: Date.now() % 1000000,
             chat_is_channel: true,
             bot_is_member: false
           }
@@ -2819,10 +2819,7 @@ export class TelegramBotManager {
       ]
     ];
     await this.sendMessageRaw(chatId, '🎮 اختر القناة لنشر اللعبة:', {
-      keyboard,
-      resize_keyboard: true,
-      one_time_keyboard: true,
-      selective: true
+      inline_keyboard
     });
   }
 
