@@ -445,7 +445,7 @@ export function renderQuiz(game: QuizGame): string {
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
+      lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n'));
     }
     return lines.join('\n');
   }
@@ -461,7 +461,7 @@ export function renderQuiz(game: QuizGame): string {
     }
     lines.push(SEP);
     lines.push(`📊 *الترتيب النهائي:*`);
-    lines.push(sorted.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
+    lines.push(sorted.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n'));
     return lines.join('\n');
   }
 
@@ -484,7 +484,7 @@ export function renderQuiz(game: QuizGame): string {
     const mark = p.done ? (p.roundHit ? ' ✅' : ' ❌') : ' ⏳';
     return scoreLine(i + 1, p.name, p.score, mark);
   });
-  lines.push(playerBlocks.join('\n\n'));
+  lines.push(playerBlocks.join('\n'));
 
   return lines.join('\n');
 }
@@ -697,7 +697,7 @@ export function renderMM(game: MMGame): string {
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      lines.push(game.players.map((p, i) => `> ${i + 1} \\- \\| *${md(p.name)}* \\|`).join('\n\n'));
+      lines.push(game.players.map((p, i) => `> ${i + 1} \\- \\| *${md(p.name)}* \\|`).join('\n'));
     }
     return lines.join('\n');
   }
@@ -721,7 +721,7 @@ export function renderMM(game: MMGame): string {
         game.history
           .slice(0, 10)
           .map((h, i) => `> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`)
-          .join('\n\n')
+          .join('\n')
       );
     }
     return lines.join('\n');
@@ -737,7 +737,7 @@ export function renderMM(game: MMGame): string {
       game.history
         .slice(0, 6)
         .map((h, i) => `> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`)
-        .join('\n\n')
+        .join('\n')
     );
   } else {
     lines.push(`_ماكو محاولات بعد — أول واحد يجرب_`);
