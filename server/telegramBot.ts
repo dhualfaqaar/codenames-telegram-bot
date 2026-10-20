@@ -2497,17 +2497,11 @@ export class TelegramBotManager {
   // (عامة للكل — قراءة بس، وما تأثر على أي لعبة شغّالة)
   // ---------------------------------------------------------------------
 
-  /** شاشات: rank:menu (اختار لوحة) / rank:money / rank:level / rank:me */
+    // شاشات: rank:menu / rank:money / rank:level / rank:me
   private buildRanking(section: string, viewerId: string): { text: string; keyboard: any[][] } {
-    // 🏅 قائمة المتصدرين: تختار لوحة الفلوس أو لوحة المستوى
     if (section === 'menu') {
       return {
-        text:
-          `🏅 *المتصدرون*\n` +
-          `اختار لوحة الترتيم اللي تبيها 👇\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `💵 *متصدرين بالفلوس* — من جمع أكثر عملة اللعبة الغالية\n` +
-          `🎖️ *متصدرين بالمستوى* — الأعلى خبرة وأكمل مباريات مع ناس`,
+        text: `🏅 *المتصدرون*\nاختار لوحة الترتيم اللي تبيها 👇`,
         keyboard: [
           [{ text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' }],
           [{ text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }],
@@ -2517,21 +2511,19 @@ export class TelegramBotManager {
     }
 
     const users = Array.from(this.users.values()).filter(u => !u.banned);
-    const rich = users.filter(u => (u.money || 0) > 0).sort((a, b) => (b.money || 0) - (a.money || 0));
-    const ranked = users.filter(u => (u.onlineGames || 0) > 0).sort(
-      (a, b) => (b.xp || 0) - (a.xp || 0) || (b.onlineWins || 0) - (a.onlineWins || 0)
-    );
+    const rich = users
+      .filter(u => (u.money || 0) > 0 || u.id === viewerId)
+      .sort((a, b) => (b.money || 0) - (a.money || 0));
+    const ranked = users
+      .filter(u => (u.onlineGames || 0) > 0 || u.id === viewerId)
+      .sort((a, b) => (b.xp || 0) - (a.xp || 0) || (b.onlineWins || 0) - (a.onlineWins || 0));
 
-    const tabs: any[][] = [
-      [
-        { text: '💵 متصدرين بالفلوس', callback_data: 'rank:money' },
-        { text: '🎖️ متصدرين بالمستوى', callback_data: 'rank:level' }
-      ],
-      [{ text: '👤 ملفي', callback_data: 'rank:me' }],
-      [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
-    ];
+    const tabs: any[][] = section === 'money'
+      ? [[{ text: 'متصدرين بالمستوى', callback_data: 'rank:level' }], [{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]]
+      : section === 'level'
+        ? [[{ text: 'متصدرين بالفلوس', callback_data: 'rank:money' }], [{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]]
+        : [[{ text: 'متصدرين بالفلوس', callback_data: 'rank:money' }, { text: 'متصدرين بالمستوى', callback_data: 'rank:level' }], [{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]];
 
-    // 🎖️ الأعلى مستوى
     if (section === 'level') {
       const top = ranked.slice(0, 5);
       const lines = top.length
@@ -2540,28 +2532,32 @@ export class TelegramBotManager {
               const p = Economy.levelProgress(u.xp || 0);
               const games = u.onlineGames || 0;
               const wins = u.onlineWins || 0;
-              return (
-                `${this.statMedal(i)} ${this.mdSafe(u.name)} — مستوى *${p.level}* ` +
-                `(${Economy.levelTitle(p.level)}) • *${u.xp || 0}* XP • ` +
-                `🎮 ${games} مباراة (${this.statPct(wins, games)} فوز)`
-              );
+              return `${this.statMedal(i)} ${this.mdSafe(u.name)} — مستوى *${p.level}* (${Economy.levelTitle(p.level)}) • *${u.xp || 0}* XP • ${games}م/${wins}ف`;
             })
             .join('\n')
-        : '_ما بعد أحد لعب مباراة أونلاين — المستوى يزيد مع ناس حقيقيين بس._';
+        : '_ما بعد أحد لعب مباراة أونلاين._';
 
-      return {
-        text:
-          `🎖️ *متصدرين بالمستوى* (أعلى 5)\n` +
-          `_المستوى يزيد بكل مباراة تنلعبها مع ناس حقيقيين (فوز أو خسارة)_\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `${lines}\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `👥 عندهم مستوى: *${ranked.length}* • 🎮 مجموع المباريات: *${ranked.reduce(
-            (s, u) => s + (u.onlineGames || 0),
-            0
-          )}*`,
-        keyboard: tabs
-      };
+      const myRec = this.users.get(String(viewerId));
+      let myBlock = '_ما عندي معلومات عنك بعد — /start أولاً_';
+      if (myRec) {
+        const myIdx = ranked.findIndex(u => u.id === myRec.id);
+        const p2 = Economy.levelProgress(myRec.xp || 0);
+        const g2 = myRec.onlineGames || 0;
+        const w2 = myRec.onlineWins || 0;
+        myBlock = `معلوماتي:\n${myIdx >= 0 ? `ترتيبي: *#${myIdx + 1}*` : `ترتيبي: *--*`} • مستوى *${p2.level}* (${Economy.levelTitle(p2.level)}) • *${myRec.xp || 0}* XP • ${g2}م/${w2}ف`;
+      }
+
+      const text = [
+        `🎖️ *متصدرين بالمستوى* (أعلى 5)`,
+        '━━━━━━━━━━━━━━━━━━━',
+        lines,
+        '───────────',
+        myBlock,
+        '━━━━━━━━━━━━━━━━━━━',
+        `_ملاحظة: الفلوس والمستوى ما يزيدان إلا باللعب مع ناس حقيقيين (أونلاين)._`
+      ].join('\n');
+
+      return { text, keyboard: [[{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]] };
     }
 
     // 👤 ملف اللاعب نفسه
@@ -2603,35 +2599,36 @@ export class TelegramBotManager {
       return { text: lines.join('\n'), keyboard: tabs };
     }
 
-    // 💰 الافتراضي: المتصدرون بالفلوس (كل الألعاب)
+    // 💰 متصدرين بالفلوس
     const top = rich.slice(0, 5);
-    const total = rich.reduce((s, u) => s + (u.money || 0), 0);
     const lines = top.length
       ? top
           .map((u, i) => {
             const level = Economy.levelFromXp(u.xp || 0);
-            return (
-              `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${Economy.formatMoney(
-                u.money || 0
-              )}* 💵 • 🎖️ ${level} (${Economy.levelTitle(level)})`
-            );
+            return `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${Economy.formatMoney(u.money || 0)}* 💵 • مستوى ${level}`;
           })
           .join('\n')
-      : '_ما بعد أحد ربح فلوس 💵 — فلوس اللعبة تجي من الفوز مع ناس حقيقيين (مثل 🎮 كود نيمز)._';
+      : '_ما بعد أحد ربح فلوس._';
 
-    return {
-      text:
-        `💰 *متصدرين بالفلوس* (أعلى 5)\n` +
-        `_العملة غالية: الفائز ياخذ حسب أداءه، والفوز على مستوى أعلى يدفع أكثر_\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
-        `${lines}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
-        `💵 مجموع الفلوس باللعبة: *${Economy.formatMoney(total)}*\n` +
-        `👥 عندهم فلوس: *${rich.length}* • 🔒 السقف اليومي: *${Economy.formatMoney(
-          Economy.DAILY_MONEY_CAP
-        )}* للاعب`,
-      keyboard: tabs
-    };
+    const myRec2 = this.users.get(String(viewerId));
+    let myBlock2 = '_ما عندي معلومات عنك بعد — /start أولاً_';
+    if (myRec2) {
+      const myIdx2 = rich.findIndex(u => u.id === myRec2.id);
+      const level2 = Economy.levelFromXp(myRec2.xp || 0);
+      myBlock2 = `معلوماتي:\n${myIdx2 >= 0 ? `ترتيبي: *#${myIdx2 + 1}*` : `ترتيبي: *--*`} • فلوسي: *${Economy.formatMoney(myRec2.money || 0)}* 💵 • مستوى *${level2}*`;
+    }
+
+    const text2 = [
+      `💰 *متصدرين بالفلوس* (أعلى 5)`,
+      '━━━━━━━━━━━━━━━━━━━',
+      lines,
+      '───────────',
+      myBlock2,
+      '━━━━━━━━━━━━━━━━━━━',
+      `_ملاحظة: الفلوس ما تزيد إلا باللعب مع ناس حقيقيين (أونلاين)._`
+    ].join('\n');
+
+    return { text: text2, keyboard: [[{ text: '👤 ملفي', callback_data: 'rank:me' }], [{ text: 'رجوع', callback_data: 'hub:main' }]] };
   }
 
   /** يفتح/يحدّث شاشات الفلوس والمستوى (أي واحد يكدر يشوفها) */
