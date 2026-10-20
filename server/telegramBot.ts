@@ -150,7 +150,7 @@ const BOT_GAMES: BotGameCard[] = [
     about:
       'مسائل حسابية (جمع وطرح وضرب) تنزل بالقناة وياها *٤ خيارات* 🧮\n' +
       'وأول واحد يضغط الجواب الصح ياخذ نقطة الجولة ⚡ — غلطت؟ تخرج من هالجولة بس.\n' +
-      '١٠ جولات — وإذا المتصدر صار مستحيل ينلحق، البطولة تخلص بالمكان 🧠.',
+      'عندكم ١٠ ثواني لكل سؤال؛ إذا ما أحد جاوب صح تنتقل الجولة تلقائياً. ١٠ جولات 🧠.',
     channel: true,
     inline: 'gq math',
     ready: true
@@ -281,7 +281,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية ياخذ اللقب 🏆',
     about:
       'سؤال معلومات عامة ينزل بالقناة مع *٤ خيارات*، والكل يجاوب 🧠.\n' +
-      'مو سباق سرعة — خذ وقتك: كل جواب صحيح يحسب نقطة.\n' +
+      'مو سباق سرعة — عندك ١٠ ثواني لكل سؤال، وكل جواب صحيح يحسب نقطة.\n' +
       '١٠ جولات واللي جمع أكثر نقاط يفوز بالبطولة 👑.',
     channel: true,
     inline: 'gq trivia',
@@ -428,7 +428,7 @@ const BOT_GAMES: BotGameCard[] = [
     about:
       'البوت يقول قارة (آسيا؟ أفريقيا؟ أوروبا؟…) ويعرض *٤ دول* 🌍\n' +
       'ثلاثة منقار ثانية و*وحدة بس* من القارة المعطاة — اختارها!\n' +
-      'بعد ما الكل يختار: علامات ✓/✗ جنب كل اسم لمدة ٣ ثواني،\n' +
+      'بعد ما الكل يختار أو تخلص ١٠ ثواني: علامات ✓/✗ جنب كل اسم،\n' +
       'والجواب الصح ما ينكشف — وجولة قارة ثانية. ١٠ جولات والأعلى يفوز 🏆.',
     channel: true,
     inline: 'gq continents',
@@ -619,6 +619,7 @@ export class TelegramBotManager {
   /** ✊✋✌️ مباريات حجرة ورقة مقص بالقنوات (Key: chatId) */
   private rpsGames: Map<string, RPS.RPSGame> = new Map();
   private gqGames: Map<string, GG.QuizGame> = new Map();
+  private quizTimer?: ReturnType<typeof setTimeout>;
   private mmGames: Map<string, GG.MMGame> = new Map();
   /** 🎵 جولات خمّن الأغنية (Key: user id) */
   private song: Map<string, Song.SongRound> = new Map();
@@ -629,7 +630,7 @@ export class TelegramBotManager {
   /** 📏 جولات أطول كلمة (Key: user id) */
   private longestGames: Map<string, WordGame.LongestRound> = new Map();
 
-  constructor(initialToken?: string, ownerId?: string) {
+  constructor(initialToken?: string, ownerId?: string, private readonly localQuizTimers = true) {
     if (initialToken) {
       this.token = initialToken.trim();
     }
@@ -1190,6 +1191,13 @@ export class TelegramBotManager {
     if (Array.isArray(state.rhymeGames)) this.rhymeGames = new Map(state.rhymeGames);
     if (Array.isArray(state.longestGames)) this.longestGames = new Map(state.longestGames);
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
+    // Saved games from before the timed rounds feature get one last 10-second window.
+    for (const game of this.gqGames.values()) {
+      if ((game.status === 'playing' || game.status === 'result') && !game.deadline) {
+        game.deadline = Date.now() + (game.status === 'playing' ? GG.QUIZ_ROUND_MS : GG.QUIZ_RESULT_MS);
+      }
+    }
+    this.scheduleQuizTimer();
   }
 
   public setToken(token: string) {
@@ -2306,7 +2314,7 @@ export class TelegramBotManager {
     if (!botUser) return text;
     // بصيغة MarkdownV2 (لوحات الألعاب الجماعية) لازم نهرّب الشرطة السفلية باليوزرنيم
     const shown = v2 ? botUser.replace(/_/g, '\\_') : botUser;
-    return text + `\n━━━━━━━━━━━━━━━━━━━\n` + `🤖 *البوت:* @${shown}`;
+    return text + `\n\n🤖 *البوت:* @${shown}`;
   }
 
   /**
@@ -2592,63 +2600,54 @@ export class TelegramBotManager {
   // الرسالة تنزل بالقناة وتحوّل نفسها للوبي تلقائياً (بلا رسايل ولا بوكس)
   // ---------------------------------------------------------------------
 
-  /** بطاقة النشر لكل لعبة (العنوان والوصف والنص اللي ينزل بالقناة لحظة الإرسال) */
-  private inlineDeployCard(gameId: 'codenames' | 'rps', rounds?: number): { title: string; desc: string; text: string } {
+  /** Show the real lobby immediately when the inline result is sent, not a temporary code/placeholder. */
+  private inlineDeployCard(gameId: 'codenames' | 'rps', rounds?: number): { title: string; desc: string; text: string; parseMode: string } {
     if (gameId === 'rps') {
       const n = rounds && [5, 10, 15].includes(rounds) ? rounds : 5;
       const ar = n === 5 ? '٥' : n === 10 ? '١٠' : '١٥';
       return {
         title: `✊ حجرة ورقة مقص — ${ar} راوندات`,
         desc: 'أنزل المباراة هنا — اللاعبون يختارون من القناة نفسها!',
-        text:
-          `✊ *حجرة ورقة مقص (${n} راوندات) — تحضير المباراة…*\n` +
-          `_لحظة والبوت يجهّز اللوحة 🤖_`
+        text: RPS.renderGame(RPS.createGame('inline', 'القناة', n)),
+        parseMode: 'MarkdownV2'
       };
     }
     return {
       title: '🎮 كود نيمز (2 ضد 2)',
       desc: 'نزّل لوبي جديد هنا — الأعضاء ينضمون بالأزرار',
-      text:
-        `🎮 *كود نيمز — تحضير اللوبي…*\n` +
-        `_لحظة والبوت يجهّز اللوحة 🤖_`
+      text: CodenamesEngine.getTelegramMessageText(CodenamesEngine.createLobby('inline')),
+      parseMode: 'Markdown'
     };
   }
 
-  /** بطاقة لعبة جماعية من قائمة خيارات ( النص داخله ماركر gq:<kind> حتى البوت يتعرف عليها لما تنزل بالقناة) */
+  /** Inline quiz preview is already a normal lobby. Once Telegram delivers channel_post,
+   * we attach this message to its chat and add the working join/start buttons. */
   private gqCard(kind: string): any {
     const k: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
       ? (kind as GG.QuizKind)
       : 'speed';
     const meta = GG.QUIZ_KINDS[k];
-    const title = `${meta.emoji} ${meta.title}`;
     return {
       type: 'article',
       id: `gq:${k}`,
-      title,
-      description: 'بطولة جماعية — من ٣ لاعبين لحد ١٠، تبدأ بالأزرار',
+      title: `${meta.emoji} ${meta.title}`,
+      description: 'بطولة جماعية — من لاعبين لحد ١٠، تبدأ بالأزرار',
       input_message_content: {
-        message_text:
-          `${meta.emoji} *${meta.title} — تحضير البطولة…*\n` +
-          `_لحظة والبوت يجهّز اللوحة 🤖_\n` +
-          '`gq:' + k + '`',
-        parse_mode: 'Markdown'
+        message_text: GG.renderQuiz(GG.createQuiz('inline', 'القناة', k)),
+        parse_mode: 'MarkdownV2'
       }
     };
   }
 
-  /** بطاقة ماسترمايند */
   private gqCardMM(): any {
     return {
       type: 'article',
       id: 'gq:mm',
       title: '🔐 ماسترمايند — كسر الرقم السري',
-      description: 'لعبة تخمين رقم سري جماعية — ٣ لاعبين فأكثر',
+      description: 'لعبة تخمين رقم سري جماعية — لاعبين فأكثر',
       input_message_content: {
-        message_text:
-          `🔐 *ماسترمايند — تحضير اللعبة…*\n` +
-          `_لحظة والبوت يجهّز الرقم السري 🤖_\n` +
-          '`gq:mm`',
-        parse_mode: 'Markdown'
+        message_text: GG.renderMM(GG.mmCreate('inline', 'القناة')),
+        parse_mode: 'MarkdownV2'
       }
     };
   }
@@ -2676,7 +2675,7 @@ export class TelegramBotManager {
         id: 'cn',
         title: card.title,
         description: card.desc,
-        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+        input_message_content: { message_text: card.text, parse_mode: card.parseMode }
       });
     }
     if (wantsRps) {
@@ -2688,7 +2687,7 @@ export class TelegramBotManager {
         id: `rps:${rounds}`,
         title: card.title,
         description: card.desc,
-        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+        input_message_content: { message_text: card.text, parse_mode: card.parseMode }
       });
     }
     if (!results.length) {
@@ -2698,7 +2697,7 @@ export class TelegramBotManager {
         id: 'cn',
         title: card.title,
         description: card.desc,
-        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+        input_message_content: { message_text: card.text, parse_mode: card.parseMode }
       });
     }
 
@@ -2711,23 +2710,30 @@ export class TelegramBotManager {
    */
   private async handleInlineLanding(message: TelegramMessage) {
     const text = message.text || '';
-    const gqMark = text.match(/gq:(\w+)/);
-    const isCodenamesCard = text.includes('كود نيمز') && text.includes('تحضير');
-    const isRpsCard = text.includes('حجرة ورقة مقص') && text.includes('تحضير');
-    if (!gqMark && !isCodenamesCard && !isRpsCard) return;
+    // Telegram sends the rendered text (without Markdown) in channel_post.
+    // Keep recognizing older inline cards so messages already sent still work.
+    const legacyMark = text.match(/gq:(\w+)/);
+    const quizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[])
+      .find(k => text.startsWith(`${GG.QUIZ_KINDS[k].emoji} ${GG.QUIZ_KINDS[k].title}`));
+    const kind = legacyMark?.[1] || quizKind ||
+      (text.startsWith('🔐 ماسترمايند — كسر الرقم السري') ? 'mm' : undefined);
+    const isCodenamesCard = text.includes('كود نيمز') &&
+      (text.includes('تحضير') || text.startsWith('🕵️‍♂️ لعبة كود نيمز'));
+    const isRpsCard = text.includes('حجرة ورقة مقص') &&
+      (text.includes('تحضير') || text.startsWith('✊ حجرة ورقة مقص'));
+    if (!kind && !isCodenamesCard && !isRpsCard) return;
 
     // نتأكد إنها منشورة عبر بوتنا نفسه
     await this.ensureBotInfo();
     const ours =
-      String(message.via_bot?.id || '') === String(this.botInfo?.id || '') ||
-      String(message.via_bot?.username || '') === String(this.botInfo?.username || '');
+      (Boolean(message.via_bot?.id && this.botInfo?.id) && String(message.via_bot?.id) === String(this.botInfo?.id)) ||
+      (Boolean(message.via_bot?.username && this.botInfo?.username) && message.via_bot?.username === this.botInfo?.username);
     if (!ours) return;
 
     const chatId = String(message.chat.id);
 
     // ── 🎉 ألعاب الجماعة (أسئلة + ماسترمايند) ──
-    if (gqMark) {
-      const kind = gqMark[1];
+    if (kind) {
 
       // نمسح أي لعبة جماعية قديمة معلّقة بنفس المحادثة
       const oldGq = this.gqGames.get(chatId);
@@ -2739,6 +2745,7 @@ export class TelegramBotManager {
         await this.deleteMessage(chatId, oldMm.messageId);
       }
       this.gqGames.delete(chatId);
+      this.scheduleQuizTimer();
       this.mmGames.delete(chatId);
 
       if (kind === 'mm') {
@@ -2783,7 +2790,8 @@ export class TelegramBotManager {
     // ── حجرة ورقة مقص ──
     if (isRpsCard) {
       const rMatch = text.match(/(\d+)\s*راوند/);
-      const r = rMatch ? parseInt(rMatch[1], 10) : 5;
+      const roundLine = text.match(/الجولات:\s*(\d+)/);
+      const r = rMatch ? parseInt(rMatch[1], 10) : roundLine ? parseInt(roundLine[1], 10) : 5;
       const rounds = [5, 10, 15].includes(r) ? r : 5;
 
       const oldRps = this.rpsGames.get(chatId);
@@ -2879,8 +2887,44 @@ export class TelegramBotManager {
   // 🎉 أزرار ألعاب الجماعة داخل القناة (gqj انضم / gqs ابدأ / gqa جواب / gqn بطولة جديدة)
   // ---------------------------------------------------------------------
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise(r => setTimeout(r, ms));
+  /** Next due phase across all channel quiz games (also used by the Worker alarm). */
+  public nextQuizDeadline(): number | undefined {
+    const due = Array.from(this.gqGames.values())
+      .filter(g => (g.status === 'playing' || g.status === 'result') && g.deadline)
+      .map(g => g.deadline!);
+    return due.length ? Math.min(...due) : undefined;
+  }
+
+  /** Local polling uses a Node timer; the Durable Object uses its persistent alarm. */
+  private scheduleQuizTimer() {
+    if (!this.localQuizTimers) return;
+    if (this.quizTimer) clearTimeout(this.quizTimer);
+    const next = this.nextQuizDeadline();
+    if (next === undefined) return;
+    this.quizTimer = setTimeout(() => {
+      this.processQuizDeadlines().catch(e => console.error('Quiz timer failed:', e));
+    }, Math.max(0, next - Date.now()));
+  }
+
+  /** Close overdue questions and move past result screens without waiting for a callback. */
+  public async processQuizDeadlines() {
+    try {
+      for (const [chatId, game] of this.gqGames) {
+        if (!game.deadline || Date.now() < game.deadline) continue;
+        if (game.status === 'playing') {
+          if (GG.quizTimeout(game)) await this.paintQuiz(game);
+        } else if (game.status === 'result') {
+          const adv = GG.quizAdvance(game);
+          if (this.gqGames.get(chatId) !== game) continue;
+          await this.paintQuiz(game);
+          if (adv.over && adv.smart) {
+            await this.sendMessage(game.chatId, '🧠 *نهاية مبكرة* — المتصدر بطل رسمي، ما يكدر أحد يلحقه! 🏆');
+          }
+        }
+      }
+    } finally {
+      this.scheduleQuizTimer();
+    }
   }
 
   /** يعيد رسم لوحة لعبة جماعية — بنفس الرسالة إن كانت عادية، أو بمعرّف الإنلاين إن كانت أصلها تحويل */
@@ -2923,13 +2967,18 @@ export class TelegramBotManager {
     const playerName = cb.from.first_name || 'لاعب';
 
     const parts = data.split(':');
-    const op = parts[0]; // gqj gqs gqa gqn gqv gqskip
+    const op = parts[0]; // gqj gqs gqa gqn
 
     // النوع داخل الزر — اللوحات القديمة (بدون نوع) ما نكدر نبنيها، ندكنعهم بذوق
-    const kindRaw = op === 'gqa' ? parts[2] : parts[1];
+    const kindRaw = op === 'gqa' ? parts[3] : parts[1];
     const kinds = Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[];
     const kind: GG.QuizKind = kinds.includes(kindRaw as GG.QuizKind) ? (kindRaw as GG.QuizKind) : 'speed';
 
+    // Buttons left on old Telegram messages must never end a timed round.
+    if (op === 'gqskip' || op === 'gqv') {
+      await this.answerCallbackQuery(cb.id, '⏳ الزر قديم — الجولة تتقدم تلقائياً');
+      return;
+    }
     let game = this.gqGames.get(cbChatId);
 
     // 🛡️ اللعبة ضايعة؟ نبني لوحة جديدة بنفس الرسالة ونرجّع اللاعب للوبي
@@ -2965,33 +3014,13 @@ export class TelegramBotManager {
       this.gqGames.set(cbChatId, game);
     }
 
-    // زر وهمي «الجولة الجاية…» — ما يسوي شي
-    if (op === 'gqv') {
-      await this.answerCallbackQuery(cb.id, '');
-      return;
-    }
-
-    // ⏭️ ختم الجولة حتى ما تعلق
-    if (op === 'gqskip') {
-      const r = GG.quizSkip(game, playerId);
-      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
-      if (r.ok) {
-        await this.paintQuiz(game);
-        const g = this.gqGames.get(cbChatId);
-        if (g) {
-          await this.sleep(3000);
-          GG.quizAdvance(g);
-          await this.paintQuiz(g);
-        }
-      }
-      return;
-    }
-
     // 🔄 بطولة جديدة
     if (op === 'gqn') {
       const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind);
       fresh.messageId = game.messageId;
+      fresh.inlineMessageId = game.inlineMessageId;
       this.gqGames.set(game.chatId, fresh);
+      this.scheduleQuizTimer();
       await this.paintQuiz(fresh);
       await this.answerCallbackQuery(cb.id, '🔄 بطولة جديدة — انضموا!');
       return;
@@ -3009,27 +3038,34 @@ export class TelegramBotManager {
     if (op === 'gqs') {
       const r = GG.quizStart(game);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
-      if (r.ok) await this.paintQuiz(game);
+      if (r.ok) {
+        await this.paintQuiz(game);
+        this.scheduleQuizTimer();
+      }
       return;
     }
 
-    // 🅰️ جواب — gqa:<idx>:<kind>:<chatId>
+    // 🅰️ جواب — gqa:<idx>:<round>:<kind>:<chatId>
     if (op === 'gqa') {
-      const idx = parseInt(parts[1] || '0', 10);
+      if (parts.length !== 5 || Number(parts[2]) !== game.round || parts[3] !== game.kind) {
+        await this.answerCallbackQuery(cb.id, '⏳ هذا زر سؤال قديم');
+        return;
+      }
+      if (game.status === 'playing' && Date.now() >= (game.deadline ?? 0)) {
+        await this.answerCallbackQuery(cb.id, '⏰ انتهى وقت السؤال');
+        await this.processQuizDeadlines();
+        return;
+      }
+      const idx = Number(parts[1]);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= game.options.length) {
+        await this.answerCallbackQuery(cb.id, '⚠️ خيار غير صالح');
+        return;
+      }
       const r = GG.quizAnswer(game, playerId, playerName, idx);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok && r.msg.startsWith('🚫'));
-      await this.paintQuiz(game);
-
-      if (r.roundClosed) {
-        // مهلة قصيرة حتى يشوفون النتيجة، وبعدها الجولة الجاية أو الختام
-        const g = this.gqGames.get(cbChatId);
-        if (!g) return;
-        await this.sleep(3000);
-        const adv = GG.quizAdvance(g);
-        await this.paintQuiz(g);
-        if (adv.over && adv.smart) {
-          await this.sendMessage(g.chatId, '🧠 *نهاية مبكرة* — المتصدر بطل رسمي، ما يكدر أحد يلحقه! 🏆');
-        }
+      if (r.ok) {
+        await this.paintQuiz(game);
+        if (r.roundClosed) this.scheduleQuizTimer();
       }
       return;
     }

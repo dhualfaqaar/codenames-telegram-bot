@@ -7,6 +7,16 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 WEBHOOK_URL = "https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev"
 
+# Cloudflare Builds runs `wrangler preview` for non-production branches.
+# Previews must not reuse the production webhook or Durable Object storage.
+[previews.vars]
+ENVIRONMENT = "preview"
+WEBHOOK_URL = "https://example.invalid/preview"
+
+[[previews.durable_objects.bindings]]
+name = "BOT_STATE"
+class_name = "BotState"
+
 [triggers]
 crons = ["*/5 * * * *"]
 

@@ -13,6 +13,8 @@ interface Env {
   WEBHOOK_SECRET: string;
   /** Where Telegram must deliver updates (defaults to this Worker's URL). */
   WEBHOOK_URL?: string;
+  /** Preview deployments must not repair the production Telegram webhook. */
+  ENVIRONMENT?: string;
   /** Optional: Telegram id of the bot owner (otherwise it is auto-detected). */
   OWNER_ID?: string;
   BOT_STATE: any;
@@ -34,6 +36,8 @@ const OWNER_ONLY_ID = '8885518661';
  * تشتغل من: أول طلب للحالة، ومن المؤقت (Cron) كل 5 دقائق.
  */
 async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; repaired: boolean; error?: string }> {
+  // Previews are isolated test deployments: never repoint the live Telegram bot.
+  if (env.ENVIRONMENT === 'preview') return { url: '', repaired: false };
   const token = env.TELEGRAM_BOT_TOKEN;
   const expected = env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
   if (!token) return { url: '', repaired: false, error: 'no token' };
@@ -104,7 +108,7 @@ export class BotState {
   private async getBot(): Promise<TelegramBotManager> {
     if (this.bot) return this.bot;
 
-    const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID);
+    const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, false);
     try {
       const saved = await this.state.storage.get('state');
       if (saved) bot.importState(saved);
@@ -144,7 +148,22 @@ export class BotState {
       console.error('Failed to persist state:', e);
     }
 
+    await this.scheduleQuizAlarm(bot);
     return new Response('ok');
+  }
+
+  /** Durable Object alarms survive idle eviction and fire without Telegram updates. */
+  private async scheduleQuizAlarm(bot: TelegramBotManager) {
+    const next = bot.nextQuizDeadline();
+    if (next === undefined) await this.state.storage.deleteAlarm();
+    else await this.state.storage.setAlarm(Math.max(Date.now(), next));
+  }
+
+  async alarm(): Promise<void> {
+    const bot = await this.getBot();
+    await bot.processQuizDeadlines();
+    await this.state.storage.put('state', bot.exportState());
+    await this.scheduleQuizAlarm(bot);
   }
 }
 
@@ -187,7 +206,7 @@ export default {
    * مؤقت كل 5 دقائق: يفحص الوصلة ويصلّحها لو مسحتها نسخة ثانية.
    * هكذا البوت ما يسكت حتى لو صار شي بالليل.
    */
-  async scheduled(_event: ScheduledEvent, env: any, ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: unknown, env: any, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
     ctx.waitUntil(
       ensureWebhook(env, true).then(r => {
         if (r.error) console.log('cron webhook check failed:', r.error);
