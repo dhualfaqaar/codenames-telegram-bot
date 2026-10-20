@@ -703,7 +703,8 @@ export class TelegramBotManager {
   }
 
   /**
-   * 👤 حالة اللاعب بسطرين (مستواه + فلوسه + تعليق بسيط).
+   * 👤 حالة اللاعب — كل فقرة بسطر لحالها (فوق رسالة /start بالخاص فقط).
+   * مستواه، فلوسه، مبارياته، فوزه، خبرته المطلوبة، وتعليق قصير ذكي.
    * ترجع نص فاضي إذا ما عندنا اللاعب — يعني ما ينعرض ولا شي.
    */
   private playerStatusText(rec?: BotUserRecord): string {
@@ -713,12 +714,17 @@ export class TelegramBotManager {
     const games = rec.onlineGames || 0;
     const wins = rec.onlineWins || 0;
 
-    const bits = [`🎖️ مستوى *${p.level}* (${Economy.levelTitle(p.level)})`];
-    bits.push(`💵 *${Economy.formatMoney(money)}*`);
-    if (games) bits.push(`🎮 ${games} مباراة • 🏆 ${wins}`);
+    const lines = [
+      `🎖️ مستواي: *${p.level}* (${Economy.levelTitle(p.level)})`,
+      `💵 فلوسي: *${Economy.formatMoney(money)}*`,
+      `🎮 مبارياتي: *${games}*`,
+      `🏆 فوزي: *${wins}*`
+    ];
+    if (p.level < 99) lines.push(`✨ باقي *${p.left}* XP للمستوى ${p.level + 1}`);
 
     const vibe = Economy.walletVibe({ level: p.level, money, onlineGames: games, wins });
-    return `${bits.join(' • ')}\n_${vibe}_`;
+    lines.push(`_${vibe}_`);
+    return lines.join('\n');
   }
 
   public addSampleFinishedGame(): CodenamesGame {
@@ -1278,7 +1284,10 @@ export class TelegramBotManager {
 
     // زر «🎮 الألعاب» من كيبورد الخاص القديم — يفتح قائمة الألعاب (للجميع، حتى المالك)
     if (message.chat.type === 'private' && text === '🎮 الألعاب') {
-      const view = await this.buildGamesMenu('main');
+      const view = await this.buildGamesMenu(
+        'main',
+        sender ? this.users.get(String(sender.id)) : undefined
+      );
       await this.sendMessage(chatId, await this.withBotFooter(view.text), view.keyboard);
       await this.clearReplyKeyboard(chatId);
       return;
@@ -2785,10 +2794,8 @@ export class TelegramBotManager {
       ]);
     }
     // 💵 الفلوس والمستوى: يشمل كل الألعاب → مكانه وي الأصناف
-    keyboard.push([
-      { text: '💰 المتصدرون بالفلوس', callback_data: 'rank:money' },
-      { text: '👤 ملفي ومستواي', callback_data: 'rank:me' }
-    ]);
+    // (زر «ملفي ومستواي» انحذف — معلوماتك صارت بسطور فوق بأول رسالة /start)
+    keyboard.push([{ text: '💰 المتصدرون بالفلوس', callback_data: 'rank:money' }]);
     return { text, keyboard };
   }
 
