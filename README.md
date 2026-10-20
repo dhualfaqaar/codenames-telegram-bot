@@ -30,4 +30,6 @@ pinned: false
 
 البوت مربوط مع GitHub عبر **Cloudflare Workers Builds**؛ ما يحتاج إعداد GitHub Actions أو إضافة توكنات Cloudflare إلى GitHub. بعد كل تعديل نختبر الكود ونسوي commit ونرفع فرع المحادثة إلى GitHub، وتبدأ Cloudflare بناء النسخة من الفرع المنشور. حفظ الملفات محلياً وحده ما ينشر البوت.
 
+Cloudflare Builds يستعمل `wrangler preview` للفروع غير الإنتاجية. ملف `wrangler.toml` يعرّف إعداد معاينة آمن: متغيرات منفصلة وDurable Object معزول، بدون وصلة تيليجرام الإنتاجية أو Cron. **نجاح معاينة الفرع مو معناه تحدّث البوت المباشر.**
+
 إذا تريد تعديل فرع المحادثة يظهر فوراً بالبوت المباشر، تأكد من لوحة **Cloudflare Workers & Pages → codenames-telegram-bot → Settings → Builds** أن *فرع الإنتاج* هو فرع المحادثة الحالي. إذا كان الإنتاج مربوط بـ `main` فقط، التعديلات على فرع المحادثة ما تصير مباشرة إلا بعد دمجها في `main` أو تغيير فرع الإنتاج في Cloudflare. بعد الدفع تأكد من نجاح فحص **Workers Builds** في GitHub؛ إذا فشل، افتح سجل البناء في Cloudflare لمعرفة السبب. أسرار البوت تبقى في Cloudflare ولا تُكتب هنا.

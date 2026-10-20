@@ -13,6 +13,8 @@ interface Env {
   WEBHOOK_SECRET: string;
   /** Where Telegram must deliver updates (defaults to this Worker's URL). */
   WEBHOOK_URL?: string;
+  /** Preview deployments must not repair the production Telegram webhook. */
+  ENVIRONMENT?: string;
   /** Optional: Telegram id of the bot owner (otherwise it is auto-detected). */
   OWNER_ID?: string;
   BOT_STATE: any;
@@ -34,6 +36,8 @@ const OWNER_ONLY_ID = '8885518661';
  * تشتغل من: أول طلب للحالة، ومن المؤقت (Cron) كل 5 دقائق.
  */
 async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; repaired: boolean; error?: string }> {
+  // Previews are isolated test deployments: never repoint the live Telegram bot.
+  if (env.ENVIRONMENT === 'preview') return { url: '', repaired: false };
   const token = env.TELEGRAM_BOT_TOKEN;
   const expected = env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
   if (!token) return { url: '', repaired: false, error: 'no token' };
