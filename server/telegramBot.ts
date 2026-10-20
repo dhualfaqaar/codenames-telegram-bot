@@ -2806,19 +2806,19 @@ export class TelegramBotManager {
 
   /** اختيار القناة مباشرة (Inline) يفتح picker القنوات فوراً بدون رسالة إضافية */
   private async sendChannelKeyboard(chatId: string) {
-    const rows: any[][] = [
+    const keyboard = [
       [
         {
           text: '🎮 اختيار القناة ونشر اللعبة',
           request_chat: {
-            request_id: 1,
+            request_id: 1001,
             chat_is_channel: true,
             bot_is_member: false
           }
         }
       ]
     ];
-    await this.sendMessage(chatId, 'اضغط الزر بالأسفل لاختيار القناة ونشر اللعبة هناك:', rows);
+    await this.sendMessageRaw(chatId, '🎮 اختر القناة ونشر اللعبة هناك:', { inline_keyboard: keyboard });
   }
 
   // ---------------------------------------------------------------------
