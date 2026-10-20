@@ -123,6 +123,20 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     loseXp: 4,
     online: true,
     note: 'كاسر الرقم السري ياخذ *0.006 – 0.02* 💵'
+  },
+  mafia: {
+    maxMoney: 0.03,
+    winXp: 12,
+    loseXp: 5,
+    online: true,
+    note: 'الفريق الفائز ياخذ *0.008 – 0.03* 💵 حسب نتيجة الجولة'
+  },
+  out_of_loop: {
+    maxMoney: 0.02,
+    winXp: 10,
+    loseXp: 4,
+    online: true,
+    note: 'الأعلى نقاطاً ياخذ *0.006 – 0.02* 💵'
   }
 };
 

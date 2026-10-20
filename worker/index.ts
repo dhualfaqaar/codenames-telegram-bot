@@ -51,6 +51,29 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
   const REQUIRED_UPDATES = ['message', 'channel_post', 'callback_query', 'my_chat_member', 'inline_query'];
 
   try {
+    // 🧹 تنظيف زر القائمة الزرقاء (Menu) وإبقاء أمر /start فقط بكل النطاقات واللغات
+    const scopes = [
+      { type: 'default' },
+      { type: 'all_private_chats' },
+      { type: 'all_group_chats' },
+      { type: 'all_chat_administrators' }
+    ];
+    for (const scope of scopes) {
+      for (const language_code of [undefined, 'ar', 'en']) {
+        await call('deleteMyCommands', language_code ? { scope, language_code } : { scope }).catch(() => undefined);
+      }
+    }
+    const onlyStart = [{ command: 'start', description: 'تشغيل البوت والقائمة الرئيسية' }];
+    for (const scope of [{ type: 'default' }, { type: 'all_private_chats' }]) {
+      for (const language_code of [undefined, 'ar', 'en']) {
+        await call(
+          'setMyCommands',
+          language_code ? { commands: onlyStart, scope, language_code } : { commands: onlyStart, scope }
+        ).catch(() => undefined);
+      }
+    }
+    await call('setChatMenuButton', { menu_button: { type: 'commands' } }).catch(() => undefined);
+
     const info = await call('getWebhookInfo');
     const current: string = info?.result?.url || '';
     // هل القائمة الحالية ناقصها شي؟ (القائمة الفاضية تعني "كل الأنواع" — إذن ما ناقص شي)

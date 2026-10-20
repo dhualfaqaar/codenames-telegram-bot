@@ -7,6 +7,38 @@ import * as Song from '../src/services/songEngine';
 import * as MathGame from '../src/services/mathEngine';
 import * as Economy from '../src/services/economy';
 import * as WK from '../src/services/whoKnowsEngine';
+import * as MF from '../src/services/mafiaEngine';
+import * as OOL from '../src/services/outOfLoopEngine';
+
+const ZW_GUARD = '\u2060\u200D\u2060';
+function encodeHiddenTag(payload: string): string {
+  const bytes = Buffer.from(payload, 'utf8');
+  let bits = '';
+  for (const b of bytes) {
+    bits += b.toString(2).padStart(8, '0').replace(/0/g, '\u200B').replace(/1/g, '\u200C');
+  }
+  return ZW_GUARD + bits + ZW_GUARD;
+}
+function decodeHiddenTag(text: string): { tag: string; deployerId?: string } | null {
+  const s = String(text || '');
+  const i = s.indexOf(ZW_GUARD);
+  if (i < 0) return null;
+  const j = s.indexOf(ZW_GUARD, i + ZW_GUARD.length);
+  if (j < 0) return null;
+  const raw = s.slice(i + ZW_GUARD.length, j);
+  if (!raw || raw.length % 8 !== 0) return null;
+  const bytes: number[] = [];
+  for (let k = 0; k < raw.length; k += 8) {
+    let byte = 0;
+    for (let bit = 0; bit < 8; bit++) {
+      byte = (byte << 1) | (raw[k + bit] === '\u200C' ? 1 : 0);
+    }
+    bytes.push(byte);
+  }
+  const decoded = Buffer.from(bytes).toString('utf8');
+  const [tag, deployerId] = decoded.split('|');
+  return tag ? { tag, deployerId: deployerId || undefined } : null;
+}
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
@@ -138,6 +170,38 @@ interface BotGameCard {
 
 const BOT_GAMES: BotGameCard[] = [
   // ─────────────── 👥 ألعاب ثنائية (1 ضد 1) ───────────────
+  {
+    id: 'mafia',
+    emoji: '🕵️',
+    title: 'المافيا',
+    category: 'group',
+    players: 'من ٤ إلى ١٢ لاعباً',
+    where: 'في القناة أو المجموعة',
+    goal: 'كشف أفراد المافيا وطردهم قبل سيطرتهم على المدينة',
+    reward: 'خبرة وجوائز للفريق الفائز',
+    about:
+      'تتوزع الأدوار سرّاً بين المشاركين (مافيا، طبيب، محقق، ومواطنون).\n' +
+      'في الليل تتحرك المافيا والطبيب والمحقق سرّاً، وفي النهار يصوّت الأحياء لطرد المشتبه به.',
+    channel: true,
+    inline: 'mf',
+    ready: true
+  },
+  {
+    id: 'out_of_loop',
+    emoji: '🎭',
+    title: 'منو برا السالفة؟',
+    category: 'group',
+    players: 'من ٣ إلى ١٠ لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'كشف اللاعب الوحيد الذي لا يعرف السالفة السرية',
+    reward: 'نقاط وخبرة وجوائز للأذكى بالتصويت والتخمين',
+    about:
+      'يعرف جميع اللاعبين الكلمة السرية ضمن الصنف المختار ما عدا لاعباً واحداً يكون «برا السالفة».\n' +
+      'يتساءل اللاعبون ويصوّتون لكشفه، ثم يحصل هو على فرصة أخيرة لتخمين الكلمة السرية!',
+    channel: true,
+    inline: 'ool',
+    ready: true
+  },
   {
     id: 'who_knows',
     emoji: '🤝',
@@ -568,6 +632,10 @@ interface BotUserRecord {
   wkGames?: number;
   wkWins?: number;
   wkCorrect?: number;
+  mfGames?: number;
+  mfWins?: number;
+  oolGames?: number;
+  oolWins?: number;
   owGames?: number;
   owWins?: number;
 }
@@ -646,6 +714,10 @@ export class TelegramBotManager {
   /** 🔢 جولات تحدي الحساب (Key: user id) */
   private mathGames: Map<string, MathGame.MathRound> = new Map();
   private wkGames: Map<string, WK.WKGame> = new Map();
+  private mafiaGames: Map<string, MF.MafiaGame> = new Map();
+  private oolGames: Map<string, OOL.OOLGame> = new Map();
+  private lastInlineDeployer?: { id: string; at: number };
+  private commandsSyncVer: number = 0;
   /** هل البيئة الخارجية (Cloudflare Durable Object Alarm) تدير المؤقت؟ */
   private externalScheduler: boolean = false;
   private localQuizTimer: any = null;
@@ -1249,6 +1321,9 @@ export class TelegramBotManager {
       song: Array.from(this.song.entries()),
       mathGames: Array.from(this.mathGames.entries()),
       wkGames: Array.from(this.wkGames.entries()),
+      mafiaGames: Array.from(this.mafiaGames.entries()),
+      oolGames: Array.from(this.oolGames.entries()),
+      commandsSyncVer: this.commandsSyncVer,
       pendingChannelGame: Array.from(this.pendingChannelGame.entries())
     };
   }
@@ -1280,6 +1355,9 @@ export class TelegramBotManager {
     if (Array.isArray(state.song)) this.song = new Map(state.song);
     if (Array.isArray(state.mathGames)) this.mathGames = new Map(state.mathGames);
     if (Array.isArray(state.wkGames)) this.wkGames = new Map(state.wkGames);
+    if (Array.isArray(state.mafiaGames)) this.mafiaGames = new Map(state.mafiaGames);
+    if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
+    if (typeof state.commandsSyncVer === 'number') this.commandsSyncVer = state.commandsSyncVer;
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
   }
 
@@ -1366,6 +1444,7 @@ export class TelegramBotManager {
       // ignore
     }
 
+    await this.syncBotCommands();
     this.isPolling = true;
     this.pollAbortController = new AbortController();
     this.runPollingLoop();
@@ -1401,6 +1480,7 @@ export class TelegramBotManager {
       const res = await fetch(`https://api.telegram.org/bot${this.token}/setWebhook?url=${encodeURIComponent(url)}`);
       const data = await res.json();
       if (data.ok) {
+        await this.syncBotCommands();
         this.isWebhook = true;
         this.webhookUrl = url;
         this.lastError = undefined;
@@ -1473,8 +1553,47 @@ export class TelegramBotManager {
   /**
    * Handle incoming Telegram Update (Webhook or Polling or Simulator)
    */
+  public async syncBotCommands(): Promise<void> {
+    if (!this.token) return;
+    const api = (method: string, body?: any) =>
+      fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      }).catch(() => null);
+
+    const scopes = [
+      { type: 'default' },
+      { type: 'all_private_chats' },
+      { type: 'all_group_chats' },
+      { type: 'all_chat_administrators' }
+    ];
+    for (const scope of scopes) {
+      for (const language_code of [undefined, 'ar', 'en']) {
+        await api('deleteMyCommands', language_code ? { scope, language_code } : { scope });
+      }
+    }
+    const onlyStart = [{ command: 'start', description: 'تشغيل البوت والقائمة الرئيسية' }];
+    for (const scope of [{ type: 'default' }, { type: 'all_private_chats' }]) {
+      for (const language_code of [undefined, 'ar', 'en']) {
+        await api(
+          'setMyCommands',
+          language_code ? { commands: onlyStart, scope, language_code } : { commands: onlyStart, scope }
+        );
+      }
+    }
+    await api('setChatMenuButton', { menu_button: { type: 'commands' } });
+    this.commandsSyncVer = 3;
+  }
+
+  private async ensureCommandsSynced(): Promise<void> {
+    if (this.commandsSyncVer === 3 || !this.token) return;
+    await this.syncBotCommands();
+  }
+
   public async handleUpdate(update: TelegramUpdate) {
     try {
+      await this.ensureCommandsSynced();
       const incoming = update.message || update.channel_post;
 
       // ---- bookkeeping: chats + users (used by the owner dashboard) ----
@@ -1647,6 +1766,10 @@ export class TelegramBotManager {
         }
         if (rawPayload.startsWith('wk_')) {
           await this.handleWhoKnowsPrivateReady(chatId, sender, rawPayload.slice(3));
+          return;
+        }
+        if (rawPayload.startsWith('mf_')) {
+          await this.handleMafiaPrivateReady(chatId, sender, rawPayload.slice(3));
           return;
         }
 
@@ -1882,6 +2005,16 @@ export class TelegramBotManager {
       await this.handleWhoKnowsCb(cb, data);
       return;
     }
+    // ---- 🕵️ المافيا ----
+    if (data.startsWith('mf:') || data.startsWith('mfn:')) {
+      await this.handleMafiaCb(cb, data);
+      return;
+    }
+    // ---- 🎭 منو برا السالفة؟ ----
+    if (data.startsWith('ool:')) {
+      await this.handleOOLCb(cb, data);
+      return;
+    }
 
 
     // Number chosen for a private clue (no-command flow) — this comes from the DM, not the game chat
@@ -2074,9 +2207,21 @@ export class TelegramBotManager {
 
     // 2. Start game
     if ((data === 'game:start' || data.startsWith('game:start:')) && game) {
-      // Only the owner (the admin who opened the lobby) may start the round.
-      if (game.createdBy && String(game.createdBy) !== String(userId)) {
-        await this.answerCallbackQuery(cb.id, '⚠️ لازم المشرف يبدأ اللعبة.', true);
+      const fullLobby = this.lobbyIsFull(game);
+      const isJoinedPlayer = game.players.some(p => String(p.id) === String(userId));
+      let allowedStarter =
+        !game.createdBy ||
+        String(game.createdBy) === String(userId) ||
+        this.isOwner(userId) ||
+        (fullLobby && isJoinedPlayer);
+      if (!allowedStarter) {
+        const admins = await this.getChatAdministrators(chatId);
+        if (admins.some(a => String(a?.user?.id || '') === String(userId))) {
+          allowedStarter = true;
+        }
+      }
+      if (!allowedStarter) {
+        await this.answerCallbackQuery(cb.id, '⚠️ المشرف أو أحد اللاعبين بعد اكتمال العدد يقدر يبدأ اللعبة.', true);
         return;
       }
 
@@ -2671,110 +2816,190 @@ export class TelegramBotManager {
   // ---------------------------------------------------------------------
 
   /** بطاقة النشر لكل لعبة (العنوان والوصف والنص اللي ينزل بالقناة لحظة الإرسال) */
-  private inlineDeployCard(gameId: 'codenames' | 'rps', rounds?: number): { title: string; desc: string; text: string } {
+  private inlineDeployCard(
+    gameId: string,
+    rounds?: number,
+    deployerId?: string
+  ): { title: string; desc: string; text: string; keyboard: any[][] } {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    const uid = deployerId ? `|${deployerId}` : '';
     if (gameId === 'rps') {
-      const n = rounds && [5, 10, 15].includes(rounds) ? rounds : 5;
-      const ar = n === 5 ? '٥' : n === 10 ? '١٠' : '١٥';
+      const r = rounds || 5;
+      const hidden = encodeHiddenTag(`rps:${r}${uid}`);
       return {
-        title: `✊ حجرة ورقة مقص — ${ar} راوندات`,
-        desc: 'أنزل المباراة هنا — اللاعبون يختارون من القناة نفسها!',
-        text:
-          `✊ *حجرة ورقة مقص (${n} راوندات) — تحضير المباراة…*\n` +
-          `_لحظة والبوت يجهّز اللوحة 🤖_`
+        title: `✊✋✌️ حجرة ورقة مقص (${r} راوندات)`,
+        desc: 'اضغط لإرسال اللعبة مباشرة للقناة',
+        text: `✊✋✌️ *حجرة ورقة مقص* (${r} راوندات)${hidden}\n${SEP}\n👥 *اللاعبون:* بانتظار الانضمام`,
+        keyboard: [[{ text: 'انضم', callback_data: 'rpsb:join' }]]
       };
     }
+    const hidden = encodeHiddenTag(`cn${uid}`);
     return {
       title: '🎮 كود نيمز (2 ضد 2)',
-      desc: 'نزّل لوبي جديد هنا — الأعضاء ينضمون بالأزرار',
+      desc: 'اضغط لإرسال اللعبة مباشرة للقناة',
       text:
-        `🎮 *كود نيمز — تحضير اللوبي…*\n` +
-        `_لحظة والبوت يجهّز اللوحة 🤖_`
+        `🕵️‍♂️ *لعبة كود نيمز (Codenames)* 🕵️‍♀️${hidden}\n` +
+        `${SEP}\n` +
+        `👥 *المنضمون:* بانتظار اختيار الفرق`,
+      keyboard: [
+        [{ text: 'انضم', callback_data: 'join:auto:auto' }],
+        [
+          { text: '⬜ عميل أزرق 🔵', callback_data: 'join:blue:operative' },
+          { text: '⬜ عميل أحمر 🔴', callback_data: 'join:red:operative' }
+        ],
+        [
+          { text: '⬜ جاسوس أزرق 🕵️', callback_data: 'join:blue:spymaster' },
+          { text: '⬜ جاسوس أحمر 🕵️', callback_data: 'join:red:spymaster' }
+        ]
+      ]
     };
   }
 
-  /** بطاقة لعبة جماعية من قائمة خيارات ( النص داخله ماركر gq:<kind> حتى البوت يتعرف عليها لما تنزل بالقناة) */
-  private gqCard(kind: string): any {
+  /** بطاقة لعبة جماعية نظيفة ١٠٠٪ بدون أي كود ظاهر أو نص تحضير */
+  private gqCard(kind: string, deployerId?: string): any {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    const uid = deployerId ? `|${deployerId}` : '';
     const k: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
       ? (kind as GG.QuizKind)
       : 'speed';
     const meta = GG.QUIZ_KINDS[k];
     const title = `${meta.emoji} ${meta.title}`;
+    const hidden = encodeHiddenTag(`gq:${k}${uid}`);
     return {
       type: 'article',
       id: `gq:${k}`,
       title,
-      description: 'لعبة جماعية — من لاعبين إلى ١٠ لاعبين',
+      description: 'اضغط لإرسال اللعبة مباشرة للقناة',
       input_message_content: {
-        message_text:
-          `${meta.emoji} *${meta.title} — تحضير اللعبة…*\n` +
-          `_لحظة والبوت يجهّز اللوحة 🤖_\n` +
-          '`gq:' + k + '`',
+        message_text: `${meta.emoji} *${meta.title}*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
         parse_mode: 'Markdown'
+      },
+      reply_markup: {
+        inline_keyboard: [[{ text: 'انضم', callback_data: 'gqj:auto' }]]
       }
     };
   }
 
-  /** بطاقة ماسترمايند */
-  private gqCardMM(): any {
+  /** بطاقة ماسترمايند نظيفة بدون أي كود ظاهر */
+  private gqCardMM(deployerId?: string): any {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    const uid = deployerId ? `|${deployerId}` : '';
+    const hidden = encodeHiddenTag(`gq:mm${uid}`);
     return {
       type: 'article',
       id: 'gq:mm',
       title: '🔐 ماسترمايند — كسر الرقم السري',
-      description: 'لعبة تخمين رقم سري جماعية — من لاعبين إلى ١٠ لاعبين',
+      description: 'اضغط لإرسال اللعبة مباشرة للقناة',
       input_message_content: {
-        message_text:
-          `🔐 *ماسترمايند — تحضير اللعبة…*\n` +
-          `_لحظة والبوت يجهّز الرقم السري 🤖_\n` +
-          '`gq:mm`',
+        message_text: `🔐 *ماسترمايند*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
         parse_mode: 'Markdown'
+      },
+      reply_markup: {
+        inline_keyboard: [[{ text: 'انضم', callback_data: 'mmj:auto' }]]
       }
     };
   }
 
-  /** المستخدم كتب @bot بمحادثة (بعد ما ضغط «العب بالقناة») — نرجّع البطاقات */
+  /** المستخدم اختار لعبة لتحويلها للقناة — البطاقة تنزل نظيفة وجاهزة من أول لحظة بدون أي كود ظاهر */
   private async handleInlineQuery(iq: TelegramInlineQuery) {
     const q = (iq.query || '').trim().toLowerCase();
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    if (iq.from && !iq.from.is_bot) {
+      this.trackUser(iq.from, false);
+      this.lastInlineDeployer = { id: String(iq.from.id), at: Date.now() };
+    }
+    const deployerId = iq.from?.id ? String(iq.from.id) : '';
+    const uid = deployerId ? `|${deployerId}` : '';
 
-    // ── بطاقة «منو يعرف الثاني أكثر؟» ──
+    // ── 🕵️ المافيا ──
+    if (q === 'mf' || q.includes('مافيا')) {
+      const hidden = encodeHiddenTag(`mf${uid}`);
+      await this.answerInlineQuery(iq.id, [
+        {
+          type: 'article',
+          id: 'mf',
+          title: '🕵️ لعبة المافيا',
+          description: 'اضغط لإرسال لعبة المافيا مباشرة للقناة (٤ – ١٢ لاعباً)',
+          input_message_content: {
+            message_text: `🕵️ *لعبة المافيا*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
+            parse_mode: 'Markdown'
+          },
+          reply_markup: {
+            inline_keyboard: [[{ text: 'انضم', callback_data: 'mf:j:auto' }]]
+          }
+        }
+      ]);
+      return;
+    }
+
+    // ── 🎭 منو برا السالفة؟ ──
+    if (q === 'ool' || q.includes('السالفة') || q.includes('السالفه')) {
+      const hidden = encodeHiddenTag(`ool${uid}`);
+      await this.answerInlineQuery(iq.id, [
+        {
+          type: 'article',
+          id: 'ool',
+          title: '🎭 منو برا السالفة؟',
+          description: 'اضغط لإرسال اللعبة مباشرة للقناة (٣ – ١٠ لاعبين)',
+          input_message_content: {
+            message_text: `🎭 *منو برا السالفة؟*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
+            parse_mode: 'Markdown'
+          },
+          reply_markup: {
+            inline_keyboard: [[{ text: 'انضم', callback_data: 'ool:j:auto' }]]
+          }
+        }
+      ]);
+      return;
+    }
+
+    // ── 🤝 منو يعرف الثاني أكثر؟ ──
     if (q === 'wk' || q.includes('يعرف')) {
+      const hidden = encodeHiddenTag(`wk${uid}`);
       await this.answerInlineQuery(iq.id, [
         {
           type: 'article',
           id: 'wk',
           title: '🤝 منو يعرف الثاني أكثر؟',
-          description: 'تحدي شخصين — البوت يسألهم بالخاص ويكشف البطاقات بالقناة',
+          description: 'تحدي شخصين — اضغط لإرسال اللعبة مباشرة للقناة',
           input_message_content: {
-            message_text:
-              '🤝 *منو يعرف الثاني أكثر؟ — تحضير التحدي…*\n' +
-              '_لحظة والبوت يجهّز اللوحة 🤖_\n' +
-              '`wk:start`',
+            message_text: `🤝 *منو يعرف الثاني أكثر؟*${hidden}\n${SEP}\n👥 *اللاعبون:* بانتظار الانضمام`,
             parse_mode: 'Markdown'
+          },
+          reply_markup: {
+            inline_keyboard: [[{ text: 'انضم', callback_data: 'wkj:auto' }]]
           }
         }
       ]);
       return;
     }
 
+    // ── 🟩 خمّن الكلمة ──
     if (q === 'wl') {
+      const sample = Wordle.createGame();
+      const hidden = encodeHiddenTag(`wl${uid}`);
       await this.answerInlineQuery(iq.id, [
         {
           type: 'article',
           id: 'wl:start',
           title: '🟩 خمّن الكلمة (٥ حروف)',
-          description: 'أنزل لوحة خمّن الكلمة هنا — الأعضاء يخمنون الحروف بالقناة!',
+          description: 'اضغط لإرسال لوحة خمّن الكلمة مباشرة للقناة',
           input_message_content: {
-            message_text: '🟩 *خمّن الكلمة — تحضير اللوحة…*\n`wl:start`',
+            message_text: `${Wordle.renderMessage(sample)}${hidden}`,
             parse_mode: 'Markdown'
+          },
+          reply_markup: {
+            inline_keyboard: Wordle.keyboard(sample)
           }
         }
       ]);
       return;
     }
 
-    // ── بطاقة لعبة جماعية (gq speed / gq trivia / gq country … / gq mm) ──
+    // ── 🎉 ألعاب الجماعة (gq speed / gq trivia / gq player / gq poet / gq song_ar / gq song_en / gq mm …) ──
     if (q.startsWith('gq')) {
       const kind = q.replace(/^gq\s*/, '').trim() || 'speed';
-      const card = kind === 'mm' ? this.gqCardMM() : this.gqCard(kind);
+      const card = kind === 'mm' ? this.gqCardMM(deployerId) : this.gqCard(kind, deployerId);
       await this.answerInlineQuery(iq.id, [card]);
       return;
     }
@@ -2784,35 +3009,64 @@ export class TelegramBotManager {
 
     const results: any[] = [];
     if (wantsCn) {
-      const card = this.inlineDeployCard('codenames');
+      const card = this.inlineDeployCard('codenames', undefined, deployerId);
       results.push({
         type: 'article',
         id: 'cn',
         title: card.title,
         description: card.desc,
-        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+        input_message_content: { message_text: card.text, parse_mode: 'Markdown' },
+        reply_markup: { inline_keyboard: card.keyboard }
       });
     }
     if (wantsRps) {
       const r = parseInt((q.match(/(\d+)/) || [])[1] || '5', 10);
       const rounds = [5, 10, 15].includes(r) ? r : 5;
-      const card = this.inlineDeployCard('rps', rounds);
+      const card = this.inlineDeployCard('rps', rounds, deployerId);
       results.push({
         type: 'article',
         id: `rps:${rounds}`,
         title: card.title,
         description: card.desc,
-        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+        input_message_content: { message_text: card.text, parse_mode: 'Markdown' },
+        reply_markup: { inline_keyboard: card.keyboard }
+      });
+    }
+    if (q === '') {
+      const mfHidden = encodeHiddenTag(`mf${uid}`);
+      results.push({
+        type: 'article',
+        id: 'mf',
+        title: '🕵️ لعبة المافيا',
+        description: 'اضغط لإرسال لعبة المافيا مباشرة للقناة',
+        input_message_content: {
+          message_text: `🕵️ *لعبة المافيا*${mfHidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
+          parse_mode: 'Markdown'
+        },
+        reply_markup: { inline_keyboard: [[{ text: 'انضم', callback_data: 'mf:j:auto' }]] }
+      });
+      const oolHidden = encodeHiddenTag(`ool${uid}`);
+      results.push({
+        type: 'article',
+        id: 'ool',
+        title: '🎭 منو برا السالفة؟',
+        description: 'اضغط لإرسال اللعبة مباشرة للقناة',
+        input_message_content: {
+          message_text: `🎭 *منو برا السالفة؟*${oolHidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
+          parse_mode: 'Markdown'
+        },
+        reply_markup: { inline_keyboard: [[{ text: 'انضم', callback_data: 'ool:j:auto' }]] }
       });
     }
     if (!results.length) {
-      const card = this.inlineDeployCard('codenames');
+      const card = this.inlineDeployCard('codenames', undefined, deployerId);
       results.push({
         type: 'article',
         id: 'cn',
         title: card.title,
         description: card.desc,
-        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+        input_message_content: { message_text: card.text, parse_mode: 'Markdown' },
+        reply_markup: { inline_keyboard: card.keyboard }
       });
     }
 
@@ -2821,18 +3075,36 @@ export class TelegramBotManager {
 
   /**
    * لحظة نزول بطاقة الإنلاين بقناة/كروب (via_bot):
-   * نمسح حالتها الساكنة ونحرّرها لتصير لوحة لعب حقيقية بنفس الرسالة.
+   * نقرأ العلامة المخفية غير المرئية (Zero-Width) ونربط اللوحة بالمحادثة فوراً ونجلس الناشر تلقائياً حتى بالقنوات العامة.
    */
   private async handleInlineLanding(message: TelegramMessage) {
     const text = message.text || '';
-    const gqMark = text.match(/gq:(\w+)/);
-    const isWkCard = text.includes('wk:start') || (text.includes('منو يعرف الثاني') && text.includes('تحضير'));
-    const isWordleCard = text.includes('wl:start') || (text.includes('خمّن الكلمة') && text.includes('تحضير'));
-    const isCodenamesCard = text.includes('كود نيمز') && text.includes('تحضير');
-    const isRpsCard = text.includes('حجرة ورقة مقص') && text.includes('تحضير');
-    if (!gqMark && !isWkCard && !isWordleCard && !isCodenamesCard && !isRpsCard) return;
+    const hidden = decodeHiddenTag(text);
+    const hiddenTag = hidden?.tag || '';
 
-    // نتأكد إنها منشورة عبر بوتنا نفسه
+    let gqMark: string[] | null = hiddenTag.startsWith('gq:')
+      ? [hiddenTag, hiddenTag.slice(3)]
+      : text.match(/gq:(\w+)/);
+    if (!gqMark && text.includes('ماسترمايند')) {
+      gqMark = ['gq:mm', 'mm'];
+    }
+    if (!gqMark) {
+      for (const k of Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]) {
+        if (text.includes(GG.QUIZ_KINDS[k].title)) {
+          gqMark = [`gq:${k}`, k];
+          break;
+        }
+      }
+    }
+    const isMafiaCard = hiddenTag === 'mf' || (text.includes('لعبة المافيا') && text.includes('المنضمون'));
+    const isOOLCard = hiddenTag === 'ool' || (text.includes('منو برا السالفة') && text.includes('المنضمون'));
+    const isWkCard = hiddenTag === 'wk' || text.includes('wk:start') || (text.includes('منو يعرف الثاني') && (text.includes('تحضير') || text.includes('بانتظار')));
+    const isWordleCard = hiddenTag === 'wl' || text.includes('wl:start') || text.includes('خمّن الكلمة');
+    const isCodenamesCard = hiddenTag === 'cn' || text.includes('كود نيمز');
+    const isRpsCard = hiddenTag.startsWith('rps:') || text.includes('حجرة ورقة مقص');
+
+    if (!gqMark && !isMafiaCard && !isOOLCard && !isWkCard && !isWordleCard && !isCodenamesCard && !isRpsCard) return;
+
     await this.ensureBotInfo();
     const ours =
       String(message.via_bot?.id || '') === String(this.botInfo?.id || '') ||
@@ -2840,6 +3112,53 @@ export class TelegramBotManager {
     if (!ours) return;
 
     const chatId = String(message.chat.id);
+    const recentDeployer =
+      this.lastInlineDeployer && Date.now() - this.lastInlineDeployer.at < 30_000
+        ? this.lastInlineDeployer.id
+        : '';
+    const deployerUserId = message.from?.id ? String(message.from.id) : hidden?.deployerId || recentDeployer;
+    const deployerRecord = deployerUserId ? this.users.get(deployerUserId) : undefined;
+    const deployerName = message.from?.first_name || deployerRecord?.name || 'الناشر';
+    const deployerUsername = message.from?.username || deployerRecord?.username;
+
+    // ── 🕵️ المافيا ──
+    if (isMafiaCard) {
+      const mfGame = MF.createMafiaLobby(chatId, message.chat.title || 'المحادثة', deployerUserId || undefined);
+      mfGame.messageId = message.message_id;
+      if (deployerUserId) {
+        MF.mafiaJoin(mfGame, deployerUserId, deployerName);
+      }
+      this.mafiaGames.set(chatId, mfGame);
+      const botUser = await this.getBotUsername();
+      const res = await this.editMessageText(
+        chatId,
+        message.message_id,
+        await this.withBotFooter(MF.renderMafiaBoard(mfGame), true),
+        MF.mafiaBoardKeyboard(mfGame, botUser),
+        'MarkdownV2'
+      );
+      if (!res?.ok) this.mafiaGames.delete(chatId);
+      return;
+    }
+
+    // ── 🎭 منو برا السالفة؟ ──
+    if (isOOLCard) {
+      const oolGame = OOL.createOOLLobby(chatId, message.chat.title || 'المحادثة', deployerUserId || undefined);
+      oolGame.messageId = message.message_id;
+      if (deployerUserId) {
+        OOL.oolJoin(oolGame, deployerUserId, deployerName);
+      }
+      this.oolGames.set(chatId, oolGame);
+      const res = await this.editMessageText(
+        chatId,
+        message.message_id,
+        await this.withBotFooter(OOL.renderOOLBoard(oolGame), true),
+        OOL.oolBoardKeyboard(oolGame),
+        'MarkdownV2'
+      );
+      if (!res?.ok) this.oolGames.delete(chatId);
+      return;
+    }
 
     // ── 🟩 خمّن الكلمة بالقناة ──
     if (isWordleCard) {
@@ -2859,8 +3178,8 @@ export class TelegramBotManager {
     if (isWkCard) {
       const wkGame = WK.createWKGame(chatId, message.chat.title || 'المحادثة');
       wkGame.messageId = message.message_id;
-      if (message.from?.id) {
-        WK.wkJoin(wkGame, String(message.from.id), message.from.first_name || 'الناشر');
+      if (deployerUserId) {
+        WK.wkJoin(wkGame, deployerUserId, deployerName);
       }
       this.wkGames.set(chatId, wkGame);
       const botUser = await this.getBotUsername();
@@ -2878,16 +3197,14 @@ export class TelegramBotManager {
     // ── 🎉 ألعاب الجماعة (أسئلة + ماسترمايند) ──
     if (gqMark) {
       const kind = gqMark[1];
-
-      // نبقي الرسائل السابقة موجودة بالقناة دون حذف — نستبدل المؤشر النشط فقط
       this.gqGames.delete(chatId);
       this.mmGames.delete(chatId);
 
       if (kind === 'mm') {
         const game = GG.mmCreate(chatId, message.chat.title || 'المحادثة');
         game.messageId = message.message_id;
-        if (message.from?.id) {
-          GG.mmJoin(game, String(message.from.id), message.from.first_name || 'الناشر');
+        if (deployerUserId) {
+          GG.mmJoin(game, deployerUserId, deployerName);
         }
         this.mmGames.set(chatId, game);
         const res = await this.editMessageText(
@@ -2906,9 +3223,8 @@ export class TelegramBotManager {
         : 'speed';
       const game = GG.createQuiz(chatId, message.chat.title || 'المحادثة', kind2);
       game.messageId = message.message_id;
-      // 🤝 اللي نزّل البطولة مشارك تلقائياً — مو لازم يدوس انضم لنفسه
-      if (message.from?.id) {
-        GG.quizJoin(game, String(message.from.id), message.from.first_name || 'الناشر');
+      if (deployerUserId) {
+        GG.quizJoin(game, deployerUserId, deployerName);
       }
       this.gqGames.set(chatId, game);
       const res = await this.editMessageText(
@@ -2922,20 +3238,16 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── حجرة ورقة مقص ──
+    // ── ✊✋✌️ حجرة ورقة مقص ──
     if (isRpsCard) {
+      const rFromHidden = hiddenTag.startsWith('rps:') ? parseInt(hiddenTag.split(':')[1] || '5', 10) : NaN;
       const rMatch = text.match(/(\d+)\s*راوند/);
-      const r = rMatch ? parseInt(rMatch[1], 10) : 5;
+      const r = !Number.isNaN(rFromHidden) ? rFromHidden : rMatch ? parseInt(rMatch[1], 10) : 5;
       const rounds = [5, 10, 15].includes(r) ? r : 5;
 
-      let game = RPS.createGame(
-        chatId,
-        message.chat.title || 'المحادثة',
-        rounds,
-        message.from ? String(message.from.id) : ''
-      );
-      if (message.from?.id) {
-        game = RPS.join(game, String(message.from.id), message.from.first_name || 'الناشر');
+      let game = RPS.createGame(chatId, message.chat.title || 'المحادثة', rounds, deployerUserId);
+      if (deployerUserId) {
+        game = RPS.join(game, deployerUserId, deployerName);
       }
       game.messageId = message.message_id;
       this.rpsGames.set(chatId, game);
@@ -2948,22 +3260,21 @@ export class TelegramBotManager {
         'MarkdownV2'
       );
       if (!res?.ok) {
-        // البوت ما عنده صلاحية تعديل بالقناة → البطاقة تبقى ساكنة وما نحفظ لعبة
         this.rpsGames.delete(chatId);
       }
       return;
     }
 
-    // ── كود نيمز ──
+    // ── ⚔️ كود نيمز ──
     const existing = this.games.get(chatId);
     if (existing && existing.status === 'lobby' && existing.messageId && existing.messageId !== message.message_id) {
       this.games.delete(chatId);
     }
 
-    let creator: number | string | undefined = message.from?.id;
+    let creator: number | string | undefined = deployerUserId || undefined;
     if (!creator) {
       const admins = await this.getChatAdministrators(chatId);
-      creator = admins.find(a => a?.user?.id)?.user?.id;
+      creator = admins.find(a => a?.user?.id && !a.user.is_bot)?.user?.id;
     }
 
     const game = CodenamesEngine.createLobby(
@@ -2975,28 +3286,17 @@ export class TelegramBotManager {
     );
     game.messageId = message.message_id;
 
-    // 🤝 الناشر ينجلس تلقائياً بأول مقعد فاضي (عملاء أولاً، جواسيس بعدين)
+    // 🤝 الناشر يجلس تلقائياً بالمقعد الأول حتى بالقنوات العامة (channel_post)
     let seated: CodenamesGame = game;
-    if (message.from?.id) {
-      const seats: Array<[Team, PlayerRole]> = [
-        ['blue', 'operative'],
-        ['red', 'operative'],
-        ['blue', 'spymaster'],
-        ['red', 'spymaster']
-      ];
-      for (const [team, role] of seats) {
-        if (!seated.players.some(pl => pl.team === team && pl.role === role)) {
-          const joined = CodenamesEngine.joinGame(seated, {
-            id: message.from.id,
-            name: message.from.first_name || 'الناشر',
-            username: message.from.username,
-            team,
-            role
-          });
-          if (joined.success) seated = joined.game;
-          break;
-        }
-      }
+    if (deployerUserId) {
+      const joined = CodenamesEngine.joinGame(seated, {
+        id: deployerUserId,
+        name: deployerName,
+        username: deployerUsername,
+        team: 'auto' as any,
+        role: 'auto' as any
+      });
+      if (joined.success) seated = joined.game;
     }
     this.games.set(chatId, seated);
 
@@ -3031,6 +3331,16 @@ export class TelegramBotManager {
       } else if (g.status === 'result') {
         const d = g.resultDeadline ?? (g.resultDeadline = now + GG.RESULT_MS);
         if (d < earliest) earliest = d;
+      }
+    }
+    for (const mf of this.mafiaGames.values()) {
+      if ((mf.status === 'night' || mf.status === 'day') && mf.phaseDeadline !== undefined) {
+        if (mf.phaseDeadline < earliest) earliest = mf.phaseDeadline;
+      }
+    }
+    for (const ool of this.oolGames.values()) {
+      if ((ool.status === 'voting' || ool.status === 'guessing') && ool.phaseDeadline !== undefined) {
+        if (ool.phaseDeadline < earliest) earliest = ool.phaseDeadline;
       }
     }
     return Number.isFinite(earliest) ? earliest : null;
@@ -3151,6 +3461,36 @@ export class TelegramBotManager {
       }
       await this.paintQuiz(g);
     }
+
+    for (const mf of Array.from(this.mafiaGames.values())) {
+      if (mf.phaseDeadline === undefined || now < mf.phaseDeadline) continue;
+      if (mf.status === 'night') {
+        const nextSt = MF.resolveNight(mf);
+        if (nextSt === 'finished') this.recordMafiaFinish(mf);
+        await this.paintMafia(mf);
+      } else if (mf.status === 'day') {
+        const nextSt = MF.resolveDay(mf);
+        if (nextSt === 'finished') {
+          this.recordMafiaFinish(mf);
+        } else if (nextSt === 'night') {
+          await this.sendMafiaNightPrompts(mf);
+        }
+        await this.paintMafia(mf);
+      }
+    }
+
+    for (const ool of Array.from(this.oolGames.values())) {
+      if (ool.phaseDeadline === undefined || now < ool.phaseDeadline) continue;
+      if (ool.status === 'voting') {
+        OOL.oolFinishVoting(ool);
+        await this.paintOOL(ool);
+      } else if (ool.status === 'guessing') {
+        OOL.oolTimeoutGuess(ool);
+        this.recordOOLFinish(ool);
+        await this.paintOOL(ool);
+      }
+    }
+
     this.scheduleLocalQuizTimer();
   }
 
@@ -3644,6 +3984,76 @@ export class TelegramBotManager {
         `🥇 *المتصدرون:*\n${lines}` +
         (bottom ? `\n${bottom}` : '');
 
+      return { text, keyboard: [backRow] };
+    }
+
+    // 🕵️ إحصائيات المافيا
+    if (gameId === 'mafia') {
+      const players = n.users
+        .filter(u => (u.mfGames || 0) > 0)
+        .sort((a, b) => (b.mfWins || 0) - (a.mfWins || 0));
+      const totalPlayed = players.reduce((acc, u) => acc + (u.mfGames || 0), 0);
+      const totalWins = players.reduce((acc, u) => acc + (u.mfWins || 0), 0);
+      const top = players.slice(0, 10);
+      const lines = top.length
+        ? top.map((u, i) => this.quoteRow(i + 1, u.name, `(🏆 ${u.mfWins || 0} فوز)`)).join('\n')
+        : '_لا يوجد متصدرون بعد_';
+      const myGames = myRec?.mfGames || 0;
+      const myWins = myRec?.mfWins || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'فوز',
+        statLines: [
+          `🎮 مبارياتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`
+        ],
+        board: players.map(u => ({ id: u.id, score: u.mfWins || 0 }))
+      });
+      const text =
+        `🕵️ *إحصائيات المافيا*\n` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎮 المشاركات المكتملة: *${totalPlayed}*\n` +
+        `🏆 إجمالي مرات الفوز: *${totalWins}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
+      return { text, keyboard: [backRow] };
+    }
+
+    // 🎭 إحصائيات منو برا السالفة؟
+    if (gameId === 'out_of_loop') {
+      const players = n.users
+        .filter(u => (u.oolGames || 0) > 0)
+        .sort((a, b) => (b.oolWins || 0) - (a.oolWins || 0));
+      const totalPlayed = players.reduce((acc, u) => acc + (u.oolGames || 0), 0);
+      const totalWins = players.reduce((acc, u) => acc + (u.oolWins || 0), 0);
+      const top = players.slice(0, 10);
+      const lines = top.length
+        ? top.map((u, i) => this.quoteRow(i + 1, u.name, `(🏆 ${u.oolWins || 0} فوز)`)).join('\n')
+        : '_لا يوجد متصدرون بعد_';
+      const myGames = myRec?.oolGames || 0;
+      const myWins = myRec?.oolWins || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'فوز',
+        statLines: [
+          `🎮 مبارياتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`
+        ],
+        board: players.map(u => ({ id: u.id, score: u.oolWins || 0 }))
+      });
+      const text =
+        `🎭 *إحصائيات منو برا السالفة؟*\n` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎮 المشاركات المكتملة: *${totalPlayed}*\n` +
+        `🏆 إجمالي مرات الفوز: *${totalWins}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
       return { text, keyboard: [backRow] };
     }
 
@@ -4823,6 +5233,395 @@ export class TelegramBotManager {
   // ---------------------------------------------------------------------
   // 🤝 «منو يعرف الثاني أكثر؟» — هيكل خاص كامل (قناة + رسائل بالخاص + كشف البطاقات)
   // ---------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------
+  // 🕵️ «المافيا» — لعبة جماعية متكاملة بالقناة + الخاص
+  // ---------------------------------------------------------------------
+
+  private async paintMafia(game: MF.MafiaGame) {
+    const botUser = await this.getBotUsername();
+    const text = await this.withBotFooter(MF.renderMafiaBoard(game), true);
+    const kb = MF.mafiaBoardKeyboard(game, botUser);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, text, kb, 'MarkdownV2');
+    if (sent?.result?.message_id) {
+      game.messageId = sent.result.message_id;
+      this.mafiaGames.set(game.chatId, game);
+    }
+  }
+
+  private async sendMafiaNightPrompts(game: MF.MafiaGame) {
+    for (const p of game.players) {
+      const prompt = MF.buildNightDmPrompt(game, p);
+      if (prompt) {
+        await this.sendMessage(p.id, prompt.text, prompt.keyboard);
+      }
+    }
+  }
+
+  private async handleMafiaPrivateReady(dmChatId: string, sender?: TelegramUser, gameChatId?: string) {
+    if (!sender || !gameChatId) return;
+    const game = this.mafiaGames.get(gameChatId);
+    if (!game) {
+      await this.sendMessage(dmChatId, '✅ تم فتح الخاص! ارجع للقناة وانضم للجولة.');
+      return;
+    }
+    const me = game.players.find(p => p.id === String(sender.id));
+    if (!me) {
+      await this.sendMessage(dmChatId, '✅ تم تفعيل الخاص! اضغط «انضم» بلوحة المافيا بالقناة.');
+      return;
+    }
+    if (game.status === 'lobby') {
+      await this.sendMessage(dmChatId, '✅ تم ربط الخاص! أول ما تبدأ لعبة المافيا يوصلك دورك السري هنا فوراً.');
+      return;
+    }
+    await this.sendMessage(dmChatId, MF.secretRolePopupText(game, me.id));
+    const prompt = MF.buildNightDmPrompt(game, me);
+    if (prompt) {
+      await this.sendMessage(dmChatId, prompt.text, prompt.keyboard);
+    }
+  }
+
+  private recordMafiaFinish(game: MF.MafiaGame) {
+    if (game.rewarded || !game.players.length || !game.winner) return;
+    game.rewarded = true;
+    const citizensWon = game.winner === 'citizens';
+    const avgOpponentLevel =
+      game.players.reduce((s, p) => s + Economy.levelFromXp(this.users.get(p.id)?.xp || 0), 0) /
+      Math.max(1, game.players.length);
+
+    for (const p of game.players) {
+      const rec = this.ensureUser(p.id, p.name);
+      const won = citizensWon ? p.role !== 'mafia' : p.role === 'mafia';
+      rec.mfGames = (rec.mfGames || 0) + 1;
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      rec.points = (rec.points || 0) + (won ? 5 : 1);
+      if (won) {
+        rec.mfWins = (rec.mfWins || 0) + 1;
+        rec.onlineWins = (rec.onlineWins || 0) + 1;
+        const money = Economy.moneyForWin({
+          gameId: 'mafia',
+          performance: p.alive ? 1 : 0.7,
+          level: Economy.levelFromXp(rec.xp || 0),
+          opponentLevel: avgOpponentLevel,
+          earnedToday: Economy.earnedToday(rec)
+        });
+        if (money > 0) {
+          rec.money = Economy.roundMoney((rec.money || 0) + money);
+          Economy.addEarned(rec, money);
+        }
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('mafia', true, p.alive ? 1 : 0.7);
+      } else {
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('mafia', false, 0.5);
+      }
+      this.users.set(rec.id, rec);
+    }
+  }
+
+  private async handleMafiaCb(cb: TelegramCallbackQuery, data: string) {
+    const userId = String(cb.from.id);
+    const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
+
+    // حركات الليل بالخاص: mfn:k|s|c:<chatId>:<targetIdx>
+    if (data.startsWith('mfn:')) {
+      const parts = data.split(':');
+      const action = parts[1];
+      const targetIdx = parseInt(parts[parts.length - 1], 10);
+      const gameChatId = parts.slice(2, -1).join(':');
+      const game = this.mafiaGames.get(gameChatId);
+      if (!game || game.status !== 'night') {
+        await this.answerCallbackQuery(cb.id, 'انتهت الليلة بالفعل.', true);
+        return;
+      }
+      const actor = game.players.find(p => p.id === userId && p.alive);
+      const target = game.players[targetIdx];
+      if (!actor || !target || !target.alive) {
+        await this.answerCallbackQuery(cb.id, 'اختيار غير متاح.', true);
+        return;
+      }
+
+      if (action === 'k' && actor.role === 'mafia') {
+        game.nightKills[actor.id] = target.id;
+        if (cb.message?.message_id) {
+          await this.editMessageText(userId, cb.message.message_id, `🔪 اخترت تصفية: *${this.mdSafe(target.name)}*`);
+        }
+        await this.answerCallbackQuery(cb.id, `🔪 تم اختيار ${target.name}`);
+      } else if (action === 's' && actor.role === 'doctor') {
+        game.doctorSave = target.id;
+        if (cb.message?.message_id) {
+          await this.editMessageText(userId, cb.message.message_id, `🩺 اخترت حماية: *${this.mdSafe(target.name)}*`);
+        }
+        await this.answerCallbackQuery(cb.id, `🩺 تمت حماية ${target.name}`);
+      } else if (action === 'c' && actor.role === 'detective') {
+        game.detectiveChecked = true;
+        const verdict = target.role === 'mafia' ? '🔪 مافيا!' : '✅ بريء';
+        game.detectiveNotes.push(`${target.name}: ${verdict}`);
+        if (cb.message?.message_id) {
+          await this.editMessageText(
+            userId,
+            cb.message.message_id,
+            `🔍 نتيجة فحص *${this.mdSafe(target.name)}*: *${verdict}*`
+          );
+        }
+        await this.answerCallbackQuery(cb.id, `🔍 ${target.name}: ${verdict}`, true);
+      } else {
+        await this.answerCallbackQuery(cb.id, 'غير مسموح.', true);
+        return;
+      }
+
+      if (MF.isNightComplete(game)) {
+        const nextSt = MF.resolveNight(game);
+        if (nextSt === 'finished') this.recordMafiaFinish(game);
+        await this.paintMafia(game);
+      }
+      this.scheduleLocalQuizTimer();
+      return;
+    }
+
+    // أزرار القناة: mf:j|s|r|v|n:<chatId>[:extra]
+    const parts = data.split(':');
+    const op = parts[1];
+    const hasExtra = op === 'v';
+    const extra = hasExtra ? parts[parts.length - 1] : '';
+    const rawChat = hasExtra ? parts.slice(2, -1).join(':') : parts.slice(2).join(':');
+    const chatId = rawChat === 'auto' || !rawChat ? String(cb.message?.chat.id || '') : rawChat;
+    if (!chatId) return;
+
+    let game = this.mafiaGames.get(chatId);
+    if (!game && (op === 'j' || op === 'n')) {
+      game = MF.createMafiaLobby(chatId, cb.message?.chat.title || 'المحادثة', userId);
+      if (cb.message?.message_id && op === 'j') game.messageId = cb.message.message_id;
+      this.mafiaGames.set(chatId, game);
+    }
+
+    if (op === 'n') {
+      const fresh = MF.createMafiaLobby(chatId, cb.message?.chat.title || 'المحادثة', userId);
+      MF.mafiaJoin(fresh, userId, userName);
+      this.mafiaGames.set(chatId, fresh);
+      const botUser = await this.getBotUsername();
+      const sent = await this.sendMessage(
+        chatId,
+        await this.withBotFooter(MF.renderMafiaBoard(fresh), true),
+        MF.mafiaBoardKeyboard(fresh, botUser),
+        'MarkdownV2'
+      );
+      if (sent?.result?.message_id) {
+        fresh.messageId = sent.result.message_id;
+        this.mafiaGames.set(chatId, fresh);
+      }
+      await this.answerCallbackQuery(cb.id, '🕵️ تم فتح لوبي مافيا جديد!');
+      return;
+    }
+
+    if (!game) {
+      await this.answerCallbackQuery(cb.id, 'انتهت هذه الجولة.', true);
+      return;
+    }
+    if (cb.message?.message_id && !game.messageId) game.messageId = cb.message.message_id;
+
+    if (op === 'j') {
+      const r = MF.mafiaJoin(game, userId, userName);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) await this.paintMafia(game);
+      return;
+    }
+
+    if (op === 's') {
+      const r = MF.mafiaStart(game);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) {
+        // نرسل لكل لاعب دوره السري بالخاص + قائمة الحركة الليلية للأدوار الليلية
+        for (const p of game.players) {
+          await this.sendMessage(p.id, MF.secretRolePopupText(game, p.id));
+        }
+        await this.sendMafiaNightPrompts(game);
+        await this.paintMafia(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+
+    if (op === 'r') {
+      const popup = MF.secretRolePopupText(game, userId);
+      const me = game.players.find(p => p.id === userId);
+      if (me && game.status === 'night') {
+        const prompt = MF.buildNightDmPrompt(game, me);
+        if (prompt) {
+          await this.sendMessage(userId, prompt.text, prompt.keyboard);
+        }
+      }
+      await this.answerCallbackQuery(cb.id, popup, true);
+      return;
+    }
+
+    if (op === 'v') {
+      const targetId = extra === 'skip' ? 'skip' : game.players[parseInt(extra, 10)]?.id || '';
+      const r = MF.mafiaVoteDay(game, userId, targetId);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) {
+        if (r.allVoted) {
+          const nextSt = MF.resolveDay(game);
+          if (nextSt === 'finished') {
+            this.recordMafiaFinish(game);
+          } else if (nextSt === 'night') {
+            await this.sendMafiaNightPrompts(game);
+          }
+        }
+        await this.paintMafia(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🎭 «منو برا السالفة؟» — لعبة جماعية بالقناة
+  // ---------------------------------------------------------------------
+
+  private async paintOOL(game: OOL.OOLGame) {
+    const text = await this.withBotFooter(OOL.renderOOLBoard(game), true);
+    const kb = OOL.oolBoardKeyboard(game);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, text, kb, 'MarkdownV2');
+    if (sent?.result?.message_id) {
+      game.messageId = sent.result.message_id;
+      this.oolGames.set(game.chatId, game);
+    }
+  }
+
+  private recordOOLFinish(game: OOL.OOLGame) {
+    if (game.rewarded || !game.players.length) return;
+    game.rewarded = true;
+    const topScore = Math.max(0, ...game.players.map(p => p.score));
+    const avgOpponentLevel =
+      game.players.reduce((s, p) => s + Economy.levelFromXp(this.users.get(p.id)?.xp || 0), 0) /
+      Math.max(1, game.players.length);
+
+    for (const p of game.players) {
+      const rec = this.ensureUser(p.id, p.name);
+      const won = topScore > 0 && p.score === topScore;
+      rec.oolGames = (rec.oolGames || 0) + 1;
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      rec.points = (rec.points || 0) + p.score + (won ? 3 : 0);
+      if (won) {
+        rec.oolWins = (rec.oolWins || 0) + 1;
+        rec.onlineWins = (rec.onlineWins || 0) + 1;
+        const money = Economy.moneyForWin({
+          gameId: 'out_of_loop',
+          performance: Math.min(1, Math.max(0.5, p.score / 3)),
+          level: Economy.levelFromXp(rec.xp || 0),
+          opponentLevel: avgOpponentLevel,
+          earnedToday: Economy.earnedToday(rec)
+        });
+        if (money > 0) {
+          rec.money = Economy.roundMoney((rec.money || 0) + money);
+          Economy.addEarned(rec, money);
+        }
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('out_of_loop', true, 0.9);
+      } else {
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('out_of_loop', false, 0.5);
+      }
+      this.users.set(rec.id, rec);
+    }
+  }
+
+  private async handleOOLCb(cb: TelegramCallbackQuery, data: string) {
+    const userId = String(cb.from.id);
+    const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
+    const parts = data.split(':');
+    const op = parts[1];
+    const hasIdx = op === 'v' || op === 'g';
+    const idx = hasIdx ? parseInt(parts[parts.length - 1], 10) : -1;
+    const rawChat = hasIdx ? parts.slice(2, -1).join(':') : parts.slice(2).join(':');
+    const chatId = rawChat === 'auto' || !rawChat ? String(cb.message?.chat.id || '') : rawChat;
+    if (!chatId) return;
+
+    let game = this.oolGames.get(chatId);
+    if (!game && op === 'j') {
+      game = OOL.createOOLLobby(chatId, cb.message?.chat.title || 'المحادثة', userId);
+      if (cb.message?.message_id) game.messageId = cb.message.message_id;
+      this.oolGames.set(chatId, game);
+    }
+
+    if (op === 'n') {
+      const fresh = OOL.createOOLLobby(chatId, cb.message?.chat.title || 'المحادثة', userId);
+      OOL.oolJoin(fresh, userId, userName);
+      this.oolGames.set(chatId, fresh);
+      const sent = await this.sendMessage(
+        chatId,
+        await this.withBotFooter(OOL.renderOOLBoard(fresh), true),
+        OOL.oolBoardKeyboard(fresh),
+        'MarkdownV2'
+      );
+      if (sent?.result?.message_id) {
+        fresh.messageId = sent.result.message_id;
+        this.oolGames.set(chatId, fresh);
+      }
+      await this.answerCallbackQuery(cb.id, '🎭 تم فتح جولة جديدة!');
+      return;
+    }
+
+    if (!game) {
+      await this.answerCallbackQuery(cb.id, 'انتهت هذه الجولة.', true);
+      return;
+    }
+    if (cb.message?.message_id && !game.messageId) game.messageId = cb.message.message_id;
+
+    if (op === 'j') {
+      const r = OOL.oolJoin(game, userId, userName);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) await this.paintOOL(game);
+      return;
+    }
+
+    if (op === 's') {
+      const r = OOL.oolStart(game);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) {
+        for (const p of game.players) {
+          await this.sendMessage(p.id, OOL.oolSecretPopup(game, p.id));
+        }
+        await this.paintOOL(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+
+    if (op === 'sec') {
+      await this.answerCallbackQuery(cb.id, OOL.oolSecretPopup(game, userId), true);
+      return;
+    }
+
+    if (op === 'v') {
+      const r = OOL.oolVote(game, userId, idx);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) {
+        if (r.allVoted) {
+          OOL.oolFinishVoting(game);
+        }
+        await this.paintOOL(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+
+    if (op === 'g') {
+      const r = OOL.oolOutsiderGuess(game, userId, idx);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok || Boolean(r.msg));
+      if (r.ok) {
+        this.recordOOLFinish(game);
+        await this.paintOOL(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+  }
 
   private findActiveWKForUser(userId: string): WK.WKGame | undefined {
     for (const g of this.wkGames.values()) {
@@ -6434,7 +7233,9 @@ export class TelegramBotManager {
         callback_query_id: callbackQueryId,
         show_alert: showAlert
       };
-      if (text) body.text = text;
+      if (text) {
+        body.text = text.length > 195 ? text.slice(0, 194) + '…' : text;
+      }
 
       const res = await fetch(`https://api.telegram.org/bot${this.token}/answerCallbackQuery`, {
         method: 'POST',
