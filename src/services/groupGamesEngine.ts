@@ -8,13 +8,44 @@
  *   gqj / gqs / gqa / gqn  → ألعاب الأسئلة (سرعة، معلومات، وألعاب خمّن)
  *   mmj / mms / mmd / mmb / mmc / mmn → ماسترمايند
  */
-import { GQRow, GENERAL, COUNTRIES, MOVIES, SERIES, NUMBERS, FOODS, FLAGS, CAPITALS, CONTINENTS } from './groupQuizData';
+import {
+  GQRow,
+  GENERAL,
+  COUNTRIES,
+  MOVIES,
+  SERIES,
+  NUMBERS,
+  FOODS,
+  FLAGS,
+  CAPITALS,
+  CONTINENTS,
+  PLAYERS,
+  POETS,
+  SONGS_AR,
+  SONGS_EN
+} from './groupQuizData';
 import { ODD_WORD_PUZZLES } from './oddWordEngine';
 
 // ---------------------------------------------------------------------
 // 🧩 أنواع الألعاب
 // ---------------------------------------------------------------------
-export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food' | 'math' | 'flags' | 'capitals' | 'continents' | 'odd';
+export type QuizKind =
+  | 'speed'
+  | 'trivia'
+  | 'country'
+  | 'movie'
+  | 'series'
+  | 'number'
+  | 'food'
+  | 'math'
+  | 'flags'
+  | 'capitals'
+  | 'continents'
+  | 'odd'
+  | 'player'
+  | 'poet'
+  | 'song_ar'
+  | 'song_en';
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
   speed: {
@@ -75,7 +106,27 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   odd: {
     emoji: '🕵️',
     title: 'الكلمة الغريبة',
-    intro: 'خمس كلمات — أربعٌ يجمعها رابط ذكي وواحدة غريبة عنها 🕵️'
+    intro: 'أربع كلمات من نفس المجموعة وكلمة دخيلة وحدة — اكتشف الغريبة 🎯'
+  },
+  player: {
+    emoji: '⚽',
+    title: 'خمّن اللاعب',
+    intro: 'اعرف نجم كرة القدم من مسيرته وألقابه ⚽'
+  },
+  poet: {
+    emoji: '🎭',
+    title: 'خمّن الشاعر',
+    intro: 'اعرف الشاعر صاحب البيت الشهير 🎭'
+  },
+  song_ar: {
+    emoji: '🎤',
+    title: 'خمّن الأغنية العربية',
+    intro: 'لمنو هاي الأغنية العربية الشهيرة؟ 🎤'
+  },
+  song_en: {
+    emoji: '🎸',
+    title: 'خمّن الأغنية الإنجليزية',
+    intro: 'لمنو هاي الأغنية الإنجليزية الشهيرة؟ 🎸'
   }
 };
 
@@ -240,7 +291,7 @@ function shuffle<T>(arr: T[]): T[] {
 
 function oddWordRows(): string[][] {
   return ODD_WORD_PUZZLES.map(p => [
-    'أربع كلمات مترابطة بطريقة ذكية وواحدة غريبة — اختر الكلمة الغريبة:',
+    'أربع كلمات من نفس المجموعة ووحدة دخيلة — شنو الكلمة الغريبة؟',
     p.odd,
     p.four[0],
     p.four[1],
@@ -263,6 +314,10 @@ function packFor(kind: QuizKind): string[][] {
     case 'flags': return FLAGS;
     case 'capitals': return CAPITALS;
     case 'continents': return CONTINENTS;
+    case 'player': return PLAYERS;
+    case 'poet': return POETS;
+    case 'song_ar': return SONGS_AR;
+    case 'song_en': return SONGS_EN;
     case 'math': return mathRows();
     case 'odd': return oddWordRows();
     default: return GENERAL; // speed + trivia
