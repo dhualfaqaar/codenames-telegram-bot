@@ -158,8 +158,8 @@ export function renderMessage(round: PoetRound): string {
   lines.push(`━━━━━━━━━━━━━━━━━━━`);
 
   if (!round.done) {
-    lines.push(`👤 منو ناظم هاي البيت؟`);
-    lines.push(round.attempts === 0 ? `_عندك محاولتين_` : `_بقيتلك محاولة وحدة_ ⏳`);
+    lines.push(`👤 من قائل هذا البيت؟`);
+    lines.push(round.attempts === 0 ? `_عندك محاولتان_` : `_بقيت لك محاولة واحدة_ ⏳`);
   } else if (round.won) {
     lines.push(`✅ *الجواب:* ${round.poet}`);
     lines.push(`🎉 عرفتها!`);
