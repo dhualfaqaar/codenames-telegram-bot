@@ -116,6 +116,8 @@ export interface QuizGame {
   chatId: string;
   chatName: string;
   messageId?: number;
+  /** معرّف رسالة الإنلاين (تيليجرام يلقّص الأزرار منها بدون محادثة — نحتاجه للتعديل) */
+  inlineMessageId?: string;
   kind: QuizKind;
   status: 'lobby' | 'playing' | 'result' | 'game_over';
   players: QuizPlayer[];
@@ -309,7 +311,7 @@ export function renderQuiz(game: QuizGame): string {
     if (!game.players.length) lines.push(`_ماكو أحد بعد — اضغط «انضم»_`);
     for (const p of game.players) lines.push(`• ${p.name}`);
     lines.push(`━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`⚠️ أقل عدد: *${arNum(MIN_PLAYERS)} لاعبين* — أقصى عدد: *${arNum(MAX_PLAYERS)}*`);
+    lines.push(`_اضغط «انضم» وكملوا العدد — اللعبة تبدأ من زر «ابدأ» 🎮_`);
     return lines.join('\n');
   }
 
@@ -414,6 +416,7 @@ export interface MMGame {
   chatId: string;
   chatName: string;
   messageId?: number;
+  inlineMessageId?: string;
   status: 'lobby' | 'playing' | 'game_over';
   players: MMPlayer[];
   turnIdx: number;
@@ -573,7 +576,6 @@ export function renderMM(game: MMGame): string {
     for (const p of game.players) lines.push(`• ${p.name}`);
     lines.push(`━━━━━━━━━━━━━━━━━━━`);
     lines.push(`البوت خبّأ رقم سري من *٤ أرقام مختلفة* 🔒 — الكل يتناوب على كسره باللوحة.`);
-    lines.push(`⚠️ أقل عدد: *${arNum(MIN_PLAYERS)} لاعبين* — أقصى عدد: *${arNum(MAX_PLAYERS)}* — محاولات كل لاعب: *${arNum(MM_MAX_TRIES_EACH)}*`);
     return lines.join('\n');
   }
 

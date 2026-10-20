@@ -760,15 +760,15 @@ export class CodenamesEngine {
     if (game.status === 'lobby') {
       return [
         [
-          { text: `عميل أزرق 🔵`, callback_data: 'join:blue:operative' },
-          { text: `عميل أحمر 🔴`, callback_data: 'join:red:operative' }
+          { text: `عميل أزرق 🔵`, callback_data: `join:blue:operative:${game.id}` },
+          { text: `عميل أحمر 🔴`, callback_data: `join:red:operative:${game.id}` }
         ],
         [
-          { text: `جاسوس أزرق 🕵️‍♂️`, callback_data: 'join:blue:spymaster' },
-          { text: `جاسوس أحمر 🕵️‍♀️`, callback_data: 'join:red:spymaster' }
+          { text: `جاسوس أزرق 🕵️‍♂️`, callback_data: `join:blue:spymaster:${game.id}` },
+          { text: `جاسوس أحمر 🕵️‍♀️`, callback_data: `join:red:spymaster:${game.id}` }
         ],
         [
-          { text: 'ابدأ اللعبة 🚀', callback_data: 'game:start' }
+          { text: 'ابدأ اللعبة 🚀', callback_data: `game:start:${game.id}` }
         ]
       ];
     }
@@ -776,8 +776,8 @@ export class CodenamesEngine {
     if (game.status === 'game_over') {
       return [
         [
-          { text: '🔄 بدء جولة جديدة (Rematch)', callback_data: 'game:new' },
-          { text: '🗺️ كشف الخريطة كاملة', callback_data: 'game:show_all' }
+          { text: '🔄 بدء جولة جديدة (Rematch)', callback_data: `game:new:${game.id}` },
+          { text: '🗺️ كشف الخريطة كاملة', callback_data: `game:show_all:${game.id}` }
         ]
       ];
     }
@@ -799,12 +799,12 @@ export class CodenamesEngine {
 
           rowButtons.push({
             text: `${prefix} ${card.word}`,
-            callback_data: `info:revealed:${card.id}`
+            callback_data: `info:revealed:${card.id}:${game.id}`
           });
         } else {
           rowButtons.push({
             text: card.word,
-            callback_data: `guess:${card.id}`
+            callback_data: `guess:${card.id}:${game.id}`
           });
         }
       }
@@ -814,9 +814,9 @@ export class CodenamesEngine {
     // Action row
     const actionRow = [];
     if (game.status === 'operative_turn') {
-      actionRow.push({ text: '⏭️ إنهاء التخمين (Pass)', callback_data: 'action:pass' });
+      actionRow.push({ text: '⏭️ إنهاء التخمين (Pass)', callback_data: `action:pass:${game.id}` });
     }
-    actionRow.push({ text: '🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)', callback_data: 'action:secret_map' });
+    actionRow.push({ text: '🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)', callback_data: `action:secret_map:${game.id}` });
     keyboard.push(actionRow);
 
     return keyboard;
