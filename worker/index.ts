@@ -53,7 +53,7 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
     const set = await call('setWebhook', {
       url: expected,
       secret_token: env.WEBHOOK_SECRET || undefined,
-      allowed_updates: ['message', 'callback_query'],
+      allowed_updates: ['message', 'callback_query', 'my_chat_member'],
       drop_pending_updates: false
     });
 

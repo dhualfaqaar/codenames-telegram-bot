@@ -66,7 +66,7 @@ export function createGame(
     id: `rps_${chatId}_${Date.now()}`,
     chatId,
     chatTitle,
-    totalRounds: [3, 5, 13].includes(totalRounds) ? totalRounds : 5,
+    totalRounds: [5, 10, 15].includes(totalRounds) ? totalRounds : 5,
     round: 1,
     players: [],
     status: 'lobby',
@@ -163,8 +163,8 @@ export function renderGame(game: RPSGame): string {
     if (!game.players.length) lines.push(`_ماكو أحد بعد — اضغط «انضم»_`);
     for (const p of game.players) lines.push(`• ${p.name}`);
     lines.push(`━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`🎯 *الجولات:* أفضل من *${game.totalRounds}*`);
-    lines.push(`_يحتاج لاعبين اثنين حتى تبدأ_`);
+    lines.push(`🎯 الجولات: *${game.totalRounds}*`);
+    if (game.players.length < 2) lines.push(`يحتاج لاعبين ثنين`);
     return lines.join('\n');
   }
 
@@ -198,9 +198,10 @@ export function boardKeyboard(game: RPSGame): any[][] {
   const rows: any[][] = [];
 
   if (game.status === 'lobby') {
-    rows.push([{ text: '✅ انضم للمباراة', callback_data: `rpsb:join:${game.chatId}` }]);
-    if (game.players.length >= 2) {
-      rows.push([{ text: '🚀 ابدأ المباراة', callback_data: `rpsb:start:${game.chatId}` }]);
+    if (game.players.length < 2) {
+      rows.push([{ text: '✅ انضم', callback_data: `rpsb:join:${game.chatId}` }]);
+    } else {
+      rows.push([{ text: '🚀 ابدأ', callback_data: `rpsb:start:${game.chatId}` }]);
     }
     return rows;
   }

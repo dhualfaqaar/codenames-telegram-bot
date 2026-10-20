@@ -2128,7 +2128,7 @@ export class TelegramBotManager {
     // حجرة ورقة مقص: اختار عدد الروندات → يحذف الرسالة ويطلع اختيار القناة
     if (section.startsWith('rpschan:')) {
       const r = parseInt(section.split(':')[1] || '5', 10);
-      const rounds = [3, 5, 13].includes(r) ? r : 5;
+      const rounds = [5, 10, 15].includes(r) ? r : 5;
       await this.answerCallbackQuery(cb.id);
       if (this.pendingChannelGame) {
         this.pendingChannelGame.set(String(cb.from.id), { gameId: 'rps', rounds, at: Date.now() });
@@ -2306,6 +2306,23 @@ export class TelegramBotManager {
 
       const board = this.codenamesWinBoard(0);
       const rank = board.findIndex(u => u.id === id);
+      if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
+    }
+
+    // ✊ حجرة ورقة مقص
+    else if (gameId === 'rps') {
+      const played = rec.rpsGames || 0;
+      const wins = rec.rpsWins || 0;
+      if (!played) {
+        return `${head}\n_بعدك ما لعبتها — نزّلها بقناتك والعب مع ناس حقيقيين ✊_`;
+      }
+      lines.push(`🎮 مباريات: *${played}* • 🏆 فوز: *${wins}* (${this.statPct(wins, played)})`);
+      lines.push(`🎯 نسبة الفوز: *${this.statPct(wins, played)}* ${this.statBar(wins, played)}`);
+
+      const board = n.users
+        .filter(u => (u.rpsGames || 0) > 0)
+        .sort((a, b) => (b.rpsWins || 0) - (a.rpsWins || 0));
+      const rank = board.findIndex(u => u.id === rec.id);
       if (rank >= 0) lines.push(`🏅 ترتيبك: *#${rank + 1}* من *${board.length}*`);
     } else {
       return '';
@@ -2498,6 +2515,43 @@ export class TelegramBotManager {
       return { text, keyboard: [fromGame ? gameBack : backStats] };
     }
 
+    // ✊ إحصائيات حجرة ورقة مقص
+    if (gameId === 'rps') {
+      const players = n.users.filter(u => (u.rpsGames || 0) > 0);
+      const totalGames = players.reduce((s, u) => s + (u.rpsGames || 0), 0);
+      const totalWins = players.reduce((s, u) => s + (u.rpsWins || 0), 0);
+      const liveNow = Array.from(this.rpsGames.values()).filter(
+        g => g.status === 'playing' || g.status === 'lobby'
+      ).length;
+
+      const topPlayers = players
+        .slice()
+        .sort((a, b) => (b.rpsWins || 0) - (a.rpsWins || 0))
+        .slice(0, 10);
+
+      const lines = topPlayers.length
+        ? topPlayers
+            .map((u, i) => {
+              const games = u.rpsGames || 0;
+              const wins = u.rpsWins || 0;
+              const pct = games ? Math.round((wins / games) * 100) : 0;
+              return `${this.statMedal(i)} ${this.mdSafe(u.name)} — *${wins}* فوز (${pct}%)`;
+            })
+            .join('\n')
+        : '_ما بعد أحد لعبها — كون أول بطل!_';
+
+      const text =
+        `✊ *إحصائيات حجرة ورقة مقص*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        personalBlock +
+        `🎮 مباريات انلعبت: *${totalGames}*\n` +
+        `🏆 مجموع الفوزات: *${totalWins}*\n` +
+        `⏳ شغّالة هسه: *${liveNow}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🥇 *أكثر من فاز:*\n${lines}`;
+
+      return { text, keyboard: [fromGame ? gameBack : backStats] };
+    }
     // 🔜 لعبة بعدها ما نزلت
     if (gameId) {
       const game = findBotGame(gameId);
@@ -2787,14 +2841,15 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // حجرة ورقة مقص: خيارات الروندات مع إحصائيات اللعبة جوّاها
+        // حجرة ورقة مقص: أزرار الروندات (عريضة) + مربعين صغار جواهم
         if (game.channel && game.id === 'rps') {
+          keyboard.push([{ text: '٥ راوندات', callback_data: 'hub:rpschan:5' }]);
+          keyboard.push([{ text: '١٠ راوندات', callback_data: 'hub:rpschan:10' }]);
+          keyboard.push([{ text: '١٥ راوندات', callback_data: 'hub:rpschan:15' }]);
           keyboard.push([
-            { text: '٣ راوندات', callback_data: 'hub:rpschan:3' },
+            { text: 'شرح اللعبة', callback_data: `hub:how:${game.id}` },
             { text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }
           ]);
-          keyboard.push([{ text: '٥ راوندات', callback_data: 'hub:rpschan:5' }]);
-          keyboard.push([{ text: '١٣ راوندات', callback_data: 'hub:rpschan:13' }]);
         } else {
           // إحصائيات اللعبة نفسها
           keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
@@ -3222,21 +3277,40 @@ export class TelegramBotManager {
     }
   }
 
-  /** توزيع الفلوس/XP على فائز حجرة ورقة مقص */
+  /** توزيع الفلوس/XP والإحصائيات على لاعبي حجرة ورقة مقص */
   private async awardRPS(game: RPS.RPSGame) {
     const winner = game.players.find(p => p.id === game.winnerId);
-    if (!winner) return;
-    const rec = this.users.get(winner.id);
-    if (!rec) return;
-    rec.rpsGames = (rec.rpsGames || 0) + 1;
-    rec.rpsWins = (rec.rpsWins || 0) + 1;
-    rec.money = (rec.money || 0) + Economy.RPS_REWARD;
-    rec.xp = (rec.xp || 0) + Economy.RPS_XP;
-    this.users.set(rec.id, rec);
-    await this.sendMessage(
-      winner.id,
-      `🏆 *فزت بمباراة حجرة ورقة مقص!*\n+${Economy.RPS_REWARD} 💵\n+${Economy.RPS_XP} XP`
-    );
+    for (const p of game.players) {
+      const rec = this.users.get(p.id);
+      if (!rec) continue;
+      const won = p.id === game.winnerId;
+      rec.rpsGames = (rec.rpsGames || 0) + 1;
+      if (won) rec.rpsWins = (rec.rpsWins || 0) + 1;
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      if (won) rec.onlineWins = (rec.onlineWins || 0) + 1;
+
+      const xp = Economy.xpForResult('rps', won, 1);
+      rec.xp = (rec.xp || 0) + xp;
+      if (won) {
+        rec.money = Economy.roundMoney((rec.money || 0) + Economy.RPS_REWARD);
+        Economy.addEarned(rec, Economy.RPS_REWARD);
+      }
+      this.users.set(rec.id, rec);
+    }
+
+    if (winner) {
+      await this.sendMessage(
+        winner.id,
+        `🏆 *فزت بمباراة حجرة ورقة مقص!*\n+${Economy.RPS_REWARD} 💵\n+${Economy.xpForResult('rps', true, 1)} XP`
+      );
+    }
+    const loser = game.players.find(p => p.id !== game.winnerId);
+    if (loser) {
+      await this.sendMessage(
+        loser.id,
+        `😅 *خسرت مباراة حجرة ورقة مقص.*\n+${Economy.xpForResult('rps', false, 1)} XP\nجرّب مرة ثانية!`
+      );
+    }
   }
 
   /**
@@ -3280,7 +3354,6 @@ export class TelegramBotManager {
     const fresh = pending && Date.now() - pending.at < 15 * 60 * 1000 ? pending : undefined;
     const gameId = fresh?.gameId;
     const rounds = fresh?.rounds;
-    console.log('CHAT_SHARED', JSON.stringify({ byUser, channelId, gameId, rounds, hasPending: Boolean(pending) }));
 
     // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
     if (gameId === 'rps') {
@@ -3304,11 +3377,13 @@ export class TelegramBotManager {
     if (!byUser) return;
 
     if (result.messageId) {
-      await this.sendMessage(
-        byUser,
-        `✅ نزّلت اللعبة بقناتك «${this.mdSafe(title)}».\n` +
-          `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت المشرف تضغط (ابدأ اللعبة 🚀).`
-      );
+      const successText =
+        gameId === 'rps'
+          ? `✅ نزّلت *حجرة ورقة مقص* بقناتك «${this.mdSafe(title)}».\n` +
+            `روح للقناة — اللاعبين يضغطون (✅ انضم) وبعدها تضغط (🚀 ابدأ).`
+          : `✅ نزّلت *كود نيمز* بقناتك «${this.mdSafe(title)}».\n` +
+            `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت المشرف تضغط (ابدأ اللعبة 🚀).`;
+      await this.sendMessage(byUser, successText);
     } else {
       await this.sendMessage(
         byUser,
@@ -3334,6 +3409,9 @@ export class TelegramBotManager {
     const existing = this.games.get(chatId);
     // Never reset a lobby/match that is already open.
     if (existing && existing.status !== 'game_over') return;
+    // لا ننشئ لوحة كودنيمز إذا أكو مباراة حجرة ورقة مقص شغّالة بهذي القناة
+    const rps = this.rpsGames.get(chatId);
+    if (rps && rps.status !== 'game_over') return;
 
     // In channels the update carries the admin who added the bot.
     const admins = update.from?.id ? [] : await this.getChatAdministrators(chatId);
