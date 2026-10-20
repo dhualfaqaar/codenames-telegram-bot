@@ -13,7 +13,7 @@ import { GQRow, GENERAL, COUNTRIES, MOVIES, SERIES, NUMBERS, FOODS } from './gro
 // ---------------------------------------------------------------------
 // 🧩 أنواع الألعاب
 // ---------------------------------------------------------------------
-export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food';
+export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food' | 'math';
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
   speed: {
@@ -50,11 +50,53 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🍲',
     title: 'خمّن الأكلة',
     intro: 'وصف أكلة عربية مشهورة وأربع أكلات — اختار الصح 🍽️'
+  },
+  math: {
+    emoji: '🧮',
+    title: 'تحدي الحساب',
+    intro: 'جمع وطرح وضرب — أسرع صح يسجّل النقطة ⚡'
   }
 };
 
-export const MIN_PLAYERS = 3;
+/** هل نوع اللعبة سباق سرعة (أول صح يسجّل)؟ */
+export function isSpeedQuiz(game: QuizGame | { kind: QuizKind }): boolean {
+  return game.kind === 'speed' || game.kind === 'math';
+}
+
+/** يولّد مسائل حسابية عشوائية (جمع وطرح وضرب) مع ٣ إجابات غلط قريبة */
+function mathRows(): GQRow[] {
+  const rows: GQRow[] = [];
+  const used = new Set<string>();
+  while (rows.length < 20) {
+    const ops = ['+', '-', '×'];
+    const op = ops[Math.floor(Math.random() * ops.length)];
+    let a = 4 + Math.floor(Math.random() * 46);
+    let b = 3 + Math.floor(Math.random() * 36);
+    if (op === '×') { a = 3 + Math.floor(Math.random() * 10); b = 3 + Math.floor(Math.random() * 10); }
+    if (op === '-' && b > a) { const t = a; a = b; b = t; }
+    const ans = op === '+' ? a + b : op === '-' ? a - b : a * b;
+    const key = `${a}${op}${b}`;
+    if (used.has(key)) continue;
+    used.add(key);
+    const wrongs = new Set<number>();
+    while (wrongs.size < 3) {
+      const delta = 1 + Math.floor(Math.random() * 9);
+      const w = ans + (Math.random() < 0.5 ? -delta : delta);
+      if (w !== ans && w >= 0) wrongs.add(w);
+    }
+    const [w1, w2, w3] = Array.from(wrongs);
+    rows.push([`كم ناتج ${a} ${op} ${b}؟`, String(ans), String(w1), String(w2), String(w3)]);
+  }
+  return rows;
+}
+
+export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 10;
+
+/** رقم بالأرقام العربية (٢٥١٣…) */
+function arNum(n: number): string {
+  return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
+}
 export const TOTAL_ROUNDS = 10;
 
 // ---------------------------------------------------------------------
@@ -106,6 +148,7 @@ function packFor(kind: QuizKind): GQRow[] {
     case 'series': return SERIES;
     case 'number': return NUMBERS;
     case 'food': return FOODS;
+    case 'math': return mathRows();
     default: return GENERAL; // speed + trivia
   }
 }
@@ -180,7 +223,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
   const correctText = row[1];
 
   // ⚡ وضع السرعة: أول صح يغلق الجولة فوراً
-  if (game.kind === 'speed') {
+  if (isSpeedQuiz(game)) {
     if (!isRight) {
       p.done = true;
       return { ok: true, msg: '❌ غلط! خارج هالجولة', roundClosed: false };
@@ -231,7 +274,7 @@ export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string
 /** بعد عرض نتيجة الجولة: نتأكد ماكو نهاية مبكرة ونجهّز الجولة الجاية أو نختم */
 export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
   // 🧠 نهاية ذكية (وضع السرعة): إذا المتصدر مستحيل ينلحق
-  if (game.kind === 'speed' && game.players.length) {
+  if (isSpeedQuiz(game) && game.players.length) {
     const ordered = game.players.slice().sort((a, b) => b.score - a.score);
     const remaining = game.totalRounds - game.round; // جولات بعد الحالية
     const top = ordered[0].score;
@@ -266,8 +309,7 @@ export function renderQuiz(game: QuizGame): string {
     if (!game.players.length) lines.push(`_ماكو أحد بعد — اضغط «انضم»_`);
     for (const p of game.players) lines.push(`• ${p.name}`);
     lines.push(`━━━━━━━━━━━━━━━━━━━`);
-    lines.push(meta.intro);
-    lines.push(`⚠️ تبدأ من *${MIN_PLAYERS}* لاعبين لحد *${MAX_PLAYERS}*`);
+    lines.push(`⚠️ أقل عدد: *${arNum(MIN_PLAYERS)} لاعبين* — أقصى عدد: *${arNum(MAX_PLAYERS)}*`);
     return lines.join('\n');
   }
 
@@ -301,7 +343,7 @@ export function renderQuiz(game: QuizGame): string {
 
   if (game.status === 'playing') {
     const waiting = game.players.filter(p => !p.done).length;
-    if (game.kind === 'speed') {
+    if (isSpeedQuiz(game)) {
       lines.push(`⚡ _اضغط الصح قبل الكل — أول صح يسجّل!_`);
     } else {
       lines.push(`⏳ _ننتظر ${waiting} ${waiting === 1 ? 'لاعب' : 'لاعبين'} يجاوبون…_`);
@@ -330,8 +372,8 @@ export function quizKeyboard(game: QuizGame): any[][] {
 
   if (game.status === 'lobby') {
     return [
-      [{ text: '➕ انضم للبطولة', callback_data: `gqj:${chatId}` }],
-      [{ text: '🎮 ابدأ اللعبة', callback_data: `gqs:${chatId}` }]
+      [{ text: '➕ انضم للبطولة', callback_data: `gqj:${game.kind}:${chatId}` }],
+      [{ text: '🎮 ابدأ اللعبة', callback_data: `gqs:${game.kind}:${chatId}` }]
     ];
   }
 
@@ -339,20 +381,20 @@ export function quizKeyboard(game: QuizGame): any[][] {
     const kb: any[][] = [];
     const opts = game.options;
     for (let i = 0; i < opts.length; i += 2) {
-      const row: any[] = [{ text: cut(opts[i], 30), callback_data: `gqa:${i}:${chatId}` }];
-      if (opts[i + 1] !== undefined) row.push({ text: cut(opts[i + 1], 30), callback_data: `gqa:${i + 1}:${chatId}` });
+      const row: any[] = [{ text: cut(opts[i], 30), callback_data: `gqa:${i}:${game.kind}:${chatId}` }];
+      if (opts[i + 1] !== undefined) row.push({ text: cut(opts[i + 1], 30), callback_data: `gqa:${i + 1}:${game.kind}:${chatId}` });
       kb.push(row);
     }
     // ⏭️ تخطي (يظهر بس لو نص اللاعبين جاوبوا) — حتى اللعبة ما تتعلق إذا واحد نام
-    if (game.kind !== 'speed') kb.push([{ text: '⏭️ ختم الجولة والانتقال', callback_data: `gqskip:${chatId}` }]);
+    if (!isSpeedQuiz(game)) kb.push([{ text: '⏭️ ختم الجولة والانتقال', callback_data: `gqskip:${game.kind}:${chatId}` }]);
     return kb;
   }
 
   if (game.status === 'result') {
-    return [[{ text: '⏳ الجولة الجاية…', callback_data: `gqv:${chatId}` }]];
+    return [[{ text: '⏳ الجولة الجاية…', callback_data: `gqv:${game.kind}:${chatId}` }]];
   }
 
-  return [[{ text: '🔄 بطولة جديدة', callback_data: `gqn:${chatId}` }]];
+  return [[{ text: '🔄 بطولة جديدة', callback_data: `gqn:${game.kind}:${chatId}` }]];
 }
 
 function cut(s: string, n: number): string {
@@ -530,12 +572,8 @@ export function renderMM(game: MMGame): string {
     if (!game.players.length) lines.push(`_ماكو أحد بعد — اضغط «انضم»_`);
     for (const p of game.players) lines.push(`• ${p.name}`);
     lines.push(`━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`البوت خبّأ رقم سري من *٤ أرقام مختلفة* 🔒`);
-    lines.push(`كل واحد بدوره يخمّن والبوت يجاوبه:`);
-    lines.push(`⚫ رقم صح بمكانه الصح`);
-    lines.push(`⚪ رقم موجود بس بمكان غلط`);
-    lines.push(`أول واحد يطلع ⚫⚫⚫⚫ يفوز! 👑`);
-    lines.push(`⚠️ تبدأ من *${MIN_PLAYERS}* لاعبين — *${MM_MAX_TRIES_EACH}* محاولات لكل لاعب`);
+    lines.push(`البوت خبّأ رقم سري من *٤ أرقام مختلفة* 🔒 — الكل يتناوب على كسره باللوحة.`);
+    lines.push(`⚠️ أقل عدد: *${arNum(MIN_PLAYERS)} لاعبين* — أقصى عدد: *${arNum(MAX_PLAYERS)}* — محاولات كل لاعب: *${arNum(MM_MAX_TRIES_EACH)}*`);
     return lines.join('\n');
   }
 

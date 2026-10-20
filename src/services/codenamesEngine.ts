@@ -696,10 +696,7 @@ export class CodenamesEngine {
         (full
           ? `🔒 *اكتمل العدد!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
           : `_⏳ قيد الانتظار: باقي ${Math.max(0, 4 - game.players.length)} لاعب — كل فريق يحتاج (جاسوس 🕵️ + عميل 👤)._\n`) +
-        `1️⃣ كل واحد يضغط زر دوره بفريقه.\n` +
-        `2️⃣ الدور الماخوذ ما ينفع تاخذه — راح يجيك تنبيه.\n` +
-        `3️⃣ *الجواسيس 🕵️:* اضغطوا زر «الجواسيس: افتحوا الخاص» بالأسفل حتى توصلكم الخريطة والتلميح.\n` +
-        `4️⃣ المشرف صاحب اللعبة يضغط (ابدأ اللعبة 🚀).`;
+        `⚠️ ملاحظة: الجاسوس لازم يفتح الخاص ويا البوت حتى توصله خريطة فريقه! 🗺️`;
     }
 
     if (game.status === 'game_over') {
@@ -761,27 +758,17 @@ export class CodenamesEngine {
    */
   public static getTelegramInlineKeyboard(game: CodenamesGame): any[][] {
     if (game.status === 'lobby') {
-      // حالة المقعد الفاضي بس — المقعد المأخوذ ما يحتاج كتابة.
-      const state = (team: Team, role: PlayerRole) =>
-        game.players.some(p => p.team === team && p.role === role) ? '' : ' (فارغ)';
-
       return [
         [
-          { text: `عميل أزرق 🔵 ${state('blue', 'operative')}`, callback_data: 'join:blue:operative' },
-          { text: `عميل أحمر 🔴 ${state('red', 'operative')}`, callback_data: 'join:red:operative' }
+          { text: `عميل أزرق 🔵`, callback_data: 'join:blue:operative' },
+          { text: `عميل أحمر 🔴`, callback_data: 'join:red:operative' }
         ],
         [
-          { text: `جاسوس أزرق 🕵️‍♂️ ${state('blue', 'spymaster')}`, callback_data: 'join:blue:spymaster' },
-          { text: `جاسوس أحمر 🕵️‍♀️ ${state('red', 'spymaster')}`, callback_data: 'join:red:spymaster' }
+          { text: `جاسوس أزرق 🕵️‍♂️`, callback_data: 'join:blue:spymaster' },
+          { text: `جاسوس أحمر 🕵️‍♀️`, callback_data: 'join:red:spymaster' }
         ],
         [
-          {
-            text: (game.players.filter(p => p.team === 'blue').length >= 2 &&
-              game.players.filter(p => p.team === 'red').length >= 2)
-              ? 'ابدأ اللعبة 🚀 (اللعبة كاملة ✅)'
-              : 'ابدأ اللعبة 🚀 (قيد الانتظار ⏳)',
-            callback_data: 'game:start'
-          }
+          { text: 'ابدأ اللعبة 🚀', callback_data: 'game:start' }
         ]
       ];
     }

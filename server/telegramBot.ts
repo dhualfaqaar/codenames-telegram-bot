@@ -138,48 +138,19 @@ const BOT_GAMES: BotGameCard[] = [
   // ─────────────── 👥 ألعاب ثنائية (1 ضد 1) ───────────────
   {
     id: 'math',
-    emoji: '🔢',
+    emoji: '🧮',
     title: 'تحدي الحساب',
-    category: 'duo',
-    players: 'لاعبين — إنت وواحد ثاني',
-    where: 'هنا بالخاص',
-    goal: 'أسرع واحد يضغط الجواب الصح',
-    reward: 'نقطة لكل جواب صح، وأول من يجمع 5 يفوز',
+    category: 'group',
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'القناة — تنلعب جماعي بالقناة',
+    goal: 'أسرع واحد يجاوب صح ياخذ النقطة',
+    reward: 'أول جواب صحيح بكل جولة يسجّل نقطة — الأعلى بالنهاية يفوز',
     about:
-      'تظهر نفس المسألة الحسابية (جمع وطرح وضرب)،\n' +
-      'وإنت تضغط الجواب الصح بأسرع وقت — وأول ما تجمع 5 نقاط تفوز 🏆.\n' +
-      'اللعبة تقيس سرعتك ودقتك، والغلط يخليك تخسر الثانية.',
-    play: { label: '🤖 العب مع البوت', data: 'ma:new' },
-    ready: true
-  },
-  {
-    id: 'rhyme',
-    emoji: '🥊',
-    title: 'تحدي القافية',
-    category: 'duo',
-    players: 'لاعبين — إنت وواحد ثاني',
-    where: 'هنا بالخاص',
-    goal: 'أكثر كلمات تقافي الكلمة المعطاة',
-    about:
-      'البوت يعطيك كلمة (مثلاً: *كتاب*)، وعندك كلمات تقافيها\n' +
-      '(باب، شباب، حساب…).\n' +
-      'اختار كل الكلمات الصح من الأزرار، وكل كلمة صح تزيد نقاطك 🏆.',
-    play: { label: '🥊 ابدأ التحدي', data: 'rh:new' },
-    ready: true
-  },
-  {
-    id: 'longest',
-    emoji: '📏',
-    title: 'أطول كلمة',
-    category: 'duo',
-    players: 'لاعبين — إنت وواحد ثاني',
-    where: 'هنا بالخاص',
-    goal: 'أطول كلمة من نفس الحروف',
-    about:
-      'البوت يعطيك مجموعة حروف، وإنت تختار أطول كلمة عربية صحيحة تتكوّن منها،\n' +
-      'والكلمة لازم تكون من نفس الحروف المعطاة بلا زيادة.\n' +
-      'أطول كلمة صحيحة تفوز 🏆.',
-    play: { label: '📏 ابدأ', data: 'lg:new' },
+      'مسائل حسابية (جمع وطرح وضرب) تنزل بالقناة وياها *٤ خيارات* 🧮\n' +
+      'وأول واحد يضغط الجواب الصح ياخذ نقطة الجولة ⚡ — غلطت؟ تخرج من هالجولة بس.\n' +
+      '١٠ جولات — وإذا المتصدر صار مستحيل ينلحق، البطولة تخلص بالمكان 🧠.',
+    channel: true,
+    inline: 'gq math',
     ready: true
   },
   {
@@ -442,7 +413,7 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
   group: {
     emoji: '🎉',
     title: 'الألعاب الجماعية',
-    intro: 'بطولات جماعية بالقناة — من *٣ لاعبين لحد ١٠*، الكل يلعب من اللوحة نفسها.' + '\n' +
+    intro: 'بطولات جماعية بالقناة — من *لاعبين* لحد *١٠*.' + '\n' +
       'وداخلها قسم *🧩 ألعاب خمّن* لعشاق التخمين 👇'
   },
   guess: {
@@ -1107,7 +1078,7 @@ export class TelegramBotManager {
   public exportState(): any {
     return {
       games: Array.from(this.games.entries()),
-      completedGames: this.completedGames,
+      completedGames: (this.completedGames || []).slice(-100),
       customWords: this.customWords,
       awaitingClueWord: Array.from(this.awaitingClueWord.entries()),
       pendingClueWord: Array.from(this.pendingClueWord.entries()),
@@ -1819,6 +1790,21 @@ export class TelegramBotManager {
     }
 
     let game = this.games.get(chatId);
+
+    // 🛡️ لوحة كود نيمز ضايعة (نظام نام أو لوحة قديمة)؟ نعيد بناء اللوبي بنفس الرسالة
+    // بدل ما يوكل اللاعب «لا توجد لعبة» — ودوسة المقعد تكمل طبيعي عاللوبي الجديد.
+    if (!game && data.startsWith('join:') && cb.message) {
+      const rebuilt = CodenamesEngine.createLobby(
+        chatId,
+        cb.message.chat.title || 'المحادثة',
+        'arabic_standard',
+        this.customWords,
+        String(cb.from.id)
+      );
+      rebuilt.messageId = cb.message.message_id;
+      this.games.set(chatId, rebuilt);
+      game = rebuilt;
+    }
 
     // If no game in this chat, notify (game:new can create one from scratch)
     if (!game && !data.startsWith('action:secret_map') && data !== 'game:new') {
@@ -2809,27 +2795,61 @@ export class TelegramBotManager {
     );
   }
 
+  /**
+   * 🛡️ اللوحة الخالدة: اسم اللعبة منحوت بكل زر (gqj:<kind>:<chatId> …)
+   * فلو اللعبة ضاعت من الذاكرة (نظام نام أو لوحة قديمة) — نبنيها من الزر نفسه
+   * بلكرفة بدل ما يطلع للاعب «انتهت». عمراً ما تموت لوحة.
+   */
   private async handleGroupQuizCb(cb: TelegramCallbackQuery, data: string) {
-    const chatIdStr = String(cb.message?.chat.id || '');
-    const cbChatId = chatIdStr || '';
+    const cbChatId = String(cb.message?.chat.id || '');
     const playerId = String(cb.from.id);
     const playerName = cb.from.first_name || 'لاعب';
 
-    // اللعبة توجد بالمحادثة اللي بيها الرسالة — نتجاهل أي ضغط مو من داخلها
-    const game = this.gqGames.get(cbChatId);
+    const parts = data.split(':');
+    const op = parts[0]; // gqj gqs gqa gqn gqv gqskip
+
+    // النوع داخل الزر — اللوحات القديمة (بدون نوع) ما نكدر نبنيها، ندكنعهم بذوق
+    const kindRaw = op === 'gqa' ? parts[2] : parts[1];
+    const kinds = Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[];
+    const kind: GG.QuizKind = kinds.includes(kindRaw as GG.QuizKind) ? (kindRaw as GG.QuizKind) : 'speed';
+
+    let game = this.gqGames.get(cbChatId);
+
+    // 🛡️ اللعبة ضايعة؟ نبني لوحة جديدة بنفس الرسالة ونرجّع اللاعب للوبي
     if (!game) {
-      await this.answerCallbackQuery(cb.id, '⚠️ هالبطولة انتهت أو ما عادت فعّالة', true);
+      if (!cb.message?.chat.id) {
+        await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
+        return;
+      }
+      const rebuilt = GG.createQuiz(cbChatId, cb.message.chat.title || 'المحادثة', kind);
+      rebuilt.messageId = cb.message.message_id;
+      this.gqGames.set(cbChatId, rebuilt);
+
+      if (op === 'gqj') {
+        // داس انضم على لوحة ضايعة → ننفذ انضمامه على اللوحة المبنية
+        const r = GG.quizJoin(rebuilt, playerId, playerName);
+        await this.paintQuiz(rebuilt);
+        await this.answerCallbackQuery(cb.id, r.ok ? '✅ اللوحة كانت قديمة — رجّعناها وانضميت منها 🆕' : r.msg, !r.ok);
+        return;
+      }
+      // أي زر آخر → نرجّع لوحة اللوبي وي ورّيهم إنها انبنت من جديد
+      await this.paintQuiz(rebuilt);
+      await this.sendMessage(cbChatId, '🛡️ هاي اللوحة كانت قديمة — رجّعناها لوبي جديد بنفس الرسالة، انضموا من جديد 👇');
+      await this.answerCallbackQuery(cb.id, '🛡️ انبنى لوبي جديد');
       return;
     }
 
+    // اللعبة موجودة — نكمل طبيعي
+    game = game as GG.QuizGame;
+
     // زر وهمي «الجولة الجاية…» — ما يسوي شي
-    if (data.startsWith('gqv:')) {
+    if (op === 'gqv') {
       await this.answerCallbackQuery(cb.id, '');
       return;
     }
 
     // ⏭️ ختم الجولة حتى ما تعلق
-    if (data.startsWith('gqskip:')) {
+    if (op === 'gqskip') {
       const r = GG.quizSkip(game, playerId);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) {
@@ -2845,7 +2865,7 @@ export class TelegramBotManager {
     }
 
     // 🔄 بطولة جديدة
-    if (data.startsWith('gqn:')) {
+    if (op === 'gqn') {
       const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind);
       fresh.messageId = game.messageId;
       this.gqGames.set(game.chatId, fresh);
@@ -2855,7 +2875,7 @@ export class TelegramBotManager {
     }
 
     // ➕ انضم
-    if (data.startsWith('gqj:')) {
+    if (op === 'gqj') {
       const r = GG.quizJoin(game, playerId, playerName);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) await this.paintQuiz(game);
@@ -2863,16 +2883,16 @@ export class TelegramBotManager {
     }
 
     // 🎮 ابدأ
-    if (data.startsWith('gqs:')) {
+    if (op === 'gqs') {
       const r = GG.quizStart(game);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) await this.paintQuiz(game);
       return;
     }
 
-    // 🅰️ جواب — gqa:<idx>:<chatId>
-    if (data.startsWith('gqa:')) {
-      const idx = parseInt(data.split(':')[1] || '0', 10);
+    // 🅰️ جواب — gqa:<idx>:<kind>:<chatId>
+    if (op === 'gqa') {
+      const idx = parseInt(parts[1] || '0', 10);
       const r = GG.quizAnswer(game, playerId, playerName, idx);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok && r.msg.startsWith('🚫'));
       await this.paintQuiz(game);
@@ -2901,9 +2921,27 @@ export class TelegramBotManager {
     const playerId = String(cb.from.id);
     const playerName = cb.from.first_name || 'لاعب';
 
-    const game = this.mmGames.get(cbChatId);
+    let game = this.mmGames.get(cbChatId);
+
+    // 🛡️ لوحة ضايعة؟ نبنيها من جديد بنفس الرسالة ونرجّع اللاعب للوبي
     if (!game) {
-      await this.answerCallbackQuery(cb.id, '⚠️ هاللعبة انتهت أو ما عادت فعّالة', true);
+      if (!cb.message?.chat.id) {
+        await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
+        return;
+      }
+      const rebuilt = GG.mmCreate(cbChatId, cb.message.chat.title || 'المحادثة');
+      rebuilt.messageId = cb.message.message_id;
+      this.mmGames.set(cbChatId, rebuilt);
+
+      if (data.startsWith('mmj:')) {
+        const r = GG.mmJoin(rebuilt, playerId, playerName);
+        await this.paintMM(rebuilt);
+        await this.answerCallbackQuery(cb.id, r.ok ? '✅ اللوحة كانت قديمة — رجّعناها وانضميت منها 🆕' : r.msg, !r.ok);
+        return;
+      }
+      await this.paintMM(rebuilt);
+      await this.sendMessage(cbChatId, '🛡️ هاي اللوحة كانت قديمة — رجّعناها لوبي جديد بنفس الرسالة، انضموا من جديد 👇');
+      await this.answerCallbackQuery(cb.id, '🛡️ انبنى لوبي جديد');
       return;
     }
 
@@ -3420,9 +3458,7 @@ export class TelegramBotManager {
     // ───────── إحصائيات الألعاب الجديدة (فردية مع البوت) ─────────
     const soloConfig: Record<string, { title: string; emoji: string; gamesKey: keyof BotUserRecord; winsKey: keyof BotUserRecord; verb: string }> = {
       guess_song: { title: 'خمّن الأغنية', emoji: '🎵', gamesKey: 'guessSongGames', winsKey: 'guessSongWins', verb: 'عرفها' },
-      math: { title: 'تحدي الحساب', emoji: '🔢', gamesKey: 'mathGames', winsKey: 'mathWins', verb: 'فاز' },
-      rhyme: { title: 'تحدي القافية', emoji: '🥊', gamesKey: 'rhymeGames', winsKey: 'rhymeWins', verb: 'جاب كلمات' },
-      longest: { title: 'أطول كلمة', emoji: '📏', gamesKey: 'longestGames', winsKey: 'longestWins', verb: 'فاز' }
+      math: { title: 'تحدي الحساب', emoji: '🧮', gamesKey: 'mathGames', winsKey: 'mathWins', verb: 'فاز' }
     };
     if (gameId && soloConfig[gameId]) {
       const conf = soloConfig[gameId];
