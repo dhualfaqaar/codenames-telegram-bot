@@ -388,6 +388,54 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
+    id: 'general_quiz',
+    emoji: '📚',
+    title: 'أسئلة عامة',
+    category: 'group',
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'حصد أعلى نقاط في ١٠ جولات ثقافية متنوعة',
+    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    about:
+      'مسابقة جماعية متجددة من ١٠ جولات تغطي العلوم والفضاء واللغة والطبيعة والثقافة العامة.\n' +
+      'تُحتسب نقطة لكل إجابة صحيحة خلال ١٥ ثانية، وصاحب أعلى رصيد في النهاية يحسم الفوز.',
+    channel: true,
+    inline: 'gq general',
+    ready: true
+  },
+  {
+    id: 'geography_quiz',
+    emoji: '🗺️',
+    title: 'جغرافيا',
+    category: 'group',
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'حصد أعلى نقاط في ١٠ جولات جغرافية',
+    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    about:
+      'منافسة جغرافية شيّقة من ١٠ جولات تشمل الدول والجزر والمضائق والأنهار والجبال والمحيطات وجغرافية العراق والعالم.\n' +
+      'كل إجابة صحيحة تمنح نقطة، والأعلى رصيداً في ختام الجولات يفوز.',
+    channel: true,
+    inline: 'gq geo',
+    ready: true
+  },
+  {
+    id: 'history_quiz',
+    emoji: '🏛️',
+    title: 'تاريخ',
+    category: 'group',
+    players: 'من لاعبين إلى ١٠ لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'حصد أعلى نقاط في ١٠ جولات تاريخية',
+    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    about:
+      'منافسة تاريخية ممتعة من ١٠ جولات تمتد من حضارات سومر وبابل وآشور في العراق إلى التاريخ العربي والإسلامي وأبرز محطات التاريخ العالمي.\n' +
+      'كل إجابة صحيحة تمنح نقطة، وصاحب الصدارة في النهاية يفوز.',
+    channel: true,
+    inline: 'gq history',
+    ready: true
+  },
+  {
     id: 'gq_country',
     emoji: '🏳️',
     title: 'خمّن الدولة',
@@ -890,6 +938,9 @@ export class TelegramBotManager {
   }
 
   private static readonly GQ_GAME_KIND: Record<string, GG.QuizKind> = {
+    general_quiz: 'general',
+    geography_quiz: 'geo',
+    history_quiz: 'history',
     speed_quiz: 'speed',
     trivia_battle: 'trivia',
     math: 'math',
@@ -3063,11 +3114,23 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── 🎉 ألعاب الجماعة (gq speed / gq trivia / gq player / gq poet / gq song_ar / gq song_en / gq mm …) ──
+    // ── 🎉 ألعاب الجماعة (gq speed / gq general / gq geo / gq history / gq mm … أو بالاسم العربي) ──
     if (q.startsWith('gq')) {
       const kind = q.replace(/^gq\s*/, '').trim() || 'speed';
       const card = kind === 'mm' ? this.gqCardMM(deployerId) : this.gqCard(kind, deployerId);
       await this.answerInlineQuery(iq.id, [card]);
+      return;
+    }
+    if (q.includes('عام') || q.includes('اسئل') || q.includes('أسئل')) {
+      await this.answerInlineQuery(iq.id, [this.gqCard('general', deployerId)]);
+      return;
+    }
+    if (q.includes('جغراف')) {
+      await this.answerInlineQuery(iq.id, [this.gqCard('geo', deployerId)]);
+      return;
+    }
+    if (q.includes('تاريخ')) {
+      await this.answerInlineQuery(iq.id, [this.gqCard('history', deployerId)]);
       return;
     }
 
@@ -3454,10 +3517,18 @@ export class TelegramBotManager {
         const levelBefore = Economy.levelFromXp(rec.xp || 0);
         const perf = Math.min(1, p.score / Math.max(1, game.totalRounds));
         rec.onlineGames = (rec.onlineGames || 0) + 1;
+        const ecoGameId =
+          game.kind === 'general'
+            ? 'general_quiz'
+            : game.kind === 'geo'
+              ? 'geography_quiz'
+              : game.kind === 'history'
+                ? 'history_quiz'
+                : 'group_quiz';
         if (won) {
           rec.onlineWins = (rec.onlineWins || 0) + 1;
           const money = Economy.moneyForWin({
-            gameId: 'group_quiz',
+            gameId: ecoGameId,
             performance: perf,
             level: levelBefore,
             opponentLevel: avgOpponentLevel,
@@ -4888,6 +4959,11 @@ export class TelegramBotManager {
         { text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' }
       ]
     ];
+    // 💵 المتصدرون + خدمات إضافية، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
+    keyboard.push([
+      { text: '🏅 المتصدرون', callback_data: 'rank:menu' },
+      { text: '✨ خدمات إضافية', callback_data: 'svc:main' }
+    ]);
     if (botUser) {
       keyboard.push([
         {
@@ -4896,11 +4972,6 @@ export class TelegramBotManager {
         }
       ]);
     }
-    // 💵 المتصدرون + خدمات إضافية، وتحتهم زر القناة العريض
-    keyboard.push([
-      { text: '🏅 المتصدرون', callback_data: 'rank:menu' },
-      { text: '✨ خدمات إضافية', callback_data: 'svc:main' }
-    ]);
     keyboard.push([
       { text: '📢 القناة', url: 'https://t.me/pleasegodimtired' }
     ]);
@@ -5331,18 +5402,18 @@ export class TelegramBotManager {
       });
       this.whispers.set(wh.id, wh);
 
-      // إذا انقفلت الهمسة للتو (مثل «لأول شخص فقط» أو اكتمل عدد الفاتحين) نحدّث شكل الرسالة فوراً
-      if (res.justLocked) {
-        const lockedText = MS.renderWhisperCardText(wh);
-        const lockedKb = MS.whisperCardKeyboard(wh);
+      // تحديث بطاقة الهمسة فوراً لإظهار اسم القارئ داخل البطاقة وعلى الزر (وكذلك عند القفل)
+      if (res.shouldUpdateCard) {
+        const updatedText = MS.renderWhisperCardText(wh);
+        const updatedKb = MS.whisperCardKeyboard(wh);
         if (cb.inline_message_id) {
-          await this.editInlineMessageText(cb.inline_message_id, lockedText, lockedKb, 'MarkdownV2');
+          await this.editInlineMessageText(cb.inline_message_id, updatedText, updatedKb, 'MarkdownV2');
         } else if (cb.message?.chat?.id && cb.message?.message_id) {
           await this.editMessageText(
             String(cb.message.chat.id),
             cb.message.message_id,
-            lockedText,
-            lockedKb,
+            updatedText,
+            updatedKb,
             'MarkdownV2'
           );
         }
@@ -5379,19 +5450,17 @@ export class TelegramBotManager {
         await this.editMessageText(chatId, messageId, `⏳ جاري إرسال الأغنية: *${this.mdSafe(hit.title)}* ...`);
       }
 
-      const audioInfo = await MS.resolveSongAudioUrl(hit.videoId);
-      if (!audioInfo) {
-        if (messageId) {
-          await this.editMessageText(
-            chatId,
-            messageId,
-            '⚠️ تعذّر سحب ملف الصوت حالياً — جرّب اختيار نتيجة ثانية من البحث.'
-          );
+      let audioPayload = await MS.resolveSongAudioPayload(hit);
+      let sentOk = audioPayload ? await this.sendAudioPayload(chatId, audioPayload, hit.title, hit.artist) : false;
+
+      // تعويض تلقائي مضمون: إذا فشل الرابط الأول نسحب النسخة الصوتية الكاملة من SoundCloud CloudFront فوراً
+      if (!sentOk && !hit.videoId.startsWith('sc:')) {
+        const scBackup = await MS.resolveFallbackSongFromSoundCloud(hit);
+        if (scBackup) {
+          sentOk = await this.sendAudioPayload(chatId, scBackup, hit.title, hit.artist);
         }
-        return;
       }
 
-      const sentOk = await this.sendAudioPure(chatId, audioInfo.url, hit.title, hit.artist, audioInfo.ext);
       if (sentOk) {
         if (messageId) {
           await this.deleteMessage(chatId, messageId);
@@ -5400,7 +5469,7 @@ export class TelegramBotManager {
         await this.editMessageText(
           chatId,
           messageId,
-          '⚠️ تعذّر إرسال الملف الصوتي — جرّب نتيجة أخرى.'
+          '⚠️ تعذّر إرسال هذه النسخة حالياً — جرّب اختيار نتيجة ثانية من القائمة.'
         );
       }
       return;
@@ -5674,7 +5743,7 @@ export class TelegramBotManager {
 
     let delivered = 0;
     for (const item of result.items.slice(0, 5)) {
-      const ok = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url);
+      const ok = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url, item.headers);
       if (ok) delivered += 1;
     }
 
@@ -5731,34 +5800,59 @@ export class TelegramBotManager {
     }).catch(() => null);
   }
 
-  /** إرسال ملف صوتي صافي 100% على شكل أغنية فقط بدون أي نص أو كليشة */
-  private async sendAudioPure(
+  /** إرسال ملف صوتي صافي 100% على شكل أغنية فقط (يدعم البايتات المباشرة والروابط مع Headers مطابقة) */
+  private async sendAudioPayload(
     chatId: string,
-    audioUrl: string,
+    payload: MS.ResolvedAudioPayload,
     title: string,
-    performer: string,
-    ext: 'mp3' | 'm4a'
+    performer: string
   ): Promise<boolean> {
     if (!this.token) return false;
+    const mime = payload.ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
+    const fileName = `${title.replace(/[\\/:*?"<>|]/g, '').slice(0, 60) || 'song'}.${payload.ext}`;
 
+    // 1) إذا كانت البيانات الثنائية جاهزة مسبقاً بالذاكرة (مثل HLS المجمّع من SoundCloud CloudFront)
+    if (payload.bytes && payload.bytes.byteLength > 1000 && payload.bytes.byteLength <= 49 * 1024 * 1024) {
+      try {
+        const form = new FormData();
+        form.append('chat_id', chatId);
+        form.append('title', title);
+        form.append('performer', performer);
+        form.append('audio', new Blob([payload.bytes as unknown as ArrayBuffer], { type: mime }), fileName);
+
+        const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
+          method: 'POST',
+          body: form
+        });
+        const upJson: any = await up.json();
+        if (upJson?.ok) return true;
+      } catch {
+        // continue
+      }
+    }
+
+    if (!payload.url) return false;
+
+    // 2) سحب الملف الصوتي بالـ Headers المطابقة (User-Agent الأصلي) ثم رفعه ثنائياً لتيليجرام
     try {
-      const mediaRes = await fetch(audioUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        },
+      const reqHeaders: Record<string, string> = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        ...(payload.headers || {})
+      };
+      const mediaRes = await fetch(payload.url, {
+        headers: reqHeaders,
         redirect: 'follow'
       });
       if (mediaRes.ok) {
         const buf = await mediaRes.arrayBuffer();
         if (buf.byteLength > 1000 && buf.byteLength <= 49 * 1024 * 1024) {
-          const mime = ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
           const blob = new Blob([buf], { type: mime });
           const form = new FormData();
           form.append('chat_id', chatId);
           form.append('title', title);
           form.append('performer', performer);
-          form.append('audio', blob, `${title.replace(/[\\/:*?"<>|]/g, '').slice(0, 60) || 'song'}.${ext}`);
+          form.append('audio', blob, fileName);
 
           const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
             method: 'POST',
@@ -5778,7 +5872,7 @@ export class TelegramBotManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          audio: audioUrl,
+          audio: payload.url,
           title,
           performer
         })
@@ -5790,22 +5884,25 @@ export class TelegramBotManager {
     }
   }
 
-  /** إرسال فيديو أو صورة (سحب ثنائي + بديل رابط مباشر) لخدمة التحميل من السوشيال ميديا */
+  /** إرسال فيديو أو صورة (مع تمرير Cookies + Referer + User-Agent الأصلي لتجاوز أي حظر CDN 403) */
   private async sendMediaBinaryOrUrl(
     chatId: string,
     kind: 'video' | 'photo',
-    mediaUrl: string
+    mediaUrl: string,
+    customHeaders?: Record<string, string>
   ): Promise<boolean> {
     if (!this.token) return false;
     const method = kind === 'video' ? 'sendVideo' : 'sendPhoto';
     const field = kind === 'video' ? 'video' : 'photo';
 
     try {
+      const reqHeaders: Record<string, string> = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        ...(customHeaders || {})
+      };
       const r = await fetch(mediaUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        },
+        headers: reqHeaders,
         redirect: 'follow'
       });
       if (r.ok) {

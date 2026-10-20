@@ -11,6 +11,8 @@
 import {
   GQRow,
   GENERAL,
+  GEOGRAPHY,
+  HISTORY,
   COUNTRIES,
   MOVIES,
   SERIES,
@@ -30,6 +32,9 @@ import { ODD_WORD_PUZZLES } from './oddWordEngine';
 // 🧩 أنواع الألعاب
 // ---------------------------------------------------------------------
 export type QuizKind =
+  | 'general'
+  | 'geo'
+  | 'history'
   | 'speed'
   | 'trivia'
   | 'country'
@@ -48,6 +53,21 @@ export type QuizKind =
   | 'song_en';
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
+  general: {
+    emoji: '📚',
+    title: 'أسئلة عامة',
+    intro: 'منافسة أسئلة عامة متجددة من ١٠ جولات 📚'
+  },
+  geo: {
+    emoji: '🗺️',
+    title: 'جغرافيا',
+    intro: 'تحدي الدول والجزر والمضائق والأنهار والتضاريس 🗺️'
+  },
+  history: {
+    emoji: '🏛️',
+    title: 'تاريخ',
+    intro: 'رحلة في حضارات الرافدين والتاريخ العربي والعالمي 🏛️'
+  },
   speed: {
     emoji: '⚡',
     title: 'مسابقة السرعة',
@@ -135,21 +155,46 @@ export function isSpeedQuiz(game: QuizGame | { kind: QuizKind }): boolean {
   return game.kind === 'speed' || game.kind === 'math';
 }
 
-/** يولّد مسائل حسابية عشوائية (جمع وطرح وضرب) مع ٣ إجابات غلط قريبة */
+/** يولّد مسائل حسابية عشوائية متنوّعة (جمع، طرح، ضرب، قسمة صحيحة، وتربيع) مع ٣ إجابات غلط قريبة */
 function mathRows(): GQRow[] {
   const rows: GQRow[] = [];
   const used = new Set<string>();
-  while (rows.length < 20) {
-    const ops = ['+', '-', '×'];
-    const op = ops[Math.floor(Math.random() * ops.length)];
-    let a = 4 + Math.floor(Math.random() * 46);
-    let b = 3 + Math.floor(Math.random() * 36);
-    if (op === '×') { a = 3 + Math.floor(Math.random() * 10); b = 3 + Math.floor(Math.random() * 10); }
-    if (op === '-' && b > a) { const t = a; a = b; b = t; }
-    const ans = op === '+' ? a + b : op === '-' ? a - b : a * b;
-    const key = `${a}${op}${b}`;
-    if (used.has(key)) continue;
-    used.add(key);
+  while (rows.length < 30) {
+    const mode = Math.floor(Math.random() * 5);
+    let prompt = '';
+    let ans = 0;
+    if (mode === 0) {
+      const a = 12 + Math.floor(Math.random() * 88);
+      const b = 9 + Math.floor(Math.random() * 75);
+      prompt = `كم ناتج ${a} + ${b}؟`;
+      ans = a + b;
+    } else if (mode === 1) {
+      let a = 25 + Math.floor(Math.random() * 95);
+      let b = 8 + Math.floor(Math.random() * 65);
+      if (b > a) [a, b] = [b, a];
+      prompt = `كم ناتج ${a} - ${b}؟`;
+      ans = a - b;
+    } else if (mode === 2) {
+      const a = 4 + Math.floor(Math.random() * 13);
+      const b = 3 + Math.floor(Math.random() * 12);
+      prompt = `كم ناتج ${a} × ${b}؟`;
+      ans = a * b;
+    } else if (mode === 3) {
+      const divisor = 2 + Math.floor(Math.random() * 11);
+      const quotient = 3 + Math.floor(Math.random() * 14);
+      const dividend = divisor * quotient;
+      prompt = `كم ناتج ${dividend} ÷ ${divisor}؟`;
+      ans = quotient;
+    } else {
+      const a = 2 + Math.floor(Math.random() * 9);
+      const b = 2 + Math.floor(Math.random() * 8);
+      const c = 3 + Math.floor(Math.random() * 20);
+      prompt = `كم ناتج (${a} × ${b}) + ${c}؟`;
+      ans = a * b + c;
+    }
+
+    if (used.has(prompt)) continue;
+    used.add(prompt);
     const wrongs = new Set<number>();
     while (wrongs.size < 3) {
       const delta = 1 + Math.floor(Math.random() * 9);
@@ -157,7 +202,7 @@ function mathRows(): GQRow[] {
       if (w !== ans && w >= 0) wrongs.add(w);
     }
     const [w1, w2, w3] = Array.from(wrongs);
-    rows.push([`كم ناتج ${a} ${op} ${b}؟`, String(ans), String(w1), String(w2), String(w3)]);
+    rows.push([prompt, String(ans), String(w1), String(w2), String(w3)]);
   }
   return rows;
 }
@@ -306,6 +351,9 @@ function oddLinkFor(oddWord: string): string {
 
 function packFor(kind: QuizKind): string[][] {
   switch (kind) {
+    case 'general': return GENERAL;
+    case 'geo': return GEOGRAPHY;
+    case 'history': return HISTORY;
     case 'country': return COUNTRIES;
     case 'movie': return MOVIES;
     case 'series': return SERIES;
@@ -324,8 +372,42 @@ function packFor(kind: QuizKind): string[][] {
   }
 }
 
+/**
+ * 🔄 ذاكرة تدوير ذكية تمنع تكرار الأسئلة عبر المباريات المتتالية في نفس المحادثة
+ * حتى تمر جميع أسئلة البنك بالكامل قبل أن يُعاد أي سؤال من جديد.
+ */
+const recentDeckHistory = new Map<string, string[]>();
+
+function pickFreshDeck(chatId: string, kind: QuizKind): string[][] {
+  const fullPool = packFor(kind);
+  if (kind === 'math' || fullPool.length <= TOTAL_ROUNDS) {
+    return shuffle(fullPool).slice(0, TOTAL_ROUNDS);
+  }
+
+  const histKey = `${chatId || 'global'}::${kind}`;
+  const seenList = recentDeckHistory.get(histKey) || [];
+  const seenSet = new Set(seenList);
+
+  let unseen = fullPool.filter(row => !seenSet.has(row[0]));
+  if (unseen.length < TOTAL_ROUNDS) {
+    // اكتملت دورة البنك بالكامل — نبدأ دورة جديدة مع تجنّب آخر جولة مباشرة
+    const tail = new Set(seenList.slice(-TOTAL_ROUNDS));
+    seenList.length = 0;
+    unseen = fullPool.filter(row => !tail.has(row[0]));
+    if (unseen.length < TOTAL_ROUNDS) unseen = fullPool.slice();
+  }
+
+  const picked = shuffle(unseen).slice(0, TOTAL_ROUNDS);
+  for (const r of picked) seenList.push(r[0]);
+  if (seenList.length > fullPool.length) {
+    seenList.splice(0, seenList.length - fullPool.length);
+  }
+  recentDeckHistory.set(histKey, seenList);
+  return picked;
+}
+
 export function createQuiz(chatId: string, chatName: string, kind: QuizKind): QuizGame {
-  const deck = shuffle(packFor(kind)).slice(0, TOTAL_ROUNDS);
+  const deck = pickFreshDeck(chatId, kind);
   return {
     chatId,
     chatName,

@@ -117,6 +117,27 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
   },
+  general_quiz: {
+    maxMoney: 0.016,
+    winXp: 9,
+    loseXp: 4,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.016* 💵'
+  },
+  geography_quiz: {
+    maxMoney: 0.016,
+    winXp: 9,
+    loseXp: 4,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.016* 💵'
+  },
+  history_quiz: {
+    maxMoney: 0.016,
+    winXp: 9,
+    loseXp: 4,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.016* 💵'
+  },
   mastermind: {
     maxMoney: 0.02,
     winXp: 10,
