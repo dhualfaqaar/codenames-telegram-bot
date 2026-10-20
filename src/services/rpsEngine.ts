@@ -46,6 +46,16 @@ export const MOVE_BEATS: Record<RPSMove, RPSMove> = {
   scissors: 'paper'
 };
 
+/** يهروّب رموز MarkdownV2 الخاصة حتى النص ينطبع حرفياً (لوحات RPS تُرسل MarkdownV2 للاقتباسات الملوّنة) */
+function md(s: string): string {
+  return s.replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
+
+/** سطر لاعب داخل اقتباس ملوّن: رقم من اليسار + سلاش اسم عريض سلاش + p نقاطه */
+function scoreLine(rank: number, name: string, score: number, mark = ''): string {
+  return `> ${rank} \\- /*${md(name)}*/ \\(p ${score}\\)${mark}`;
+}
+
 function shuffle<T>(items: T[]): T[] {
   const out = items.slice();
   for (let i = out.length - 1; i > 0; i--) {
@@ -161,36 +171,39 @@ export function resolveRound(game: RPSGame): RPSGame {
 
 /** نص رسالة المباراة بلوحة (للقناة) */
 export function renderGame(game: RPSGame): string {
-  const lines = [`✊ *حجرة ورقة مقص*`, `━━━━━━━━━━━━━━━━━━━`];
+  const SEP = '━━━━━━━━━━━━━━━━━━━';
+  const lines = [`✊ *حجرة ورقة مقص*`, SEP];
 
   if (game.status === 'lobby') {
-    lines.push(`*اللاعبون (${game.players.length}/2):*`);
-    if (!game.players.length) lines.push(`_ماكو أحد بعد — اضغط «انضم»_`);
-    for (const p of game.players) lines.push(`• ${p.name}`);
-    lines.push(`━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`*الجولات:* ${game.totalRounds}`);
-    if (game.players.length < 2) lines.push(`يحتاج لاعبين ثنين`);
+    lines.push(`👥 *اللاعبين \\(${game.players.length}/2\\):*`);
+    if (!game.players.length) {
+      lines.push(`_ماكو أحد بعد_`);
+    } else {
+      game.players.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score)));
+    }
+    lines.push(SEP);
+    lines.push(`🎯 الجولات: *${game.totalRounds}*`);
+    if (game.players.length < 2) lines.push(`_يحتاج لاعب ثاني يدوس «انضم»_`);
     return lines.join('\n');
   }
 
   if (game.status === 'game_over') {
     const sorted = game.players.slice().sort((a, b) => b.score - a.score);
-    const winner = sorted[0];
-    const loser = sorted[1];
-    lines.push(`*خلصت المباراة!*`);
-    lines.push(`━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`الفائز: *${winner.name}*`);
-    lines.push(`الخاسر: *${loser.name}*`);
+    lines.push(`🏁 *خلصت المباراة\\!*`);
+    lines.push(SEP);
+    sorted.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score, i === 0 ? ' 🏆' : '')));
+    lines.push(SEP);
     return lines.join('\n');
   }
 
-  lines.push(`*الجولة ${game.round}* من *${game.totalRounds}*`);
-  lines.push(`━━━━━━━━━━━━━━━━━━━`);
-  for (const p of game.players) {
-    lines.push(`${p.name}: *${p.score}* ${p.move ? '✅ اختار' : '⏳ ينتظر'}`);
-  }
-  lines.push(`━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`_اللاعبين يختارون حركتهم من الأزرار تحت 👇_`);
+  lines.push(`🎯 الجولة *${game.round}* من *${game.totalRounds}*`);
+  lines.push(SEP);
+  lines.push(`🏆 *النقاط:*`);
+  game.players.forEach((p, i) => {
+    lines.push(scoreLine(i + 1, p.name, p.score, p.move ? ' ✅' : ' ⏳'));
+  });
+  lines.push(SEP);
+  lines.push(`_الحركة تختارها من الأزرار تحت 👇_`);
   return lines.join('\n');
 }
 
