@@ -1015,6 +1015,23 @@ export class TelegramBotManager {
       return { success: true, message: 'البوت يعمل بالفعل!' };
     }
 
+    // ⚠️ ما نمسح وصلة الاستقبال (Webhook) — البوت مستضاف على Cloudflare
+    // وتشغيل نسخة ثانية هنا يسكته للأبد. نفحصها ونرفض بدل ما نكسر البوت.
+    try {
+      const info = await fetch(`https://api.telegram.org/bot${this.token}/getWebhookInfo`).then(r => r.json());
+      const hooked = info?.result?.url;
+      if (hooked) {
+        return {
+          success: false,
+          message:
+            'البوت مستضاف ويستقبل الرسائل عبر وصلة (Webhook) — التشغيل المحلي يوقفها ويطير البوت. ' +
+            'خلّه مستضاف، أو احذف الوصلة أولاً إذا تبي تشغّله محلياً.'
+        };
+      }
+    } catch {
+      // فشل الفحص — نكمل كالمعتاد
+    }
+
     // Clear any conflicting webhooks before polling
     try {
       await fetch(`https://api.telegram.org/bot${this.token}/deleteWebhook`);

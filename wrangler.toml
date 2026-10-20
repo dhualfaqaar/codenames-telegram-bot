@@ -3,6 +3,13 @@ main = "worker/index.ts"
 compatibility_date = "2025-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# وصلة الاستقبال + مؤقت يفحصها كل 5 دقائق (يرجّعها تلقائياً لو مسحت)
+[vars]
+WEBHOOK_URL = "https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
 [durable_objects]
 bindings = [
   { name = "BOT_STATE", class_name = "BotState" }
