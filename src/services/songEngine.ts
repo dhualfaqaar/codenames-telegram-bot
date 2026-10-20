@@ -101,9 +101,9 @@ export function answer(round: SongRound, index: number): SongRound {
 }
 
 export function renderMessage(round: SongRound): string {
-  const lines = [`🎵 *خمّن الأغنية*`, `━━━━━━━━━━━━━━━━━━━`];
+  const lines = [`🎵 *خمّن الأغنية*`, `━━━━━━━━━━`];
   lines.push(`❝ ${round.snippet} ❞`);
-  lines.push(`━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`━━━━━━━━━━`);
   if (!round.done) {
     lines.push(`🎤 منو يغني هاي الأغنية؟`);
     lines.push(round.attempts === 0 ? `_عندك محاولتين_` : `_بقيتلك محاولة وحدة_ ⏳`);

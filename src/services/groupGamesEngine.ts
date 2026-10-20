@@ -113,6 +113,10 @@ function arNum(n: number): string {
   return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
 }
 export const TOTAL_ROUNDS = 10;
+/** مهلة كل سؤال بالثواني — اللي ما يجاوب خلالها يتحوّل السؤال تلقائياً للي بعده */
+export const ROUND_MS = 10_000;
+/** مهلة عرض نتيجة الجولة لما الكل يجاوب قبل العشر ثواني */
+export const RESULT_MS = 2_000;
 
 /**
  * يهروّب رموز MarkdownV2 الخاصة حتى النص ينطبع حرفياً.
@@ -124,10 +128,10 @@ export function md(s: string): string {
 
 /**
  * سطر لاعب داخل اقتباس ملوّن — كل اسم بسطر حاله ويا الشريط الملوّن:
- * رقم من اليسار، سلاش + اسم عريض + سلاش، ثم (p نقاطه) وبعدين علامته لو كو
+ * 1 - | اسم | (p نقاطه) + علامته (✅ صح / ❌ خطأ / ⏳ ما جاوب)
  */
 export function scoreLine(rank: number, name: string, score: number, mark = ''): string {
-  return `> ${rank} \\- /*${md(name)}*/ \\(p ${score}\\)${mark}`;
+  return `> ${rank} \\- \\| *${md(name)}* \\| \\(p ${score}\\)${mark}`;
 }
 
 // ---------------------------------------------------------------------
@@ -162,6 +166,10 @@ export interface QuizGame {
   correctIdx: number;
   /** نص ملخص آخر جولة (لعرضه بشاشة النتيجة) */
   lastLine: string;
+  /** موعد انتهاء مهلة السؤال الحالي (١٠ ثواني) */
+  roundDeadline?: number;
+  /** موعد الانتقال التلقائي بعد شاشة النتيجة القصيرة */
+  resultDeadline?: number;
   createdAt: number;
 }
 
@@ -216,13 +224,15 @@ export function quizJoin(game: QuizGame, id: string, name: string): { ok: boolea
   return { ok: true, msg: '✅ انضميت للبطولة!' };
 }
 
-/** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين */
+/** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين ويبدأ مؤقت ١٠ ثواني */
 function loadRound(game: QuizGame) {
   const row = game.deck[game.qIndex];
   const correct = row[1];
   const opts = shuffle(row.slice(1) as string[]);
   game.options = opts;
   game.correctIdx = opts.indexOf(correct);
+  game.roundDeadline = Date.now() + ROUND_MS;
+  game.resultDeadline = undefined;
   for (const p of game.players) {
     p.done = false;
     p.roundHit = undefined;
@@ -262,12 +272,22 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
   if (isSpeedQuiz(game)) {
     if (!isRight) {
       p.done = true;
+      p.roundHit = false;
+      if (game.players.every(x => x.done)) {
+        game.status = 'result';
+        game.lastLine = '';
+        game.roundDeadline = undefined;
+        game.resultDeadline = Date.now() + RESULT_MS;
+        return { ok: true, msg: '❌ غلط! خارج هالجولة', roundClosed: true };
+      }
       return { ok: true, msg: '❌ غلط! خارج هالجولة', roundClosed: false };
     }
     p.score += 1;
     p.done = true;
     p.roundHit = true;
     game.status = 'result';
+    game.roundDeadline = undefined;
+    game.resultDeadline = Date.now() + RESULT_MS;
     game.lastLine = `⚡ *${md(p.name)}* سبق الكل وجاوب صح\\!\n✅ الجواب: *${md(correctText)}*`;
     return { ok: true, msg: '⚡ صح وسباق! +١ نقطة', roundClosed: true };
   }
@@ -283,12 +303,13 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
   }
 
   game.status = 'result';
-  // بلا كشف الجواب — علامة ✓/✗ بجنب كل لاعب بسطر النقاط، والجولة الجاية تجي بعد لحظات
+  game.roundDeadline = undefined;
+  game.resultDeadline = Date.now() + RESULT_MS;
   game.lastLine = '';
   return { ok: true, msg: isRight ? '✅ صح! +١ نقطة' : '❌ غلط', roundClosed: true };
 }
 
-/** يختم الجولة على طول (بس لاعب جاوب أصلاً يكدر يضغطها) — حتى البطولة ما تعلق بلاعب نايم */
+/** يختم الجولة على طول (بس لاعب جاوب أصلاً يكدر يضغطها) */
 export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string } {
   if (game.status !== 'playing') return { ok: false, msg: '⏳ ماكو جولة مفتوحة' };
   const p = game.players.find(x => x.id === id);
@@ -296,11 +317,13 @@ export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string
   if (!p.done) return { ok: false, msg: '⚠️ جاوب أول وبعدين ختم الجولة' };
 
   game.status = 'result';
-  game.lastLine = '⏭️ انختمت الجولة\\!';
+  game.roundDeadline = undefined;
+  game.resultDeadline = Date.now() + RESULT_MS;
+  game.lastLine = '';
   return { ok: true, msg: '⏭️ انختمت الجولة' };
 }
 
-/** بعد عرض نتيجة الجولة: نتأكد ماكو نهاية مبكرة ونجهّز الجولة الجاية أو نختم */
+/** بعد عرض نتيجة الجولة أو انتهاء ١٠ ثواني: نتأكد ماكو نهاية مبكرة ونجهّز الجولة الجاية أو نختم */
 export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
   // 🧠 نهاية ذكية (وضع السرعة): إذا المتصدر مستحيل ينلحق
   if (isSpeedQuiz(game) && game.players.length) {
@@ -310,12 +333,16 @@ export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
     const second = ordered[1]?.score ?? 0;
     if (second + remaining < top) {
       game.status = 'game_over';
+      game.roundDeadline = undefined;
+      game.resultDeadline = undefined;
       return { over: true, smart: true };
     }
   }
 
   if (game.round >= game.totalRounds) {
     game.status = 'game_over';
+    game.roundDeadline = undefined;
+    game.resultDeadline = undefined;
     return { over: true, smart: false };
   }
 
@@ -331,69 +358,53 @@ export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
 // ---------------------------------------------------------------------
 export function renderQuiz(game: QuizGame): string {
   const meta = QUIZ_KINDS[game.kind];
-  const SEP = '━━━━━━━━━━━━━━━━━━━';
-  const lines = [`${meta.emoji} *${meta.title}*`, SEP];
+  const SEP = '━━━━━━━━━━';
 
   if (game.status === 'lobby') {
+    const lines = [`${meta.emoji} *${meta.title}*`, ''];
     lines.push(`👥 *اللاعبين \\(${game.players.length}/${MAX_PLAYERS}\\):*`);
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
       game.players.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score)));
     }
-    lines.push(SEP);
     return lines.join('\n');
   }
 
   if (game.status === 'game_over') {
     const sorted = game.players.slice().sort((a, b) => b.score - a.score);
-    lines.push(`🏁 *خلصت البطولة\\!*`);
-    lines.push(SEP);
-    lines.push(`🏆 *الترتيب النهائي:*`);
+    const lines = [
+      `${meta.emoji} *${meta.title}*`,
+      `🏁 *خلصت البطولة\\!*`,
+      SEP,
+      `🏆 *الترتيب النهائي:*`
+    ];
     sorted.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score, i === 0 ? ' 👑' : '')));
-    lines.push(SEP);
     return lines.join('\n');
   }
 
   // playing / result
-  lines.push(`🎯 الجولة *${game.round}* من *${game.totalRounds}*`);
-  lines.push(SEP);
+  const lines = [`${meta.emoji} *${meta.title}* • الجولة *${game.round}* من *${game.totalRounds}*`];
 
   if (game.status === 'result' && game.lastLine) {
     lines.push(game.lastLine);
-    lines.push(SEP);
   }
 
   if (game.status === 'playing') {
+    lines.push('');
     lines.push(`❓ *${md(game.deck[game.qIndex][0])}*`);
-    lines.push(SEP);
   }
 
-  // 🏆 كل لاعب باقتباس مستقل ملوّن — الاسم عريض بين سلاشين ونقاطه بين قوسين
+  lines.push(SEP);
   lines.push(`🏆 *النقاط:*`);
   const ranked = game.players.slice().sort((a, b) => b.score - a.score);
   for (let i = 0; i < ranked.length; i++) {
     const p = ranked[i];
-    let mark = '';
-    if (game.status === 'result') {
-      // بعد ما الكل يجاوب: ✓/✗ جانب كل اسم بلا كشف الجواب
-      if (p.roundHit === true) mark = ' ✅';
-      else if (p.done) mark = ' ❌';
-    } else if (p.done) {
-      mark = ' ☑️'; // جاوب (بلا كشف صحته) — ما نفضح الجواب قبل ما يكمل الباقي
-    }
+    // ✅ جاوب صح (أخضر) • ❌ جاوب خطأ (أحمر) • ⏳ ما جاوب (ساعة رملية)
+    const mark = p.done ? (p.roundHit ? ' ✅' : ' ❌') : ' ⏳';
     lines.push(scoreLine(i + 1, p.name, p.score, mark));
   }
-  lines.push(SEP);
 
-  if (game.status === 'playing') {
-    const waiting = game.players.filter(p => !p.done).length;
-    if (isSpeedQuiz(game)) {
-      lines.push(`⚡ _اضغط الصح قبل الكل — أول صح يسجّل\\!_`);
-    } else {
-      lines.push(`⏳ _ننتظر ${waiting} ${waiting === 1 ? 'لاعب' : 'لاعبين'} يجاوبون…_`);
-    }
-  }
   return lines.join('\n');
 }
 
@@ -416,8 +427,6 @@ export function quizKeyboard(game: QuizGame): any[][] {
       if (opts[i + 1] !== undefined) row.push({ text: cut(opts[i + 1], 30), callback_data: `gqa:${i + 1}:${game.kind}:${chatId}` });
       kb.push(row);
     }
-    // ⏭️ تخطي (يظهر بس لو نص اللاعبين جاوبوا) — حتى اللعبة ما تتعلق إذا واحد نام
-    if (!isSpeedQuiz(game)) kb.push([{ text: '⏭️ ختم الجولة والانتقال', callback_data: `gqskip:${game.kind}:${chatId}` }]);
     return kb;
   }
 
@@ -597,18 +606,17 @@ export function mmSkipTurn(game: MMGame, id: string): { ok: boolean; msg: string
 }
 
 export function renderMM(game: MMGame): string {
-  const SEP = '━━━━━━━━━━━━━━━━━━━';
-  const lines = [`🔐 *ماسترمايند — كسر الرقم السري*`, SEP];
+  const SEP = '━━━━━━━━━━';
+  const lines = [`🔐 *ماسترمايند — كسر الرقم السري*`];
 
   if (game.status === 'lobby') {
+    lines.push('');
     lines.push(`👥 *اللاعبين \\(${game.players.length}/${MAX_PLAYERS}\\):*`);
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      game.players.forEach((p, i) => lines.push(`> ${i + 1} \\- /*${md(p.name)}*/`));
+      game.players.forEach((p, i) => lines.push(`> ${i + 1} \\- \\| *${md(p.name)}* \\|`));
     }
-    lines.push(SEP);
-    lines.push(`🔒 البوت خبّأ رقم من *٤ أرقام مختلفة* — الكل يتناوب يكسره`);
     return lines.join('\n');
   }
 
@@ -617,39 +625,34 @@ export function renderMM(game: MMGame): string {
     lines.push(SEP);
     if (game.winnerId) {
       const w = game.players.find(p => p.id === game.winnerId);
-      lines.push(`👑 الفائز: /*${md(w?.name || 'مجهول')}*/`);
+      lines.push(`👑 الفائز: \\| *${md(w?.name || 'مجهول')}* \\|`);
       lines.push(`كسّر الرقم بـ *${w?.tries}* محاولات\\!`);
     } else {
       lines.push(`💔 محد كسر الرقم — البوت غلبكم هالمرة 😎`);
     }
-    lines.push(SEP);
     lines.push(`🔑 الرقم السري كان: *${game.secret.split('').join(' ')}*`);
     if (game.history.length) {
       lines.push(SEP);
       lines.push(`📝 *المحاولات:*`);
       game.history.slice(0, 10).forEach((h, i) => {
-        lines.push(`> ${i + 1} \\- /*${md(h.name)}*/ ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`);
+        lines.push(`> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`);
       });
     }
-    lines.push(SEP);
     return lines.join('\n');
   }
 
   const cur = mmCurrent(game);
-  lines.push(`🎯 الدور على: /*${md(cur?.name || '')}*/ \\(باقي إله ${MM_MAX_TRIES_EACH - (cur?.tries || 0)} محاولات\\)`);
-  lines.push(SEP);
+  lines.push(`🎯 الدور على: \\| *${md(cur?.name || '')}* \\| \\(باقي إله ${MM_MAX_TRIES_EACH - (cur?.tries || 0)} محاولات\\)`);
   lines.push(`✍️ تخمينك: *${game.entry ? game.entry.split('').join(' ') : '◻ ◻ ◻ ◻'}*`);
+  lines.push(SEP);
   if (game.history.length) {
-    lines.push(SEP);
     lines.push(`📝 *آخر المحاولات:*`);
     game.history.slice(0, 6).forEach((h, i) => {
-      lines.push(`> ${i + 1} \\- /*${md(h.name)}*/ ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`);
+      lines.push(`> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`);
     });
   } else {
-    lines.push(SEP);
     lines.push(`_ماكو محاولات بعد — أول واحد يجرب_`);
   }
-  lines.push(SEP);
   lines.push(`⚫ صح بمكانه • ⚪ صح بمكان غلط`);
   return lines.join('\n');
 }
