@@ -2821,7 +2821,8 @@ export class TelegramBotManager {
     await this.sendMessageRaw(chatId, '🎮 اختر القناة لنشر اللعبة:', {
       keyboard,
       resize_keyboard: true,
-      one_time_keyboard: true
+      one_time_keyboard: true,
+      selective: true
     });
   }
 
