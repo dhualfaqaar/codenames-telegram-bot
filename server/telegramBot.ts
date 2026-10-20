@@ -2180,6 +2180,74 @@ export class TelegramBotManager {
       return;
     }
 
+    // ─────────────── 📢 نشر الألعاب على القنوات ───────────────
+
+    // زر «🎮 العب بالقناة» من صفحة اللعبة (يشتغل لكل لعبة)
+    if (section.startsWith('chpick:')) {
+      const gameId = section.slice(7);
+      const game = findBotGame(gameId);
+      if (!game) {
+        await this.answerCallbackQuery(cb.id, '⚠️ اللعبة غير معروفة.', true);
+        return;
+      }
+
+      // ألعاب الخاص تنلعب هنا مع البوت بس — ما تننشر بقناة
+      if (!game.channel) {
+        await this.renderPrivateOnly(cb, game);
+        return;
+      }
+
+      // حجرة ورقة مقص: أول نختار كم راوند
+      if (gameId === 'rps') {
+        await this.renderRoundsPicker(cb, game);
+        return;
+      }
+
+      // الألعاب الثانية: قائمة القنوات مباشرة
+      const view = this.buildChannelView(gameId);
+      await this.paintMenuView(cb, view);
+      return;
+    }
+
+    // بعد اختيار الروندات (حجرة ورقة) → قائمة القنوات
+    if (section.startsWith('chlist:')) {
+      const parts = section.slice(7).split(':');
+      const gameId = parts[0];
+      const rounds = parseInt(parts[1] || '0', 10) || undefined;
+      const view = this.buildChannelView(gameId, rounds);
+      await this.paintMenuView(cb, view);
+      return;
+    }
+
+    // ضغط قناة من القائمة → ننشر اللعبة عليها مباشرة
+    if (section.startsWith('chgo:')) {
+      const parts = section.slice(5).split(':');
+      const gameId = parts[0];
+      const chanId = parts[1];
+      const rounds = parseInt(parts[2] || '0', 10) || undefined;
+      const title = this.chats.get(chanId)?.title || 'القناة';
+      await this.answerCallbackQuery(cb.id, '⏳ دقيقة، جاري النشر…');
+      const res = await this.deployGameToChannel(chanId, title, cb.from.id, gameId, rounds);
+      const kb = [[{ text: '🔙 رجوع', callback_data: `hub:g:${gameId}` }]];
+      if (messageId) {
+        await this.editMessageText(chatId, messageId, res.text, kb);
+      } else {
+        await this.sendMessage(chatId, res.text, kb);
+      }
+      return;
+    }
+
+    // «➕ قناة غيرها» → منتقي القنوات الرسمي من تليجرام
+    if (section.startsWith('chother:')) {
+      const parts = section.slice(8).split(':');
+      const gameId = parts[0];
+      const rounds = parseInt(parts[1] || '0', 10) || undefined;
+      this.pendingChannelGame.set(String(cb.from.id), { gameId, rounds, at: Date.now() });
+      await this.answerCallbackQuery(cb.id);
+      await this.sendChannelKeyboard(chatId);
+      return;
+    }
+
     const view = await this.buildGamesMenu(
       section,
       section === 'main' && cb.message?.chat.type === 'private'
@@ -2193,6 +2261,141 @@ export class TelegramBotManager {
       await this.sendMessage(chatId, text, view.keyboard);
     }
     await this.answerCallbackQuery(cb.id, '');
+  }
+
+  // ---------------------------------------------------------------------
+  // 📢 القنوات: نشر الألعاب عناوينها (من صفحة اللعبة)
+  // ---------------------------------------------------------------------
+
+  /** يعدّل رسالة القائمة الحالية — ولو ما كدر يرسل رسالة جديدة */
+  private async paintMenuView(cb: TelegramCallbackQuery, view: { text: string; keyboard: any[][] }) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    if (messageId) {
+      const res = await this.editMessageText(chatId, messageId, view.text, view.keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) {
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+    }
+    await this.sendMessage(chatId, view.text, view.keyboard);
+    await this.answerCallbackQuery(cb.id, '');
+  }
+
+  /** قائمة القنوات اللي يكدر المستخدم ينشر اللعبة عليها */
+  private buildChannelView(gameId: string, rounds?: number): { text: string; keyboard: any[][] } {
+    const game = findBotGame(gameId);
+    const channels = Array.from(this.chats.values())
+      .filter(c => c.type === 'channel')
+      .sort((a, b) => b.lastSeen - a.lastSeen)
+      .slice(0, 8);
+
+    const roundsPart = rounds ? `:${rounds}` : '';
+    const keyboard: any[][] = channels.map(c => [
+      { text: `📣 ${c.title.length > 30 ? c.title.slice(0, 29) + '…' : c.title}`, callback_data: `hub:chgo:${gameId}:${c.id}${roundsPart}` }
+    ]);
+    keyboard.push([{ text: '➕ قناة غيرها من تليجرام…', callback_data: `hub:chother:${gameId}${roundsPart}` }]);
+    keyboard.push([{ text: '🔙 رجوع', callback_data: gameId === 'rps' && rounds ? 'hub:chpick:rps' : `hub:g:${gameId}` }]);
+
+    const lines = [
+      `📢 *وين تريد تلعب «${game ? game.title : gameId}»؟*`,
+      `━━━━━━━━━━━━━━━━━━━`
+    ];
+    if (rounds) lines.push(`🎯 *الروندات:* ${rounds}`);
+    if (channels.length) {
+      lines.push(
+        `اختار قناتك من القائمة 👇 وراح أنزّل اللعبة بيها فوراً،`,
+        `أو اضغط (➕ قناة غيرها) حتى تختار أي قناة ثانية من تليجرام.`
+      );
+    } else {
+      lines.push(
+        `_البوت بعده ما يعرف قنواتك._`,
+        `اضغط (➕ قناة غيرها) واختار قناتك مباشرة من تليجرام —`,
+        `ولازم يكون البوت *مشرف (Admin)* بيها حتى تشتغل اللعبة.`
+      );
+    }
+    return { text: lines.join('\n'), keyboard };
+  }
+
+  /** حجرة ورقة مقص: شاشة اختيار الروندات قبل القناة */
+  private async renderRoundsPicker(cb: TelegramCallbackQuery, game: BotGameCard) {
+    await this.paintMenuView(cb, {
+      text:
+        `${game.emoji} *${game.title}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🎯 اختار كم راوند تلعبون بالقناة:`,
+      keyboard: [
+        [{ text: '٥ راوندات', callback_data: 'hub:chlist:rps:5' }],
+        [{ text: '١٠ راوندات', callback_data: 'hub:chlist:rps:10' }],
+        [{ text: '١٥ راوندات', callback_data: 'hub:chlist:rps:15' }],
+        [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
+      ]
+    });
+  }
+
+  /** ألعاب الخاص: تشتغل مع البوت — نعلم المستخدم ونعطيه زر البدء */
+  private async renderPrivateOnly(cb: TelegramCallbackQuery, game: BotGameCard) {
+    const keyboard: any[][] = [];
+    if (game.play) {
+      keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
+    }
+    keyboard.push([{ text: '🔙 رجوع', callback_data: `hub:g:${game.id}` }]);
+    await this.paintMenuView(cb, {
+      text:
+        `${game.emoji} *${game.title}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `💬 هاللعبة *خاصة*: تنلعبها هنا مع البوت — ما تننشر بقناة.\n\n` +
+        `👇 اضغط زر اللعب حتى تبدأ هسه:`,
+      keyboard
+    });
+  }
+
+  /**
+   * نشر لعبة (كود نيمز / حجرة ورقة) على قناة:
+   * ينضّف لوحاتها القديمة، يرسل اللوحة الجديدة، ويرجّع رسالة نجاح/فشل للمستخدم.
+   */
+  private async deployGameToChannel(
+    channelId: string,
+    title: string,
+    byUser?: string | number,
+    gameId?: string,
+    rounds?: number
+  ): Promise<{ ok: boolean; text: string }> {
+    // نظّف اللوحات القديمة بنفس القناة حتى تطلع الجديدة واضحة
+    if (gameId === 'rps') {
+      const oldRps = this.rpsGames.get(channelId);
+      if (oldRps?.messageId) await this.deleteMessage(channelId, oldRps.messageId);
+      this.rpsGames.delete(channelId);
+    } else {
+      const existing = this.games.get(channelId);
+      if (existing && existing.status === 'lobby' && existing.messageId) {
+        await this.deleteMessage(channelId, existing.messageId);
+        this.games.delete(channelId);
+      }
+    }
+
+    let result = await this.startNewGameLobby(channelId, title, byUser, gameId, rounds);
+    // تليجرام أحياناً يحتاج محاولة ثانية مباشرة بعد ما ينضاف البوت للقناة
+    if (!result.messageId) {
+      result = await this.startNewGameLobby(channelId, title, byUser, gameId, rounds);
+    }
+
+    if (result.messageId) {
+      const text =
+        gameId === 'rps'
+          ? `✅ نزّلت *حجرة ورقة مقص* بقناتك «${this.mdSafe(title)}».\n` +
+            `روح للقناة — اللاعبين يضغطون (✅ انضم) وبعدها تضغط (🚀 ابدأ).`
+          : `✅ نزّلت *كود نيمز* بقناتك «${this.mdSafe(title)}».\n` +
+            `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت المشرف تضغط (ابدأ اللعبة 🚀).`;
+      return { ok: true, text };
+    }
+    return {
+      ok: false,
+      text:
+        `⚠️ ما گدرت أنزل اللعبة بقناة «${this.mdSafe(title)}».\n` +
+        `*السبب:* ${this.mdSafe(String(result.error || 'غير معروف'))}\n\n` +
+        `تأكد إن البوت *مشرف (Admin)* بالقناة وبعدين جرّب مرة ثانية.`
+    };
   }
 
   // ---------------------------------------------------------------------
@@ -3017,27 +3220,23 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // ── أزرار اللعب (عريضة — كل زر بسطر) ──
-        if (game.channel && game.id === 'rps') {
-          keyboard.push([{ text: '٥ راوندات', callback_data: 'hub:rpschan:5' }]);
-          keyboard.push([{ text: '١٠ راوندات', callback_data: 'hub:rpschan:10' }]);
-          keyboard.push([{ text: '١٥ راوندات', callback_data: 'hub:rpschan:15' }]);
-        } else if (game.channel) {
-          // العب في القناة (باقي ألعاب القناة)
-          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
-        } else if (game.play) {
-          // العب مع البوت (ألعاب الخاص)
+        // ── أول زر (عريض وبكل لعبة): 🎮 العب بالقناة ──
+        keyboard.push([{ text: '🎮 العب بالقناة', callback_data: `hub:chpick:${game.id}` }]);
+
+        // ── ألعاب الخاص: زر «العب مع البوت» تحته (عريض) ──
+        if (!game.channel && game.play) {
           keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
         }
 
-        // ── المربعين الصغار جنب بعض تحت أزرار اللعب ──
+        // ── المربعين جنب بعض: شرح + إحصائيات ──
         keyboard.push([
-          { text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` },
-          { text: 'شرح اللعبة', callback_data: `hub:how:${game.id}` }
+          { text: '📖 شرح اللعبة', callback_data: `hub:how:${game.id}` },
+          { text: '📊 إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }
         ]);
       }
 
-      keyboard.push([{ text: 'رجوع', callback_data: `hub:${game.category}` }]);
+      // ── آخر زر (عريض): الخروج من القسم — يرجعك خطوة ──
+      keyboard.push([{ text: '🔙 الخروج من القسم', callback_data: `hub:${game.category}` }]);
 
       return { text: lines.join('\n'), keyboard };
     }
@@ -3080,8 +3279,7 @@ export class TelegramBotManager {
     const personal = this.playerStatusText(viewer);
     const text =
       `🎮 *بوت الألعاب*\n` +
-      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇\n` +
-      `_النسخة 2 — انضاف قسم «الجماعية» 🎉_` +
+      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇` +
       (personal ? `\n\n${personal}` : '');
     const keyboard: any[][] = [
       [
@@ -3832,46 +4030,11 @@ export class TelegramBotManager {
     if (byUser) this.pendingChannelGame.delete(byUser);
     // نتجاهل الاختيار القديم (أكثر من 15 دقيقة) حتى ما ينشر لعبة غلط
     const fresh = pending && Date.now() - pending.at < 15 * 60 * 1000 ? pending : undefined;
-    const gameId = fresh?.gameId;
-    const rounds = fresh?.rounds;
 
-    // Fresh start in that channel: remove an old *lobby* board so the new one is clearly visible.
-    if (gameId === 'rps') {
-      const oldRps = this.rpsGames.get(channelId);
-      if (oldRps?.messageId) await this.deleteMessage(channelId, oldRps.messageId);
-      this.rpsGames.delete(channelId);
-    } else {
-      const existing = this.games.get(channelId);
-      if (existing && existing.status === 'lobby' && existing.messageId) {
-        await this.deleteMessage(channelId, existing.messageId);
-        this.games.delete(channelId);
-      }
-    }
-
-    let result = await this.startNewGameLobby(channelId, title, message.from?.id, gameId, rounds);
-    // Right after the bot is added to a channel Telegram sometimes needs a second try.
-    if (!result.messageId) {
-      result = await this.startNewGameLobby(channelId, title, message.from?.id, gameId, rounds);
-    }
+    const res = await this.deployGameToChannel(channelId, title, message.from?.id, fresh?.gameId, fresh?.rounds);
 
     if (!byUser) return;
-
-    if (result.messageId) {
-      const successText =
-        gameId === 'rps'
-          ? `✅ نزّلت *حجرة ورقة مقص* بقناتك «${this.mdSafe(title)}».\n` +
-            `روح للقناة — اللاعبين يضغطون (✅ انضم) وبعدها تضغط (🚀 ابدأ).`
-          : `✅ نزّلت *كود نيمز* بقناتك «${this.mdSafe(title)}».\n` +
-            `روح للقناة — الأعضاء ينضمون للفرق 🔵🔴 وإنت المشرف تضغط (ابدأ اللعبة 🚀).`;
-      await this.sendMessage(byUser, successText);
-    } else {
-      await this.sendMessage(
-        byUser,
-        `⚠️ ما گدرت أنزل اللعبة بقناة «${this.mdSafe(title)}».\n` +
-          `*السبب:* ${this.mdSafe(String(result.error || 'غير معروف'))}\n\n` +
-          `تأكد إن البوت *مشرف (Admin)* بالقناة وبعدين جرّب مرة ثانية.`
-      );
-    }
+    await this.sendMessage(byUser, res.text);
 
     // خلص اختيار القناة → نشيل الكيبورد السفلي (يرجع من مربع «📣 نزّل لعبة بقناتك»)
     await this.clearReplyKeyboard(byUser);
