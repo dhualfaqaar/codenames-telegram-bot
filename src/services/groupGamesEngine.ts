@@ -24,7 +24,7 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   trivia: {
     emoji: '🧠',
     title: 'معركة المعلومات',
-    intro: 'الكل يجاوب وكل جواب صحيح يحسب نقطة — الأذكى يفوز 🏆'
+    intro: 'ينطرح سؤال واختار الجواب الصح — الأذكى يفوز 🧠'
   },
   country: {
     emoji: '🏳️',
@@ -153,7 +153,7 @@ function loadRound(game: QuizGame) {
 export function quizStart(game: QuizGame): { ok: boolean; msg: string } {
   if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت أصلاً' };
   if (game.players.length < MIN_PLAYERS) {
-    return { ok: false, msg: `⚠️ تحتاجون ${MIN_PLAYERS} لاعبين على الأقل — الحين ${game.players.length}` };
+    return { ok: false, msg: `⚠️ تحتاجون ${MIN_PLAYERS} لاعبين على الأقل — هسه ${game.players.length}` };
   }
   game.status = 'playing';
   game.qIndex = 0;
@@ -211,7 +211,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
   return { ok: true, msg: isRight ? '✅ صح! +١ نقطة' : '❌ غلط', roundClosed: true };
 }
 
-/** يختم الجولة بدري (بس لاعب جاوب أصلاً يكدر يضغطها) — حتى البطولة ما تعلق بلاعب نايم */
+/** يختم الجولة على طول (بس لاعب جاوب أصلاً يكدر يضغطها) — حتى البطولة ما تعلق بلاعب نايم */
 export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string } {
   if (game.status !== 'playing') return { ok: false, msg: '⏳ ماكو جولة مفتوحة' };
   const p = game.players.find(x => x.id === id);
@@ -223,8 +223,8 @@ export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string
   game.status = 'result';
   const winners = game.players.filter(x => x.roundHit).map(x => x.name);
   game.lastLine = winners.length
-    ? `⏭️ انختمت الجولة بدري!\n✅ الصح كان: *${correctText}*\n👏 جاوبوها: ${winners.join('، ')}`
-    : `⏭️ انختمت الجولة بدري بلا إجابة صحيحة 💔\n✅ الصح كان: *${correctText}*`;
+    ? `⏭️ انختمت الجولة!\n✅ الصح كان: *${correctText}*\n👏 جاوبوها: ${winners.join('، ')}`
+    : `⏭️ انختمت الجولة بلا إجابة صحيحة 💔\n✅ الصح كان: *${correctText}*`;
   return { ok: true, msg: '⏭️ انختمت الجولة' };
 }
 
@@ -410,11 +410,11 @@ export function mmJoin(game: MMGame, id: string, name: string): { ok: boolean; m
 export function mmStart(game: MMGame): { ok: boolean; msg: string } {
   if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت أصلاً' };
   if (game.players.length < MIN_PLAYERS) {
-    return { ok: false, msg: `⚠️ تحتاجون ${MIN_PLAYERS} لاعبين على الأقل — الحين ${game.players.length}` };
+    return { ok: false, msg: `⚠️ تحتاجون ${MIN_PLAYERS} لاعبين على الأقل — هسه ${game.players.length}` };
   }
   game.status = 'playing';
   game.turnIdx = 0;
-  return { ok: true, msg: '🔐 الرقم السري جاهز — بلّشنا!' };
+  return { ok: true, msg: '🔐 الرقم السري جاهز — يلا بدينا!' };
 }
 
 export function mmCurrent(game: MMGame): MMPlayer | undefined {
