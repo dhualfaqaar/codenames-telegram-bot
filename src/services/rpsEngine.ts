@@ -210,7 +210,7 @@ export function boardKeyboard(game: RPSGame): any[][] {
 
   if (game.status === 'lobby') {
     if (game.players.length < 2) {
-      rows.push([{ text: '✅ انضم', callback_data: `rpsb:join:${game.chatId}` }]);
+      rows.push([{ text: 'انضم', callback_data: `rpsb:join:${game.chatId}` }]);
     } else {
       rows.push([{ text: '🚀 ابدأ', callback_data: `rpsb:start:${game.chatId}` }]);
     }

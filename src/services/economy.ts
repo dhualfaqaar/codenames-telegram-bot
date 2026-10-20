@@ -98,7 +98,21 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'من يخمن أول يفوز — *0.003 – 0.012* 💵'
   },
-  guess_song: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' }
+  guess_song: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
+  group_quiz: {
+    maxMoney: 0.015,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
+  },
+  mastermind: {
+    maxMoney: 0.02,
+    winXp: 10,
+    loseXp: 4,
+    online: true,
+    note: 'كاسر الرقم السري ياخذ *0.006 – 0.02* 💵'
+  }
 };
 
 /** سطر «الفلوس» اللي يبين بصفحة اللعبة */
