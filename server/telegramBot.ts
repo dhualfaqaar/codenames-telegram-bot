@@ -2841,29 +2841,24 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // حجرة ورقة مقص: أزرار الروندات (عريضة) + مربعين صغار جواهم
+        // ── أزرار اللعب (عريضة — كل زر بسطر) ──
         if (game.channel && game.id === 'rps') {
           keyboard.push([{ text: '٥ راوندات', callback_data: 'hub:rpschan:5' }]);
           keyboard.push([{ text: '١٠ راوندات', callback_data: 'hub:rpschan:10' }]);
           keyboard.push([{ text: '١٥ راوندات', callback_data: 'hub:rpschan:15' }]);
-          keyboard.push([
-            { text: 'شرح اللعبة', callback_data: `hub:how:${game.id}` },
-            { text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }
-          ]);
-        } else {
-          // إحصائيات اللعبة نفسها
-          keyboard.push([{ text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` }]);
-
-          if (game.channel) {
-            // العب في القناة (باقي الألعاب)
-            keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
-          }
-        }
-
-        // العب مع البوت
-        if (game.play && !game.channel) {
+        } else if (game.channel) {
+          // العب في القناة (باقي ألعاب القناة)
+          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:channel' }]);
+        } else if (game.play) {
+          // العب مع البوت (ألعاب الخاص)
           keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
         }
+
+        // ── المربعين الصغار جنب بعض تحت أزرار اللعب ──
+        keyboard.push([
+          { text: 'إحصائيات اللعبة', callback_data: `gstat:g:${game.id}` },
+          { text: 'شرح اللعبة', callback_data: `hub:how:${game.id}` }
+        ]);
       }
 
       keyboard.push([{ text: 'رجوع', callback_data: `hub:${game.category}` }]);
