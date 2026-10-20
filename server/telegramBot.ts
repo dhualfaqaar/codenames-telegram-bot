@@ -2497,8 +2497,25 @@ export class TelegramBotManager {
   // (عامة للكل — قراءة بس، وما تأثر على أي لعبة شغّالة)
   // ---------------------------------------------------------------------
 
-  /** شاشات: rank:money (المتصدرون بالفلوس) / rank:level / rank:me */
+  /** شاشات: rank:menu (اختار لوحة) / rank:money / rank:level / rank:me */
   private buildRanking(section: string, viewerId: string): { text: string; keyboard: any[][] } {
+    // 🏅 قائمة المتصدرين: تختار لوحة الفلوس أو لوحة المستوى
+    if (section === 'menu') {
+      return {
+        text:
+          `🏅 *المتصدرون*\n` +
+          `اختار لوحة الترتيم اللي تبيها 👇\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `💵 *بالفلوس* — من جمع أكثر عملة اللعبة الغالية\n` +
+          `🎖️ *بالمستوى* — الأعلى خبرة وأكمل مباريات مع ناس`,
+        keyboard: [
+          [{ text: '💵 المتصدرون بالفلوس', callback_data: 'rank:money' }],
+          [{ text: '🎖️ المتصدرون بالمستوى', callback_data: 'rank:level' }],
+          [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
+        ]
+      };
+    }
+
     const users = Array.from(this.users.values()).filter(u => !u.banned);
     const rich = users.filter(u => (u.money || 0) > 0).sort((a, b) => (b.money || 0) - (a.money || 0));
     const ranked = users.filter(u => (u.onlineGames || 0) > 0).sort(
@@ -2507,8 +2524,8 @@ export class TelegramBotManager {
 
     const tabs: any[][] = [
       [
-        { text: '💰 الفلوس', callback_data: 'rank:money' },
-        { text: '🎖️ المستوى', callback_data: 'rank:level' }
+        { text: '💵 بالفلوس', callback_data: 'rank:money' },
+        { text: '🎖️ بالمستوى', callback_data: 'rank:level' }
       ],
       [{ text: '👤 ملفي', callback_data: 'rank:me' }],
       [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
@@ -2534,7 +2551,7 @@ export class TelegramBotManager {
 
       return {
         text:
-          `🎖️ *الأعلى مستوى*\n` +
+          `🎖️ *المتصدرون بالمستوى*\n` +
           `_المستوى يزيد بكل مباراة تنلعبها مع ناس حقيقيين (فوز أو خسارة)_\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
           `${lines}\n` +
@@ -2769,12 +2786,12 @@ export class TelegramBotManager {
     }
 
     // 🏠 الشاشة الرئيسية (الأصناف بس بالمربعات، بلا تكرار بالنص)
-    // وإذا احنا بالخاص: نعرض فوقها حالة اللاعب (مستواه + فلوسه + تعليق بسيط)
+    // وإذا احنا بالخاص: نعرض حالة اللاعب تحت عنوان الألعاب كل فقرة بسطر لحالها
     const personal = this.playerStatusText(viewer);
     const text =
-      (personal ? `${personal}\n` : '') +
       `🎮 *بوت الألعاب*\n` +
-      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇`;
+      `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇` +
+      (personal ? `\n\n${personal}` : '');
     const keyboard: any[][] = [
       [
         { text: '👥 ألعاب ثنائية 1v1', callback_data: 'hub:duo' },
@@ -2795,7 +2812,12 @@ export class TelegramBotManager {
     }
     // 💵 الفلوس والمستوى: يشمل كل الألعاب → مكانه وي الأصناف
     // (زر «ملفي ومستواي» انحذف — معلوماتك صارت بسطور فوق بأول رسالة /start)
-    keyboard.push([{ text: '💰 المتصدرون بالفلوس', callback_data: 'rank:money' }]);
+    keyboard.push([
+      {
+        text: '📢 القناة',
+        url: 'https://t.me/pleasegodimtired'
+      }
+    ]);
     return { text, keyboard };
   }
 
@@ -3020,10 +3042,11 @@ export class TelegramBotManager {
    * Private /start welcome, with a button that lets the user pick a channel to play in.
    */
   private async sendPrivateWelcome(chatId: string, userName: string) {
-    // بالخاص: نعرض للاعب حالته (مستواه + فلوسه + تعليق قصير)
+    // بالخاص: نعرض للاعب حالته (مستواه + فلوسه + تعليق قصير) تحت عنوان الألعاب
     const rec = this.users.get(String(chatId));
     const view = await this.buildGamesMenu('main', rec);
     const welcome = `👋 أهلاً بك يا ${this.mdSafe(userName)}!\n\n${view.text}`;
+    // الشاشة الرئيسية: مربعات قابلة للضغط (بلا أي كيبورد بالأسفل)
     // الشاشة الرئيسية: مربعات قابلة للضغط (بلا أي كيبورد بالأسفل)
     await this.sendMessage(chatId, await this.withBotFooter(welcome), view.keyboard);
     await this.clearReplyKeyboard(chatId);
