@@ -320,6 +320,36 @@ function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
+/**
+ * يسحب الملف الثنائي فعلياً ويتأكد أنه فيديو/صورة/صوت حقيقي وليس صفحة خطأ HTML أو 403،
+ * حتى إذا فشل أحد المزوّدين ينتقل الكود تلقائياً للطبقة التالية بدون أن تتوقف العملية!
+ */
+async function tryFetchMediaBytes(
+  url: string,
+  headers?: Record<string, string>,
+  minBytes = 1500
+): Promise<Uint8Array | null> {
+  try {
+    const r = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': BROWSER_UA,
+        ...(headers || {})
+      }
+    });
+    if (!r.ok) return null;
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    if (ct.includes('text/html') || ct.includes('application/json')) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.byteLength < minBytes || buf.byteLength > 49 * 1024 * 1024) return null;
+    // فحص إضافي: إذا بدأ الملف بـ <!DOCTYPE أو <html نرفضه فوراً
+    if (buf[0] === 0x3c && (buf[1] === 0x21 || buf[1] === 0x68 || buf[1] === 0x48)) return null;
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
 // =====================================================================
 // 2) 🎵 البحث عن الأغاني («يوت») وسحب الصوت الكامل (SoundCloud CDN + YouTube Innertube)
 // =====================================================================
@@ -499,11 +529,13 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
               .filter(l => l && !l.startsWith('#'))
               .map(l => (l.startsWith('http') ? l : new URL(l, String(sj.url)).toString()));
 
-            if (segUrls.length > 0 && segUrls.length <= 260) {
+            if (segUrls.length > 0) {
+              // سقف آمن ٤٠ شريحة (~٧ دقائق صوت نقي متواصل) لعدم تجاوز سقف الـ ٥٠ طلب فرعي في Cloudflare Workers المجاني أبداً!
+              const safeSegs = segUrls.slice(0, 40);
               const chunks: Uint8Array[] = [];
-              const batchSize = 12;
-              for (let i = 0; i < segUrls.length; i += batchSize) {
-                const batch = segUrls.slice(i, i + batchSize);
+              const batchSize = 10;
+              for (let i = 0; i < safeSegs.length; i += batchSize) {
+                const batch = safeSegs.slice(i, i + batchSize);
                 const buffers = await Promise.all(
                   batch.map(async u => {
                     const r = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
@@ -583,7 +615,7 @@ const YT_NATIVE_CLIENTS: YTClientProfile[] = [
 async function extractViaYouTubeNative(
   videoId: string,
   mode: 'audio' | 'video'
-): Promise<{ url: string; ua: string; ext: 'm4a' | 'mp4' } | null> {
+): Promise<{ url: string; bytes?: Uint8Array; ua: string; ext: 'm4a' | 'mp4' } | null> {
   const visitorData = await getYouTubeVisitorData();
 
   for (const profile of YT_NATIVE_CLIENTS) {
@@ -623,7 +655,10 @@ async function extractViaYouTubeNative(
           adaptive.find(f => String(f.mimeType || '').startsWith('audio/mp4') && f.url) ||
           adaptive.find(f => String(f.mimeType || '').startsWith('audio/') && f.url);
         if (audio?.url) {
-          return { url: String(audio.url), ua: profile.ua, ext: 'm4a' };
+          const verified = await tryFetchMediaBytes(String(audio.url), { 'User-Agent': profile.ua }, 2000);
+          if (verified) {
+            return { url: String(audio.url), bytes: verified, ua: profile.ua, ext: 'm4a' };
+          }
         }
       } else {
         const vid =
@@ -631,7 +666,10 @@ async function extractViaYouTubeNative(
           muxed.find(f => f.itag === 18 && f.url) ||
           muxed.find(f => f.url);
         if (vid?.url) {
-          return { url: String(vid.url), ua: profile.ua, ext: 'mp4' };
+          const verified = await tryFetchMediaBytes(String(vid.url), { 'User-Agent': profile.ua }, 2000);
+          if (verified) {
+            return { url: String(vid.url), bytes: verified, ua: profile.ua, ext: 'mp4' };
+          }
         }
       }
     } catch {
@@ -778,9 +816,9 @@ export async function resolveSongAudioPayload(hit: SongSearchHit): Promise<Resol
   ]);
 
   if (ytNative?.url) {
-    // نختبر أول شريحة أو نعيد الرابط مع headers المطابقة، وإذا وُجد بديل SoundCloud نحتفظ به كضمان إضافي
     return {
       url: ytNative.url,
+      bytes: ytNative.bytes,
       headers: { 'User-Agent': ytNative.ua },
       ext: 'm4a'
     };
@@ -815,6 +853,7 @@ export type SocialPlatform = 'yt' | 'pin' | 'tt' | 'ig';
 export interface DownloadedMediaItem {
   kind: 'video' | 'photo';
   url: string;
+  bytes?: Uint8Array;
   headers?: Record<string, string>;
 }
 
@@ -938,13 +977,16 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
             itemStruct?.video?.playAddr ||
             itemStruct?.video?.PlayAddrStruct?.UrlList?.[0] ||
             itemStruct?.video?.downloadAddr;
-          if (playAddr && String(playAddr).startsWith('http')) {
-            return {
-              ok: true,
-              title: itemStruct.desc || '',
-              items: [{ kind: 'video', url: String(playAddr), headers: cdnHeaders }]
-            };
-          }
+            if (playAddr && String(playAddr).startsWith('http')) {
+              const verified = await tryFetchMediaBytes(String(playAddr), cdnHeaders, 2000);
+              if (verified) {
+                return {
+                  ok: true,
+                  title: itemStruct.desc || '',
+                  items: [{ kind: 'video', url: String(playAddr), bytes: verified, headers: cdnHeaders }]
+                };
+              }
+            }
         }
       }
     }
@@ -975,10 +1017,14 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
             html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
             html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
           if (vidUrl && vidUrl.startsWith('http')) {
-            return {
-              ok: true,
-              items: [{ kind: 'video', url: vidUrl.replace(/&amp;/g, '&'), headers: { 'User-Agent': BROWSER_UA } }]
-            };
+            const cleanVid = vidUrl.replace(/&amp;/g, '&');
+            const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 2000);
+            if (verified) {
+              return {
+                ok: true,
+                items: [{ kind: 'video', url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+              };
+            }
           }
         } catch {
           continue;
