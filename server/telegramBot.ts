@@ -290,7 +290,7 @@ const BOT_GAMES: BotGameCard[] = [
     goal: 'كن أول واحد يجاوب صح — أسرع لاعب يجمع أكثر نقاط',
     reward: 'أول جواب صحيح بكل جولة يسجّل نقطة — الأعلى بالنهاية يفوز',
     about:
-      'سؤال عام ينزل بالقناة ومعاه *٤ خيارات*، والكل يضغط بنفس اللحظة ⚡.\n' +
+      'سؤال عام ينزل بالقناة وياه *٤ خيارات*، والكل يضغط بنفس اللحظة ⚡.\n' +
       '*أول* واحد يجاوب صح ياخذ نقطة الجولة والباقي ياكلون غبار 🏃💨 — غلطت؟ تخرج من هالجولة بس.\n' +
       '١٠ جولات — وإذا المتصدر صار مستحيل ينلحق، البطولة تخلص بالمكان 🧠.',
     channel: true,
@@ -328,7 +328,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
     about:
       'البوت يعطيك *معلومة قصيرة* عن دولة (عاصمتها، معلمها، اشتهارها…) 🌍\n' +
-      'ومعاها *٤ دول* — اختار الصحيحة واجمع النقاط.\n' +
+      'وياها *٤ دول* — اختار الصحيحة واجمع النقاط.\n' +
       '١٠ جولات جماعية بالقناة وأعلى نقاط يفوز 🏆.',
     channel: true,
     inline: 'gq country',
@@ -346,7 +346,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
     about:
       'البوت يوصلك *وصف خفيف بدون حرق* لفيلم مشهور 🍿\n' +
-      'ومعاه *٤ أفلام* — خمّن أنهي واحد.\n' +
+      'وياه *٤ أفلام* — خمّن أنهي واحد.\n' +
       '١٠ جولات بالقناة ويا الأصدقاء وأعلى نقاط يفوز 🏆.',
     channel: true,
     inline: 'gq movie',
@@ -364,7 +364,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
     about:
       'البوت يوصلك *وصف خفيف* لمسلسل مشهور (عربي وأجنبي) 📺\n' +
-      'ومعاه *٤ مسلسلات* — خمّن أنهي واحد.\n' +
+      'وياه *٤ مسلسلات* — خمّن أنهي واحد.\n' +
       '١٠ جولات بالقناة ويا الأصدقاء وأعلى نقاط يفوز 🏆.',
     channel: true,
     inline: 'gq series',
@@ -382,7 +382,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
     about:
       'سؤال جوابه *رقم* (حساب خفيف، معلومة، عدد مشهور…) 🔢\n' +
-      'ومعاه *٤ أرقام* — اختار الصح.\n' +
+      'وياه *٤ أرقام* — اختار الصح.\n' +
       '١٠ جولات بالقناة وأعلى نقاط يفوز 🏆.',
     channel: true,
     inline: 'gq number',
@@ -400,7 +400,7 @@ const BOT_GAMES: BotGameCard[] = [
     reward: 'كل جواب صحيح نقطة — الأعلى بالنهاية يفوز',
     about:
       'وصف *أكلة عربية مشهورة* (عراقية، شامية، خليجية، مصرية…) 🍲\n' +
-      'ومعاه *٤ أكلات* — اختار الصح.\n' +
+      'وياه *٤ أكلات* — اختار الصح.\n' +
       '١٠ جولات بالقناة وأعلى نقاط يفوز 🏆.',
     channel: true,
     inline: 'gq food',
@@ -1123,6 +1123,8 @@ export class TelegramBotManager {
       wordle: Array.from(this.wordle.entries()),
       poet: Array.from(this.poet.entries()),
       rpsGames: Array.from(this.rpsGames.entries()),
+      gqGames: Array.from(this.gqGames.entries()),
+      mmGames: Array.from(this.mmGames.entries()),
       song: Array.from(this.song.entries()),
       mathGames: Array.from(this.mathGames.entries()),
       rhymeGames: Array.from(this.rhymeGames.entries()),
@@ -1153,6 +1155,8 @@ export class TelegramBotManager {
     if (Array.isArray(state.wordle)) this.wordle = new Map(state.wordle);
     if (Array.isArray(state.poet)) this.poet = new Map(state.poet);
     if (Array.isArray(state.rpsGames)) this.rpsGames = new Map(state.rpsGames);
+    if (Array.isArray(state.gqGames)) this.gqGames = new Map(state.gqGames);
+    if (Array.isArray(state.mmGames)) this.mmGames = new Map(state.mmGames);
     if (Array.isArray(state.song)) this.song = new Map(state.song);
     if (Array.isArray(state.mathGames)) this.mathGames = new Map(state.mathGames);
     if (Array.isArray(state.rhymeGames)) this.rhymeGames = new Map(state.rhymeGames);
@@ -2824,7 +2828,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // ⏭️ ختم الجولة بدري
+    // ⏭️ ختم الجولة حتى ما تعلق
     if (data.startsWith('gqskip:')) {
       const r = GG.quizSkip(game, playerId);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
