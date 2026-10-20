@@ -2209,11 +2209,11 @@ export class TelegramBotManager {
       const game = RPS.createGame(chatId, chatTitle, rounds ?? 5, String(createdBy ?? ''));
       const prevRps = this.rpsGames.get(chatId);
       this.rpsGames.set(chatId, game);
-      const text = await this.withBotFooter(RPS.renderGame(game));
+      const text = await this.withBotFooter(RPS.renderGame(game), true);
       const keyboard = RPS.boardKeyboard(game);
 
       if (prevRps?.messageId) {
-        const res = await this.editMessageText(chatId, prevRps.messageId, text, keyboard);
+        const res = await this.editMessageText(chatId, prevRps.messageId, text, keyboard, 'MarkdownV2');
         const unchanged = String(res?.description || '').includes('not modified');
         if (res?.ok || unchanged) {
           game.messageId = prevRps.messageId;
@@ -2222,7 +2222,7 @@ export class TelegramBotManager {
         }
       }
 
-      const sent = await this.sendMessage(chatId, text, keyboard);
+      const sent = await this.sendMessage(chatId, text, keyboard, 'MarkdownV2');
       const msgId = sent?.result?.message_id;
       if (msgId) {
         game.messageId = msgId;
@@ -2301,10 +2301,12 @@ export class TelegramBotManager {
    * Every game message ends with the bot's username, so anyone who still has
    * not started the bot can tap it and press Start (and save it if he wants).
    */
-  private async withBotFooter(text: string): Promise<string> {
+  private async withBotFooter(text: string, v2: boolean = false): Promise<string> {
     const botUser = await this.getBotUsername();
     if (!botUser) return text;
-    return text + `\n━━━━━━━━━━━━━━━━━━━\n` + `🤖 *البوت:* @${botUser}`;
+    // بصيغة MarkdownV2 (لوحات الألعاب الجماعية) لازم نهرّب الشرطة السفلية باليوزرنيم
+    const shown = v2 ? botUser.replace(/_/g, '\\_') : botUser;
+    return text + `\n━━━━━━━━━━━━━━━━━━━\n` + `🤖 *البوت:* @${shown}`;
   }
 
   /**
@@ -2749,8 +2751,9 @@ export class TelegramBotManager {
         const res = await this.editMessageText(
           chatId,
           message.message_id,
-          await this.withBotFooter(GG.renderMM(game)),
-          GG.mmKeyboard(game)
+          await this.withBotFooter(GG.renderMM(game), true),
+          GG.mmKeyboard(game),
+          'MarkdownV2'
         );
         if (!res?.ok) this.mmGames.delete(chatId);
         return;
@@ -2769,8 +2772,9 @@ export class TelegramBotManager {
       const res = await this.editMessageText(
         chatId,
         message.message_id,
-        await this.withBotFooter(GG.renderQuiz(game)),
-        GG.quizKeyboard(game)
+        await this.withBotFooter(GG.renderQuiz(game), true),
+        GG.quizKeyboard(game),
+        'MarkdownV2'
       );
       if (!res?.ok) this.gqGames.delete(chatId);
       return;
@@ -2802,8 +2806,9 @@ export class TelegramBotManager {
       const res = await this.editMessageText(
         chatId,
         message.message_id,
-        await this.withBotFooter(RPS.renderGame(game)),
-        RPS.boardKeyboard(game)
+        await this.withBotFooter(RPS.renderGame(game), true),
+        RPS.boardKeyboard(game),
+        'MarkdownV2'
       );
       if (!res?.ok) {
         // البوت ما عنده صلاحية تعديل بالقناة → البطاقة تبقى ساكنة وما نحفظ لعبة
@@ -2880,27 +2885,27 @@ export class TelegramBotManager {
 
   /** يعيد رسم لوحة لعبة جماعية — بنفس الرسالة إن كانت عادية، أو بمعرّف الإنلاين إن كانت أصلها تحويل */
   private async paintQuiz(game: GG.QuizGame) {
-    const text = await this.withBotFooter(GG.renderQuiz(game));
+    const text = await this.withBotFooter(GG.renderQuiz(game), true);
     const kb = GG.quizKeyboard(game);
     if (game.messageId) {
-      const res = await this.editMessageText(game.chatId, game.messageId, text, kb);
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
     }
     if (game.inlineMessageId) {
-      const res = await this.editInlineMessageText(game.inlineMessageId, text, kb);
+      const res = await this.editInlineMessageText(game.inlineMessageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
     }
   }
 
   private async paintMM(game: GG.MMGame) {
-    const text = await this.withBotFooter(GG.renderMM(game));
+    const text = await this.withBotFooter(GG.renderMM(game), true);
     const kb = GG.mmKeyboard(game);
     if (game.messageId) {
-      const res = await this.editMessageText(game.chatId, game.messageId, text, kb);
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
     }
     if (game.inlineMessageId) {
-      const res = await this.editInlineMessageText(game.inlineMessageId, text, kb);
+      const res = await this.editInlineMessageText(game.inlineMessageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
     }
   }
@@ -4569,12 +4574,12 @@ export class TelegramBotManager {
 
   /** تحديث رسالة لوحة RPS بالقناة */
   private async paintRPSBoard(game: RPS.RPSGame) {
-    const text = await this.withBotFooter(RPS.renderGame(game));
+    const text = await this.withBotFooter(RPS.renderGame(game), true);
     const keyboard = RPS.boardKeyboard(game);
     if (game.messageId) {
-      await this.editMessageText(game.chatId, game.messageId, text, keyboard);
+      await this.editMessageText(game.chatId, game.messageId, text, keyboard, 'MarkdownV2');
     } else {
-      const sent = await this.sendMessage(game.chatId, text, keyboard);
+      const sent = await this.sendMessage(game.chatId, text, keyboard, 'MarkdownV2');
       const msgId = sent?.result?.message_id;
       if (msgId) game.messageId = msgId;
       this.rpsGames.set(game.chatId, game);
@@ -5670,14 +5675,14 @@ export class TelegramBotManager {
   /**
    * Telegram API: sendMessage
    */
-  public async sendMessage(chatId: string, text: string, inlineKeyboard?: any[][]): Promise<any> {
+  public async sendMessage(chatId: string, text: string, inlineKeyboard?: any[][], parseMode: string = 'Markdown'): Promise<any> {
     if (!this.token) return null;
 
     try {
       const body: any = {
         chat_id: chatId,
         text,
-        parse_mode: 'Markdown'
+        parse_mode: parseMode
       };
 
       if (inlineKeyboard && inlineKeyboard.length > 0) {
@@ -5707,7 +5712,7 @@ export class TelegramBotManager {
   /**
    * Telegram API: editMessageText
    */
-  public async editMessageText(chatId: string, messageId: number, text: string, inlineKeyboard?: any[][]): Promise<any> {
+  public async editMessageText(chatId: string, messageId: number, text: string, inlineKeyboard?: any[][], parseMode: string = 'Markdown'): Promise<any> {
     if (!this.token) return null;
 
     try {
@@ -5715,7 +5720,7 @@ export class TelegramBotManager {
         chat_id: chatId,
         message_id: messageId,
         text,
-        parse_mode: 'Markdown'
+        parse_mode: parseMode
       };
 
       if (inlineKeyboard) {
@@ -5735,14 +5740,14 @@ export class TelegramBotManager {
   }
 
   /** تعديل رسالة أصلها إنلاين (بدون chat_id — بمعرّف الإنلاين فقط) */
-  public async editInlineMessageText(inlineMessageId: string, text: string, inlineKeyboard?: any[][]): Promise<any> {
+  public async editInlineMessageText(inlineMessageId: string, text: string, inlineKeyboard?: any[][], parseMode: string = 'Markdown'): Promise<any> {
     if (!this.token) return null;
 
     try {
       const body: any = {
         inline_message_id: inlineMessageId,
         text,
-        parse_mode: 'Markdown'
+        parse_mode: parseMode
       };
 
       if (inlineKeyboard) {
