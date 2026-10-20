@@ -9,11 +9,12 @@
  *   mmj / mms / mmd / mmb / mmc / mmn → ماسترمايند
  */
 import { GQRow, GENERAL, COUNTRIES, MOVIES, SERIES, NUMBERS, FOODS, FLAGS, CAPITALS, CONTINENTS } from './groupQuizData';
+import { ODD_WORD_PUZZLES } from './oddWordEngine';
 
 // ---------------------------------------------------------------------
 // 🧩 أنواع الألعاب
 // ---------------------------------------------------------------------
-export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food' | 'math' | 'flags' | 'capitals' | 'continents';
+export type QuizKind = 'speed' | 'trivia' | 'country' | 'movie' | 'series' | 'number' | 'food' | 'math' | 'flags' | 'capitals' | 'continents' | 'odd';
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
   speed: {
@@ -70,6 +71,11 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🌍',
     title: 'دولة القارة',
     intro: 'اعرف الدولة التي تقع ضمن القارة المطلوبة 🌍'
+  },
+  odd: {
+    emoji: '🕵️',
+    title: 'الكلمة الغريبة',
+    intro: 'خمس كلمات — أربعٌ يجمعها رابط ذكي وواحدة غريبة عنها 🕵️'
   }
 };
 
@@ -207,8 +213,8 @@ export interface QuizGame {
   players: QuizPlayer[];
   round: number;
   totalRounds: number;
-  /** بنك جولات هاي المباراة (مخلوط جاهز) */
-  deck: GQRow[];
+  /** بنك جولات هاي المباراة (مخلوط جاهز — ٤ أو ٥ خيارات) */
+  deck: string[][];
   qIndex: number;
   /** خيارات الجولة بعد الخلط + مكان الإجابة الصحيحة */
   options: string[];
@@ -232,7 +238,22 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function packFor(kind: QuizKind): GQRow[] {
+function oddWordRows(): string[][] {
+  return ODD_WORD_PUZZLES.map(p => [
+    'أربع كلمات مترابطة بطريقة ذكية وواحدة غريبة — اختر الكلمة الغريبة:',
+    p.odd,
+    p.four[0],
+    p.four[1],
+    p.four[2],
+    p.four[3]
+  ]);
+}
+
+function oddLinkFor(oddWord: string): string {
+  return ODD_WORD_PUZZLES.find(p => p.odd === oddWord)?.link || '';
+}
+
+function packFor(kind: QuizKind): string[][] {
   switch (kind) {
     case 'country': return COUNTRIES;
     case 'movie': return MOVIES;
@@ -243,6 +264,7 @@ function packFor(kind: QuizKind): GQRow[] {
     case 'capitals': return CAPITALS;
     case 'continents': return CONTINENTS;
     case 'math': return mathRows();
+    case 'odd': return oddWordRows();
     default: return GENERAL; // speed + trivia
   }
 }
@@ -354,8 +376,15 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
 
   game.status = 'result';
   game.roundDeadline = undefined;
-  game.resultDeadline = Date.now() + RESULT_MS;
-  game.lastLine = '';
+  game.resultDeadline = Date.now() + (game.kind === 'odd' ? 3500 : RESULT_MS);
+  if (game.kind === 'odd') {
+    const lnk = oddLinkFor(correctText);
+    game.lastLine = lnk
+      ? `🎯 الغريبة: *${md(correctText)}*\n💡 _${md(lnk)}_`
+      : `🎯 الغريبة: *${md(correctText)}*`;
+  } else {
+    game.lastLine = '';
+  }
   return { ok: true, msg: isRight ? '✅ صح! +١ نقطة' : '❌ غلط', roundClosed: true };
 }
 
@@ -416,20 +445,23 @@ export function renderQuiz(game: QuizGame): string {
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      game.players.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score)));
+      lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
     }
     return lines.join('\n');
   }
 
   if (game.status === 'game_over') {
     const sorted = game.players.slice().sort((a, b) => b.score - a.score);
-    const lines = [
-      `${meta.emoji} *${meta.title}*`,
-      `🏁 *خلصت اللعبة\\!*`,
-      SEP,
-      `🏆 *الترتيب النهائي:*`
-    ];
-    sorted.forEach((p, i) => lines.push(scoreLine(i + 1, p.name, p.score, i === 0 ? ' 👑' : '')));
+    const winner = sorted[0];
+    const lines = [`${meta.emoji} *${meta.title}*`, `🏁 *خلصت اللعبة\\!*`];
+    if (winner && winner.score > 0) {
+      lines.push('');
+      lines.push(`🏆 *الفائز:*`);
+      lines.push(`> \\| *${md(winner.name)}* \\|`);
+    }
+    lines.push(SEP);
+    lines.push(`📊 *الترتيب النهائي:*`);
+    lines.push(sorted.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n\n'));
     return lines.join('\n');
   }
 
@@ -448,12 +480,11 @@ export function renderQuiz(game: QuizGame): string {
   lines.push(SEP);
   lines.push(`🏆 *النقاط:*`);
   const ranked = game.players.slice().sort((a, b) => b.score - a.score);
-  for (let i = 0; i < ranked.length; i++) {
-    const p = ranked[i];
-    // ✅ جاوب صح (أخضر) • ❌ جاوب خطأ (أحمر) • ⏳ ما جاوب (ساعة رملية)
+  const playerBlocks = ranked.map((p, i) => {
     const mark = p.done ? (p.roundHit ? ' ✅' : ' ❌') : ' ⏳';
-    lines.push(scoreLine(i + 1, p.name, p.score, mark));
-  }
+    return scoreLine(i + 1, p.name, p.score, mark);
+  });
+  lines.push(playerBlocks.join('\n\n'));
 
   return lines.join('\n');
 }
@@ -666,7 +697,7 @@ export function renderMM(game: MMGame): string {
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
     } else {
-      game.players.forEach((p, i) => lines.push(`> ${i + 1} \\- \\| *${md(p.name)}* \\|`));
+      lines.push(game.players.map((p, i) => `> ${i + 1} \\- \\| *${md(p.name)}* \\|`).join('\n\n'));
     }
     return lines.join('\n');
   }
@@ -676,7 +707,8 @@ export function renderMM(game: MMGame): string {
     lines.push(SEP);
     if (game.winnerId) {
       const w = game.players.find(p => p.id === game.winnerId);
-      lines.push(`> 👑 الفائز: \\| *${md(w?.name || 'مجهول')}* \\|`);
+      lines.push(`🏆 *الفائز:*`);
+      lines.push(`> \\| *${md(w?.name || 'مجهول')}* \\|`);
       lines.push(`كسّر الرقم بـ *${w?.tries}* محاولات\\!`);
     } else {
       lines.push(`💔 محد كسر الرقم — البوت غلبكم هالمرة 😎`);
@@ -685,9 +717,12 @@ export function renderMM(game: MMGame): string {
     if (game.history.length) {
       lines.push(SEP);
       lines.push(`📝 *المحاولات:*`);
-      game.history.slice(0, 10).forEach((h, i) => {
-        lines.push(`> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`);
-      });
+      lines.push(
+        game.history
+          .slice(0, 10)
+          .map((h, i) => `> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`)
+          .join('\n\n')
+      );
     }
     return lines.join('\n');
   }
@@ -698,9 +733,12 @@ export function renderMM(game: MMGame): string {
   lines.push(SEP);
   if (game.history.length) {
     lines.push(`📝 *آخر المحاولات:*`);
-    game.history.slice(0, 6).forEach((h, i) => {
-      lines.push(`> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`);
-    });
+    lines.push(
+      game.history
+        .slice(0, 6)
+        .map((h, i) => `> ${i + 1} \\- \\| *${md(h.name)}* \\| ${h.guess.split('').join(' ')} → ${'⚫'.repeat(h.black)}${'⚪'.repeat(h.white)}`)
+        .join('\n\n')
+    );
   } else {
     lines.push(`_ماكو محاولات بعد — أول واحد يجرب_`);
   }

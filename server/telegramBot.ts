@@ -7,6 +7,8 @@ import * as Song from '../src/services/songEngine';
 import * as MathGame from '../src/services/mathEngine';
 import * as WordGame from '../src/services/wordGameEngine';
 import * as Economy from '../src/services/economy';
+import * as WK from '../src/services/whoKnowsEngine';
+import * as OW from '../src/services/oddWordEngine';
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
@@ -139,6 +141,22 @@ interface BotGameCard {
 const BOT_GAMES: BotGameCard[] = [
   // ─────────────── 👥 ألعاب ثنائية (1 ضد 1) ───────────────
   {
+    id: 'who_knows',
+    emoji: '🤝',
+    title: 'منو يعرف الثاني أكثر؟',
+    category: 'duo',
+    players: 'لاعبان (شخصان في التحدي)',
+    where: 'في القناة والخاص مع البوت',
+    goal: 'معرفة أكبر عدد من إجابات الطرف الثاني الحقيقية',
+    reward: 'جوائز وخبرة للفائز ونقاط لكل بطاقة صحيحة',
+    about:
+      'يرسل البوت لكل مشارك في الخاص سلسلة أسئلة شخصية (أكلتك المفضلة، لونك المفضل، مشروبك، وجهتك…) وتُثبَّت إجابات كل طرف بسرية تامة عند البوت.\n' +
+      'بعدها يحاول كل طرف تخمين إجابات الطرف الثاني، وفي النهاية تُكشف جميع البطاقات في القناة لمعرفة من يعرف الثاني أكثر وكم بطاقة أصاب كل طرف.',
+    channel: true,
+    inline: 'wk',
+    ready: true
+  },
+  {
     id: 'rps',
     emoji: '✊',
     title: 'حجرة ورقة مقص',
@@ -256,6 +274,24 @@ const BOT_GAMES: BotGameCard[] = [
     about:
       'تُعرض مجموعة حروف، وعليك اختيار أطول كلمة صحيحة يمكن تكوينها منها.',
     play: { label: '📏 ابدأ', data: 'lg:new' },
+    ready: true
+  },
+  {
+    id: 'odd_word',
+    emoji: '🕵️',
+    title: 'الكلمة الغريبة',
+    category: 'guess',
+    guess: true,
+    players: 'فردي مع البوت أو جماعي بالقناة (٢ إلى ١٠ لاعبين)',
+    where: 'في القناة أو في المحادثة الخاصة',
+    goal: 'اكتشاف الكلمة الخامسة التي لا تنتمي للرابط الذكي بين الكلمات الأربع',
+    reward: '10 نقاط بالخاص أو نقاط وخبرة وجوائز بالقناة',
+    about:
+      'يعرض البوت 5 كلمات: 4 منها يجمعها رابط ذكي أو غير متوقع، وكلمة واحدة فقط غريبة عن هذا الرابط.\n' +
+      'مهمتك اكتشاف الكلمة الغريبة مع كشف السر الذي يربط الباقيات.',
+    play: { label: '🤖 العب مع البوت', data: 'ow:new' },
+    channel: true,
+    inline: 'gq odd',
     ready: true
   },
 
@@ -559,6 +595,11 @@ interface BotUserRecord {
   /** ⚽ خمّن اللاعب: كم مباراة لعب / فاز */
   guessPlayerGames?: number;
   guessPlayerWins?: number;
+  wkGames?: number;
+  wkWins?: number;
+  wkCorrect?: number;
+  owGames?: number;
+  owWins?: number;
 }
 
 /** A chat the bot has seen (group, supergroup or channel). */
@@ -638,6 +679,8 @@ export class TelegramBotManager {
   private rhymeGames: Map<string, WordGame.RhymeRound> = new Map();
   /** 📏 جولات أطول كلمة (Key: user id) */
   private longestGames: Map<string, WordGame.LongestRound> = new Map();
+  private wkGames: Map<string, WK.WKGame> = new Map();
+  private oddWordSolo: Map<string, OW.OddWordRound> = new Map();
   /** هل البيئة الخارجية (Cloudflare Durable Object Alarm) تدير المؤقت؟ */
   private externalScheduler: boolean = false;
   private localQuizTimer: any = null;
@@ -815,7 +858,8 @@ export class TelegramBotManager {
     gq_food: 'food',
     gq_flags: 'flags',
     gq_capitals: 'capitals',
-    gq_continents: 'continents'
+    gq_continents: 'continents',
+    odd_word: 'odd'
   };
 
   private userGqStat(u: BotUserRecord, kind: GG.QuizKind): { games: number; wins: number; points: number } {
@@ -825,6 +869,13 @@ export class TelegramBotManager {
         games: cur.games + (u.mathGames || 0),
         wins: cur.wins + (u.mathWins || 0),
         points: cur.points
+      };
+    }
+    if (kind === 'odd') {
+      return {
+        games: cur.games + (u.owGames || 0),
+        wins: cur.wins + (u.owWins || 0),
+        points: cur.points + (u.owWins || 0) * OW.ODD_WORD_POINTS
       };
     }
     return cur;
@@ -951,20 +1002,24 @@ export class TelegramBotManager {
     game.rewarded = true;
 
     const lines: string[] = [`💰 *جوائز المباراة* — ${game.winner === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'} فاز`, `━━━━━━━━━━━━━━━━━━━`];
-    gained.forEach((g, i) => {
-      const details: string[] = [];
-      if (g.money > 0) details.push(`+${Economy.formatMoney(g.money)} 💵`);
-      else if (g.capped) details.push(`وصل السقف اليومي 🔒`);
-      if (g.xp) details.push(`+${g.xp} XP`);
-      if (g.correct) details.push(`${g.correct} بطاقة`);
-      if (g.wrong) details.push(`${g.wrong} غلط`);
-      details.push(`مستوى ${g.level}${g.levelUp ? ' 🎖️' : ''}`);
-      lines.push(this.quoteRow(i + 1, g.name, `(${details.join(' • ')})`));
-    });
+    lines.push(
+      gained
+        .map((g, i) => {
+          const details: string[] = [];
+          if (g.money > 0) details.push(`+${Economy.formatMoney(g.money)} 💵`);
+          else if (g.capped) details.push(`وصل السقف اليومي 🔒`);
+          if (g.xp) details.push(`+${g.xp} XP`);
+          if (g.correct) details.push(`${g.correct} بطاقة`);
+          if (g.wrong) details.push(`${g.wrong} غلط`);
+          details.push(`مستوى ${g.level}${g.levelUp ? ' 🎖️' : ''}`);
+          return this.quoteRow(i + 1, g.name, `(${details.join(' • ')})`);
+        })
+        .join('\n\n')
+    );
     if (loserLines.length) {
       lines.push(`━━━━━━━━━━━━━━━━━━━`);
       lines.push(`🎖️ *خبرة الفريق الثاني:*`);
-      lines.push(...loserLines);
+      lines.push(loserLines.join('\n\n'));
     }
     if (gained.every(g => g.money === 0) && gained.some(g => g.capped)) {
       lines.push(`🔒 *السقف اليومي:* ${Economy.formatMoney(Economy.DAILY_MONEY_CAP)} باليوم — ارجع باجر 🌙`);
@@ -1214,6 +1269,8 @@ export class TelegramBotManager {
       mathGames: Array.from(this.mathGames.entries()),
       rhymeGames: Array.from(this.rhymeGames.entries()),
       longestGames: Array.from(this.longestGames.entries()),
+      wkGames: Array.from(this.wkGames.entries()),
+      oddWordSolo: Array.from(this.oddWordSolo.entries()),
       pendingChannelGame: Array.from(this.pendingChannelGame.entries())
     };
   }
@@ -1246,6 +1303,8 @@ export class TelegramBotManager {
     if (Array.isArray(state.mathGames)) this.mathGames = new Map(state.mathGames);
     if (Array.isArray(state.rhymeGames)) this.rhymeGames = new Map(state.rhymeGames);
     if (Array.isArray(state.longestGames)) this.longestGames = new Map(state.longestGames);
+    if (Array.isArray(state.wkGames)) this.wkGames = new Map(state.wkGames);
+    if (Array.isArray(state.oddWordSolo)) this.oddWordSolo = new Map(state.oddWordSolo);
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
   }
 
@@ -1503,6 +1562,14 @@ export class TelegramBotManager {
       return;
     }
 
+    // 🤝 إذا المستخدم يشارك حالياً بلعبة «منو يعرف الثاني أكثر؟» بالخاص → نثبّت جوابه/تخمينه فوراً
+    if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
+      if (!message.reply_to_message && !this.awaitingClueWord.get(String(sender.id))) {
+        const handledWK = await this.tryHandleWhoKnowsText(sender, text);
+        if (handledWK) return;
+      }
+    }
+
     const lower = text.toLowerCase();
 
     // ------------------------------------------------------------------
@@ -1597,9 +1664,14 @@ export class TelegramBotManager {
     // /start command
     if (lower.startsWith('/start')) {
       if (message.chat.type === 'private') {
-        const payload = (text.split(/\s+/)[1] || '').toLowerCase();
+        const rawPayload = (text.split(/\s+/)[1] || '').trim();
+        const payload = rawPayload.toLowerCase();
         if (payload === 'spy') {
           await this.handleSpymasterReady(chatId, sender);
+          return;
+        }
+        if (rawPayload.startsWith('wk_')) {
+          await this.handleWhoKnowsPrivateReady(chatId, sender, rawPayload.slice(3));
           return;
         }
 
@@ -1828,6 +1900,16 @@ export class TelegramBotManager {
     // ---- 🔢 تحدي الحساب ----
     if (data.startsWith('ma:')) {
       await this.handleMathKey(cb, data.slice(3));
+      return;
+    }
+    // ---- 🤝 منو يعرف الثاني أكثر؟ ----
+    if (data.startsWith('wk')) {
+      await this.handleWhoKnowsCb(cb, data);
+      return;
+    }
+    // ---- 🕵️ الكلمة الغريبة (فردي بالخاص) ----
+    if (data.startsWith('ow:')) {
+      await this.handleOddWordKey(cb, data.slice(3));
       return;
     }
     // ---- 🥊 تحدي القافية ----
@@ -2719,6 +2801,26 @@ export class TelegramBotManager {
   private async handleInlineQuery(iq: TelegramInlineQuery) {
     const q = (iq.query || '').trim().toLowerCase();
 
+    // ── بطاقة «منو يعرف الثاني أكثر؟» ──
+    if (q === 'wk' || q.includes('يعرف')) {
+      await this.answerInlineQuery(iq.id, [
+        {
+          type: 'article',
+          id: 'wk',
+          title: '🤝 منو يعرف الثاني أكثر؟',
+          description: 'تحدي شخصين — البوت يسألهم بالخاص ويكشف البطاقات بالقناة',
+          input_message_content: {
+            message_text:
+              '🤝 *منو يعرف الثاني أكثر؟ — تحضير التحدي…*\n' +
+              '_لحظة والبوت يجهّز اللوحة 🤖_\n' +
+              '`wk:start`',
+            parse_mode: 'Markdown'
+          }
+        }
+      ]);
+      return;
+    }
+
     // ── بطاقة لعبة جماعية (gq speed / gq trivia / gq country … / gq mm) ──
     if (q.startsWith('gq')) {
       const kind = q.replace(/^gq\s*/, '').trim() || 'speed';
@@ -2774,9 +2876,10 @@ export class TelegramBotManager {
   private async handleInlineLanding(message: TelegramMessage) {
     const text = message.text || '';
     const gqMark = text.match(/gq:(\w+)/);
+    const isWkCard = text.includes('wk:start') || (text.includes('منو يعرف الثاني') && text.includes('تحضير'));
     const isCodenamesCard = text.includes('كود نيمز') && text.includes('تحضير');
     const isRpsCard = text.includes('حجرة ورقة مقص') && text.includes('تحضير');
-    if (!gqMark && !isCodenamesCard && !isRpsCard) return;
+    if (!gqMark && !isWkCard && !isCodenamesCard && !isRpsCard) return;
 
     // نتأكد إنها منشورة عبر بوتنا نفسه
     await this.ensureBotInfo();
@@ -2786,6 +2889,30 @@ export class TelegramBotManager {
     if (!ours) return;
 
     const chatId = String(message.chat.id);
+
+    // ── 🤝 منو يعرف الثاني أكثر؟ ──
+    if (isWkCard) {
+      const oldWk = this.wkGames.get(chatId);
+      if (oldWk?.messageId && oldWk.messageId !== message.message_id) {
+        await this.deleteMessage(chatId, oldWk.messageId);
+      }
+      const wkGame = WK.createWKGame(chatId, message.chat.title || 'المحادثة');
+      wkGame.messageId = message.message_id;
+      if (message.from?.id) {
+        WK.wkJoin(wkGame, String(message.from.id), message.from.first_name || 'الناشر');
+      }
+      this.wkGames.set(chatId, wkGame);
+      const botUser = await this.getBotUsername();
+      const res = await this.editMessageText(
+        chatId,
+        message.message_id,
+        await this.withBotFooter(WK.renderWKBoard(wkGame), true),
+        WK.wkBoardKeyboard(wkGame, botUser),
+        'MarkdownV2'
+      );
+      if (!res?.ok) this.wkGames.delete(chatId);
+      return;
+    }
 
     // ── 🎉 ألعاب الجماعة (أسئلة + ماسترمايند) ──
     if (gqMark) {
@@ -3515,8 +3642,7 @@ export class TelegramBotManager {
 
       const lines = top.length
         ? top
-            .map((x, i) => this.quoteRow(i + 1, x.u.name, `(🏆 ${x.st.wins} فوز • ⭐ ${x.st.points} نقطة)`))
-            .join('\n')
+            .map((x, i) => this.quoteRow(i + 1, x.u.name, `(🏆 ${x.st.wins} فوز • ⭐ ${x.st.points} نقطة)`)).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const mySt = myRec ? this.userGqStat(myRec, gqKind) : { games: 0, wins: 0, points: 0 };
@@ -3546,6 +3672,53 @@ export class TelegramBotManager {
       return { text, keyboard: [backRow] };
     }
 
+    // 🤝 منو يعرف الثاني أكثر؟
+    if (gameId === 'who_knows') {
+      const players = n.users
+        .filter(u => (u.wkGames || 0) > 0)
+        .sort((a, b) => (b.wkWins || 0) - (a.wkWins || 0) || (b.wkCorrect || 0) - (a.wkCorrect || 0));
+      const totalPlayed = players.reduce((acc, u) => acc + (u.wkGames || 0), 0);
+      const totalWins = players.reduce((acc, u) => acc + (u.wkWins || 0), 0);
+      const totalCards = players.reduce((acc, u) => acc + (u.wkCorrect || 0), 0);
+      const top = players.slice(0, 10);
+
+      const lines = top.length
+        ? top
+            .map((u, i) =>
+              this.quoteRow(i + 1, u.name, `(🏆 ${u.wkWins || 0} فوز • 🃏 ${u.wkCorrect || 0} بطاقة صح)`)
+            )
+            .join('\n\n')
+        : '_لا يوجد متصدرون بعد_';
+
+      const myGames = myRec?.wkGames || 0;
+      const myWins = myRec?.wkWins || 0;
+      const myCards = myRec?.wkCorrect || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'فوز',
+        statLines: [
+          `🎮 مبارياتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🃏 بطاقاتك الصحيحة: *${myCards}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`
+        ],
+        board: players.map(u => ({ id: u.id, score: u.wkWins || 0 }))
+      });
+
+      const text =
+        `🤝 *إحصائيات منو يعرف الثاني أكثر؟*\n` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎮 المشاركات المكتملة: *${totalPlayed}*\n` +
+        `🏆 إجمالي مرات الفوز: *${totalWins}*\n` +
+        `🃏 إجمالي البطاقات الصحيحة: *${totalCards}*\n\n` +
+        `🥇 *المتصدرون:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
+
+      return { text, keyboard: [backRow] };
+    }
+
     // 🔐 2) ماسترمايند
     if (gameId === 'mastermind') {
       const players = n.users
@@ -3560,8 +3733,7 @@ export class TelegramBotManager {
             .map((u, i) => {
               const best = u.mmBestTries ? ` • أسرع كسر ${u.mmBestTries}` : '';
               return this.quoteRow(i + 1, u.name, `(👑 ${u.mmWins || 0} فوز${best})`);
-            })
-            .join('\n')
+            }).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.mmGames || 0;
@@ -3603,8 +3775,7 @@ export class TelegramBotManager {
 
       const lines = topSolvers.length
         ? topSolvers
-            .map((u, i) => this.quoteRow(i + 1, u.name, `(${u.wordleWins || 0} كلمة)`))
-            .join('\n')
+            .map((u, i) => this.quoteRow(i + 1, u.name, `(${u.wordleWins || 0} كلمة)`)).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.wordleGames || 0;
@@ -3650,8 +3821,7 @@ export class TelegramBotManager {
               const wins = u.poetWins || 0;
               const pct = games ? Math.round((wins / games) * 100) : 0;
               return this.quoteRow(i + 1, u.name, `(${wins} بيت • ${pct}%)`);
-            })
-            .join('\n')
+            }).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.poetGames || 0;
@@ -3705,14 +3875,12 @@ export class TelegramBotManager {
 
       const spyLines = topSpies.length
         ? topSpies
-            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز)`))
-            .join('\n')
+            .map((s, i) => this.quoteRow(i + 1, s.name, `(${s.wins} فوز)`)).join('\n\n')
         : '_لا يوجد جواسيس متصدرون بعد_';
 
       const winLines = winBoard.length
         ? winBoard
-            .map((w, i) => this.quoteRow(i + 1, w.name, `(🏆 ${w.wins} فوز)`))
-            .join('\n')
+            .map((w, i) => this.quoteRow(i + 1, w.name, `(🏆 ${w.wins} فوز)`)).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myId = String(viewerId);
@@ -3767,8 +3935,7 @@ export class TelegramBotManager {
               const wins = u.rpsWins || 0;
               const pct = games ? Math.round((wins / games) * 100) : 0;
               return this.quoteRow(i + 1, u.name, `(🏆 ${wins} فوز • ${pct}%)`);
-            })
-            .join('\n')
+            }).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec?.rpsGames || 0;
@@ -3821,8 +3988,7 @@ export class TelegramBotManager {
               const wins = (u[conf.winsKey] as number) || 0;
               const pct = games ? Math.round((wins / games) * 100) : 0;
               return this.quoteRow(i + 1, u.name, `(${wins} ${conf.verb} • ${pct}%)`);
-            })
-            .join('\n')
+            }).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myGames = myRec ? ((myRec[conf.gamesKey] as number) || 0) : 0;
@@ -3861,8 +4027,7 @@ export class TelegramBotManager {
 
       const pointsLines = topPoints.length
         ? topPoints
-            .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
-            .join('\n')
+            .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`)).join('\n\n')
         : '_لا يوجد متصدرون بعد_';
 
       const myPts = myRec?.points || 0;
@@ -3916,8 +4081,7 @@ export class TelegramBotManager {
     const topPoints = pointsBoard.slice(0, 5);
     const topLines = topPoints.length
       ? topPoints
-          .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`))
-          .join('\n')
+          .map((u, i) => this.quoteRow(i + 1, u.name, `(⭐ ${u.points || 0} نقطة)`)).join('\n\n')
       : '_لا يوجد متصدرون بعد_';
 
     const myPts = myRec?.points || 0;
@@ -4007,8 +4171,7 @@ export class TelegramBotManager {
                 u.name,
                 `(مستوى ${p.level} • ${u.xp || 0} XP)`
               );
-            })
-            .join('\n')
+            }).join('\n\n')
         : '_لا يوجد متصدرون بالمستوى بعد_';
 
       const myXp = myRec?.xp || 0;
@@ -4068,8 +4231,7 @@ export class TelegramBotManager {
           .map((u, i) => {
             const level = Economy.levelFromXp(u.xp || 0);
             return this.quoteRow(i + 1, u.name, `(${Economy.formatMoney(u.money || 0)} 💵 • مستوى ${level})`);
-          })
-          .join('\n')
+          }).join('\n\n')
       : '_لا يوجد متصدرون بالفلوس بعد_';
 
     const myMoney = myRec?.money || 0;
@@ -4238,6 +4400,9 @@ export class TelegramBotManager {
             keyboard.push([{ text: '🎮 العب بالقناة (١٥ راوندات)', switch_inline_query: 'rps 15' }]);
           } else {
             keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: 'cn' }]);
+          }
+          if (game.play) {
+            keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
           }
         } else {
           // ألعاب الخاص: الزر يشرح إنها خاصة بالبوت
@@ -4829,6 +4994,425 @@ export class TelegramBotManager {
       await this.editMessageText(chatId, messageId, text, WordGame.longestKeyboard(round));
     } else {
       await this.sendMessage(chatId, text, WordGame.longestKeyboard(round));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🕵️ «الكلمة الغريبة» — الوضع الفردي بالخاص
+  // ---------------------------------------------------------------------
+
+  private async handleOddWordKey(cb: TelegramCallbackQuery, key: string) {
+    const userId = String(cb.from.id);
+
+    if (key === 'new') {
+      const prev = this.oddWordSolo.get(userId);
+      const fresh = OW.createOddWordRound(prev?.odd);
+      this.oddWordSolo.set(userId, fresh);
+      await this.paintOddWordSolo(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '🕵️ اكتشف الكلمة الغريبة!');
+      return;
+    }
+
+    const round = this.oddWordSolo.get(userId);
+    if (!round) {
+      const fresh = OW.createOddWordRound();
+      this.oddWordSolo.set(userId, fresh);
+      await this.paintOddWordSolo(cb, fresh);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const idx = parseInt(key, 10);
+    if (Number.isNaN(idx)) {
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const next = OW.pickOddWord(round, idx);
+    this.oddWordSolo.set(userId, next);
+
+    if (!round.done && next.done) {
+      const rec = this.ensureUser(userId, cb.from.first_name, cb.from.username);
+      rec.owGames = (rec.owGames || 0) + 1;
+      if (next.won) {
+        rec.owWins = (rec.owWins || 0) + 1;
+        rec.points = (rec.points || 0) + OW.ODD_WORD_POINTS;
+      }
+      this.users.set(rec.id, rec);
+    }
+
+    await this.paintOddWordSolo(cb, next);
+    await this.answerCallbackQuery(cb.id, next.won ? '✅ ذكي! عرفت الغريبة' : `❌ الغريبة: ${next.odd}`);
+  }
+
+  private async paintOddWordSolo(cb: TelegramCallbackQuery, round: OW.OddWordRound) {
+    const chatId = String(cb.message?.chat.id || cb.from.id);
+    const messageId = cb.message?.message_id;
+    const text = OW.renderOddWordSolo(round);
+    const kb = OW.oddWordSoloKeyboard(round);
+    if (messageId) {
+      await this.editMessageText(chatId, messageId, text, kb);
+    } else {
+      await this.sendMessage(chatId, text, kb);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 🤝 «منو يعرف الثاني أكثر؟» — هيكل خاص كامل (قناة + رسائل بالخاص + كشف البطاقات)
+  // ---------------------------------------------------------------------
+
+  private findActiveWKForUser(userId: string): WK.WKGame | undefined {
+    for (const g of this.wkGames.values()) {
+      if ((g.status === 'answering' || g.status === 'guessing') && g.players.some(p => p.id === userId)) {
+        const p = g.players.find(x => x.id === userId)!;
+        if (g.status === 'answering' && p.answers.length < g.questions.length) return g;
+        if (g.status === 'guessing' && p.guesses.length < g.questions.length) return g;
+      }
+    }
+    return undefined;
+  }
+
+  private async paintWKBoard(game: WK.WKGame, notice?: string) {
+    const botUser = await this.getBotUsername();
+    const text = await this.withBotFooter(WK.renderWKBoard(game, notice), true);
+    const kb = WK.wkBoardKeyboard(game, botUser);
+
+    if (game.inlineMessageId && !game.messageId) {
+      await this.editInlineMessageText(game.inlineMessageId, text, kb, 'MarkdownV2');
+      return;
+    }
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, text, kb, 'MarkdownV2');
+    if (sent?.result?.message_id) {
+      game.messageId = sent.result.message_id;
+      this.wkGames.set(game.chatId, game);
+    }
+  }
+
+  private async sendWKCurrentPrompt(game: WK.WKGame, userId: string) {
+    const prompt = WK.renderWKPrompt(game, userId);
+    if (!prompt) return;
+    await this.sendMessage(userId, prompt.text, prompt.keyboard, 'MarkdownV2');
+  }
+
+  private recordWhoKnowsFinish(game: WK.WKGame) {
+    if (game.rewarded || game.players.length < 2) return;
+    game.rewarded = true;
+
+    const avgLevel =
+      game.players.reduce((acc, p) => acc + Economy.levelFromXp(this.users.get(p.id)?.xp || 0), 0) / 2;
+
+    for (const p of game.players) {
+      const rec = this.ensureUser(p.id, p.name);
+      const won = Boolean(game.winnerId && game.winnerId === p.id);
+      rec.wkGames = (rec.wkGames || 0) + 1;
+      rec.wkCorrect = (rec.wkCorrect || 0) + p.score;
+      rec.points = (rec.points || 0) + p.score * 2 + (won ? 3 : 0);
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+
+      const perf = Math.min(1, Math.max(0.3, p.score / Math.max(1, game.questions.length)));
+      if (won) {
+        rec.wkWins = (rec.wkWins || 0) + 1;
+        rec.onlineWins = (rec.onlineWins || 0) + 1;
+        const money = Economy.moneyForWin({
+          gameId: 'who_knows',
+          performance: perf,
+          level: Economy.levelFromXp(rec.xp || 0),
+          opponentLevel: avgLevel,
+          earnedToday: Economy.earnedToday(rec)
+        });
+        if (money > 0) {
+          rec.money = Economy.roundMoney((rec.money || 0) + money);
+          Economy.addEarned(rec, money);
+        }
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('who_knows', true, perf);
+      } else {
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('who_knows', false, perf);
+      }
+      this.users.set(rec.id, rec);
+    }
+  }
+
+  private async startWhoKnowsGame(game: WK.WKGame): Promise<{ started: boolean; missingNames: string[] }> {
+    const missing: string[] = [];
+    for (const p of game.players) {
+      if (p.dmReady) continue;
+      const ok = await this.canReachPrivate(p.id);
+      if (ok) p.dmReady = true;
+      else missing.push(p.name);
+    }
+    if (missing.length) {
+      return { started: false, missingNames: missing };
+    }
+
+    game.status = 'answering';
+    game.updatedAt = Date.now();
+    this.wkGames.set(game.chatId, game);
+    await this.paintWKBoard(game);
+    for (const p of game.players) {
+      await this.sendWKCurrentPrompt(game, p.id);
+    }
+    return { started: true, missingNames: [] };
+  }
+
+  private async handleWhoKnowsPrivateReady(dmChatId: string, sender: TelegramUser | undefined, targetChatId: string) {
+    if (!sender) return;
+    this.trackUser(sender, true);
+    const uid = String(sender.id);
+    const game = this.wkGames.get(targetChatId);
+
+    if (!game) {
+      await this.sendMessage(dmChatId, '✅ تم فتح الخاص بنجاح! ارجع للقناة وانضم للتحدي.');
+      return;
+    }
+
+    const player = game.players.find(p => p.id === uid);
+    if (!player) {
+      // إذا بعد اكو مقعد شاغر باللوبي، نضمّه مباشرة لراحته!
+      if (game.status === 'lobby' && game.players.length < 2) {
+        WK.wkJoin(game, uid, sender.first_name || 'لاعب');
+        const joined = game.players.find(p => p.id === uid);
+        if (joined) joined.dmReady = true;
+        this.wkGames.set(game.chatId, game);
+        await this.paintWKBoard(game);
+        await this.sendMessage(dmChatId, '✅ انضميت للتحدي وتم تفعيل الخاص! بانتظار اكتمال اللاعب الثاني.');
+        return;
+      }
+      await this.sendMessage(dmChatId, '✅ تم تفعيل الخاص بنجاح!');
+      return;
+    }
+
+    player.dmReady = true;
+    this.wkGames.set(game.chatId, game);
+
+    if (game.status === 'lobby' && game.players.length === 2) {
+      const res = await this.startWhoKnowsGame(game);
+      if (!res.started) {
+        await this.sendMessage(
+          dmChatId,
+          `✅ خاصك جاهز! بانتظار فتح الخاص من الطرف الثاني (${res.missingNames.join('، ')}).`
+        );
+      }
+      return;
+    }
+
+    if (game.status === 'answering' || game.status === 'guessing') {
+      await this.sendWKCurrentPrompt(game, uid);
+      return;
+    }
+
+    await this.sendMessage(dmChatId, '✅ خاصك جاهز! بانتظار انضمام اللاعب الثاني وبدء التحدي.');
+  }
+
+  private async advanceWhoKnowsStep(game: WK.WKGame, userId: string, rawInput: string) {
+    if (game.status === 'answering') {
+      const res = WK.wkSubmitSelfAnswer(game, userId, rawInput);
+      if (!res.ok) return;
+      this.wkGames.set(game.chatId, game);
+      await this.paintWKBoard(game);
+
+      if (res.phaseComplete) {
+        await this.sendMessage(
+          userId,
+          '🔒 تم تثبيت جميع إجاباتك! الآن تبدأ مرحلة تخمين إجابات الطرف الثاني 🃏'
+        );
+        const partner = WK.wkPartner(game, userId);
+        if (partner) {
+          await this.sendMessage(
+            partner.id,
+            '🃏 الطرف الثاني أكمل تثبيت إجاباته! ابدأ الآن بتخمين بطاقاته 👇'
+          );
+          await this.sendWKCurrentPrompt(game, partner.id);
+        }
+        await this.sendWKCurrentPrompt(game, userId);
+        return;
+      }
+
+      if (res.playerDone) {
+        await this.sendMessage(
+          userId,
+          '✅ تم تثبيت جميع إجاباتك السرية عند البوت 🔒\n⏳ بانتظار إكمال الطرف الثاني لتثبيت إجاباته حتى يبدأ التخمين!'
+        );
+        return;
+      }
+
+      await this.sendWKCurrentPrompt(game, userId);
+      return;
+    }
+
+    if (game.status === 'guessing') {
+      const res = WK.wkSubmitGuess(game, userId, rawInput);
+      if (!res.ok) return;
+      this.wkGames.set(game.chatId, game);
+
+      if (res.gameOver) {
+        this.recordWhoKnowsFinish(game);
+        await this.paintWKBoard(game);
+        const total = game.questions.length;
+        for (const p of game.players) {
+          const other = WK.wkPartner(game, p.id);
+          await this.sendMessage(
+            p.id,
+            `🏁 انتهى التحدي وتم كشف جميع البطاقات في القناة!\n\n` +
+              `🎯 نتيجتك: عرفت *${p.score}* من *${total}* صح\n` +
+              (other ? `🤝 الطرف الثاني عرف: *${other.score}* من *${total}* صح\n` : '') +
+              `📢 ارجع للقناة لمشاهدة البطاقات المكشوفة بالتفصيل!`
+          );
+        }
+        return;
+      }
+
+      await this.paintWKBoard(game);
+      if (res.playerDone) {
+        await this.sendMessage(
+          userId,
+          '✅ أنهيت تخمين جميع البطاقات! ⏳ بانتظار انتهاء الطرف الثاني لكشف البطاقات في القناة 🃏'
+        );
+        return;
+      }
+
+      await this.sendWKCurrentPrompt(game, userId);
+    }
+  }
+
+  private async tryHandleWhoKnowsText(sender: TelegramUser, text: string): Promise<boolean> {
+    const uid = String(sender.id);
+    const game = this.findActiveWKForUser(uid);
+    if (!game) return false;
+    await this.advanceWhoKnowsStep(game, uid, text);
+    return true;
+  }
+
+  private async handleWhoKnowsCb(cb: TelegramCallbackQuery, data: string) {
+    const uid = String(cb.from.id);
+    const uname = cb.from.first_name || 'لاعب';
+
+    // أزرار الإجابة/التخمين بالخاص: wkp:a:<chatId>:<qIdx>:<sIdx> أو wkp:g:<chatId>:<qIdx>:<tag>
+    if (data.startsWith('wkp:')) {
+      const parts = data.split(':');
+      const mode = parts[1];
+      const gChatId = parts[2] || '';
+      const qIdx = parseInt(parts[3] || '0', 10);
+      const token = parts[4] || '';
+      const game = this.wkGames.get(gChatId);
+      if (!game) {
+        await this.answerCallbackQuery(cb.id, 'انتهت هذه الجولة', true);
+        return;
+      }
+      const player = game.players.find(p => p.id === uid);
+      const other = WK.wkPartner(game, uid);
+      if (!player || !other) {
+        await this.answerCallbackQuery(cb.id, 'غير مشارك في هذه الجولة', true);
+        return;
+      }
+
+      if (mode === 'a') {
+        if (game.status !== 'answering' || player.answers.length !== qIdx) {
+          await this.answerCallbackQuery(cb.id, 'تم تثبيت هذا السؤال مسبقاً ✅');
+          return;
+        }
+        const sIdx = parseInt(token, 10);
+        const val = game.questions[qIdx]?.suggestions[sIdx] || '';
+        if (!val) {
+          await this.answerCallbackQuery(cb.id, '');
+          return;
+        }
+        await this.answerCallbackQuery(cb.id, `🔒 تثبّتت: ${val}`);
+        await this.advanceWhoKnowsStep(game, uid, val);
+        return;
+      }
+
+      if (mode === 'g') {
+        if (game.status !== 'guessing' || player.guesses.length !== qIdx) {
+          await this.answerCallbackQuery(cb.id, 'تم تخمين هذه البطاقة مسبقاً ✅');
+          return;
+        }
+        const q = game.questions[qIdx];
+        const realAns = other.answers[qIdx] || '';
+        const pool = (q?.suggestions || []).filter(s2 => !WK.answersMatch(realAns, s2));
+        const chosen =
+          token === 'real'
+            ? realAns
+            : token.startsWith('d')
+              ? pool[parseInt(token.slice(1), 10)] || ''
+              : '';
+        if (!chosen) {
+          await this.answerCallbackQuery(cb.id, '');
+          return;
+        }
+        await this.answerCallbackQuery(cb.id, `🃏 اخترت: ${chosen}`);
+        await this.advanceWhoKnowsStep(game, uid, chosen);
+        return;
+      }
+      return;
+    }
+
+    // أزرار لوحة القناة: wkj:<chatId> / wks:<chatId> / wkn:<chatId>
+    const tailId = data.split(':').slice(-1)[0] || '';
+    const gChatId = /^-?\d{4,}$/.test(tailId) ? tailId : String(cb.message?.chat.id || '');
+    let game = this.wkGames.get(gChatId);
+
+    if (!game) {
+      if (!gChatId) {
+        await this.answerCallbackQuery(cb.id, 'لوحة قديمة — انشر اللعبة مجدداً', true);
+        return;
+      }
+      game = WK.createWKGame(gChatId, cb.message?.chat.title || 'المحادثة');
+      if (cb.message?.message_id) game.messageId = cb.message.message_id;
+      if (cb.inline_message_id) game.inlineMessageId = cb.inline_message_id;
+      this.wkGames.set(gChatId, game);
+    }
+
+    if (cb.inline_message_id && !game.inlineMessageId) {
+      game.inlineMessageId = cb.inline_message_id;
+    }
+
+    if (data.startsWith('wkj:')) {
+      const r = WK.wkJoin(game, uid, uname);
+      this.wkGames.set(gChatId, game);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) await this.paintWKBoard(game);
+      return;
+    }
+
+    if (data.startsWith('wks:')) {
+      if (game.status !== 'lobby') {
+        await this.answerCallbackQuery(cb.id, 'التحدي جارٍ بالفعل');
+        return;
+      }
+      if (game.players.length < 2) {
+        await this.answerCallbackQuery(cb.id, 'يجب انضمام لاعبين اثنين أولاً', true);
+        return;
+      }
+      const res = await this.startWhoKnowsGame(game);
+      if (!res.started) {
+        await this.paintWKBoard(
+          game,
+          `يجب على (${res.missingNames.join('، ')}) الضغط على «افتح الخاص مع البوت» أولاً`
+        );
+        await this.answerCallbackQuery(
+          cb.id,
+          `لازم ${res.missingNames.join(' و ')} يفتحون الخاص مع البوت أولاً 💬`,
+          true
+        );
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '🚀 بدأ التحدي! تفقدوا الخاص الآن 💬');
+      return;
+    }
+
+    if (data.startsWith('wkn:')) {
+      const fresh = WK.createWKGame(game.chatId, game.chatTitle || 'المحادثة');
+      fresh.messageId = game.messageId;
+      fresh.inlineMessageId = game.inlineMessageId;
+      WK.wkJoin(fresh, uid, uname);
+      this.wkGames.set(game.chatId, fresh);
+      await this.paintWKBoard(fresh);
+      await this.answerCallbackQuery(cb.id, '🔄 تحدٍّ جديد — بانتظار اللاعب الثاني!');
+      return;
     }
   }
 
