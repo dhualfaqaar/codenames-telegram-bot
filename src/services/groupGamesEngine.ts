@@ -408,7 +408,7 @@ export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
 // ---------------------------------------------------------------------
 export function renderQuiz(game: QuizGame): string {
   const meta = QUIZ_KINDS[game.kind];
-  const SEP = '━━━━━━━━━━';
+  const SEP = '━━━━━━━━━━━━━━━━━━━';
 
   if (game.status === 'lobby') {
     const lines = [`${meta.emoji} *${meta.title}*`, ''];
@@ -657,7 +657,7 @@ export function mmSkipTurn(game: MMGame, id: string): { ok: boolean; msg: string
 }
 
 export function renderMM(game: MMGame): string {
-  const SEP = '━━━━━━━━━━';
+  const SEP = '━━━━━━━━━━━━━━━━━━━';
   const lines = [`🔐 *ماسترمايند — كسر الرقم السري*`];
 
   if (game.status === 'lobby') {

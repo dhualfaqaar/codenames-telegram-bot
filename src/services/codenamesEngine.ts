@@ -567,12 +567,12 @@ export class CodenamesEngine {
 
     return (
       `🗺️ *خريطتك السرية* 🕵️ — إنت وحدك تشوفها!\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `*شنو معنى الألوان؟*\n` +
       `🔵 أزرق  |  🔴 أحمر  |  ⚪ محايد  |  💣 القاتل\n\n` +
       `*موقع البطاقات على اللوحة* (نفس ترتيب الأزرار):\n\n` +
       `${this.getSecretKeyGrid(game)}\n` +
-      `━━━━━━━━━━\n\n` +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
       `${blueTitle} (${countOf('blue')}) — صاحبها هو اللي لازم يخمّنها:\n` +
       `${wordsOf('blue')}\n\n\n` +
       `${redTitle} (${countOf('red')}) — لا تلمسونها، إذا لمستوها تربحون للخصم:\n` +
@@ -581,7 +581,7 @@ export class CodenamesEngine {
       `${wordsOf('bystander')}\n\n\n` +
       `💣 *القاتل (الأسود)* — إذا اختار صديقك هذي الكلمة *تخسرون اللعبة فوراً!* ⚠️\n` +
       `${wordsOf('assassin')}\n\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `💡 *نصيحة:* خلي تلميحك واضح لفريقك، وبعيد كلش عن الكلمة المحايدة والكلمة السوداء.`
     );
   }
@@ -593,7 +593,7 @@ export class CodenamesEngine {
     const teamName = team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
     return (
       `🕵️ *أهلين يا جاسوس الفريق ${teamName}!*\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `*شنو شغلتك؟*\n` +
       `إنت وحدك تشوف ألوان البطاقات. شغلتك تعطي فريقك *تلميح بكلمة وحدة*، وفريقك يخمّن بيها.\n\n` +
       `*مثال:*\n` +
@@ -686,11 +686,11 @@ export class CodenamesEngine {
         game.players.filter(p => p.team === 'red').length >= 2;
 
       return `🕵️‍♂️ *لعبة كود نيمز (Codenames)* 🕵️‍♀️\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `👥 *المنضمون:* ${game.players.length} من 4\n\n` +
         `${this.teamRoster(game, 'blue')}\n\n` +
         `${this.teamRoster(game, 'red')}\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         (full
           ? `🔒 *اكتمل العدد!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
           : `_⏳ قيد الانتظار: باقي ${Math.max(0, 4 - game.players.length)} لاعب — كل فريق يحتاج (جاسوس 🕵️ + عميل 👤)._\n`) +
@@ -705,12 +705,12 @@ export class CodenamesEngine {
         : 'الفريق كشف كل كلماته 🎯';
 
       return `🎉 *انتهت اللعبة! فاز ${winnerName}* ${winnerEmoji}\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `🏁 *السبب:* ${reasonText}\n\n` +
         `📊 *النتيجة النهائية:*\n` +
         `🔵 الأزرق: متبقي *${blueRemaining}*\n` +
         `🔴 الأحمر: متبقي *${redRemaining}*\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `🔄 اضغط «بدء جولة جديدة» بالأسفل للعب مرة ثانية`;
     }
 
@@ -719,7 +719,7 @@ export class CodenamesEngine {
 
     let header =
       `🎮 *لعبة كود نيمز | لوحة اللعب*\n` +
-      `━━━━━━━━━━\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
       `📊 *النتيجة:*\n` +
       `🔵 الأزرق: متبقي *${blueRemaining}*\n` +
       `🔴 الأحمر: متبقي *${redRemaining}*\n`;
@@ -729,7 +729,7 @@ export class CodenamesEngine {
       header += `\n👥 *اللاعبون:*\n${roster}\n`;
     }
 
-    header += `━━━━━━━━━━\n`;
+    header += `━━━━━━━━━━━━━━━━━━━\n`;
 
     if (game.status === 'spymaster_turn') {
       header += `🎯 *الدور الآن:* ⏳ جاسوس الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
@@ -740,12 +740,12 @@ export class CodenamesEngine {
       header += `🎯 *الدور الآن:* عملاء الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
         `📢 *التلميح:* "${clue?.word}" — عدد البطاقات *${clue?.count}*\n` +
         `🔢 المحاولات المتبقية: *${clue?.remainingGuesses}*\n` +
-        `━━━━━━━━━━\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
         `👇 اضغط على الكلمة من اللوحة بالأسفل لتخمينها:`;
     }
 
     if (lastEvent) {
-      header += `\n━━━━━━━━━━\n📢 *آخر حدث:*\n> ${lastEvent}`;
+      header += `\n━━━━━━━━━━━━━━━━━━━\n📢 *آخر حدث:*\n> ${lastEvent}`;
     }
 
     return header;

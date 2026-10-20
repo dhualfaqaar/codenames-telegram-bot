@@ -218,9 +218,9 @@ export function renderMessage(state: WordleState): string {
 
   const legend = done
     ? ''
-    : `\n━━━━━━━━━━\n🟩 بمكانه • 🟨 موجود بمكان ثاني • ⬜ مو بالكلمة`;
+    : `\n━━━━━━━━━━━━━━━━━━━\n🟩 بمكانه • 🟨 موجود بمكان ثاني • ⬜ مو بالكلمة`;
 
-  return `${title}\n${counter}\n━━━━━━━━━━\n${rows.join('\n')}${legend}`;
+  return `${title}\n${counter}\n━━━━━━━━━━━━━━━━━━━\n${rows.join('\n')}${legend}`;
 }
 
 /** أزرار اللعبة: 4 صفوف حروف + أزرار التحكم */

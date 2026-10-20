@@ -107,7 +107,7 @@ export function pointsFor(round: MathRound): number {
 }
 
 export function renderMessage(round: MathRound): string {
-  const lines = [`🔢 *تحدي الحساب*`, `━━━━━━━━━━`];
+  const lines = [`🔢 *تحدي الحساب*`, `━━━━━━━━━━━━━━━━━━━`];
   if (round.done) {
     lines.push(`🏁 *خلصت!*`);
     lines.push(`✅ جمعت *${round.target}* نقاط`);
@@ -116,7 +116,7 @@ export function renderMessage(round: MathRound): string {
     return lines.join('\n');
   }
   lines.push(`⭐ نقاطك: *${round.score}* من *${round.target}*`);
-  lines.push(`━━━━━━━━━━`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━`);
   lines.push(`🧮 *كم يساوي؟*`);
   lines.push(`❓ \`${round.question}\``);
   if (round.lastCorrect === false) lines.push(`❌ الغلط يخليك تخسر الثانية!`);
