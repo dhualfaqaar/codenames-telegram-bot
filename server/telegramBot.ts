@@ -48,6 +48,8 @@ interface TelegramMessage {
   date: number;
   text?: string;
   chat_shared?: TelegramChatShared;
+  /** الرسالة نُشرت عبر بوت إنلاين (بطاقات «العب بالقناة») */
+  via_bot?: TelegramUser;
   /** the message this one replies to (used by the owner's «حظر» replies) */
   reply_to_message?: TelegramMessage;
   // media people may send to the bot (delivered to the owner in his inbox)
@@ -70,11 +72,20 @@ interface TelegramCallbackQuery {
   data?: string;
 }
 
+/** رسالة إنلاين — لما المستخدم يكتب @bot بالمحادثة */
+interface TelegramInlineQuery {
+  id: string;
+  from: TelegramUser;
+  query: string;
+  offset?: string;
+}
+
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   channel_post?: TelegramMessage;
   callback_query?: TelegramCallbackQuery;
+  inline_query?: TelegramInlineQuery;
   my_chat_member?: TelegramChatMemberUpdated;
 }
 
@@ -1204,6 +1215,8 @@ export class TelegramBotManager {
         await this.handleMessage(incoming);
       } else if (update.callback_query) {
         await this.handleCallbackQuery(update.callback_query);
+      } else if (update.inline_query) {
+        await this.handleInlineQuery(update.inline_query);
       } else if (update.my_chat_member) {
         await this.handleMyChatMember(update.my_chat_member);
       }
@@ -1224,6 +1237,12 @@ export class TelegramBotManager {
     // Result of "share the game to a channel" (chat_shared service message)
     if (message.chat_shared) {
       await this.handleChatShared(message);
+      return;
+    }
+
+    // بطاقة «العب بالقناة» نزلت هنا عبر الإنلاين؟ نشوف ونحوّلها للوبي فوراً
+    if (message.via_bot && message.chat.type !== 'private') {
+      await this.handleInlineLanding(message);
       return;
     }
 
@@ -2262,9 +2281,9 @@ export class TelegramBotManager {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🎯 اختار كم راوند تلعبون بالقناة:`,
       keyboard: [
-        [{ text: '٥ راوندات', callback_data: 'hub:chshare:rps:5' }],
-        [{ text: '١٠ راوندات', callback_data: 'hub:chshare:rps:10' }],
-        [{ text: '١٥ راوندات', callback_data: 'hub:chshare:rps:15' }],
+        [{ text: '🎮 بالقناة — ٥ راوندات', switch_inline_query: 'rps 5' }],
+        [{ text: '🎮 بالقناة — ١٠ راوندات', switch_inline_query: 'rps 10' }],
+        [{ text: '🎮 بالقناة — ١٥ راوندات', switch_inline_query: 'rps 15' }],
         [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
       ]
     });
@@ -2333,6 +2352,162 @@ export class TelegramBotManager {
         `*السبب:* ${this.mdSafe(String(result.error || 'غير معروف'))}\n\n` +
         `تأكد إن البوت *مشرف (Admin)* بالقناة وبعدين جرّب مرة ثانية.`
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // 🚀 «العب بالقناة» عبر الإنلاين: ضغطة وحدة → منتقي التحويل الرسمي →
+  // الرسالة تنزل بالقناة وتحوّل نفسها للوبي تلقائياً (بلا رسايل ولا بوكس)
+  // ---------------------------------------------------------------------
+
+  /** بطاقة النشر لكل لعبة (العنوان والوصف والنص اللي ينزل بالقناة لحظة الإرسال) */
+  private inlineDeployCard(gameId: 'codenames' | 'rps', rounds?: number): { title: string; desc: string; text: string } {
+    if (gameId === 'rps') {
+      const n = rounds && [5, 10, 15].includes(rounds) ? rounds : 5;
+      const ar = n === 5 ? '٥' : n === 10 ? '١٠' : '١٥';
+      return {
+        title: `✊ حجرة ورقة مقص — ${ar} راوندات`,
+        desc: 'أنزل المباراة هنا — اللاعبون يختارون من القناة نفسها!',
+        text:
+          `✊ *حجرة ورقة مقص (${n} راوندات) — تحضير المباراة…*\n` +
+          `_لحظة والبوت يجهّز اللوحة 🤖_`
+      };
+    }
+    return {
+      title: '🎮 كود نيمز (2 ضد 2)',
+      desc: 'نزّل لوبي جديد هنا — الأعضاء ينضمون بالأزرار',
+      text:
+        `🎮 *كود نيمز — تحضير اللوبي…*\n` +
+        `_لحظة والبوت يجهّز اللوحة 🤖_`
+    };
+  }
+
+  /** المستخدم كتب @bot بمحادثة (بعد ما ضغط «العب بالقناة») — نرجّع البطاقات */
+  private async handleInlineQuery(iq: TelegramInlineQuery) {
+    const q = (iq.query || '').trim().toLowerCase();
+    const wantsCn = q === 'cn' || q === '' || q.includes('كود') || q.includes('codenames');
+    const wantsRps = q.startsWith('rps') || q === '' || q.includes('حجرة');
+
+    const results: any[] = [];
+    if (wantsCn) {
+      const card = this.inlineDeployCard('codenames');
+      results.push({
+        type: 'article',
+        id: 'cn',
+        title: card.title,
+        description: card.desc,
+        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+      });
+    }
+    if (wantsRps) {
+      const r = parseInt((q.match(/(\d+)/) || [])[1] || '5', 10);
+      const rounds = [5, 10, 15].includes(r) ? r : 5;
+      const card = this.inlineDeployCard('rps', rounds);
+      results.push({
+        type: 'article',
+        id: `rps:${rounds}`,
+        title: card.title,
+        description: card.desc,
+        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+      });
+    }
+    if (!results.length) {
+      const card = this.inlineDeployCard('codenames');
+      results.push({
+        type: 'article',
+        id: 'cn',
+        title: card.title,
+        description: card.desc,
+        input_message_content: { message_text: card.text, parse_mode: 'Markdown' }
+      });
+    }
+
+    await this.answerInlineQuery(iq.id, results);
+  }
+
+  /**
+   * لحظة نزول بطاقة الإنلاين بقناة/كروب (via_bot):
+   * نمسح حالتها الساكنة ونحرّرها لتصير لوحة لعب حقيقية بنفس الرسالة.
+   */
+  private async handleInlineLanding(message: TelegramMessage) {
+    const text = message.text || '';
+    const isCodenamesCard = text.includes('كود نيمز') && text.includes('تحضير');
+    const isRpsCard = text.includes('حجرة ورقة مقص') && text.includes('تحضير');
+    if (!isCodenamesCard && !isRpsCard) return;
+
+    // نتأكد إنها منشورة عبر بوتنا نفسه
+    await this.ensureBotInfo();
+    const ours =
+      String(message.via_bot?.id || '') === String(this.botInfo?.id || '') ||
+      String(message.via_bot?.username || '') === String(this.botInfo?.username || '');
+    if (!ours) return;
+
+    const chatId = String(message.chat.id);
+
+    // ── حجرة ورقة مقص ──
+    if (isRpsCard) {
+      const rMatch = text.match(/(\d+)\s*راوند/);
+      const r = rMatch ? parseInt(rMatch[1], 10) : 5;
+      const rounds = [5, 10, 15].includes(r) ? r : 5;
+
+      const oldRps = this.rpsGames.get(chatId);
+      if (oldRps?.messageId && oldRps.messageId !== message.message_id) {
+        await this.deleteMessage(chatId, oldRps.messageId);
+      }
+
+      const game = RPS.createGame(
+        chatId,
+        message.chat.title || 'المحادثة',
+        rounds,
+        message.from ? String(message.from.id) : ''
+      );
+      game.messageId = message.message_id;
+      this.rpsGames.set(chatId, game);
+
+      const res = await this.editMessageText(
+        chatId,
+        message.message_id,
+        await this.withBotFooter(RPS.renderGame(game)),
+        RPS.boardKeyboard(game)
+      );
+      if (!res?.ok) {
+        // البوت ما عنده صلاحية تعديل بالقناة → البطاقة تبقى ساكنة وما نحفظ لعبة
+        this.rpsGames.delete(chatId);
+      }
+      return;
+    }
+
+    // ── كود نيمز ──
+    const existing = this.games.get(chatId);
+    if (existing && existing.status === 'lobby' && existing.messageId && existing.messageId !== message.message_id) {
+      await this.deleteMessage(chatId, existing.messageId);
+      this.games.delete(chatId);
+    }
+
+    let creator: number | string | undefined = message.from?.id;
+    if (!creator) {
+      const admins = await this.getChatAdministrators(chatId);
+      creator = admins.find(a => a?.user?.id)?.user?.id;
+    }
+
+    const game = CodenamesEngine.createLobby(
+      chatId,
+      message.chat.title || 'المحادثة',
+      existing?.wordPack || 'arabic_standard',
+      this.customWords,
+      creator
+    );
+    game.messageId = message.message_id;
+    this.games.set(chatId, game);
+
+    const res = await this.editMessageText(
+      chatId,
+      message.message_id,
+      await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game)),
+      await this.buildKeyboard(game)
+    );
+    if (!res?.ok) {
+      this.games.delete(chatId);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -3157,12 +3332,21 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // ── أول زر (عريض وبكل لعبة): 🎮 العب بالقناة ──
-        keyboard.push([{ text: '🎮 العب بالقناة', callback_data: `hub:chpick:${game.id}` }]);
-
-        // ── ألعاب الخاص: زر «العب مع البوت» تحته (عريض) ──
-        if (!game.channel && game.play) {
-          keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
+        // ── أول خيار: العب بالقناة — ضغطة وحدة تفتح منتقي التحويل الرسمي ──
+        if (game.channel) {
+          if (game.id === 'rps') {
+            keyboard.push([{ text: '🎮 العب بالقناة (٥ راوندات)', switch_inline_query: 'rps 5' }]);
+            keyboard.push([{ text: '🎮 العب بالقناة (١٠ راوندات)', switch_inline_query: 'rps 10' }]);
+            keyboard.push([{ text: '🎮 العب بالقناة (١٥ راوندات)', switch_inline_query: 'rps 15' }]);
+          } else {
+            keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: 'cn' }]);
+          }
+        } else {
+          // ألعاب الخاص: الزر يشرح إنها خاصة بالبوت
+          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: `hub:chpick:${game.id}` }]);
+          if (game.play) {
+            keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
+          }
         }
 
         // ── المربعين جنب بعض: شرح + إحصائيات ──
@@ -4934,6 +5118,24 @@ export class TelegramBotManager {
         body: JSON.stringify(body)
       });
 
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Telegram API: answerInlineQuery (بطاقات «العب بالقناة» بالإنلاين)
+   */
+  public async answerInlineQuery(queryId: string, results: any[]): Promise<any> {
+    if (!this.token) return null;
+
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/answerInlineQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inline_query_id: queryId, results, cache_time: 0 })
+      });
       return await res.json();
     } catch (e) {
       return null;
