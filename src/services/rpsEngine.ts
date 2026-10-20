@@ -1,7 +1,7 @@
 /**
  * ✊✋✌️ لعبة «حجرة ورقة مقص»
  * لعبة بالقناة/الكروب: لاعبين ينضمون، وكل جولة كل لاعب يختار (حجرة/ورقة/مقص)
- * بالخاص (زر ينفتح له)، والبوت يكشف النتيجة ويحسب الجولات.
+ * من أزرار اللوحة نفسها بالقناة، والبوت يكشف النتيجة ويحسب الجولات.
  */
 
 export type RPSMove = 'rock' | 'paper' | 'scissors';
@@ -189,7 +189,7 @@ export function renderGame(game: RPSGame): string {
     lines.push(`📜 _آخر نتيجة:_ ${game.history[game.history.length - 1]}`);
   }
   lines.push(`━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`_كل لاعب يختار بالخاص (اضغط زر «اختر حركتك»)_`);
+  lines.push(`_اللاعبين يختارون حركتهم من الأزرار تحت 👇_`);
   return lines.join('\n');
 }
 
@@ -211,7 +211,12 @@ export function boardKeyboard(game: RPSGame): any[][] {
     return rows;
   }
 
-  rows.push([{ text: '🎮 اختر حركتك', callback_data: `rpsb:pick:${game.chatId}` }]);
+  // 🎯 اللعب شغّال → ثلاث مربعات على اللوحة نفسها: حجرة / ورقة / مقص
+  rows.push([
+    { text: '✊ حجرة', callback_data: `rpsm:rock:${game.chatId}` },
+    { text: '✋ ورقة', callback_data: `rpsm:paper:${game.chatId}` },
+    { text: '✌️ مقص', callback_data: `rpsm:scissors:${game.chatId}` }
+  ]);
   return rows;
 }
 

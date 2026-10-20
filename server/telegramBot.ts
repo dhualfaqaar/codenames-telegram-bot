@@ -2197,48 +2197,20 @@ export class TelegramBotManager {
         return;
       }
 
-      // حجرة ورقة مقص: أول نختار كم راوند
+      // حجرة ورقة مقص: أول نختار كم راوند، وبعدين منتقي القنوات
       if (gameId === 'rps') {
         await this.renderRoundsPicker(cb, game);
         return;
       }
 
-      // الألعاب الثانية: قائمة القنوات مباشرة
-      const view = this.buildChannelView(gameId);
-      await this.paintMenuView(cb, view);
+      // الألعاب الثانية: نفتح منتقي تليجرام الرسمي (شكل «تحويل رسالة») مباشرة
+      await this.answerCallbackQuery(cb.id);
+      await this.sendChannelKeyboard(chatId);
       return;
     }
 
-    // بعد اختيار الروندات (حجرة ورقة) → قائمة القنوات
-    if (section.startsWith('chlist:')) {
-      const parts = section.slice(7).split(':');
-      const gameId = parts[0];
-      const rounds = parseInt(parts[1] || '0', 10) || undefined;
-      const view = this.buildChannelView(gameId, rounds);
-      await this.paintMenuView(cb, view);
-      return;
-    }
-
-    // ضغط قناة من القائمة → ننشر اللعبة عليها مباشرة
-    if (section.startsWith('chgo:')) {
-      const parts = section.slice(5).split(':');
-      const gameId = parts[0];
-      const chanId = parts[1];
-      const rounds = parseInt(parts[2] || '0', 10) || undefined;
-      const title = this.chats.get(chanId)?.title || 'القناة';
-      await this.answerCallbackQuery(cb.id, '⏳ دقيقة، جاري النشر…');
-      const res = await this.deployGameToChannel(chanId, title, cb.from.id, gameId, rounds);
-      const kb = [[{ text: '🔙 رجوع', callback_data: `hub:g:${gameId}` }]];
-      if (messageId) {
-        await this.editMessageText(chatId, messageId, res.text, kb);
-      } else {
-        await this.sendMessage(chatId, res.text, kb);
-      }
-      return;
-    }
-
-    // «➕ قناة غيرها» → منتقي القنوات الرسمي من تليجرام
-    if (section.startsWith('chother:')) {
+    // بعد اختيار الروندات (حجرة ورقة) → منتقي تليجرام الرسمي
+    if (section.startsWith('chshare:')) {
       const parts = section.slice(8).split(':');
       const gameId = parts[0];
       const rounds = parseInt(parts[1] || '0', 10) || undefined;
@@ -2282,42 +2254,7 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, '');
   }
 
-  /** قائمة القنوات اللي يكدر المستخدم ينشر اللعبة عليها */
-  private buildChannelView(gameId: string, rounds?: number): { text: string; keyboard: any[][] } {
-    const game = findBotGame(gameId);
-    const channels = Array.from(this.chats.values())
-      .filter(c => c.type === 'channel')
-      .sort((a, b) => b.lastSeen - a.lastSeen)
-      .slice(0, 8);
-
-    const roundsPart = rounds ? `:${rounds}` : '';
-    const keyboard: any[][] = channels.map(c => [
-      { text: `📣 ${c.title.length > 30 ? c.title.slice(0, 29) + '…' : c.title}`, callback_data: `hub:chgo:${gameId}:${c.id}${roundsPart}` }
-    ]);
-    keyboard.push([{ text: '➕ قناة غيرها من تليجرام…', callback_data: `hub:chother:${gameId}${roundsPart}` }]);
-    keyboard.push([{ text: '🔙 رجوع', callback_data: gameId === 'rps' && rounds ? 'hub:chpick:rps' : `hub:g:${gameId}` }]);
-
-    const lines = [
-      `📢 *وين تريد تلعب «${game ? game.title : gameId}»؟*`,
-      `━━━━━━━━━━━━━━━━━━━`
-    ];
-    if (rounds) lines.push(`🎯 *الروندات:* ${rounds}`);
-    if (channels.length) {
-      lines.push(
-        `اختار قناتك من القائمة 👇 وراح أنزّل اللعبة بيها فوراً،`,
-        `أو اضغط (➕ قناة غيرها) حتى تختار أي قناة ثانية من تليجرام.`
-      );
-    } else {
-      lines.push(
-        `_البوت بعده ما يعرف قنواتك._`,
-        `اضغط (➕ قناة غيرها) واختار قناتك مباشرة من تليجرام —`,
-        `ولازم يكون البوت *مشرف (Admin)* بيها حتى تشتغل اللعبة.`
-      );
-    }
-    return { text: lines.join('\n'), keyboard };
-  }
-
-  /** حجرة ورقة مقص: شاشة اختيار الروندات قبل القناة */
+  /** حجرة ورقة مقص: شاشة اختيار الروندات قبل منتقي القنوات */
   private async renderRoundsPicker(cb: TelegramCallbackQuery, game: BotGameCard) {
     await this.paintMenuView(cb, {
       text:
@@ -2325,9 +2262,9 @@ export class TelegramBotManager {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🎯 اختار كم راوند تلعبون بالقناة:`,
       keyboard: [
-        [{ text: '٥ راوندات', callback_data: 'hub:chlist:rps:5' }],
-        [{ text: '١٠ راوندات', callback_data: 'hub:chlist:rps:10' }],
-        [{ text: '١٥ راوندات', callback_data: 'hub:chlist:rps:15' }],
+        [{ text: '٥ راوندات', callback_data: 'hub:chshare:rps:5' }],
+        [{ text: '١٠ راوندات', callback_data: 'hub:chshare:rps:10' }],
+        [{ text: '١٥ راوندات', callback_data: 'hub:chshare:rps:15' }],
         [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
       ]
     });
@@ -3897,7 +3834,7 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, '');
   }
 
-  /** اختيار حجرة/ورقة/مقص من الخاص */
+  /** اختيار حجرة/ورقة/مقص مباشرة من أزرار لوحة القناة (بلا رسالة خاصة) */
   private async handleRPSMove(cb: TelegramCallbackQuery, body: string) {
     const parts = body.split(':');
     const move = parts[0] as RPS.RPSMove;
@@ -3912,7 +3849,13 @@ export class TelegramBotManager {
 
     const player = game.players.find(p => p.id === userId);
     if (!player) {
-      await this.answerCallbackQuery(cb.id, 'إنت مو منضم', true);
+      await this.answerCallbackQuery(cb.id, 'إنت مو منضم للمباراة', true);
+      return;
+    }
+
+    // اللاعب مختار بالفعل هالجولة؟ نمنع التبديل بعد الكشف اللحظي
+    if (player.move) {
+      await this.answerCallbackQuery(cb.id, `✅ اخترت ${RPS.MOVE_LABEL[player.move]} — انتظر الخصم`, true);
       return;
     }
 
@@ -3924,23 +3867,14 @@ export class TelegramBotManager {
     }
     this.rpsGames.set(chatId, next);
 
+    // التوست يطلع للضاغط بس — الحركة تبقى سرية لحد ما يختار الثاني
     await this.answerCallbackQuery(cb.id, `✅ اخترت ${RPS.MOVE_LABEL[move]}`);
-    if (cb.message?.message_id) {
-      await this.editMessageText(
-        String(cb.from.id),
-        cb.message.message_id,
-        `✅ اخترت ${RPS.MOVE_LABEL[move]} — ننتظر الخصم…`,
-        [[{ text: '🔙 رجوع', callback_data: `hub:g:rps` }]]
-      );
-    }
+    // حدّث لوحة القناة: يبين من اختار (بدون كشف حركته) أو تكشف نتيجة الجولة
+    await this.paintRPSBoard(next);
 
-    if (reveal) {
-      await this.paintRPSBoard(next);
-
-      // خلصت المباراة؟ نوزع الجوائز
-      if (next.status === 'game_over') {
-        await this.awardRPS(next);
-      }
+    // خلصت المباراة؟ نوزع الجوائز
+    if (reveal && next.status === 'game_over') {
+      await this.awardRPS(next);
     }
   }
 
