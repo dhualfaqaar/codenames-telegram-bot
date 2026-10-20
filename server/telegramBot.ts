@@ -2063,9 +2063,9 @@ export class TelegramBotManager {
       return;
     }
 
-    // «📣 نزّل لعبة بقناتك» → رسالة جديدة بكيبورد اختيار القناة
+    // «🎮 العب بالقناة» → يرسل مباشرة اختيار القناة
     if (section === 'channel') {
-      await this.answerCallbackQuery(cb.id, 'اختار من الأزرار تحت 👇');
+      await this.answerCallbackQuery(cb.id, '');
       await this.sendChannelKeyboard(chatId);
       return;
     }
