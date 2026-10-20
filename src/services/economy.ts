@@ -47,7 +47,6 @@ export const RPS_XP = 4;
  * وأعلى خبرة لفوز واحد = 15.
  */
 export const GAME_ECONOMY: Record<string, GameEconomy> = {
-  // 🎮 لعبة قوية ومعقدة (فريق + جاسوس + تلميحات) — الأعلى = 15
   codenames: {
     maxMoney: 0.06,
     winXp: 15,
@@ -55,31 +54,13 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'الفائز ياخذ *0.012 – 0.06* 💵 حسب أداءه'
   },
-  // 🧠 متوسطة — ألعاب كلمات مع البوت: نقاط بس
-  rhyme: {
-    maxMoney: 0,
-    winXp: 0,
-    loseXp: 0,
-    online: false,
-    note: 'لكل كلمة صح *+2* نقطة'
-  },
-  // 📏 متوسطة — ألعاب كلمات مع البوت: نقاط بس
-  longest: {
-    maxMoney: 0,
-    winXp: 0,
-    loseXp: 0,
-    online: false,
-    note: 'الفوز *+8* نقاط'
-  },
-  // 🔢 خفيفة — مع البوت: نقاط بس
   math: {
-    maxMoney: 0,
-    winXp: 0,
-    loseXp: 0,
-    online: false,
-    note: 'الفوز *+10* نقاط'
+    maxMoney: 0.015,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
   },
-  // ✊ بسيطة وحظّية — فلوس ضئيلة جداً وبشرط
   rps: {
     maxMoney: 0.003,
     winXp: 4,
@@ -87,7 +68,6 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'لعبة بسيطة — الفائز ياخذ *0.001* 💵 بس، وبحد يومي صغير'
   },
-  // 🤝 منو يعرف الثاني أكثر — تحدي ثنائي بالخاص والقناة
   who_knows: {
     maxMoney: 0.018,
     winXp: 10,
@@ -95,26 +75,41 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'الفائز ياخذ فلوس وخبرة حسب عدد البطاقات الصحيحة'
   },
-  // 🕵️ الكلمة الغريبة
   odd_word: {
     maxMoney: 0.015,
     winXp: 8,
     loseXp: 3,
     online: true,
-    note: '+10 نقاط بالخاص أو جوائز وخبرة بالقناة'
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
   },
-
-  // ── ألعاب البوت: صفر لكل شي (بلا فلوس بلا مستوى بلا إحصائيات أونلاين) ──
-  wordle: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
-  poet: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
-  guess_player: {
+  wordle: {
     maxMoney: 0.012,
     winXp: 8,
     loseXp: 3,
     online: true,
-    note: 'من يخمن أول يفوز — *0.003 – 0.012* 💵'
+    note: 'من يحل الكلمة بالقناة يكسب نقاط وخبرة وجوائز'
   },
-  guess_song: { maxMoney: 0, winXp: 0, loseXp: 0, online: false, note: '' },
+  poet: {
+    maxMoney: 0.015,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
+  },
+  guess_player: {
+    maxMoney: 0.015,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
+  },
+  guess_song: {
+    maxMoney: 0.015,
+    winXp: 8,
+    loseXp: 3,
+    online: true,
+    note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
+  },
   group_quiz: {
     maxMoney: 0.015,
     winXp: 8,
@@ -135,28 +130,9 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
 export function moneyNote(gameId: string): string {
   const eco = GAME_ECONOMY[gameId];
   if (!eco) return '';
-  // 🎯 ألعاب النقاط مع البوت (نقاط بس — بلا فلوس وبلا مستوى)
-  const pointGames: Record<string, string> = {
-    wordle: 'حلّ الكلمة *+?* نقطة',
-    poet: 'اعرف الشاعر *+?* نقطة',
-    rhyme: 'لكل كلمة صح *+2* نقطة',
-    longest: 'الفوز *+8* نقاط',
-    math: 'الفوز *+10* نقاط',
-    guess_song: 'عرف الأغنية بأقل محاولات = نقاط أكثر'
-  };
-  if (pointGames[gameId]) {
-    return (
-      `⭐ النقاط: ${pointGames[gameId]}\n` +
-      `💰 الفلوس والمستوى: 🚫 ما يزيدون من لعبة البوت\n` +
-      `_الفلوس والمستوى من الألعاب اللي مع *ناس حقيقيين* بس_`
-    );
-  }
-  if (!eco.online) {
-    return '💰 الفلوس والمستوى: من الألعاب اللي مع *ناس حقيقيين* بس 🚫 (لعبة البوت ما تزيدهم)';
-  }
   return (
     `💰 الفلوس: ${eco.note}\n` +
-    `🎖️ المستوى: يزيد بكل مباراة أونلاين (فوز أو خسارة)\n` +
+    `🎖️ المستوى: يزيد بكل مباراة بالقناة (فوز أو مشاركة)\n` +
     `✨ الخبرة: لغاية *${eco.winXp}* XP للفوز — حسب أدائك وإبداعك`
   );
 }
