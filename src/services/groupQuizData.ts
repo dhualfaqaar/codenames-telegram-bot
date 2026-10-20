@@ -1,3 +1,27 @@
+import {
+  WORLD_FLAGS_FULL,
+  WORLD_CAPITALS_FULL,
+  GEOGRAPHY_QUIZ_BANK,
+  HISTORY_QUIZ_BANK
+} from './worldAtlasData';
+import {
+  GENERAL_QUIZ_EXTRA,
+  EXTRA_COUNTRIES,
+  EXTRA_MOVIES,
+  EXTRA_SERIES,
+  EXTRA_FOODS,
+  EXTRA_PLAYERS,
+  EXTRA_POETS,
+  EXTRA_SONGS_AR,
+  EXTRA_SONGS_EN
+} from './generalTriviaBank';
+import {
+  MEGA_HISTORY,
+  MEGA_GEOGRAPHY,
+  MEGA_GENERAL,
+  MEGA_NUMBERS
+} from './megaExpansionPack';
+
 /**
  * 📚 بنك أسئلة ألعاب الجماعة (مسابقة السرعة / معركة المعلومات / ألعاب خمّن)
  *
@@ -521,31 +545,6 @@ export const SONGS_EN: GQRow[] = [
 // =====================================================================
 // 🔗 دمج الموسوعات الشاملة والأطلس الكامل للدول والجزر بدون أي تكرار
 // =====================================================================
-import {
-  WORLD_FLAGS_FULL,
-  WORLD_CAPITALS_FULL,
-  GEOGRAPHY_QUIZ_BANK,
-  HISTORY_QUIZ_BANK
-} from './worldAtlasData';
-import {
-  GENERAL_QUIZ_EXTRA,
-  EXTRA_COUNTRIES,
-  EXTRA_MOVIES,
-  EXTRA_SERIES,
-  EXTRA_FOODS,
-  EXTRA_PLAYERS,
-  EXTRA_POETS,
-  EXTRA_SONGS_AR,
-  EXTRA_SONGS_EN
-} from './generalTriviaBank';
-
-import {
-  MEGA_HISTORY,
-  MEGA_GEOGRAPHY,
-  MEGA_GENERAL,
-  MEGA_NUMBERS
-} from './megaExpansionPack';
-
 function appendUniqueRows(target: GQRow[], extra: GQRow[]) {
   const seen = new Set(target.map(r => `${r[0]}::${r[1]}`));
   for (const row of extra) {

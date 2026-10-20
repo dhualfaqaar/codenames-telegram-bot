@@ -5743,7 +5743,7 @@ export class TelegramBotManager {
 
     let delivered = 0;
     for (const item of result.items.slice(0, 5)) {
-      const ok = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url, item.headers);
+      const ok = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url, item.headers, item.bytes);
       if (ok) delivered += 1;
     }
 
@@ -5884,16 +5884,37 @@ export class TelegramBotManager {
     }
   }
 
-  /** إرسال فيديو أو صورة (مع تمرير Cookies + Referer + User-Agent الأصلي لتجاوز أي حظر CDN 403) */
+  /** إرسال فيديو أو صورة (مع تمرير Cookies + Referer + User-Agent الأصلي أو البايتات المفحوصة لتجاوز أي حظر CDN 403) */
   private async sendMediaBinaryOrUrl(
     chatId: string,
     kind: 'video' | 'photo',
     mediaUrl: string,
-    customHeaders?: Record<string, string>
+    customHeaders?: Record<string, string>,
+    preloadedBytes?: Uint8Array
   ): Promise<boolean> {
     if (!this.token) return false;
     const method = kind === 'video' ? 'sendVideo' : 'sendPhoto';
     const field = kind === 'video' ? 'video' : 'photo';
+
+    if (preloadedBytes && preloadedBytes.byteLength > 500 && preloadedBytes.byteLength <= 49 * 1024 * 1024) {
+      try {
+        const mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
+        const ext = kind === 'video' ? 'mp4' : 'jpg';
+        const form = new FormData();
+        form.append('chat_id', chatId);
+        form.append(field, new Blob([preloadedBytes as unknown as ArrayBuffer], { type: mime }), `media.${ext}`);
+        if (kind === 'video') form.append('supports_streaming', 'true');
+
+        const up = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+          method: 'POST',
+          body: form
+        });
+        const upJson: any = await up.json();
+        if (upJson?.ok) return true;
+      } catch {
+        // continue
+      }
+    }
 
     try {
       const reqHeaders: Record<string, string> = {
