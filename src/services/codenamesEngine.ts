@@ -692,7 +692,6 @@ export class CodenamesEngine {
         `👥 *المنضمون:* ${game.players.length} من 4\n\n` +
         `${this.teamRoster(game, 'blue')}\n\n` +
         `${this.teamRoster(game, 'red')}\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
         (full
           ? `🔒 *اكتمل العدد!* — المشرف يضغط (ابدأ اللعبة 🚀)\n`
           : `_⏳ قيد الانتظار: باقي ${Math.max(0, 4 - game.players.length)} لاعب — كل فريق يحتاج (جاسوس 🕵️ + عميل 👤)._\n`) +
@@ -712,7 +711,6 @@ export class CodenamesEngine {
         `📊 *النتيجة النهائية:*\n` +
         `🔵 الأزرق: متبقي *${blueRemaining}*\n` +
         `🔴 الأحمر: متبقي *${redRemaining}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
         `🔄 اضغط «بدء جولة جديدة» بالأسفل للعب مرة ثانية`;
     }
 
@@ -721,7 +719,6 @@ export class CodenamesEngine {
 
     let header =
       `🎮 *لعبة كود نيمز | لوحة اللعب*\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
       `📊 *النتيجة:*\n` +
       `🔵 الأزرق: متبقي *${blueRemaining}*\n` +
       `🔴 الأحمر: متبقي *${redRemaining}*\n`;
@@ -742,12 +739,11 @@ export class CodenamesEngine {
       header += `🎯 *الدور الآن:* عملاء الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
         `📢 *التلميح:* "${clue?.word}" — عدد البطاقات *${clue?.count}*\n` +
         `🔢 المحاولات المتبقية: *${clue?.remainingGuesses}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
         `👇 اضغط على الكلمة من اللوحة بالأسفل لتخمينها:`;
     }
 
     if (lastEvent) {
-      header += `\n\n━━━━━━━━━━━━━━━━━━━\n📢 *آخر حدث:* ${lastEvent}`;
+      header += `\n\n📢 *آخر حدث:* ${lastEvent}`;
     }
 
     return header;

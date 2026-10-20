@@ -104,7 +104,7 @@ export class BotState {
   private async getBot(): Promise<TelegramBotManager> {
     if (this.bot) return this.bot;
 
-    const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID);
+    const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, false);
     try {
       const saved = await this.state.storage.get('state');
       if (saved) bot.importState(saved);
@@ -144,7 +144,22 @@ export class BotState {
       console.error('Failed to persist state:', e);
     }
 
+    await this.scheduleQuizAlarm(bot);
     return new Response('ok');
+  }
+
+  /** Durable Object alarms survive idle eviction and fire without Telegram updates. */
+  private async scheduleQuizAlarm(bot: TelegramBotManager) {
+    const next = bot.nextQuizDeadline();
+    if (next === undefined) await this.state.storage.deleteAlarm();
+    else await this.state.storage.setAlarm(Math.max(Date.now(), next));
+  }
+
+  async alarm(): Promise<void> {
+    const bot = await this.getBot();
+    await bot.processQuizDeadlines();
+    await this.state.storage.put('state', bot.exportState());
+    await this.scheduleQuizAlarm(bot);
   }
 }
 
@@ -187,7 +202,7 @@ export default {
    * مؤقت كل 5 دقائق: يفحص الوصلة ويصلّحها لو مسحتها نسخة ثانية.
    * هكذا البوت ما يسكت حتى لو صار شي بالليل.
    */
-  async scheduled(_event: ScheduledEvent, env: any, ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: unknown, env: any, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
     ctx.waitUntil(
       ensureWebhook(env, true).then(r => {
         if (r.error) console.log('cron webhook check failed:', r.error);
