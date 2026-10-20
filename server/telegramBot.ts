@@ -70,6 +70,8 @@ interface TelegramCallbackQuery {
   id: string;
   from: TelegramUser;
   message?: TelegramMessage;
+  /** موجود بدل message لو الرسالة أصلها إنلاين — الأزرار منها توصل هكذا */
+  inline_message_id?: string;
   data?: string;
 }
 
@@ -1571,7 +1573,13 @@ export class TelegramBotManager {
    */
   private async handleCallbackQuery(cb: TelegramCallbackQuery) {
     const data = cb.data || '';
-    const chatId = String(cb.message?.chat.id || cb.from.id);
+    // 🧭 المحادثة: من الرسالة، أو من مختوم الزر (رسائل الإنلاين ما توصل معها محادثة)
+    let chatId = String(cb.message?.chat.id || '');
+    if (!chatId) {
+      const tail = data.split(':').slice(-1)[0] || '';
+      if (/^-?\d{4,}$/.test(tail)) chatId = tail;
+    }
+    if (!chatId) chatId = String(cb.from.id);
     const userId = cb.from.id;
     const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
 
@@ -1791,23 +1799,30 @@ export class TelegramBotManager {
 
     let game = this.games.get(chatId);
 
+    // أول دوسة على لوحة إنلاين؟ نربطها بمعرّفها حتى كل تعديل جاي يطل عليها بالضبط
+    if (cb.inline_message_id && game && !(game as any).inlineMessageId) {
+      (game as any).inlineMessageId = cb.inline_message_id;
+      this.games.set(chatId, game);
+    }
+
     // 🛡️ لوحة كود نيمز ضايعة (نظام نام أو لوحة قديمة)؟ نعيد بناء اللوبي بنفس الرسالة
     // بدل ما يوكل اللاعب «لا توجد لعبة» — ودوسة المقعد تكمل طبيعي عاللوبي الجديد.
-    if (!game && data.startsWith('join:') && cb.message) {
+    if (!game && data.startsWith('join:')) {
       const rebuilt = CodenamesEngine.createLobby(
         chatId,
-        cb.message.chat.title || 'المحادثة',
+        cb.message?.chat.title || 'المحادثة',
         'arabic_standard',
         this.customWords,
         String(cb.from.id)
       );
-      rebuilt.messageId = cb.message.message_id;
+      if (cb.message?.message_id) rebuilt.messageId = cb.message.message_id;
+      if (cb.inline_message_id) (rebuilt as any).inlineMessageId = cb.inline_message_id;
       this.games.set(chatId, rebuilt);
       game = rebuilt;
     }
 
     // If no game in this chat, notify (game:new can create one from scratch)
-    if (!game && !data.startsWith('action:secret_map') && data !== 'game:new') {
+    if (!game && !data.startsWith('action:secret_map') && !data.startsWith('game:new')) {
       await this.answerCallbackQuery(cb.id, 'لا توجد لعبة نشطة في هذه المحادثة! ابدأ لعبة جديدة من الخاص بأمر /start.');
       return;
     }
@@ -1903,7 +1918,7 @@ export class TelegramBotManager {
     }
 
     // 2. Start game
-    if (data === 'game:start' && game) {
+    if ((data === 'game:start' || data.startsWith('game:start:')) && game) {
       // Only the owner (the admin who opened the lobby) may start the round.
       if (game.createdBy && String(game.createdBy) !== String(userId)) {
         await this.answerCallbackQuery(cb.id, '⚠️ لازم المشرف يبدأ اللعبة.', true);
@@ -1957,7 +1972,7 @@ export class TelegramBotManager {
     }
 
     // 3. New game / Rematch
-    if (data === 'game:new') {
+    if (data === 'game:new' || data.startsWith('game:new:')) {
       if (game && game.status !== 'game_over' && game.createdBy && String(game.createdBy) !== String(userId)) {
         await this.answerCallbackQuery(cb.id, '⚠️ فقط المشرف صاحب اللعبة يقدر يبدأ جولة جديدة.', true);
         return;
@@ -1978,7 +1993,7 @@ export class TelegramBotManager {
     }
 
     // 4. View Secret Map (each spymaster sees only their own colored card)
-    if (data === 'action:secret_map') {
+    if (data === 'action:secret_map' || data.startsWith('action:secret_map:')) {
       if (!game || game.status === 'lobby') {
         await this.answerCallbackQuery(cb.id, 'اللعبة لم تبدأ بعد!', true);
         return;
@@ -2028,7 +2043,7 @@ export class TelegramBotManager {
     }
 
     // 5. Show the full map after the game ended (nothing is secret anymore)
-    if (data === 'game:show_all') {
+    if (data === 'game:show_all' || data.startsWith('game:show_all:')) {
       if (!game || game.status !== 'game_over') {
         await this.answerCallbackQuery(cb.id, '⚠️ هذا الزر يشتغل بس بعد نهاية اللعبة.', true);
         return;
@@ -2089,7 +2104,7 @@ export class TelegramBotManager {
     }
 
     // 7. Pass turn
-    if (data === 'action:pass' && game) {
+    if ((data === 'action:pass' || data.startsWith('action:pass:')) && game) {
       if (game.status !== 'operative_turn') {
         await this.answerCallbackQuery(cb.id, 'لا يمكن إنهاء الدور الآن.', true);
         return;
@@ -2774,25 +2789,31 @@ export class TelegramBotManager {
     return new Promise(r => setTimeout(r, ms));
   }
 
-  /** يعيد رسم لوحة لعبة جماعية بنفس رسالة القناة */
+  /** يعيد رسم لوحة لعبة جماعية — بنفس الرسالة إن كانت عادية، أو بمعرّف الإنلاين إن كانت أصلها تحويل */
   private async paintQuiz(game: GG.QuizGame) {
-    if (!game.messageId) return;
-    await this.editMessageText(
-      game.chatId,
-      game.messageId,
-      await this.withBotFooter(GG.renderQuiz(game)),
-      GG.quizKeyboard(game)
-    );
+    const text = await this.withBotFooter(GG.renderQuiz(game));
+    const kb = GG.quizKeyboard(game);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    if (game.inlineMessageId) {
+      const res = await this.editInlineMessageText(game.inlineMessageId, text, kb);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
   }
 
   private async paintMM(game: GG.MMGame) {
-    if (!game.messageId) return;
-    await this.editMessageText(
-      game.chatId,
-      game.messageId,
-      await this.withBotFooter(GG.renderMM(game)),
-      GG.mmKeyboard(game)
-    );
+    const text = await this.withBotFooter(GG.renderMM(game));
+    const kb = GG.mmKeyboard(game);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    if (game.inlineMessageId) {
+      const res = await this.editInlineMessageText(game.inlineMessageId, text, kb);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
   }
 
   /**
@@ -2801,7 +2822,9 @@ export class TelegramBotManager {
    * بلكرفة بدل ما يطلع للاعب «انتهت». عمراً ما تموت لوحة.
    */
   private async handleGroupQuizCb(cb: TelegramCallbackQuery, data: string) {
-    const cbChatId = String(cb.message?.chat.id || '');
+    // 🧭 المحادثة من مختوم الزر نفسه (رسائل الإنلاين ما توصل محادثة معها)
+    const tailId = data.split(':').slice(-1)[0] || '';
+    const cbChatId = /^-?\d{4,}$/.test(tailId) ? tailId : String(cb.message?.chat.id || '');
     const playerId = String(cb.from.id);
     const playerName = cb.from.first_name || 'لاعب';
 
@@ -2817,12 +2840,13 @@ export class TelegramBotManager {
 
     // 🛡️ اللعبة ضايعة؟ نبني لوحة جديدة بنفس الرسالة ونرجّع اللاعب للوبي
     if (!game) {
-      if (!cb.message?.chat.id) {
+      if (!cbChatId) {
         await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
         return;
       }
-      const rebuilt = GG.createQuiz(cbChatId, cb.message.chat.title || 'المحادثة', kind);
-      rebuilt.messageId = cb.message.message_id;
+      const rebuilt = GG.createQuiz(cbChatId, cb.message?.chat.title || 'المحادثة', kind);
+      if (cb.message?.message_id) rebuilt.messageId = cb.message.message_id;
+      if (cb.inline_message_id) rebuilt.inlineMessageId = cb.inline_message_id;
       this.gqGames.set(cbChatId, rebuilt);
 
       if (op === 'gqj') {
@@ -2841,6 +2865,11 @@ export class TelegramBotManager {
 
     // اللعبة موجودة — نكمل طبيعي
     game = game as GG.QuizGame;
+    // أول دوسة من لوحة إنلاين؟ نربطها بمعرّفها
+    if (cb.inline_message_id && !game.inlineMessageId) {
+      game.inlineMessageId = cb.inline_message_id;
+      this.gqGames.set(cbChatId, game);
+    }
 
     // زر وهمي «الجولة الجاية…» — ما يسوي شي
     if (op === 'gqv') {
@@ -2917,7 +2946,8 @@ export class TelegramBotManager {
   // ---------------------------------------------------------------------
 
   private async handleMastermindCb(cb: TelegramCallbackQuery, data: string) {
-    const cbChatId = String(cb.message?.chat.id || '');
+    const tailId = data.split(':').slice(-1)[0] || '';
+    const cbChatId = /^-?\d{4,}$/.test(tailId) ? tailId : String(cb.message?.chat.id || '');
     const playerId = String(cb.from.id);
     const playerName = cb.from.first_name || 'لاعب';
 
@@ -2925,12 +2955,13 @@ export class TelegramBotManager {
 
     // 🛡️ لوحة ضايعة؟ نبنيها من جديد بنفس الرسالة ونرجّع اللاعب للوبي
     if (!game) {
-      if (!cb.message?.chat.id) {
+      if (!cbChatId) {
         await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
         return;
       }
-      const rebuilt = GG.mmCreate(cbChatId, cb.message.chat.title || 'المحادثة');
-      rebuilt.messageId = cb.message.message_id;
+      const rebuilt = GG.mmCreate(cbChatId, cb.message?.chat.title || 'المحادثة');
+      if (cb.message?.message_id) rebuilt.messageId = cb.message.message_id;
+      if (cb.inline_message_id) rebuilt.inlineMessageId = cb.inline_message_id;
       this.mmGames.set(cbChatId, rebuilt);
 
       if (data.startsWith('mmj:')) {
@@ -2943,6 +2974,12 @@ export class TelegramBotManager {
       await this.sendMessage(cbChatId, '🛡️ هاي اللوحة كانت قديمة — رجّعناها لوبي جديد بنفس الرسالة، انضموا من جديد 👇');
       await this.answerCallbackQuery(cb.id, '🛡️ انبنى لوبي جديد');
       return;
+    }
+
+    // أول دوسة من لوحة إنلاين؟ نربطها بمعرّفها
+    if (cb.inline_message_id && !(game as GG.MMGame).inlineMessageId) {
+      (game as GG.MMGame).inlineMessageId = cb.inline_message_id;
+      this.mmGames.set(cbChatId, game);
     }
 
     // 🔄 لعبة جديدة
@@ -4899,6 +4936,12 @@ export class TelegramBotManager {
     const text = await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game, lastEvent));
     const keyboard = await this.buildKeyboard(game);
 
+    // لوحة أصلها إنلاين وما عدنا رقم الرسالة بالمحادثة؟ نعدّلها بمعرّف الإنلاين
+    if (!msgId && (game as any).inlineMessageId) {
+      const res = await this.editInlineMessageText((game as any).inlineMessageId, text, keyboard);
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+
     if (msgId) {
       const res = await this.editMessageText(chatId, msgId, text, keyboard);
 
@@ -5582,6 +5625,33 @@ export class TelegramBotManager {
       const body: any = {
         chat_id: chatId,
         message_id: messageId,
+        text,
+        parse_mode: 'Markdown'
+      };
+
+      if (inlineKeyboard) {
+        body.reply_markup = { inline_keyboard: inlineKeyboard };
+      }
+
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** تعديل رسالة أصلها إنلاين (بدون chat_id — بمعرّف الإنلاين فقط) */
+  public async editInlineMessageText(inlineMessageId: string, text: string, inlineKeyboard?: any[][]): Promise<any> {
+    if (!this.token) return null;
+
+    try {
+      const body: any = {
+        inline_message_id: inlineMessageId,
         text,
         parse_mode: 'Markdown'
       };
