@@ -194,6 +194,17 @@ export class BotState {
       return new Response('invalid json', { status: 400 });
     }
 
+    const reqUrl = new URL(request.url);
+    if (reqUrl.pathname === '/voice-sync') {
+      const reply = await bot.handleVoiceSyncRequest(update);
+      try {
+        await this.state.storage.put('state', bot.exportState());
+      } catch (e) {
+        console.error('Failed to persist state on voice-sync:', e);
+      }
+      return Response.json(reply);
+    }
+
     // منع تكرار نفس التحديث نهائياً (يحمي من إعادة إرسال «جاري تحميل المنشور...» أكثر من مرة واحدة!)
     const uid = Number(update?.update_id);
     if (Number.isFinite(uid)) {
@@ -240,6 +251,21 @@ export default {
         webhook,
         // تأكيد أن إعداد المالك مضبوط على حسابك (رقم واحد فقط)
         ownerIsYou: String(env.OWNER_ID || '') === OWNER_ONLY_ID
+      });
+    }
+
+    const inUrl = new URL(request.url);
+    if (inUrl.pathname === '/voice-sync' && request.method === 'POST') {
+      const providedKey = request.headers.get('x-voice-key') || '';
+      const expectedKey = env.VOICE_BRIDGE_SECRET || 'cg-voice-bridge-v1-8885518661';
+      if (providedKey !== expectedKey) {
+        return new Response('unauthorized', { status: 401 });
+      }
+      const vBody = await request.text();
+      return stub.fetch('https://bot.internal/voice-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: vBody
       });
     }
 

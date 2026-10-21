@@ -1,12 +1,6 @@
 services:
-  - type: web
-    name: codenames-telegram-bot
-    env: node
+  - type: worker
+    name: code-games-voice-assistant
+    runtime: docker
+    dockerfilePath: ./voice-bridge/Dockerfile
     plan: free
-    buildCommand: npm install --include=dev && npm run build
-    startCommand: npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
