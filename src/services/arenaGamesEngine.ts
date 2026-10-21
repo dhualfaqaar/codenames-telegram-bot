@@ -8,7 +8,7 @@ import {
   FOOTBALL_DEEP,
   EMOJI_MATH
 } from './fastAndGuessBanks';
-import { md, scoreLine } from './groupGamesEngine';
+import { cleanQuizOption, md, scoreLine } from './groupGamesEngine';
 
 /**
  * 🏟️ محرك الألعاب التفاعلية المتكاملة (25 لعبة جماعية وثنائية وفرق 2v2 / 3v3 / 4v4)
@@ -254,8 +254,8 @@ export const ARENA_MODES: Record<ArenaMode, ArenaModeMeta> = {
     mode: 'football_2v2',
     shortCode: 'fb2',
     emoji: '⚽',
-    title: 'كرة قدم زوجية',
-    category: 'team',
+    title: 'لعبة كرة قدم',
+    category: 'group',
     minPlayers: 4,
     maxPlayers: 4,
     teamSize: 2,
@@ -666,8 +666,8 @@ function mixedQuizPool() {
 function randomQuestion(): { q: string; opts: string[]; ans: number } {
   const pool = mixedQuizPool();
   const row = pool[Math.floor(Math.random() * pool.length)];
-  const correct = row[1];
-  const opts = shuffle(row.slice(1).filter(Boolean));
+  const correct = cleanQuizOption(row[1]);
+  const opts = shuffle(row.slice(1).filter(Boolean).map(cleanQuizOption));
   return { q: row[0], opts, ans: opts.indexOf(correct) };
 }
 

@@ -1,8 +1,8 @@
 /**
  * 🎉 محرك الألعاب الجماعية بالقنوات
  *
- * نظام اللوبي: أي عضو يضغط «انضم» — من 3 لاعبين لحد 10.
- * اللعبة تبدأ بزر «ابدأ» بعد اكتمال العدد.
+ * نظام اللوبي: أي عضو يضغط «انضم» — من لاعبين إلى 10.
+ * أول إجابة صحيحة تحسم نقطة الجولة في جميع مسابقات الاختيارات.
  *
  * نوعين من الأزرار تجي للبوت:
  *   gqj / gqs / gqa / gqn  → ألعاب الأسئلة (سرعة، معلومات، وألعاب خمّن)
@@ -16,7 +16,6 @@ import {
   COUNTRIES,
   MOVIES,
   SERIES,
-  NUMBERS,
   FOODS,
   FLAGS,
   CAPITALS,
@@ -28,18 +27,18 @@ import {
 } from './groupQuizData';
 import { ODD_WORD_PUZZLES } from './oddWordEngine';
 import {
-  ISLAMIC_HERITAGE,
+  ISLAMIC_QUESTIONS,
+  IRAQI_HERITAGE,
+  FOOTBALL_DEEP,
   SCIENCE_SPACE,
   ANIMALS_NATURE,
-  TECH_GAMING,
   DIALECTS_MEANINGS,
-  BRANDS_CARS,
-  FOOTBALL_DEEP,
+  CAR_PHOTO_QUIZ,
+  CAR_PHOTO_URLS,
   TRUE_FALSE_FAST,
   EMOJI_MATH,
   GUESS_NOVELS,
   GUESS_LANDMARKS,
-  GUESS_VIDEOGAMES,
   GUESS_CREATURES
 } from './fastAndGuessBanks';
 import {
@@ -51,9 +50,7 @@ import {
   SONG_EMOJI,
   NOVEL_EMOJI,
   LANDMARK_EMOJI,
-  VGAME_EMOJI,
   CREATURE_EMOJI,
-  BRANDS_EMOJI,
   CAPITALS_EMOJI
 } from './emojiModeBanks';
 
@@ -64,7 +61,6 @@ export type QuizKind =
   | 'general'
   | 'geo'
   | 'history'
-  | 'speed'
   | 'trivia'
   | 'country'
   | 'movie'
@@ -81,17 +77,16 @@ export type QuizKind =
   | 'song_ar'
   | 'song_en'
   | 'islamic'
+  | 'heritage'
   | 'science'
   | 'animals'
-  | 'tech'
   | 'dialects'
-  | 'brands'
+  | 'cars'
   | 'fbquiz'
   | 'tf'
   | 'emath'
   | 'novel'
   | 'landmark'
-  | 'vgame'
   | 'creature'
   | 'movie_emoji'
   | 'series_emoji'
@@ -101,9 +96,7 @@ export type QuizKind =
   | 'song_emoji'
   | 'novel_emoji'
   | 'landmark_emoji'
-  | 'vgame_emoji'
   | 'creature_emoji'
-  | 'brands_emoji'
   | 'capitals_emoji';
 
 /** خريطة ربط اللعبة الأصلية بنسخة «نظام الإيموجي 😀» الخاصة بها */
@@ -117,9 +110,7 @@ export const EMOJI_VARIANT_OF: Partial<Record<QuizKind, QuizKind>> = {
   song_en: 'song_emoji',
   novel: 'novel_emoji',
   landmark: 'landmark_emoji',
-  vgame: 'vgame_emoji',
   creature: 'creature_emoji',
-  brands: 'brands_emoji',
   capitals: 'capitals_emoji'
 };
 
@@ -135,14 +126,9 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     intro: 'تحدي الدول والجزر والمضائق والأنهار والتضاريس 🗺️'
   },
   history: {
-    emoji: '🏛️',
+    emoji: '🇮🇶',
     title: 'تاريخ',
     intro: 'رحلة في حضارات الرافدين والتاريخ العربي والعالمي 🏛️'
-  },
-  speed: {
-    emoji: '⚡',
-    title: 'مسابقة السرعة',
-    intro: 'أسئلة سريعة — النقطة لأسرع إجابة صحيحة ⚡'
   },
   trivia: {
     emoji: '🧠',
@@ -165,9 +151,9 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     intro: 'اعرف المسلسل الشهير من نبذة قصته 📺'
   },
   number: {
-    emoji: '🔢',
-    title: 'الأرقام',
-    intro: 'أسئلة وحقائق رقمية ممتعة 🔢'
+    emoji: '🧮',
+    title: 'الرياضيات',
+    intro: 'حل مسائل حسابية متنوعة من الجمع والطرح والضرب والقسمة 🧮'
   },
   food: {
     emoji: '🍲',
@@ -201,53 +187,53 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   player: {
     emoji: '⚽',
-    title: 'اللاعبون',
+    title: 'احزر اللاعب',
     intro: 'اعرف نجم كرة القدم من مسيرته وألقابه ⚽'
   },
   poet: {
     emoji: '🎭',
-    title: 'الشعراء',
+    title: 'احزر الشاعر',
     intro: 'اعرف الشاعر صاحب البيت الشهير 🎭'
   },
   song_ar: {
     emoji: '🎤',
-    title: 'الأغاني العربية',
+    title: 'احزر الأغنية العربية',
     intro: 'لمنو هاي الأغنية العربية الشهيرة؟ 🎤'
   },
   song_en: {
     emoji: '🎸',
-    title: 'الأغاني الإنجليزية',
+    title: 'احزر الأغنية الإنجليزية',
     intro: 'لمنو هاي الأغنية الإنجليزية الشهيرة؟ 🎸'
   },
   islamic: {
     emoji: '🕌',
-    title: 'إسلاميات وتراث',
-    intro: 'أسئلة شيّقة بالقصص القرآنية والسيرة والتراث العراقي والعربي 🕌'
+    title: 'أسئلة دينية',
+    intro: 'أسئلة دينية عن القرآن والأنبياء والصحابة والسيرة النبوية 🕌'
+  },
+  heritage: {
+    emoji: '🏺',
+    title: 'التراث العراقي والعربي',
+    intro: 'أمثال ومعالم وأسواق وأكلات ومهن من التراث العراقي والعربي 🏺'
   },
   science: {
     emoji: '🔬',
-    title: 'علوم وفضاء واختراعات',
-    intro: 'عجائب الفضاء وجسم الإنسان والاختراعات العلمية 🔬'
+    title: 'علوم',
+    intro: 'أسئلة متنوعة في العلوم والفضاء وجسم الإنسان والاختراعات 🔬'
   },
   animals: {
-    emoji: '🦁',
-    title: 'عالم الحيوان والطبيعة',
-    intro: 'معلومات مدهشة وأرقام قياسية عن الكائنات والطبيعة 🦁'
-  },
-  tech: {
-    emoji: '💻',
-    title: 'تقنية وألعاب فيديو',
-    intro: 'عالم التقنية والحواسيب وأشهر الألعاب الإلكترونية 💻'
+    emoji: '🐾',
+    title: 'الحيوانات',
+    intro: 'معلومات وحقائق ممتعة عن الحيوانات والطيور والكائنات البحرية 🐾'
   },
   dialects: {
     emoji: '🗣️',
-    title: 'معاني الكلمات واللهجات',
-    intro: 'معاني المفردات العراقية والعربية الفصيحة والشعبية 🗣️'
+    title: 'اللهجة العراقية',
+    intro: 'تعرف على المفردة العراقية واختر معناها باللغة العربية الفصحى 🗣️'
   },
-  brands: {
-    emoji: '🚗',
-    title: 'شعارات وماركات وسيارات',
-    intro: 'اعرف الماركات العالمية والسيارات وبلدانها 🚗'
+  cars: {
+    emoji: '🚘',
+    title: 'السيارات',
+    intro: 'شاهد صورة السيارة واختر طرازها الصحيح من أربعة خيارات 🚘'
   },
   fbquiz: {
     emoji: '🏆',
@@ -273,11 +259,6 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🏛️',
     title: 'المعالم السياحية',
     intro: 'اعرف المعلم الأثري أو السياحي العالمي والعراقي من وصفه 🏛️'
-  },
-  vgame: {
-    emoji: '🎮',
-    title: 'ألعاب الفيديو',
-    intro: 'اعرف اللعبة الإلكترونية الشهيرة من فكرتها وأبطالها 🎮'
   },
   creature: {
     emoji: '🐾',
@@ -306,12 +287,12 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   player_emoji: {
     emoji: '⚽',
-    title: 'اللاعبون — نظام الإيموجي 😀',
+    title: 'احزر اللاعب — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف اللاعب المقصود بسرعة ⚽😀'
   },
   song_emoji: {
     emoji: '🎵',
-    title: 'الأغاني — نظام الإيموجي 😀',
+    title: 'احزر الأغنية — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الأغنية المقصودة بسرعة 🎵😀'
   },
   novel_emoji: {
@@ -324,20 +305,10 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     title: 'المعالم السياحية — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف المعلم السياحي المقصود 🏛️😀'
   },
-  vgame_emoji: {
-    emoji: '🎮',
-    title: 'ألعاب الفيديو — نظام الإيموجي 😀',
-    intro: 'شوف الإيموجيات المعبّرة واعرف لعبة الفيديو المقصودة 🎮😀'
-  },
   creature_emoji: {
     emoji: '🐾',
     title: 'الكائنات الحية — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الكائن الحي المقصود 🐾😀'
-  },
-  brands_emoji: {
-    emoji: '🚗',
-    title: 'شعارات وماركات — نظام الإيموجي 😀',
-    intro: 'شوف الإيموجيات المعبّرة واعرف الماركة العالمية المقصودة 🚗😀'
   },
   capitals_emoji: {
     emoji: '🏛️',
@@ -346,14 +317,9 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   }
 };
 
-/** هل نوع اللعبة سباق سرعة (أول صح يسجّل)؟ */
-export function isSpeedQuiz(game: QuizGame | { kind: QuizKind }): boolean {
-  return (
-    game.kind === 'speed' ||
-    game.kind === 'math' ||
-    game.kind === 'tf' ||
-    game.kind === 'emath'
-  );
+/** كل مسابقات الاختيارات تستخدم نظام السرعة: أول إجابة صحيحة وحدها تكسب نقطة الجولة. */
+export function isSpeedQuiz(_game: QuizGame | { kind: QuizKind }): boolean {
+  return true;
 }
 
 /** يولّد مسائل حسابية عشوائية متنوّعة (جمع، طرح، ضرب، قسمة صحيحة، وتربيع) مع 3 إجابات غلط قريبة */
@@ -518,8 +484,10 @@ export interface QuizGame {
   correctIdx: number;
   /** نص ملخص آخر جولة (لعرضه بشاشة النتيجة) */
   lastLine: string;
-  /** موعد انتهاء مهلة السؤال الحالي (10 ثواني) */
+  /** موعد انتهاء مهلة السؤال الحالي (15 ثانية) */
   roundDeadline?: number;
+  /** رسالة صورة السيارة في جولة لعبة السيارات */
+  photoMessageId?: number;
   /** موعد الانتقال التلقائي بعد شاشة النتيجة القصيرة */
   resultDeadline?: number;
   rewarded?: boolean;
@@ -558,7 +526,7 @@ function packFor(kind: QuizKind): string[][] {
     case 'country': return COUNTRIES;
     case 'movie': return MOVIES;
     case 'series': return SERIES;
-    case 'number': return NUMBERS;
+    case 'number': return mathRows();
     case 'food': return FOODS;
     case 'flags': return FLAGS;
     case 'capitals': return CAPITALS;
@@ -567,18 +535,17 @@ function packFor(kind: QuizKind): string[][] {
     case 'poet': return POETS;
     case 'song_ar': return SONGS_AR;
     case 'song_en': return SONGS_EN;
-    case 'islamic': return ISLAMIC_HERITAGE;
+    case 'islamic': return ISLAMIC_QUESTIONS;
+    case 'heritage': return IRAQI_HERITAGE;
     case 'science': return SCIENCE_SPACE;
     case 'animals': return ANIMALS_NATURE;
-    case 'tech': return TECH_GAMING;
     case 'dialects': return DIALECTS_MEANINGS;
-    case 'brands': return BRANDS_CARS;
+    case 'cars': return CAR_PHOTO_QUIZ;
     case 'fbquiz': return FOOTBALL_DEEP;
     case 'tf': return TRUE_FALSE_FAST;
     case 'emath': return EMOJI_MATH;
     case 'novel': return GUESS_NOVELS;
     case 'landmark': return GUESS_LANDMARKS;
-    case 'vgame': return GUESS_VIDEOGAMES;
     case 'creature': return GUESS_CREATURES;
     case 'movie_emoji': return MOVIE_EMOJI;
     case 'series_emoji': return SERIES_EMOJI;
@@ -588,14 +555,27 @@ function packFor(kind: QuizKind): string[][] {
     case 'song_emoji': return SONG_EMOJI;
     case 'novel_emoji': return NOVEL_EMOJI;
     case 'landmark_emoji': return LANDMARK_EMOJI;
-    case 'vgame_emoji': return VGAME_EMOJI;
     case 'creature_emoji': return CREATURE_EMOJI;
-    case 'brands_emoji': return BRANDS_EMOJI;
     case 'capitals_emoji': return CAPITALS_EMOJI;
     case 'math': return mathRows();
     case 'odd': return oddWordRows();
-    default: return GENERAL; // speed + trivia
+    default: return GENERAL; // general-purpose trivia
   }
+}
+
+/** يشيل الأسماء البديلة والإنجليزية بين الأقواس حتى ما تفضح الخيار الصحيح. */
+export function cleanQuizOption(value: string): string {
+  return String(value || '')
+    .replace(/\s*[（(][^）)]*[）)]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** صورة السيارة المرتبطة بالإجابة الصحيحة للجولة الحالية (تُعرض من قبل البوت في القناة). */
+export function quizPhotoUrl(game: QuizGame): string | undefined {
+  if (game.kind !== 'cars') return undefined;
+  const correct = cleanQuizOption(game.deck[game.qIndex]?.[1] || '');
+  return CAR_PHOTO_URLS[correct];
 }
 
 /** يسحب سؤالاً واحداً جديداً غير مكرر مع خياراته المخلوطة لاستخدامه في مباريات البطولات الإقصائية */
@@ -611,8 +591,8 @@ export function drawQuizQuestion(
   }
   const picked = candidates[Math.floor(Math.random() * candidates.length)];
   usedPrompts.add(picked[0]);
-  const correct = picked[1];
-  const opts = shuffle(picked.slice(1).filter(Boolean));
+  const correct = cleanQuizOption(picked[1]);
+  const opts = shuffle(picked.slice(1).filter(Boolean).map(cleanQuizOption));
   return {
     prompt: picked[0],
     options: opts,
@@ -681,11 +661,14 @@ export function quizJoin(game: QuizGame, id: string, name: string): { ok: boolea
   return { ok: true, msg: '✅ انضميت!' };
 }
 
-/** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين ويبدأ مؤقت 10 ثواني */
+/** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين ويبدأ مؤقت 15 ثانية */
 function loadRound(game: QuizGame) {
   const row = game.deck[game.qIndex];
-  const correct = row[1];
-  const opts = shuffle((row.slice(1) as string[]).filter(x => String(x || '').trim().length > 0));
+  const correct = cleanQuizOption(row[1]);
+  // ترتيب ثابت من اليسار لليمين: خطأ يساراً، صح يميناً.
+  const opts = game.kind === 'tf'
+    ? ['❌ خطأ', '✅ صح']
+    : shuffle((row.slice(1) as string[]).filter(x => String(x || '').trim().length > 0).map(cleanQuizOption));
   game.options = opts;
   game.correctIdx = opts.indexOf(correct);
   game.roundDeadline = Date.now() + ROUND_MS;
@@ -732,7 +715,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
       p.roundHit = false;
       if (game.players.every(x => x.done)) {
         game.status = 'result';
-        game.lastLine = '';
+        game.lastLine = `🎯 الإجابة الصحيحة: *${md(correctText)}* — ما جاوبها أحد.`;
         game.roundDeadline = undefined;
         game.resultDeadline = Date.now() + RESULT_MS;
         return { ok: true, msg: '❌ غلط! خارج هالجولة', roundClosed: true };
@@ -860,6 +843,7 @@ export function renderQuiz(game: QuizGame): string {
   if (game.status === 'playing') {
     lines.push('');
     lines.push(`❓ *${md(game.deck[game.qIndex][0])}*`);
+    lines.push(`⚡ _أول إجابة صحيحة فقط تكسب نقطة الجولة\\!_`);
   }
 
   lines.push(SEP);

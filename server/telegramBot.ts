@@ -169,7 +169,7 @@ interface BotGameCard {
   channel?: boolean;
   /** لعبة خمّن؟ (تظهر داخل قسم «ألعاب خمّن» بالجماعية) */
   guess?: boolean;
-  /** حمولة زر «العب بالقناة» للإنلاين (مثلاً 'gq speed') */
+  /** حمولة زر «العب بالقناة» للإنلاين (مثلاً 'gq general') */
   inline?: string;
   /** جاهزة للعب؟ (غير الجاهزة تظهر 🔜) */
   ready: boolean;
@@ -262,7 +262,7 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'poet',
     emoji: '🎭',
-    title: 'الشعراء',
+    title: 'احزر الشاعر',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
@@ -277,12 +277,12 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_player',
     emoji: '⚽',
-    title: 'اللاعبون',
+    title: 'احزر اللاعب',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة اسم لاعب كرة القدم من مسيرته وألقابه',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about:
       'تُعرض معلومات وتلميحات عن نجم كرة قدم عربي أو عالمي مع أربعة أسماء، وعليك معرفة اللاعب المقصود.',
     channel: true,
@@ -292,12 +292,12 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'football_emoji_group',
     emoji: '⚽',
-    title: 'خمن لاعب كرة القدم بالإيموجي',
+    title: 'احزر اللاعب بالإيموجي',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة نجم كرة القدم من الإيموجيات قبل بقية اللاعبين',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about: 'تتحول التلميحات عن لاعب كرة القدم إلى إيموجيات، وأسرع لاعب يعرف النجم الصحيح يحصد النقطة.',
     channel: true,
     inline: 'gq player_emoji',
@@ -306,7 +306,7 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_song',
     emoji: '🎵',
-    title: 'الأغاني',
+    title: 'احزر الأغنية',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
@@ -325,7 +325,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'اكتشاف الكلمة الدخيلة التي لا تنتمي لبقية الكلمات',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about:
       'يعرض البوت 5 كلمات: 4 منها من نفس الصنف الواضح، وكلمة خامسة دخيلة لا تنتمي إليها.\n' +
       'اختر الكلمة الغريبة قبل انتهاء وقت الجولة.',
@@ -352,22 +352,6 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
-    id: 'speed_quiz',
-    emoji: '⚡',
-    title: 'مسابقة السرعة',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'حصد أعلى نقاط عبر سرعة الإجابة الصحيحة',
-    reward: 'نقطة لأسرع إجابة صحيحة في كل جولة',
-    about:
-      'أسئلة ثقافية سريعة من 10 جولات.\n' +
-      'أسرع لاعب يختار الإجابة الصحيحة يكسب نقطة الجولة، والأعلى نقاطاً يفوز.',
-    channel: true,
-    inline: 'gq speed',
-    ready: true
-  },
-  {
     id: 'trivia_battle',
     emoji: '🧠',
     title: 'معركة المعلومات',
@@ -375,10 +359,10 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'تحقيق أعلى مجموع نقاط في 10 جولات',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'منافسة معلومات عامة من 10 جولات في مختلف المجالات.\n' +
-      'كل إجابة صحيحة تمنح صاحبها نقطة، وصاحب أعلى مجموع في النهاية يفوز.',
+      'أول لاعب يختار الإجابة الصحيحة يكسب نقطة الجولة، وصاحب أعلى مجموع في النهاية يفوز.',
     channel: true,
     inline: 'gq trivia',
     ready: true
@@ -391,10 +375,10 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى نقاط في 10 جولات ثقافية متنوعة',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about:
       'مسابقة جماعية متجددة من 10 جولات تغطي العلوم والفضاء واللغة والطبيعة والثقافة العامة.\n' +
-      'تُحتسب نقطة لكل إجابة صحيحة خلال 15 ثانية، وصاحب أعلى رصيد في النهاية يحسم الفوز.',
+      'أول لاعب يختار الإجابة الصحيحة خلال 15 ثانية يحصد نقطة الجولة، وصاحب أعلى رصيد في النهاية يحسم الفوز.',
     channel: true,
     inline: 'gq general',
     ready: true
@@ -407,26 +391,26 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى نقاط في 10 جولات جغرافية',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about:
       'منافسة جغرافية شيّقة من 10 جولات تشمل الدول والجزر والمضائق والأنهار والجبال والمحيطات وجغرافية العراق والعالم.\n' +
-      'كل إجابة صحيحة تمنح نقطة، والأعلى رصيداً في ختام الجولات يفوز.',
+      'أول إجابة صحيحة تكسب نقطة الجولة، والأعلى رصيداً في ختام الجولات يفوز.',
     channel: true,
     inline: 'gq geo',
     ready: true
   },
   {
     id: 'history_quiz',
-    emoji: '🏛️',
+    emoji: '🇮🇶',
     title: 'تاريخ',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى نقاط في 10 جولات تاريخية',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about:
       'منافسة تاريخية ممتعة من 10 جولات تمتد من حضارات سومر وبابل وآشور في العراق إلى التاريخ العربي والإسلامي وأبرز محطات التاريخ العالمي.\n' +
-      'كل إجابة صحيحة تمنح نقطة، وصاحب الصدارة في النهاية يفوز.',
+      'أول إجابة صحيحة تكسب نقطة الجولة، وصاحب الصدارة في النهاية يفوز.',
     channel: true,
     inline: 'gq history',
     ready: true
@@ -439,7 +423,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الدول الصحيحة',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'تُعرض معلومة مميزة عن دولة من دول العالم في كل جولة، وعليك معرفة الدولة المقصودة.',
     channel: true,
@@ -454,7 +438,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الأفلام الصحيحة',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'نبذة موجزة عن قصة فيلم شهير دون حرق للأحداث، وعليك معرفة اسم الفيلم الصحيح.',
     channel: true,
@@ -469,7 +453,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من المسلسلات الصحيحة',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'نبذة موجزة عن مسلسل عربي أو عالمي شهير، وعليك معرفة اسم المسلسل الصحيح.',
     channel: true,
@@ -478,15 +462,15 @@ const BOT_GAMES: BotGameCard[] = [
   },
   {
     id: 'gq_number',
-    emoji: '🔢',
-    title: 'الأرقام',
+    emoji: '🧮',
+    title: 'الرياضيات',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'معرفة أكبر عدد من الأرقام الصحيحة',
-    reward: 'نقطة لكل إجابة صحيحة',
+    goal: 'حل مسائل رياضية متنوعة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
-      'أسئلة ثقافية وحقائق رقمية ممتعة، وعليك معرفة الرقم الصحيح في كل جولة.',
+      'أسئلة حسابية في الجمع والطرح والضرب والقسمة، وتُعرض الإجابة الصحيحة بعد كل جولة.',
     channel: true,
     inline: 'gq number',
     ready: true
@@ -499,7 +483,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الأكلات الصحيحة',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'وصف لأشهر الأكلات العربية والعالمية، وعليك معرفة اسم الأكلة الصحيحة.',
     channel: true,
@@ -514,7 +498,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من أعلام الدول',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'يُعرض علم إحدى الدول في كل جولة، وعليك معرفة الدولة صاحبة هذا العلم.',
     channel: true,
@@ -529,7 +513,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من عواصم الدول',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'تُذكر دولة في كل جولة، وعليك معرفة عاصمتها الصحيحة.',
     channel: true,
@@ -545,7 +529,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الدولة التي تقع ضمن القارة المطلوبة',
-    reward: 'نقطة لكل إجابة صحيحة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about:
       'تُحدَّد قارة في كل جولة، وعليك معرفة الدولة التي تقع ضمن هذه القارة من بين الدول المعروضة.',
     channel: true,
@@ -576,85 +560,85 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'fast_islamic',
     emoji: '🕌',
-    title: 'إسلاميات وتراث',
+    title: 'أسئلة دينية',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'حصد أعلى النقاط في القصص القرآنية والسيرة والتراث الأصيل',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'منافسة متجددة من 10 جولات تشمل السور والأنبياء والصحابة والأمثال الشعبية والتراث العراقي والعربي.',
+    goal: 'حصد أعلى النقاط في أسئلة القرآن والأنبياء والسيرة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'منافسة دينية متجددة من 10 جولات عن القرآن الكريم والأنبياء والصحابة والسيرة النبوية.',
     channel: true,
     inline: 'gq islamic',
     ready: true
   },
   {
-    id: 'fast_science',
-    emoji: '🔬',
-    title: 'علوم وفضاء واختراعات',
+    id: 'fast_heritage',
+    emoji: '🏺',
+    title: 'التراث العراقي والعربي',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'حصد أعلى النقاط في العلوم والفضاء والاختراعات',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'جولات مشوّقة في الكواكب والفيزياء والكيمياء وجسم الإنسان وأعظم المكتشفين والمخترعين.',
+    goal: 'معرفة الأمثال والأسواق والأكلات والحرف التراثية',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'أسئلة مستقلة عن التراث العراقي والعربي: أمثال شعبية وأسواق وأكلات ومراكب وعمارة قديمة.',
+    channel: true,
+    inline: 'gq heritage',
+    ready: true
+  },
+  {
+    id: 'fast_science',
+    emoji: '🔬',
+    title: 'علوم',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'اختبار المعرفة العلمية في مجالات متنوعة',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'جولات مشوّقة في الفيزياء والكيمياء والأحياء وجسم الإنسان والفضاء والاختراعات.',
     channel: true,
     inline: 'gq science',
     ready: true
   },
   {
     id: 'fast_animals',
-    emoji: '🦁',
-    title: 'عالم الحيوان والطبيعة',
+    emoji: '🐾',
+    title: 'الحيوانات',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'معرفة أسرار الكائنات والطبيعة وحصد الصدارة',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'معلومات مدهشة وأرقام قياسية عن الحيوانات والطيور والكائنات البحرية والطبيعة.',
+    goal: 'معرفة أسرار الحيوانات والطيور والكائنات البحرية',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'أسئلة عن الحيوانات البرية والطيور والكائنات البحرية وصفاتها وسلوكها.',
     channel: true,
     inline: 'gq animals',
     ready: true
   },
   {
-    id: 'fast_tech',
-    emoji: '💻',
-    title: 'تقنية وألعاب فيديو',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'التفوّق في عالم التقنية والحواسيب والألعاب الإلكترونية',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'أسئلة متنوّعة في الأنظمة والشركات التقنية والعتاد وأشهر سلاسل الألعاب العالمية.',
-    channel: true,
-    inline: 'gq tech',
-    ready: true
-  },
-  {
     id: 'fast_dialects',
     emoji: '🗣️',
-    title: 'معاني الكلمات واللهجات',
+    title: 'اللهجة العراقية',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'معرفة معاني المفردات العراقية والعربية المتنوعة',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'اختبر معرفتك بمعاني المفردات العراقية والخليجية والشامية والمصرية والمغربية والفصحى.',
+    goal: 'معرفة معنى المفردة العراقية بالفصحى',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'يعرض البوت مفردة عراقية أصيلة، واختر معناها المقابل باللغة العربية الفصحى من أربعة خيارات.',
     channel: true,
     inline: 'gq dialects',
     ready: true
   },
   {
     id: 'fast_brands',
-    emoji: '🚗',
-    title: 'شعارات وماركات وسيارات',
+    emoji: '🚘',
+    title: 'السيارات',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'معرفة أشهر الشركات والسيارات وبلدان منشئها',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'منافسة سريعة حول أشهر الماركات العالمية وشركات السيارات وشعاراتها.',
+    goal: 'التعرّف على طراز السيارة من صورتها',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'يعرض البوت صورة سيارة حقيقية وأربعة طرازات للاختيار؛ أول إجابة صحيحة تحصد نقطة الجولة.',
     channel: true,
-    inline: 'gq brands',
+    inline: 'gq cars',
     ready: true
   },
   {
@@ -664,9 +648,9 @@ const BOT_GAMES: BotGameCard[] = [
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'حصد صدارة الكرة العراقية والعالمية',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'أسئلة كروية ممتعة تشمل أسود الرافدين والأندية العراقية وكأس العالم ودوري أبطال أوروبا.',
+    goal: 'اختبار المعرفة الكروية العراقية والعالمية',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'أسئلة كروية تشمل أسود الرافدين وكأس العالم ودوري الأبطال وأساطير الكرة؛ أول إجابة صحيحة تحسم نقطة الجولة.',
     channel: true,
     inline: 'gq fbquiz',
     ready: true
@@ -708,7 +692,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الرواية أو الكتاب الشهير من فكرته وأبطاله',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about: 'نبذة مشوّقة عن كتاب أو رواية عربية أو عالمية خالدة مع 4 خيارات لاختيار العمل الصحيح.',
     channel: true,
     inline: 'gq novel',
@@ -722,24 +706,10 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة المعلم السياحي أو الأثري الشهير من وصفه',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about: 'وصف معماري وتاريخي لأشهر المعالم العراقية والعربية والعالمية وعليك معرفة المعلم المقصود.',
     channel: true,
     inline: 'gq landmark',
-    ready: true
-  },
-  {
-    id: 'guess_vgame',
-    emoji: '🎮',
-    title: 'ألعاب الفيديو',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'معرفة اللعبة الإلكترونية الشهيرة من قصتها أو طريقة لعبها',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'وصف لعالم اللعبة أو بطلها الشهير مع 4 خيارات لمعرفة اللعبة الإلكترونية الصحيحة.',
-    channel: true,
-    inline: 'gq vgame',
     ready: true
   },
   {
@@ -750,7 +720,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الكائن الحي من صفاته وحقائقه الفريدة',
-    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
     about: 'ثلاث صفات وحقائق مدهشة عن كائن برّي أو بحري أو طائر وعليك معرفة الكائن المقصود.',
     channel: true,
     inline: 'gq creature',
@@ -1136,7 +1106,6 @@ export class TelegramBotManager {
     general_quiz: 'general',
     geography_quiz: 'geo',
     history_quiz: 'history',
-    speed_quiz: 'speed',
     trivia_battle: 'trivia',
     math: 'math',
     gq_country: 'country',
@@ -1151,17 +1120,16 @@ export class TelegramBotManager {
     poet: 'poet',
     guess_player: 'player',
     fast_islamic: 'islamic',
+    fast_heritage: 'heritage',
     fast_science: 'science',
     fast_animals: 'animals',
-    fast_tech: 'tech',
     fast_dialects: 'dialects',
-    fast_brands: 'brands',
+    fast_brands: 'cars',
     fast_football_quiz: 'fbquiz',
     fast_tf: 'tf',
     fast_emoji_math: 'emath',
     guess_novel: 'novel',
     guess_landmark: 'landmark',
-    guess_vgame: 'vgame',
     guess_creature: 'creature'
   };
 
@@ -2883,27 +2851,49 @@ export class TelegramBotManager {
 
     // 6. Guess Card
     if (data.startsWith('guess:') && game) {
-      const cardId = parseInt(data.replace('guess:', ''), 10);
+      const cardId = parseInt(data.split(':')[1] || '', 10);
+      const card = game.cards.find(c => c.id === cardId);
+      if (!card) {
+        await this.answerCallbackQuery(cb.id, '⚠️ ما لكيت هاي الكلمة باللوحة.', true);
+        return;
+      }
+      const player = game.players.find(p => String(p.id) === String(userId));
+      const popupTeam: Team = player?.team || game.currentTurn;
 
-      // Verify it is operative turn
+      // نبين نوع البطاقة بالمربع المنبثق، من دون تغيير حالة اللعبة.
       if (game.status !== 'operative_turn') {
-        await this.answerCallbackQuery(cb.id, '⏳ ليس دور التخمين الآن! بانتظار تلميح الجاسوس.', true);
+        await this.answerCallbackQuery(
+          cb.id,
+          this.codenamesCardPopup(card, popupTeam, '⏳ ليس دور التخمين الآن! بانتظار تلميح الجاسوس.'),
+          true
+        );
         return;
       }
 
       // Only a registered operative on the active team may reveal a card.
-      const player = game.players.find(p => String(p.id) === String(userId));
       if (!player) {
-        await this.answerCallbackQuery(cb.id, '⛔ لازم تنضم للعبة وتختار مقعداً قبل التخمين.', true);
+        await this.answerCallbackQuery(
+          cb.id,
+          this.codenamesCardPopup(card, popupTeam, '⛔ لازم تنضم للعبة وتختار مقعداً قبل التخمين.'),
+          true
+        );
         return;
       }
       if (player.role !== 'operative') {
-        await this.answerCallbackQuery(cb.id, '⛔ أنت جاسوس، والتخمين على العملاء فقط.', true);
+        await this.answerCallbackQuery(
+          cb.id,
+          this.codenamesCardPopup(card, popupTeam, '⛔ أنت جاسوس، والتخمين على العملاء فقط.'),
+          true
+        );
         return;
       }
       if (player.team !== game.currentTurn) {
         const turnTeam = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-        await this.answerCallbackQuery(cb.id, `⛔ مو دور فريقك — التخمين هسه لفريق ${turnTeam}.`, true);
+        await this.answerCallbackQuery(
+          cb.id,
+          this.codenamesCardPopup(card, popupTeam, `⛔ مو دور فريقك — التخمين هسه لفريق ${turnTeam}.`),
+          true
+        );
         return;
       }
 
@@ -2920,7 +2910,11 @@ export class TelegramBotManager {
         rewards = this.recordFinishedGame(result.game);
       }
       const guessedCard = game.cards.find(c => c.id === cardId);
-      await this.answerCallbackQuery(cb.id, result.message);
+      await this.answerCallbackQuery(
+        cb.id,
+        guessedCard ? this.codenamesCardPopup(guessedCard, player.team, result.message) : result.message,
+        true
+      );
       await this.updateTelegramGameBoard(
         chatId,
         result.game,
@@ -2968,9 +2962,21 @@ export class TelegramBotManager {
       return;
     }
 
-    // Already revealed card clicked
-    if (data.startsWith('info:revealed:')) {
-      await this.answerCallbackQuery(cb.id, 'تم كشف هذه الكلمة مسبقاً!');
+    // Already revealed card clicked — repeat its known word and color in a clear popup.
+    if (data.startsWith('info:revealed:') && game) {
+      const cardId = parseInt(data.split(':')[2] || '', 10);
+      const card = game.cards.find(c => c.id === cardId);
+      if (card) {
+        const player = game.players.find(p => String(p.id) === String(userId));
+        const team: Team = player?.team || game.currentTurn;
+        await this.answerCallbackQuery(
+          cb.id,
+          this.codenamesCardPopup(card, team, '✅ تم كشف هذه الكلمة مسبقاً.'),
+          true
+        );
+      } else {
+        await this.answerCallbackQuery(cb.id, 'تم كشف هذه الكلمة مسبقاً!');
+      }
       return;
     }
 
@@ -3441,7 +3447,7 @@ export class TelegramBotManager {
     const uid = deployerId ? `|${deployerId}` : '';
     const k: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
       ? (kind as GG.QuizKind)
-      : 'speed';
+      : 'general';
     const meta = GG.QUIZ_KINDS[k];
     const title = `${meta.emoji} ${meta.title}`;
     const hidden = encodeHiddenTag(`gq:${k}${uid}`);
@@ -3646,7 +3652,7 @@ export class TelegramBotManager {
 
     // ── 🎉 الألعاب الجماعية وألعاب خمّن ──
     if (q.startsWith('gq')) {
-      const kind = q.replace(/^gq\s*/, '').trim() || 'speed';
+      const kind = q.replace(/^gq\s*/, '').trim() || 'general';
       const card = this.gqCard(kind, deployerId);
       await this.answerInlineQuery(iq.id, [card]);
       return;
@@ -3921,7 +3927,7 @@ export class TelegramBotManager {
 
       const kind2: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
         ? (kind as GG.QuizKind)
-        : 'speed';
+        : 'general';
       const game = GG.createQuiz(chatId, message.chat.title || 'المحادثة', kind2);
       game.messageId = message.message_id;
       if (deployerUserId) {
@@ -4626,15 +4632,89 @@ export class TelegramBotManager {
   /** يعيد رسم لوحة لعبة جماعية — بنفس الرسالة إن كانت عادية، أو بمعرّف الإنلاين إن كانت أصلها تحويل */
   private async paintQuiz(game: GG.QuizGame) {
     const text = await this.withBotFooter(GG.renderQuiz(game), true);
-    const kb = GG.quizKeyboard(game);
+    const isCarPhotoRound = game.kind === 'cars' && game.status !== 'lobby';
+    const kb = isCarPhotoRound ? [] : GG.quizKeyboard(game);
     if (game.messageId) {
       const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
-      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+      if (res?.ok || String(res?.description || '').includes('not modified')) {
+        if (isCarPhotoRound && !(await this.paintCarQuizPhoto(game))) {
+          await this.editMessageText(game.chatId, game.messageId, text, GG.quizKeyboard(game), 'MarkdownV2');
+        }
+        return;
+      }
     }
     if (game.inlineMessageId) {
       const res = await this.editInlineMessageText(game.inlineMessageId, text, kb, 'MarkdownV2');
-      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+      if (res?.ok || String(res?.description || '').includes('not modified')) {
+        if (isCarPhotoRound && !(await this.paintCarQuizPhoto(game))) {
+          await this.editInlineMessageText(game.inlineMessageId, text, GG.quizKeyboard(game), 'MarkdownV2');
+        }
+        return;
+      }
     }
+    if (isCarPhotoRound) await this.paintCarQuizPhoto(game);
+  }
+
+  /** يعرض سؤال السيارات كصورة حقيقية مع أزرار الخيارات، ويحدّث نفس الصورة بين الجولات. */
+  private async paintCarQuizPhoto(game: GG.QuizGame): Promise<boolean> {
+    if (!this.token) return false;
+    const photoUrl = GG.quizPhotoUrl(game);
+    if (!photoUrl) return false;
+
+    let caption = `🚘 *السيارات* — الجولة *${game.round}* من *${game.totalRounds}*`;
+    if (game.status === 'playing') {
+      caption += `\n\n❓ *${GG.toV2(game.deck[game.qIndex][0])}*`;
+    } else if (game.status === 'result') {
+      caption += game.lastLine ? `\n\n${GG.toV2(game.lastLine)}` : '\n\n⏳ انتهى وقت الجولة.';
+    } else if (game.status === 'game_over') {
+      caption += '\n\n🏁 انتهت اللعبة — شوفوا الترتيب باللوحة أعلاه.';
+    }
+    const keyboard = GG.quizKeyboard(game);
+    const replyMarkup = { inline_keyboard: keyboard };
+
+    try {
+      if (game.photoMessageId) {
+        const edited = await fetch(`https://api.telegram.org/bot${this.token}/editMessageMedia`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: game.chatId,
+            message_id: game.photoMessageId,
+            media: { type: 'photo', media: photoUrl, caption, parse_mode: 'MarkdownV2' },
+            reply_markup: replyMarkup
+          })
+        });
+        const editedData: any = await edited.json();
+        if (editedData?.ok || String(editedData?.description || '').includes('message is not modified')) return true;
+
+        // إذا تعذر تعديل الصورة القديمة، عطّل أزرارها قبل إرسال صورة جديدة حتى لا تبقى إجابات قديمة فعالة.
+        await fetch(`https://api.telegram.org/bot${this.token}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: game.chatId, message_id: game.photoMessageId, reply_markup: { inline_keyboard: [] } })
+        }).catch(() => undefined);
+      }
+
+      const sent = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: game.chatId,
+          photo: photoUrl,
+          caption,
+          parse_mode: 'MarkdownV2',
+          reply_markup: replyMarkup
+        })
+      });
+      const sentData: any = await sent.json();
+      if (sentData?.ok && sentData?.result?.message_id) {
+        game.photoMessageId = Number(sentData.result.message_id);
+        return true;
+      }
+    } catch (error) {
+      console.warn('Unable to send car quiz photo:', error);
+    }
+    return false;
   }
 
   private async paintMM(game: GG.MMGame) {
@@ -4668,7 +4748,7 @@ export class TelegramBotManager {
     // النوع داخل الزر — اللوحات القديمة (بدون نوع) ما نكدر نبنيها، ندكنعهم بذوق
     const kindRaw = op === 'gqa' ? parts[2] : parts[1];
     const kinds = Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[];
-    const kind: GG.QuizKind = kinds.includes(kindRaw as GG.QuizKind) ? (kindRaw as GG.QuizKind) : 'speed';
+    const kind: GG.QuizKind = kinds.includes(kindRaw as GG.QuizKind) ? (kindRaw as GG.QuizKind) : 'general';
 
     let game = this.gqGames.get(cbChatId);
 
@@ -4758,6 +4838,10 @@ export class TelegramBotManager {
 
     // 🎮 ابدأ
     if (op === 'gqs') {
+      // إذا ضغط «ابدأ» لاعب مو مسجّل، نضيفه تلقائياً؛ يمنع ظهور العدد واحد مع وجود لاعب آخر انضم.
+      if (game.status === 'lobby' && !game.players.some(p => p.id === playerId)) {
+        GG.quizJoin(game, playerId, playerName);
+      }
       const r = GG.quizStart(game);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) {
@@ -5750,7 +5834,7 @@ export class TelegramBotManager {
     if (section === 'songpick') {
       return {
         text:
-          `🎵 *الأغاني*\n` +
+          `🎵 *احزر الأغنية*\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
           `👇 اختار نوع الأغاني لتحويل اللعبة للقناة:`,
         keyboard: [
@@ -6210,7 +6294,7 @@ export class TelegramBotManager {
 
     const round = this.poet.get(userId);
     if (!round) {
-      await this.answerCallbackQuery(cb.id, 'اضغط «🎭 الشعراء» من قائمة الألعاب.', true);
+      await this.answerCallbackQuery(cb.id, 'اضغط «🎭 احزر الشاعر» من قائمة الألعاب.', true);
       return;
     }
 
@@ -9366,6 +9450,19 @@ export class TelegramBotManager {
       game.messageId = sent.result.message_id;
       this.games.set(chatId, game);
     }
+  }
+
+  private codenamesCardTypeLabel(type: string, team: Team): string {
+    if (type === 'assassin') return '💣 القنبلة';
+    if (type === 'bystander') return '⚪ كلمة محايدة';
+    if (type === team) return `🔹 كلمة لفريقك (${team === 'blue' ? 'الأزرق' : 'الأحمر'})`;
+    return `🔸 كلمة للخصم (${team === 'blue' ? 'الأحمر' : 'الأزرق'})`;
+  }
+
+  private codenamesCardPopup(card: { word: string; type: string }, team: Team, notice: string): string {
+    const briefNotice = notice.length > 52 ? `${notice.slice(0, 49)}…` : notice;
+    const briefWord = card.word.length > 65 ? `${card.word.slice(0, 62)}…` : card.word;
+    return `${briefNotice}\n━━━━━━━━━━━━━━\n🔤 الكلمة: ${briefWord}\n🏷 النوع: ${this.codenamesCardTypeLabel(card.type, team)}`;
   }
 
   /** Remove characters that break Telegram Markdown from dynamic values. */

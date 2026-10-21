@@ -785,9 +785,6 @@ export class CodenamesEngine {
         game.players.some(p => p.team === team && p.role === role);
       const seatMark = (team: Team, role: PlayerRole) => (hasSeat(team, role) ? '✅' : '⬜');
       const rows: any[][] = [];
-      if (game.players.length < 4) {
-        rows.push([{ text: 'انضم', callback_data: `join:auto:auto:${game.id}` }]);
-      }
       rows.push([
         { text: `${seatMark('blue', 'operative')} عميل أزرق 🔵`, callback_data: `join:blue:operative:${game.id}` },
         { text: `${seatMark('red', 'operative')} عميل أحمر 🔴`, callback_data: `join:red:operative:${game.id}` }
@@ -796,6 +793,9 @@ export class CodenamesEngine {
         { text: `${seatMark('blue', 'spymaster')} جاسوس أزرق 🕵️`, callback_data: `join:blue:spymaster:${game.id}` },
         { text: `${seatMark('red', 'spymaster')} جاسوس أحمر 🕵️`, callback_data: `join:red:spymaster:${game.id}` }
       ]);
+      if (game.players.length < 4) {
+        rows.push([{ text: '➕ انضم تلقائياً', callback_data: `join:auto:auto:${game.id}` }]);
+      }
       rows.push([{ text: 'ابدأ اللعبة 🚀', callback_data: `game:start:${game.id}` }]);
       return rows;
     }

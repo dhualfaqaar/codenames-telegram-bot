@@ -141,20 +141,6 @@ export const LANDMARK_EMOJI: GQRow[] = [
   ['اعرف المعلم السياحي من الإيموجي:  🏜️ 🪨 🌸 🇯🇴', 'مدينة البتراء الوردية', 'مدائن صالح', 'تدمر', 'الأهرامات']
 ];
 
-// 9) 🎮 ألعاب الفيديو بالإيموجي
-export const VGAME_EMOJI: GQRow[] = [
-  ['اعرف لعبة الفيديو من الإيموجي:  🪂 🏝️ 🍳 🔫', 'PUBG', 'Counter-Strike', 'Apex Legends', 'Valorant'],
-  ['اعرف لعبة الفيديو من الإيموجي:  ⛏️ 🧱 💎 🧟', 'Minecraft', 'Roblox', 'Terraria', 'Lego Worlds'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🚀 👨‍🚀 🔪 🤫', 'Among Us', 'Dead Space', 'Starfield', 'Halo'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🏃‍♂️ 🚆 🎨 🐕', 'Subway Surfers', 'Temple Run', 'Sonic Dash', 'Jetpack Joyride'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🚗 🌴 💰 🚁', 'GTA V', 'Need for Speed', 'Forza Horizon', 'Mafia'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🚗 🚀 ⚽ 🏟️', 'Rocket League', 'FIFA', 'Gran Turismo', 'Trackmania'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🌻 🟢 🧟 🏡', 'Plants vs. Zombies', 'Hay Day', 'Angry Birds', 'FarmVille'],
-  ['اعرف لعبة الفيديو من الإيموجي:  😠 🐦 🪵 🐷', 'Angry Birds', 'Flappy Bird', 'Cut the Rope', 'Fruit Ninja'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🤠 🐎 🏜️ 🎯', 'Red Dead Redemption 2', 'The Last of Us', 'Uncharted', 'Days Gone'],
-  ['اعرف لعبة الفيديو من الإيموجي:  🍄 👨‍🔧 🐢 👸', 'Super Mario', 'Sonic', 'Crash Bandicoot', 'Rayman']
-];
-
 // 10) 🐾 الكائنات الحية بالإيموجي
 export const CREATURE_EMOJI: GQRow[] = [
   ['اعرف الكائن الحي من الإيموجي:  💙💙💙 🌊 8️⃣ 🧠', 'الأخطبوط', 'الدلفين', 'قنديل البحر', 'نجم البحر'],
@@ -167,18 +153,6 @@ export const CREATURE_EMOJI: GQRow[] = [
   ['اعرف الكائن الحي من الإيموجي:  🍯 👑 🌸 🐝', 'النحلة', 'الفراشة', 'النملة', 'اليراعة'],
   ['اعرف الكائن الحي من الإيموجي:  ⚡ 🐆 🏃‍♂️ 🌍', 'الفهد الصياد', 'الأسد', 'النمر', 'الذئب'],
   ['اعرف الكائن الحي من الإيموجي:  🌊 🐳 ⛲ 🌍', 'الحوت الأزرق', 'القرش الأبيض', 'الفقمة', 'فرس البحر']
-];
-
-// 11) 🚗 الماركات والسيارات بالإيموجي
-export const BRANDS_EMOJI: GQRow[] = [
-  ['اعرف الماركة من الإيموجي:  🐎 🔴 🏎️ 🇮🇹', 'Ferrari', 'Lamborghini', 'Maserati', 'Porsche'],
-  ['اعرف الماركة من الإيموجي:  🐂 🟡 🏎️ 🇮🇹', 'Lamborghini', 'Ferrari', 'Bugatti', 'Alfa Romeo'],
-  ['اعرف الماركة من الإيموجي:  🍎 📱 💻 ⌚', 'Apple', 'Samsung', 'Sony', 'Huawei'],
-  ['اعرف الماركة من الإيموجي:  ✔️ 👟 🏃 🏆', 'Nike', 'Adidas', 'Puma', 'New Balance'],
-  ['اعرف الماركة من الإيموجي:  ⚡ 🚗 🤖 🔋', 'Tesla', 'Toyota', 'Ford', 'BMW'],
-  ['اعرف الماركة من الإيموجي:  ☕ 🧜‍♀️ 🟢 🥤', 'Starbucks', 'Costa', 'Nescafé', 'Dunkin'],
-  ['اعرف الماركة من الإيموجي:  ⌚ 👑 💚 🇨🇭', 'Rolex', 'Omega', 'Casio', 'Cartier'],
-  ['اعرف الماركة من الإيموجي:  ⭕⭕⭕⭕ 🚗 🇩🇪', 'Audi', 'BMW', 'Mercedes-Benz', 'Volkswagen']
 ];
 
 // 12) 🏛️ العواصم بالإيموجي
