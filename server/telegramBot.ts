@@ -956,7 +956,9 @@ export class TelegramBotManager {
   private pendingAgeCalc: Set<string> = new Set();
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
-  private avatarDeliveredV1: boolean = false;
+  private avatarDeliveredV2: boolean = false;
+  private rtmpTargets: Map<string, string> = new Map();
+  private rtmpServerBase: string = 'rtmps://dc4-1.rtmp.t.me/s/';
   private pendingVocalSep: Set<string> = new Set();
   private voiceAssistantSession: string = '';
   private voiceAssistantName: string = '';
@@ -1605,7 +1607,9 @@ export class TelegramBotManager {
       pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
       pendingConvert: Array.from(this.pendingConvert.entries()),
       audioEditDrafts: Array.from(this.audioEditDrafts.entries()),
-      avatarDeliveredV1: this.avatarDeliveredV1,
+      avatarDeliveredV2: this.avatarDeliveredV2,
+      rtmpTargets: Array.from(this.rtmpTargets.entries()),
+      rtmpServerBase: this.rtmpServerBase,
       pendingVocalSep: Array.from(this.pendingVocalSep.values()),
       voiceAssistantSession: this.voiceAssistantSession,
       voiceAssistantName: this.voiceAssistantName,
@@ -1660,7 +1664,9 @@ export class TelegramBotManager {
     if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
     if (Array.isArray(state.audioEditDrafts)) this.audioEditDrafts = new Map(state.audioEditDrafts);
-    if (typeof state.avatarDeliveredV1 === 'boolean') this.avatarDeliveredV1 = state.avatarDeliveredV1;
+    if (typeof state.avatarDeliveredV2 === 'boolean') this.avatarDeliveredV2 = state.avatarDeliveredV2;
+    if (Array.isArray(state.rtmpTargets)) this.rtmpTargets = new Map(state.rtmpTargets);
+    if (typeof state.rtmpServerBase === 'string' && state.rtmpServerBase) this.rtmpServerBase = state.rtmpServerBase;
     if (Array.isArray(state.pendingVocalSep)) this.pendingVocalSep = new Set(state.pendingVocalSep);
     if (typeof state.voiceAssistantSession === 'string') this.voiceAssistantSession = state.voiceAssistantSession;
     if (typeof state.voiceAssistantName === 'string') this.voiceAssistantName = state.voiceAssistantName;
@@ -1899,8 +1905,8 @@ export class TelegramBotManager {
 
   public async applyAndDeliverOfficialAvatar(force = false): Promise<{ applied: boolean; sent: boolean }> {
     if (!this.token) return { applied: false, sent: false };
-    if (this.avatarDeliveredV1 && !force) return { applied: true, sent: false };
-    this.avatarDeliveredV1 = true;
+    if (this.avatarDeliveredV2 && !force) return { applied: true, sent: false };
+    this.avatarDeliveredV2 = true;
 
     let applied = false;
     let sent = false;
@@ -1961,7 +1967,7 @@ export class TelegramBotManager {
 
   private async ensureCommandsSynced(): Promise<void> {
     if (!this.token) return;
-    if (!this.avatarDeliveredV1) {
+    if (!this.avatarDeliveredV2) {
       await this.applyAndDeliverOfficialAvatar(false);
     }
     if (this.commandsSyncVer === 3) return;
@@ -2476,23 +2482,26 @@ export class TelegramBotManager {
         await this.sendVoiceAssistantPanel(chatId, messageId);
         return;
       }
-      if (data === 'admin:voice_login') {
-        this.voiceAuthStep = 'wait_phone';
+      if (data === 'admin:voice_login' || data === 'admin:voice_key') {
+        this.voiceAuthStep = 'wait_rtmp';
         this.voiceAuthData = {};
         await this.answerCallbackQuery(cb.id, '');
         await this.sendMessage(
           chatId,
-          `📱 *ربط حساب المساعد للمكالمات*\nأرسل رقم الهاتف مع رمز الدولة — مثال: \`+9647700000000\``,
+          `🔑 *ربط البث الصوتي للقناة (بدون حساب ثاني)*\n` +
+            `من قناتك اضغط: *بدء بث مباشر ⬅️ البث عبر برمجية خارجية (RTMP)*\n` +
+            `وأرسل هنا *مفتاح البث (Stream Key)* أو رابط السيرفر مع المفتاح:`,
           [[{ text: '🔙 رجوع', callback_data: 'admin:voice' }]]
         );
         return;
       }
       if (data === 'admin:voice_reset') {
+        this.rtmpTargets.clear();
         this.voiceAssistantSession = '';
         this.voiceAssistantName = '';
         this.voiceAuthStep = '';
         this.voiceAuthData = {};
-        await this.answerCallbackQuery(cb.id, 'تم مسح جلسة المساعد.');
+        await this.answerCallbackQuery(cb.id, 'تم مسح مفتاح البث.');
         await this.sendVoiceAssistantPanel(chatId, messageId);
         return;
       }
@@ -6962,10 +6971,19 @@ export class TelegramBotManager {
     }
   }
 
-  /** هل خادم مساعد المكالمات الحقيقي متصل الآن وجاهز للصعود بالمكالمة؟ */
-  private isVoiceAssistantActive(): boolean {
+  /** استخراج رابط البث المباشر RTMP الخاص بالقناة أو الافتراضي (بدون حساب ثاني) */
+  private getRtmpTarget(chatId?: string): string {
+    if (chatId && this.rtmpTargets.get(chatId)) {
+      return this.rtmpTargets.get(chatId)!;
+    }
+    return this.rtmpTargets.get('default') || '';
+  }
+
+  /** هل محرّك البث الصوتي بدون حساب ثاني متصل الآن وجاهز؟ */
+  private isVoiceAssistantActive(chatId?: string): boolean {
+    const hasTarget = Boolean(this.getRtmpTarget(chatId) || this.voiceAssistantSession);
     return Boolean(
-      this.voiceAssistantSession &&
+      hasTarget &&
         this.voiceBridgeHeartbeatAt > 0 &&
         Date.now() - this.voiceBridgeHeartbeatAt < 45_000
     );
@@ -6975,7 +6993,7 @@ export class TelegramBotManager {
     return this.voiceBridgeHeartbeatAt > 0 && Date.now() - this.voiceBridgeHeartbeatAt < 45_000;
   }
 
-  /** استخراج رابط دعوة للقناة أو الكروب تلقائياً ليتمكن حساب المساعد من الدخول والصعود بالمكالمة */
+  /** استخراج معرّف القناة أو الكروب */
   private async resolveChatJoinTarget(chat: TelegramChat): Promise<string> {
     if (chat.username) return `@${chat.username}`;
     if (!this.token) return '';
@@ -6993,50 +7011,10 @@ export class TelegramBotManager {
     return '';
   }
 
-  /** نقطة التزامن الحية مع مساعد المكالمات الصوتية (PyTgCalls + Kurigram) */
+  /** نقطة التزامن الحية مع محرّك البث الصوتي المباشر (RTMP بدون حساب ثاني) */
   public async handleVoiceSyncRequest(payload: any): Promise<any> {
     this.voiceBridgeHeartbeatAt = Date.now();
     const op = String(payload?.op || 'poll');
-
-    if (op === 'auth_update') {
-      const status = String(payload?.status || '');
-      if (status === 'code_sent') {
-        this.voiceAuthStep = 'wait_code';
-        if (this.ownerId) {
-          await this.sendMessage(
-            this.ownerId,
-            `📩 *وصل كود التفعيل على حساب المساعد!*\nأرسل الكود الآن (يفضّل بمسافة مثل: \`1 2 3 4 5\`) 👇`
-          );
-        }
-      } else if (status === 'need_2fa') {
-        this.voiceAuthStep = 'wait_2fa';
-        if (this.ownerId) {
-          await this.sendMessage(this.ownerId, `🔐 *الحساب محمي بالتحقق بخطوتين* — أرسل كلمة المرور الآن:`);
-        }
-      } else if (status === 'connected') {
-        this.voiceAssistantSession = String(payload?.sessionString || '');
-        this.voiceAssistantName = String(payload?.assistantName || 'حساب المساعد');
-        this.voiceAuthStep = '';
-        this.voiceAuthData = {};
-        if (this.ownerId) {
-          await this.sendMessage(
-            this.ownerId,
-            `✅ *تم ربط حساب المساعد بنجاح!*\n👤 الحساب: *${this.mdSafe(this.voiceAssistantName)}*\n🎙️ الآن عند كتابة \`تشغيل + اسم الأغنية\` في أي قناة أو كروب سيصعد المساعد للمكالمة الصوتية فوراً!`
-          );
-        }
-      } else if (status === 'error') {
-        this.voiceAuthStep = '';
-        this.voiceAuthData = {};
-        if (this.ownerId) {
-          await this.sendMessage(
-            this.ownerId,
-            `⚠️ تعذّر تسجيل دخول المساعد: \`${this.mdSafe(String(payload?.message || 'خطأ'))}\``,
-            [[{ text: '🔄 إعادة المحاولة', callback_data: 'admin:voice_login' }]]
-          );
-        }
-      }
-      return { ok: true };
-    }
 
     if (op === 'track_ended' && payload?.chatId) {
       const cid = String(payload.chatId);
@@ -7057,6 +7035,7 @@ export class TelegramBotManager {
       activeSessions.push({
         chatId: sess.chatId,
         inviteLink: sess.inviteLink || '',
+        rtmpUrl: this.getRtmpTarget(sess.chatId),
         status: sess.status,
         actionSeq: sess.actionSeq || 1,
         trackId: sess.current?.id || '',
@@ -7069,42 +7048,45 @@ export class TelegramBotManager {
 
     return {
       ok: true,
-      sessionString: this.voiceAssistantSession,
-      auth: {
-        step: this.voiceAuthStep,
-        ...this.voiceAuthData
-      },
+      mode: 'rtmp',
+      defaultRtmpUrl: this.getRtmpTarget(),
       sessions: activeSessions
     };
   }
 
-  /** لوحة إعداد مساعد المكالمات الصوتية للمالك */
+  /** لوحة إعداد البث الصوتي المباشر بالقنوات (RTMP بدون حساب أو رقم ثاني) */
   private async sendVoiceAssistantPanel(chatId: string, messageId?: number) {
     const colabUrl =
       'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
     const runnerUp = this.isVoiceRunnerAlive();
+    const hasKey = Boolean(this.getRtmpTarget());
     const callReady = this.isVoiceAssistantActive();
 
     const statusLine = callReady
-      ? `🟢 *الحالة:* متصل وجاهز للصعود بالمكالمات (${this.mdSafe(this.voiceAssistantName || 'المساعد')})`
-      : runnerUp
-        ? `🟡 *الحالة:* المحرّك يعمل — اضغط «ربط حساب المساعد» أدناه لإدخال الرقم`
-        : `⚪ *الحالة:* غير مشغّل حالياً`;
+      ? `🟢 *الحالة:* متصل وجاهز للبث بالمكالمات مباشرة`
+      : hasKey
+        ? `🟡 *مفتاح البث:* محفوظ ✅ — اضغط زر تشغيل المحرّك أدناه`
+        : runnerUp
+          ? `🟡 *المحرّك:* يعمل ✅ — أضف مفتاح البث (Stream Key)`
+          : `⚪ *الحالة:* بانتظار مفتاح البث وتشغيل المحرّك`;
 
     const text =
-      `🎙️ *مساعد المكالمات الصوتية بالقنوات*\n` +
+      `🎙️ *بث الأغاني بالمكالمات (بدون حساب ثاني)*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
       `${statusLine}\n\n` +
-      `1. اضغط *تشغيل محرّك المكالمات* واضغط زر ▶️ بالصفحة.\n` +
-      `2. اضغط *ربط حساب المساعد* هنا وأدخل الرقم لمرة واحدة فقط.`;
+      `1. من قناتك افتح *بث مباشر ⬅️ البث عبر برمجية خارجية (RTMP)* وانسخ المفتاح.\n` +
+      `2. اضغط *إدخال مفتاح البث* ثم شغّل محرّك البث بضغطة واحدة.`;
 
+    const renderDeployUrl =
+      'https://render.com/deploy?repo=https://github.com/dhualfaqaar/codenames-telegram-bot';
     const keyboard: any[][] = [
-      [{ text: '🚀 1) تشغيل محرّك المكالمات (ضغطة واحدة)', url: colabUrl }],
-      [{ text: '📱 2) ربط حساب المساعد بالرقم', callback_data: 'admin:voice_login' }],
+      [{ text: '🔑 1) إدخال مفتاح البث (Stream Key)', callback_data: 'admin:voice_key' }],
+      [{ text: '🚀 2) تشغيل البث فوراً (ضغطة واحدة)', url: colabUrl }],
+      [{ text: '☁️ استضافة البث 24/7 مجاناً', url: renderDeployUrl }],
       [{ text: '🔄 تحديث الحالة', callback_data: 'admin:voice' }]
     ];
-    if (this.voiceAssistantSession) {
-      keyboard.push([{ text: '🗑️ فصل حساب المساعد الحالي', callback_data: 'admin:voice_reset' }]);
+    if (hasKey) {
+      keyboard.push([{ text: '🗑️ مسح مفتاح البث المحفوظ', callback_data: 'admin:voice_reset' }]);
     }
     keyboard.push([{ text: '🔙 اللوحة', callback_data: 'admin:panel' }]);
 
@@ -7117,34 +7099,55 @@ export class TelegramBotManager {
 
   private async handleOwnerVoiceAuthInput(uid: string, text: string) {
     const clean = text.trim();
-    if (this.voiceAuthStep === 'wait_phone') {
-      if (!this.isVoiceRunnerAlive()) {
-        this.voiceAuthData = { phone: clean };
-        this.voiceAuthStep = 'send_code';
-        const colabUrl =
-          'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
-        await this.sendMessage(
-          uid,
-          `⏳ تم حفظ الرقم \`${this.mdSafe(clean)}\` — افتح الرابط واضغط ▶️ ليصلك كود التفعيل فوراً:`,
-          [[{ text: '🚀 تشغيل محرّك المكالمات الآن', url: colabUrl }]]
-        );
-        return;
+    if (!clean) return;
+
+    // 1) إذا أرسل رابط السيرفر فقط مثل rtmps://dc4-1.rtmp.t.me/s/ بدون المفتاح بعده
+    if (/^rtmps?:\/\/[^/\s]+\/s\/?$/i.test(clean)) {
+      this.rtmpServerBase = clean.endsWith('/') ? clean : `${clean}/`;
+      this.voiceAuthStep = 'wait_rtmp_key_only';
+      await this.sendMessage(uid, `✅ تم حفظ رابط السيرفر — أرسل الآن *مفتاح البث (Stream Key)*:`, [
+        [{ text: '🔙 رجوع', callback_data: 'admin:voice' }]
+      ]);
+      return;
+    }
+
+    // 2) رابط كامل (السيرفر + المفتاح بنفس الرسالة) أو مفتاح البث مباشرة
+    let fullRtmp = '';
+    if (/^rtmps?:\/\//i.test(clean)) {
+      const parts = clean.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2 && /^rtmps?:\/\//i.test(parts[0])) {
+        const base = parts[0].endsWith('/') ? parts[0] : `${parts[0]}/`;
+        fullRtmp = `${base}${parts[1]}`;
+      } else {
+        fullRtmp = clean;
       }
-      this.voiceAuthData = { phone: clean };
-      this.voiceAuthStep = 'send_code';
-      await this.sendMessage(uid, `⏳ جاري إرسال كود التفعيل إلى \`${this.mdSafe(clean)}\` ...`);
-      return;
+    } else {
+      const base = this.rtmpServerBase.endsWith('/') ? this.rtmpServerBase : `${this.rtmpServerBase}/`;
+      fullRtmp = `${base}${clean}`;
     }
-    if (this.voiceAuthStep === 'wait_code') {
-      this.voiceAuthData = { ...this.voiceAuthData, code: clean };
-      this.voiceAuthStep = 'verify_code';
-      await this.sendMessage(uid, `⏳ جاري التحقق من الكود وتفعيل المساعد...`);
-      return;
-    }
-    if (this.voiceAuthStep === 'wait_2fa') {
-      this.voiceAuthData = { ...this.voiceAuthData, password: clean };
-      this.voiceAuthStep = 'verify_2fa';
-      await this.sendMessage(uid, `⏳ جاري التحقق من كلمة المرور...`);
+
+    this.rtmpTargets.set('default', fullRtmp);
+    this.voiceAuthStep = '';
+    this.voiceAuthData = {};
+
+    const colabUrl =
+      'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
+
+    if (this.isVoiceRunnerAlive()) {
+      await this.sendMessage(
+        uid,
+        `✅ *تم ربط بث القناة بنجاح بدون حساب ثاني!*\nالآن اكتب \`تشغيل + اسم الأغنية\` في القناة وسيبثها البوت مباشرة بالمكالمة 🎙️`,
+        [[{ text: '🎙️ لوحة البث', callback_data: 'admin:voice' }]]
+      );
+    } else {
+      await this.sendMessage(
+        uid,
+        `✅ *تم حفظ مفتاح البث بنجاح!*\nاضغط الزر أدناه واضغط ▶️ لتشغيل البث الصوتي فوراً:`,
+        [
+          [{ text: '🚀 تشغيل محرّك البث الآن', url: colabUrl }],
+          [{ text: '🎙️ لوحة البث', callback_data: 'admin:voice' }]
+        ]
+      );
     }
   }
 
@@ -7980,7 +7983,7 @@ export class TelegramBotManager {
     );
 
     // إذا كان مساعد المكالمات الحقيقي متصلاً بالمكالمة الآن، يصعد بالمكالمة مباشرة دون إغراق المحادثة بملف صوتي مكرر!
-    if (this.isVoiceAssistantActive()) {
+    if (this.isVoiceAssistantActive(session.chatId)) {
       return true;
     }
 
@@ -8003,7 +8006,7 @@ export class TelegramBotManager {
 
   /** رسم أو تحديث لوحة التحكم بالمكالمة الصوتية في القناة/الكروب */
   private async paintMusicCallSession(session: MQ.MusicCallSession, sendFreshIfMissing = true): Promise<void> {
-    const view = MQ.renderMusicCallView(session, Date.now(), this.isVoiceAssistantActive());
+    const view = MQ.renderMusicCallView(session, Date.now(), this.isVoiceAssistantActive(session.chatId));
     const fullText = await this.withBotFooter(view.text, true);
     if (session.controlMessageId) {
       const edited = await this.editMessageText(
@@ -8082,12 +8085,12 @@ export class TelegramBotManager {
     session.inviteLink = await this.resolveChatJoinTarget(message.chat);
     this.musicCalls.set(chatId, session);
 
-    if (!this.isVoiceAssistantActive() && this.ownerId && message.chat.type !== 'private') {
+    if (!this.isVoiceAssistantActive(chatId) && this.ownerId && message.chat.type !== 'private') {
       await this.sendMessage(
         this.ownerId,
-        `🎙️ *لتصعيد المساعد فعلياً داخل المكالمة الصوتية:*\n` +
-          `تيليجرام تمنع حسابات البوتات من دخول المكالمات، وتحتاج ربط *حساب المساعد* لمرة واحدة من الزر أدناه 👇`,
-        [[{ text: '🎙️ إعداد مساعد المكالمات الصوتية', callback_data: 'admin:voice' }]]
+        `🎙️ *لبث الأغاني داخل مكالمة القناة مباشرة (بدون حساب ثاني):*\n` +
+          `اضغط الزر أدناه وأدخل مفتاح البث (*Stream Key*) من إعدادات البث المباشر بالقناة 👇`,
+        [[{ text: '🎙️ إعداد بث المكالمات (RTMP)', callback_data: 'admin:voice' }]]
       );
     }
 
@@ -10278,7 +10281,7 @@ export class TelegramBotManager {
     return [
       [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
       [{ text: '🖼️ تثبيت وإرسال لوغو البوت (1024×1024)', callback_data: 'admin:avatar' }],
-      [{ text: '🎙️ مساعد المكالمات الصوتية', callback_data: 'admin:voice' }],
+      [{ text: '🎙️ بث المكالمات بالقنوات', callback_data: 'admin:voice' }],
       [{ text: '📊 إحصائيات الألعاب', callback_data: 'gstat:main' }],
       [
         { text: `👥 المستخدمون (${users.length})`, callback_data: 'admin:list:all:0' },
