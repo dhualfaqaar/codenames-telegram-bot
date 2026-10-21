@@ -1,16 +1,6 @@
 import { toV2 } from './groupGamesEngine';
 import type { SongSearchHit } from './mediaServicesEngine';
 
-/**
- * 🎙️ محرك المكالمات الصوتية وقائمة التشغيل الذكية في القنوات والمجموعات
- *
- * - أمر: «تشغيل + اسم الأغنية»
- * - يثبّت الأغنية الشغّالة حالياً دون قطعها، ويضيف الأغاني الجديدة بالترتيب في قائمة الانتظار.
- * - ينتقل تلقائياً للأغنية التالية فور انتهاء مدة الأغنية الحالية.
- * - أزرار التحكم (⏮️ رجوع | ⏸️ توقيف / ▶️ تشغيل | ⏭️ تقديم) مقفولة حصرياً لصاحب الأمر الأصلي.
- * - التوقيف يحفظ الثانية الدقيقة التي توقفت عندها الأغنية ويكمل منها تماماً عند الاستئناف.
- */
-
 export interface QueuedTrack {
   id: string;
   hit: SongSearchHit;
@@ -24,7 +14,7 @@ export interface QueuedTrack {
 export interface MusicCallSession {
   chatId: string;
   chatTitle: string;
-  /** معرف صاحب الأمر المسموح له وحده باستخدام الأزرار (فقط هو!) */
+  inviteLink?: string;
   ownerId: string;
   ownerName: string;
   ownerSignature?: string;
@@ -32,14 +22,11 @@ export interface MusicCallSession {
   current: QueuedTrack | null;
   queue: QueuedTrack[];
   history: QueuedTrack[];
-  /** الثانية المتراكمة قبل آخر إيقاف مؤقت */
   elapsedBeforePauseSec: number;
-  /** لحظة بدء/استئناف التشغيل بالملي ثانية */
   startedAtMs: number;
-  /** الموعد التلقائي لانتهاء الأغنية الحالية والانتقال للي بعدها */
   trackEndAt?: number;
-  /** رقم رسالة لوحة التحكم الحية في القناة/الكروب */
   controlMessageId?: number;
+  actionSeq: number;
   createdAt: number;
 }
 
@@ -50,10 +37,6 @@ export function formatSecMMSS(secRaw: number): string {
   return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
 }
 
-/**
- * يقص بايتات ملف MP3 بدقة عند أقرب إطار صوتي متزامن (MPEG Frame Sync 0xFF 0xE0)
- * ليبدأ التشغيل فعلياً من الثانية التي أُوقِفت عندها الأغنية تماماً دون الحاجة لـ FFmpeg!
- */
 export function sliceMp3BytesFromOffset(
   bytes: Uint8Array,
   offsetSec: number,
@@ -63,7 +46,6 @@ export function sliceMp3BytesFromOffset(
     return bytes;
   }
   let audioStart = 0;
-  // تخطي ترويسة ID3v2 إن وُجدت في بداية الملف
   if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33 && bytes.byteLength > 10) {
     const id3Size =
       ((bytes[6] & 0x7f) << 21) |
@@ -77,7 +59,6 @@ export function sliceMp3BytesFromOffset(
   const ratio = Math.min(0.95, Math.max(0, offsetSec / totalDurationSec));
   let pos = audioStart + Math.floor(ratio * audioLen);
 
-  // محاذاة المؤشر مع أول ترويسة إطار MPEG صالح (11-bit sync word)
   const scanLimit = Math.min(bytes.byteLength - 4, pos + 8192);
   while (pos < scanLimit) {
     if (bytes[pos] === 0xff && (bytes[pos + 1] & 0xe0) === 0xe0 && (bytes[pos + 1] & 0x06) !== 0x00) {
@@ -132,22 +113,22 @@ export function createMusicCallSession(
     elapsedBeforePauseSec: 0,
     startedAtMs: now,
     trackEndAt: now + firstTrack.durationSec * 1000,
+    actionSeq: 1,
     createdAt: now
   };
 }
 
-/** يضيف أغنية جديدة للانتظار بالترتيب دون قطع الأغنية الشغّالة أبداً */
 export function enqueueTrackSmart(session: MusicCallSession, track: QueuedTrack): number {
   session.queue.push(track);
   return session.queue.length;
 }
 
-/** تبديل التوقيف المؤقت / الاستئناف من نفس الثانية بالضبط */
 export function togglePauseMusicSession(
   session: MusicCallSession,
   now = Date.now()
 ): { status: 'playing' | 'paused'; atSec: number } {
   if (!session.current) return { status: 'paused', atSec: 0 };
+  session.actionSeq = (session.actionSeq || 0) + 1;
 
   if (session.status === 'playing') {
     const atSec = getCurrentElapsedSec(session, now);
@@ -167,14 +148,14 @@ export function togglePauseMusicSession(
   return { status: 'playing', atSec: resumeFrom };
 }
 
-/** تقديم للأغنية التالية في قائمة الانتظار */
 export function skipNextMusicSession(
   session: MusicCallSession,
   now = Date.now()
 ): { ok: boolean; track?: QueuedTrack; reason?: string } {
   if (!session.queue.length) {
-    return { ok: false, reason: 'ℹ️ ماكو أغنية تالية بقائمة الانتظار حالياً!' };
+    return { ok: false, reason: 'ماكو أغنية تالية بالانتظار!' };
   }
+  session.actionSeq = (session.actionSeq || 0) + 1;
   if (session.current) {
     session.history.push(session.current);
     if (session.history.length > 25) session.history.shift();
@@ -188,22 +169,23 @@ export function skipNextMusicSession(
   return { ok: true, track: next };
 }
 
-/** رجوع للأغنية السابقة مع إبقاء الأغنية الحالية بأول قائمة الانتظار حتى لا يضيع الترتيب */
 export function stepPrevMusicSession(
   session: MusicCallSession,
   now = Date.now()
 ): { ok: boolean; track?: QueuedTrack; restartedSame?: boolean; reason?: string } {
   if (!session.history.length) {
     if (session.current && getCurrentElapsedSec(session, now) > 5) {
+      session.actionSeq = (session.actionSeq || 0) + 1;
       session.elapsedBeforePauseSec = 0;
       session.startedAtMs = now;
       session.status = 'playing';
       session.trackEndAt = now + session.current.durationSec * 1000;
       return { ok: true, track: session.current, restartedSame: true };
     }
-    return { ok: false, reason: 'ℹ️ ماكو أغنية سابقة للرجوع إليها!' };
+    return { ok: false, reason: 'ماكو أغنية سابقة!' };
   }
 
+  session.actionSeq = (session.actionSeq || 0) + 1;
   const prev = session.history.pop()!;
   if (session.current) {
     session.queue.unshift(session.current);
@@ -216,11 +198,11 @@ export function stepPrevMusicSession(
   return { ok: true, track: prev };
 }
 
-/** الانتقال التلقائي عند انتهاء مدة الأغنية الشغّالة */
 export function advanceMusicOnTrackEnd(
   session: MusicCallSession,
   now = Date.now()
 ): { startedNext: QueuedTrack | null; finishedAll: boolean } {
+  session.actionSeq = (session.actionSeq || 0) + 1;
   if (session.current) {
     session.history.push(session.current);
     if (session.history.length > 25) session.history.shift();
@@ -232,7 +214,7 @@ export function advanceMusicOnTrackEnd(
     session.elapsedBeforePauseSec = 0;
     session.startedAtMs = now;
     session.trackEndAt = now + next.durationSec * 1000;
-    return { startedNext: next, finishedAll: false };
+    return { startedNext: next, finishedAll: true && false };
   }
 
   session.current = null;
@@ -241,21 +223,19 @@ export function advanceMusicOnTrackEnd(
   return { startedNext: null, finishedAll: true };
 }
 
-/** رسم لوحة البث والمكالمة الصوتية بصيغة MarkdownV2 سليمة 100٪ مع وضع اسم صاحب الأمر داخل اقتباس */
 export function renderMusicCallView(
   session: MusicCallSession,
-  now = Date.now()
+  now = Date.now(),
+  assistantConnected = false
 ): { text: string; keyboard: any[][] } {
   const SEP = '━━━━━━━━━━━━━━━━━━━';
   const ownerQuote = `> | *${session.ownerName}* |`;
 
   if (session.status === 'ended' || !session.current) {
     const endedRaw =
-      `🎙️ *انتهى البث الصوتي في المكالمة*\n` +
+      `🎙️ *انتهى التشغيل*\n` +
       `${SEP}\n` +
-      `👤 *المتحكم بالجلسة:*\n${ownerQuote}\n\n` +
-      `✅ اكتمل تشغيل جميع الأغاني في قائمة الانتظار بالترتيب.\n` +
-      `💡 للتشغيل من جديد أرسل: *تشغيل + اسم الأغنية*`;
+      `👤 *بأمر:*\n${ownerQuote}`;
     return { text: toV2(endedRaw), keyboard: [] };
   }
 
@@ -263,30 +243,27 @@ export function renderMusicCallView(
   const elapsed = getCurrentElapsedSec(session, now);
   const stateLine =
     session.status === 'playing'
-      ? `🔴 *الحالة:* يصعد البوت بالمكالمة ويشغّل الآن`
-      : `⏸️ *الحالة:* متوقفة مؤقتاً عند الدقيقة *${formatSecMMSS(elapsed)}*`;
+      ? assistantConnected
+        ? `🔴 *في المكالمة الآن*`
+        : `▶️ *قيد التشغيل الآن*`
+      : `⏸️ *متوقفة عند ${formatSecMMSS(elapsed)}*`;
 
   const queueBlock =
     session.queue.length > 0
-      ? `\n📋 *قائمة الانتظار بالترتيب (${session.queue.length}):*\n` +
+      ? `\n\n📋 *التالية (${session.queue.length}):*\n` +
         session.queue
-          .slice(0, 6)
+          .slice(0, 5)
           .map((q, idx) => `${idx + 1}. 🎵 ${q.title} (${q.durationLabel})`)
-          .join('\n') +
-        (session.queue.length > 6 ? `\n… +${session.queue.length - 6} أغاني أخرى بالترتيب` : '')
-      : `\n📋 *قائمة الانتظار:* فارغة — أرسل «تشغيل + اسم أغنية» لإضافتها بالترتيب دون قطع الأغنية الحالية`;
+          .join('\n')
+      : '';
 
   const raw =
-    `🎙️ *مشغّل المكالمة الصوتية والبث المباشر*\n` +
+    `🎙️ *المشغّل الصوتي* — ${stateLine}\n` +
     `${SEP}\n` +
-    `${stateLine}\n` +
-    `🎵 *الأغنية الشغّالة:* ${cur.title}\n` +
-    `🎤 *الفنان:* ${cur.artist}\n` +
-    `⏱️ *المؤشر:* ${buildProgressBar(elapsed, cur.durationSec)}\n\n` +
-    `👤 *صاحب الأمر والمتحكم الوحيد:*\n${ownerQuote}` +
-    `${queueBlock}\n` +
-    `${SEP}\n` +
-    `⚠️ _ملاحظة: تأكد من منح البوت صلاحية «إدارة البثوث المباشرة» في القناة/الكروب._`;
+    `🎵 *${cur.title}* — ${cur.artist}\n` +
+    `⏱️ ${buildProgressBar(elapsed, cur.durationSec)}\n` +
+    `👤 *بأمر:*\n${ownerQuote}` +
+    `${queueBlock}`;
 
   const middleBtn =
     session.status === 'playing'

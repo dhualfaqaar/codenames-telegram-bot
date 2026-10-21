@@ -13,6 +13,7 @@ import * as MS from '../src/services/mediaServicesEngine';
 import * as ARX from '../src/services/arenaGamesEngine';
 import * as TRN from '../src/services/tournamentEngine';
 import * as MQ from '../src/services/musicQueueEngine';
+import * as EXT from '../src/services/extraToolsEngine';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
 function encodeHiddenTag(payload: string): string {
@@ -948,6 +949,17 @@ export class TelegramBotManager {
   private mediaSessionMsgs: Map<string, number[]> = new Map();
   private activeDownloadSlots: number = 0;
   private waitingDownloadResolvers: Array<() => void> = [];
+  private rouletteSessions: Map<string, EXT.RouletteSession> = new Map();
+  private privateRouletteLists: Map<string, string[]> = new Map();
+  private pendingRouletteText: Set<string> = new Set();
+  private pendingAgeCalc: Set<string> = new Set();
+  private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
+  private pendingVocalSep: Set<string> = new Set();
+  private voiceAssistantSession: string = '';
+  private voiceAssistantName: string = '';
+  private voiceAuthStep: string = '';
+  private voiceAuthData: { phone?: string; code?: string; password?: string } = {};
+  private voiceBridgeHeartbeatAt: number = 0;
   private songSearches: Map<string, MS.SongSearchHit[]> = new Map();
   private lastInlineDeployer?: { id: string; at: number };
   private commandsSyncVer: number = 0;
@@ -1584,6 +1596,17 @@ export class TelegramBotManager {
       whispers: Array.from(this.whispers.entries()).slice(-300),
       pendingWhispers: Array.from(this.pendingWhispers.entries()),
       pendingSocialDl: Array.from(this.pendingSocialDl.entries()),
+      rouletteSessions: Array.from(this.rouletteSessions.entries()).slice(-200),
+      privateRouletteLists: Array.from(this.privateRouletteLists.entries()).slice(-200),
+      pendingRouletteText: Array.from(this.pendingRouletteText.values()),
+      pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
+      pendingConvert: Array.from(this.pendingConvert.entries()),
+      pendingVocalSep: Array.from(this.pendingVocalSep.values()),
+      voiceAssistantSession: this.voiceAssistantSession,
+      voiceAssistantName: this.voiceAssistantName,
+      voiceAuthStep: this.voiceAuthStep,
+      voiceAuthData: this.voiceAuthData,
+      voiceBridgeHeartbeatAt: this.voiceBridgeHeartbeatAt,
       songSearches: Array.from(this.songSearches.entries()).slice(-200),
       commandsSyncVer: this.commandsSyncVer,
       pendingChannelGame: Array.from(this.pendingChannelGame.entries())
@@ -1626,6 +1649,17 @@ export class TelegramBotManager {
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
     if (Array.isArray(state.pendingWhispers)) this.pendingWhispers = new Map(state.pendingWhispers);
     if (Array.isArray(state.pendingSocialDl)) this.pendingSocialDl = new Map(state.pendingSocialDl);
+    if (Array.isArray(state.rouletteSessions)) this.rouletteSessions = new Map(state.rouletteSessions);
+    if (Array.isArray(state.privateRouletteLists)) this.privateRouletteLists = new Map(state.privateRouletteLists);
+    if (Array.isArray(state.pendingRouletteText)) this.pendingRouletteText = new Set(state.pendingRouletteText);
+    if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
+    if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
+    if (Array.isArray(state.pendingVocalSep)) this.pendingVocalSep = new Set(state.pendingVocalSep);
+    if (typeof state.voiceAssistantSession === 'string') this.voiceAssistantSession = state.voiceAssistantSession;
+    if (typeof state.voiceAssistantName === 'string') this.voiceAssistantName = state.voiceAssistantName;
+    if (typeof state.voiceAuthStep === 'string') this.voiceAuthStep = state.voiceAuthStep;
+    if (state.voiceAuthData && typeof state.voiceAuthData === 'object') this.voiceAuthData = state.voiceAuthData;
+    if (typeof state.voiceBridgeHeartbeatAt === 'number') this.voiceBridgeHeartbeatAt = state.voiceBridgeHeartbeatAt;
     if (Array.isArray(state.songSearches)) this.songSearches = new Map(state.songSearches);
     if (typeof state.commandsSyncVer === 'number') this.commandsSyncVer = state.commandsSyncVer;
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
@@ -1929,6 +1963,28 @@ export class TelegramBotManager {
       return;
     }
 
+    // 🔄 استقبال الوسائط والملفات المرسلة بالخاص لخدمة «تحويل الصيغ» أو «عزل الموسيقى»
+    if (message.chat.type === 'private' && sender) {
+      const mUid = String(sender.id);
+      const hasMedia = Boolean(
+        message.video ||
+          message.audio ||
+          message.voice ||
+          message.photo ||
+          message.sticker ||
+          message.animation ||
+          message.document
+      );
+      if (hasMedia && this.pendingVocalSep.has(mUid)) {
+        await this.handleVocalSeparationMediaInput(mUid, message);
+        return;
+      }
+      if (hasMedia && this.pendingConvert.has(mUid)) {
+        await this.handleFormatConvertMediaInput(mUid, message);
+        return;
+      }
+    }
+
     if (!text) {
       // صور / ملصقات / صوتيات — توصل لصاحب البوت هم، وما يجي العضو أي رد.
       if (message.chat.type === 'private' && sender && !this.isOwner(sender.id)) {
@@ -1951,15 +2007,31 @@ export class TelegramBotManager {
       return;
     }
 
-    // 🤫 إكمال خطوات إنشاء همسة بالخاص + 📥 استقبال رابط التحميل من السوشيال ميديا بالخاص
+    // 🤫 إكمال خطوات الخدمات الإضافية بالخاص
     if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
       const uid = String(sender.id);
+      if (this.isOwner(sender.id) && this.voiceAuthStep.startsWith('wait_')) {
+        await this.handleOwnerVoiceAuthInput(uid, text);
+        return;
+      }
       if (this.pendingWhispers.has(uid)) {
         await this.handleWhisperTextStep(uid, sender, text);
         return;
       }
       if (this.pendingSocialDl.has(uid)) {
         await this.handleSocialDownloadInput(uid, text, message.message_id);
+        return;
+      }
+      if (this.pendingAgeCalc.has(uid)) {
+        await this.handleAgeCalcTextInput(uid, text);
+        return;
+      }
+      if (this.pendingRouletteText.has(uid)) {
+        await this.handlePrivateRouletteTextInput(uid, text);
+        return;
+      }
+      if (this.pendingVocalSep.has(uid)) {
+        await this.handleVocalSeparationTextInput(uid, text, message.message_id);
         return;
       }
       if (this.pendingClosestNum.has(uid)) {
@@ -2288,6 +2360,32 @@ export class TelegramBotManager {
         return;
       }
 
+      if (data === 'admin:voice') {
+        await this.answerCallbackQuery(cb.id, '');
+        await this.sendVoiceAssistantPanel(chatId, messageId);
+        return;
+      }
+      if (data === 'admin:voice_login') {
+        this.voiceAuthStep = 'wait_phone';
+        this.voiceAuthData = {};
+        await this.answerCallbackQuery(cb.id, '');
+        await this.sendMessage(
+          chatId,
+          `📱 *ربط حساب المساعد للمكالمات*\nأرسل رقم الهاتف مع رمز الدولة — مثال: \`+9647700000000\``,
+          [[{ text: '🔙 رجوع', callback_data: 'admin:voice' }]]
+        );
+        return;
+      }
+      if (data === 'admin:voice_reset') {
+        this.voiceAssistantSession = '';
+        this.voiceAssistantName = '';
+        this.voiceAuthStep = '';
+        this.voiceAuthData = {};
+        await this.answerCallbackQuery(cb.id, 'تم مسح جلسة المساعد.');
+        await this.sendVoiceAssistantPanel(chatId, messageId);
+        return;
+      }
+
       await this.answerCallbackQuery(cb.id, '');
       return;
     }
@@ -2304,13 +2402,21 @@ export class TelegramBotManager {
       return;
     }
 
-    // ---- ✨ الخدمات الإضافية + الهمسات + تحميل السوشيال ميديا + الأغاني ----
+    // ---- 🎰 سحب الروليت بالقنوات والكروبات ----
+    if (data.startsWith('rlt:')) {
+      await this.handleRouletteChannelCb(cb, data);
+      return;
+    }
+
+    // ---- ✨ الخدمات الإضافية ----
     if (
       data.startsWith('svc:') ||
       data.startsWith('wh:') ||
       data.startsWith('dl:') ||
       data.startsWith('ytq:') ||
-      data.startsWith('yts:')
+      data.startsWith('yts:') ||
+      data.startsWith('rltl:') ||
+      data.startsWith('conv:')
     ) {
       await this.handleExtraServicesCb(cb, data);
       return;
@@ -3430,6 +3536,31 @@ export class TelegramBotManager {
         ]);
         return;
       }
+    }
+
+    // ── 🎰 روليت السحب للقنوات والكروبات والمحادثات ──
+    if (q === 'roulette' || q.includes('روليت')) {
+      const rltId = Date.now().toString(36).slice(-5) + Math.random().toString(36).substring(2, 5);
+      const creatorName = iq.from
+        ? `${iq.from.first_name}${iq.from.last_name ? ` ${iq.from.last_name}` : ''}`
+        : 'منظّم السحب';
+      const sess = EXT.createRouletteSession(rltId, '', deployerId, creatorName);
+      this.rouletteSessions.set(rltId, sess);
+      const rendered = EXT.renderRouletteChannelView(sess);
+      await this.answerInlineQuery(iq.id, [
+        {
+          type: 'article',
+          id: `rlt:${rltId}`,
+          title: '🎰 نشر سحب الروليت العشوائي',
+          description: 'اضغط لنشر لوحة المشاركة والسحب العشوائي في القناة أو الكروب',
+          input_message_content: {
+            message_text: rendered.text,
+            parse_mode: 'MarkdownV2'
+          },
+          reply_markup: { inline_keyboard: rendered.keyboard }
+        }
+      ]);
+      return;
     }
 
     // ── 🏆 نظام البطولات والدوريات الإقصائية (trn <discipline> <8|16|32>) ──
@@ -6356,6 +6487,10 @@ export class TelegramBotManager {
     if (data.startsWith('svc:')) {
       this.pendingWhispers.delete(userId);
       this.pendingSocialDl.delete(userId);
+      this.pendingAgeCalc.delete(userId);
+      this.pendingRouletteText.delete(userId);
+      this.pendingConvert.delete(userId);
+      this.pendingVocalSep.delete(userId);
     }
 
     // ── القائمة الرئيسية للخدمات الأخرى ──
@@ -6363,11 +6498,21 @@ export class TelegramBotManager {
       const text =
         `✨ *خدمات أخرى*\n` +
         `${SEP}\n` +
-        `اختر الخدمة التي تريد استخدامها 👇`;
+        `اختر الخدمة 👇`;
       const keyboard = [
-        [{ text: '🤫 همسة', callback_data: 'svc:whisper' }],
-        [{ text: '📥 تحميل من السوشيال ميديا', callback_data: 'svc:dl' }],
-        [{ text: '🎵 الأغاني', callback_data: 'svc:songs' }],
+        [
+          { text: '🤫 همسة', callback_data: 'svc:whisper' },
+          { text: '📥 تحميل سوشيال', callback_data: 'svc:dl' }
+        ],
+        [
+          { text: '🎵 الأغاني', callback_data: 'svc:songs' },
+          { text: '🎰 روليت', callback_data: 'svc:roulette' }
+        ],
+        [
+          { text: '🔄 تحويل الصيغ', callback_data: 'svc:convert' },
+          { text: '🎼 عزل الموسيقى', callback_data: 'svc:vocal' }
+        ],
+        [{ text: '🎂 حساب العمر', callback_data: 'svc:age' }],
         [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
       ];
       if (messageId) await this.editMessageText(chatId, messageId, await this.withBotFooter(text), keyboard);
@@ -6586,28 +6731,899 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── شرح خدمة الأغاني والمكالمات الصوتية («تشغيل» + «يوت») ──
+    // ── خدمة الأغاني والمكالمات (مختصرة ومباشرة بدون أي حشو) ──
     if (data === 'svc:songs') {
       const text =
-        `🎵 *الأغاني والمكالمات الصوتية بالقنوات والكروبات*\n` +
+        `🎵 *الأغاني والمكالمات*\n` +
         `${SEP}\n` +
-        `1️⃣ *أمر البث بالمكالمة وقائمة الانتظار الذكية:*\n` +
-        `اكتب بالقناة أو الكروب:\n` +
-        `\`تشغيل كاظم الساهر كتاب الحب\`\n` +
-        `• يصعد البوت للمكالمة ويشغّل الأغنية فوراً مع لوحة تحكم تفاعلية.\n` +
-        `• إذا أرسلت بعدها \`تشغيل + أغنية ثانية\` ثم \`تشغيل + أغنية ثالثة\` تبقى الأغنية الحالية *ثابتة بمكانها* بدون قطع، وتنضاف الأغاني الجديدة بالترتيب وتشتغل تلقائياً وحدة ورا الثانية من تخلص اللي قبلها!\n` +
-        `• أزرار التحكم بالقناة: *⏮️ رجوع* | *⏸️ توقيف / ▶️ تشغيل* (يكمل من نفس اللحظة اللي وقفت بيها!) | *⏭️ تقديم* — *ومقفولة حصرياً للي كتب الأمر نفسه فقط* 🔒\n\n` +
-        `⚠️ *ملاحظة مهمة جداً:*\n` +
-        `*لازم تعطي البوت صلاحية «إدارة البثوث المباشرة» (إدارة المحادثات المرئية) ضمن صلاحيات المشرفين بالقناة أو الكروب حتى يصعد البوت للمكالمة ويشغّل البث الصوتي!*\n` +
-        `${SEP}\n` +
-        `2️⃣ *البحث السريع وتحميل ملف الأغنية:*\n` +
-        `اكتب كلمة *يوت* وبعدها اسم الأغنية، مثل:\n` +
-        `\`يوت فيروز نسم علينا الهوى\``;
+        `🎙️ *بالمكالمة:* \`تشغيل\` + اسم الأغنية\n` +
+        `🔎 *تحميل أغنية:* \`يوت\` + اسم الأغنية`;
       const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
       await this.answerCallbackQuery(cb.id, '');
       return;
+    }
+
+    // ── 🎰 الروليت (سحب القنوات التفاعلي + قرعة الأسماء السريعة) ──
+    if (data === 'svc:roulette') {
+      const text =
+        `🎰 *الروليت*\n` +
+        `${SEP}\n` +
+        `اختر نوع الروليت 👇`;
+      const keyboard = [
+        [{ text: '📢 نشر روليت بالقناة أو الكروب', switch_inline_query: 'roulette' }],
+        [{ text: '📝 قرعة أسماء سريعة', callback_data: 'svc:roulette_list' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data === 'svc:roulette_list') {
+      this.pendingRouletteText.add(userId);
+      const text =
+        `📝 *قرعة أسماء سريعة*\n` +
+        `${SEP}\n` +
+        `أرسل الأسماء أو الخيارات (كل اسم بسطر أو بينها فواصل) 👇`;
+      const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:roulette' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data === 'rltl:spin') {
+      const saved = this.privateRouletteLists.get(userId);
+      if (!saved || saved.length < 2) {
+        await this.answerCallbackQuery(cb.id, 'أرسل قائمة الأسماء أولاً.', true);
+        return;
+      }
+      const winner = EXT.pickRandomFromChoices(saved);
+      await this.answerCallbackQuery(cb.id, `🎉 الفائز: ${winner}`);
+      const text =
+        `🎰 *نتيجة الروليت*\n` +
+        `${SEP}\n` +
+        `👥 العدد: *${saved.length}*\n` +
+        `🏆 *الفائز:* *${this.mdSafe(winner)}*`;
+      const keyboard = [
+        [{ text: '🔄 تدوير مرة ثانية', callback_data: 'rltl:spin' }],
+        [{ text: '📝 قائمة جديدة', callback_data: 'svc:roulette_list' }],
+        [{ text: '🔙 خدمات أخرى', callback_data: 'svc:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      return;
+    }
+
+    // ── 🔄 تحويل الصيغ ──
+    if (data === 'svc:convert') {
+      this.pendingConvert.set(userId, { fileId: '', kind: 'waiting' });
+      const text =
+        `🔄 *تحويل الصيغ*\n` +
+        `${SEP}\n` +
+        `أرسل الآن الملف الذي تريد تحويله هنا بالمحادثة:\n` +
+        `• 🎬 فيديو ⬅️ صوت / بصمة / GIF\n` +
+        `• 🎵 أغنية ⇄ 🎙️ بصمة صوتية\n` +
+        `• 🖼️ صورة ⇄ ✨ ملصق / 📑 PDF\n` +
+        `• 🎞️ متحركة GIF ⬅️ 🎬 فيديو`;
+      const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data.startsWith('conv:')) {
+      await this.executeFormatConversion(cb, data.slice(5));
+      return;
+    }
+
+    // ── 🎼 عزل الموسيقى عن الأغنية ──
+    if (data === 'svc:vocal') {
+      this.pendingVocalSep.add(userId);
+      const text =
+        `🎼 *عزل الموسيقى عن الأغنية*\n` +
+        `${SEP}\n` +
+        `أرسل الآن *ملف الأغنية / الفيديو / البصمة* أو اكتب *اسم الأغنية* ليتم فصل الصوت عن الموسيقى 👇`;
+      const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    // ── 🎂 حساب العمر ──
+    if (data === 'svc:age') {
+      this.pendingAgeCalc.add(userId);
+      const text =
+        `🎂 *حساب العمر*\n` +
+        `${SEP}\n` +
+        `أرسل تاريخ ميلادك — مثال: \`15/8/2003\` 👇`;
+      const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+  }
+
+  /** هل خادم مساعد المكالمات الحقيقي متصل الآن وجاهز للصعود بالمكالمة؟ */
+  private isVoiceAssistantActive(): boolean {
+    return Boolean(
+      this.voiceAssistantSession &&
+        this.voiceBridgeHeartbeatAt > 0 &&
+        Date.now() - this.voiceBridgeHeartbeatAt < 45_000
+    );
+  }
+
+  private isVoiceRunnerAlive(): boolean {
+    return this.voiceBridgeHeartbeatAt > 0 && Date.now() - this.voiceBridgeHeartbeatAt < 45_000;
+  }
+
+  /** استخراج رابط دعوة للقناة أو الكروب تلقائياً ليتمكن حساب المساعد من الدخول والصعود بالمكالمة */
+  private async resolveChatJoinTarget(chat: TelegramChat): Promise<string> {
+    if (chat.username) return `@${chat.username}`;
+    if (!this.token) return '';
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${this.token}/exportChatInviteLink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chat.id })
+      });
+      const j: any = await r.json();
+      if (j?.ok && typeof j.result === 'string') return j.result;
+    } catch {
+      // ignore
+    }
+    return '';
+  }
+
+  /** نقطة التزامن الحية مع مساعد المكالمات الصوتية (PyTgCalls + Kurigram) */
+  public async handleVoiceSyncRequest(payload: any): Promise<any> {
+    this.voiceBridgeHeartbeatAt = Date.now();
+    const op = String(payload?.op || 'poll');
+
+    if (op === 'auth_update') {
+      const status = String(payload?.status || '');
+      if (status === 'code_sent') {
+        this.voiceAuthStep = 'wait_code';
+        if (this.ownerId) {
+          await this.sendMessage(
+            this.ownerId,
+            `📩 *وصل كود التفعيل على حساب المساعد!*\nأرسل الكود الآن (يفضّل بمسافة مثل: \`1 2 3 4 5\`) 👇`
+          );
+        }
+      } else if (status === 'need_2fa') {
+        this.voiceAuthStep = 'wait_2fa';
+        if (this.ownerId) {
+          await this.sendMessage(this.ownerId, `🔐 *الحساب محمي بالتحقق بخطوتين* — أرسل كلمة المرور الآن:`);
+        }
+      } else if (status === 'connected') {
+        this.voiceAssistantSession = String(payload?.sessionString || '');
+        this.voiceAssistantName = String(payload?.assistantName || 'حساب المساعد');
+        this.voiceAuthStep = '';
+        this.voiceAuthData = {};
+        if (this.ownerId) {
+          await this.sendMessage(
+            this.ownerId,
+            `✅ *تم ربط حساب المساعد بنجاح!*\n👤 الحساب: *${this.mdSafe(this.voiceAssistantName)}*\n🎙️ الآن عند كتابة \`تشغيل + اسم الأغنية\` في أي قناة أو كروب سيصعد المساعد للمكالمة الصوتية فوراً!`
+          );
+        }
+      } else if (status === 'error') {
+        this.voiceAuthStep = '';
+        this.voiceAuthData = {};
+        if (this.ownerId) {
+          await this.sendMessage(
+            this.ownerId,
+            `⚠️ تعذّر تسجيل دخول المساعد: \`${this.mdSafe(String(payload?.message || 'خطأ'))}\``,
+            [[{ text: '🔄 إعادة المحاولة', callback_data: 'admin:voice_login' }]]
+          );
+        }
+      }
+      return { ok: true };
+    }
+
+    if (op === 'track_ended' && payload?.chatId) {
+      const cid = String(payload.chatId);
+      const sess = this.musicCalls.get(cid);
+      if (sess && sess.status === 'playing') {
+        const adv = MQ.advanceMusicOnTrackEnd(sess);
+        if (adv.startedNext) {
+          await this.prepareTrackStreamUrl(sess, adv.startedNext);
+        }
+        await this.paintMusicCallSession(sess, false);
+      }
+      return { ok: true };
+    }
+
+    const activeSessions: any[] = [];
+    for (const sess of this.musicCalls.values()) {
+      if (!sess.current && sess.status === 'ended') continue;
+      activeSessions.push({
+        chatId: sess.chatId,
+        inviteLink: sess.inviteLink || '',
+        status: sess.status,
+        actionSeq: sess.actionSeq || 1,
+        trackId: sess.current?.id || '',
+        streamUrl: sess.current?.streamUrl || sess.current?.hit?.directAudioUrl || '',
+        ytQuery: `${sess.current?.title || ''} ${sess.current?.artist || ''}`.trim(),
+        title: sess.current?.title || '',
+        offsetSec: MQ.getCurrentElapsedSec(sess)
+      });
+    }
+
+    return {
+      ok: true,
+      sessionString: this.voiceAssistantSession,
+      auth: {
+        step: this.voiceAuthStep,
+        ...this.voiceAuthData
+      },
+      sessions: activeSessions
+    };
+  }
+
+  /** لوحة إعداد مساعد المكالمات الصوتية للمالك */
+  private async sendVoiceAssistantPanel(chatId: string, messageId?: number) {
+    const colabUrl =
+      'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
+    const runnerUp = this.isVoiceRunnerAlive();
+    const callReady = this.isVoiceAssistantActive();
+
+    const statusLine = callReady
+      ? `🟢 *الحالة:* متصل وجاهز للصعود بالمكالمات (${this.mdSafe(this.voiceAssistantName || 'المساعد')})`
+      : runnerUp
+        ? `🟡 *الحالة:* المحرّك يعمل — اضغط «ربط حساب المساعد» أدناه لإدخال الرقم`
+        : `⚪ *الحالة:* غير مشغّل حالياً`;
+
+    const text =
+      `🎙️ *مساعد المكالمات الصوتية بالقنوات*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `${statusLine}\n\n` +
+      `1. اضغط *تشغيل محرّك المكالمات* واضغط زر ▶️ بالصفحة.\n` +
+      `2. اضغط *ربط حساب المساعد* هنا وأدخل الرقم لمرة واحدة فقط.`;
+
+    const keyboard: any[][] = [
+      [{ text: '🚀 1) تشغيل محرّك المكالمات (ضغطة واحدة)', url: colabUrl }],
+      [{ text: '📱 2) ربط حساب المساعد بالرقم', callback_data: 'admin:voice_login' }],
+      [{ text: '🔄 تحديث الحالة', callback_data: 'admin:voice' }]
+    ];
+    if (this.voiceAssistantSession) {
+      keyboard.push([{ text: '🗑️ فصل حساب المساعد الحالي', callback_data: 'admin:voice_reset' }]);
+    }
+    keyboard.push([{ text: '🔙 اللوحة', callback_data: 'admin:panel' }]);
+
+    if (messageId) {
+      const ed = await this.editMessageText(chatId, messageId, text, keyboard);
+      if (ed?.ok) return;
+    }
+    await this.sendMessage(chatId, text, keyboard);
+  }
+
+  private async handleOwnerVoiceAuthInput(uid: string, text: string) {
+    const clean = text.trim();
+    if (this.voiceAuthStep === 'wait_phone') {
+      if (!this.isVoiceRunnerAlive()) {
+        this.voiceAuthData = { phone: clean };
+        this.voiceAuthStep = 'send_code';
+        const colabUrl =
+          'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
+        await this.sendMessage(
+          uid,
+          `⏳ تم حفظ الرقم \`${this.mdSafe(clean)}\` — افتح الرابط واضغط ▶️ ليصلك كود التفعيل فوراً:`,
+          [[{ text: '🚀 تشغيل محرّك المكالمات الآن', url: colabUrl }]]
+        );
+        return;
+      }
+      this.voiceAuthData = { phone: clean };
+      this.voiceAuthStep = 'send_code';
+      await this.sendMessage(uid, `⏳ جاري إرسال كود التفعيل إلى \`${this.mdSafe(clean)}\` ...`);
+      return;
+    }
+    if (this.voiceAuthStep === 'wait_code') {
+      this.voiceAuthData = { ...this.voiceAuthData, code: clean };
+      this.voiceAuthStep = 'verify_code';
+      await this.sendMessage(uid, `⏳ جاري التحقق من الكود وتفعيل المساعد...`);
+      return;
+    }
+    if (this.voiceAuthStep === 'wait_2fa') {
+      this.voiceAuthData = { ...this.voiceAuthData, password: clean };
+      this.voiceAuthStep = 'verify_2fa';
+      await this.sendMessage(uid, `⏳ جاري التحقق من كلمة المرور...`);
+    }
+  }
+
+  private async prepareTrackStreamUrl(session: MQ.MusicCallSession, track: MQ.QueuedTrack) {
+    let payload = await MS.resolveSongAudioPayload(track.hit);
+    if (!payload && !track.hit.videoId.startsWith('sc:')) {
+      payload = await MS.resolveFallbackSongFromSoundCloud(track.hit);
+    }
+    if (payload?.url) {
+      track.streamUrl = payload.url;
+    }
+    return payload;
+  }
+
+  /** معالجة سحب الروليت التفاعلي داخل القنوات والكروبات والرسائل المضمّنة */
+  private async handleRouletteChannelCb(cb: TelegramCallbackQuery, rawData: string) {
+    const parts = rawData.split(':');
+    const action = parts[1] || '';
+    const rltId = parts[2] || '';
+    let sess = this.rouletteSessions.get(rltId);
+
+    if (!sess) {
+      const clickerName = `${cb.from.first_name}${cb.from.last_name ? ` ${cb.from.last_name}` : ''}`.trim();
+      sess = EXT.createRouletteSession(
+        rltId || Date.now().toString(36).slice(-5),
+        String(cb.message?.chat.id || ''),
+        String(cb.from.id),
+        clickerName
+      );
+      this.rouletteSessions.set(sess.id, sess);
+    }
+
+    const uid = String(cb.from.id);
+    const uname = `${cb.from.first_name}${cb.from.last_name ? ` ${cb.from.last_name}` : ''}`.trim();
+
+    if (action === 'join') {
+      const res = EXT.toggleRouletteParticipant(sess, uid, uname);
+      if (!res.ok) {
+        await this.answerCallbackQuery(cb.id, res.reason || 'مغلق', true);
+        return;
+      }
+      await this.answerCallbackQuery(
+        cb.id,
+        res.joined ? '✅ تم تسجيل اسمك بالسحب!' : '↩️ تم انسحابك من السحب.'
+      );
+    } else if (action === 'spin' || action === 'lock') {
+      const isOrganizer = !sess.creatorId || sess.creatorId === uid || this.isOwner(uid);
+      let isAdmin = isOrganizer;
+      if (!isAdmin && cb.message?.chat.id) {
+        const admins = await this.getChatAdministrators(String(cb.message.chat.id));
+        isAdmin = admins.some(a => String(a?.user?.id || '') === uid);
+      }
+      if (!isAdmin) {
+        await this.answerCallbackQuery(cb.id, '⛔ السحب والقفل خاص بمنظّم الروليت فقط!', true);
+        return;
+      }
+
+      if (action === 'lock') {
+        sess.open = !sess.open;
+        await this.answerCallbackQuery(cb.id, sess.open ? '🔓 تم فتح المشاركة' : '🔒 تم قفل المشاركة');
+      } else {
+        const spin = EXT.spinRouletteWinner(sess);
+        if (!spin.ok || !spin.winner) {
+          await this.answerCallbackQuery(cb.id, spin.reason || 'لا يوجد مشاركون!', true);
+          return;
+        }
+        await this.answerCallbackQuery(cb.id, `🎉 الفائز: ${spin.winner.name}`, true);
+      }
+    }
+
+    const view = EXT.renderRouletteChannelView(sess);
+    if (cb.inline_message_id) {
+      await this.editInlineMessageText(cb.inline_message_id, view.text, view.keyboard, 'MarkdownV2');
+    } else if (cb.message?.chat.id && cb.message?.message_id) {
+      await this.editMessageText(
+        String(cb.message.chat.id),
+        cb.message.message_id,
+        view.text,
+        view.keyboard,
+        'MarkdownV2'
+      );
+    }
+  }
+
+  private async handlePrivateRouletteTextInput(uid: string, rawText: string) {
+    const items = EXT.parseRouletteTextChoices(rawText);
+    if (items.length < 2) {
+      await this.sendMessage(uid, '⚠️ أرسل خيارين أو اسمين على الأقل (كل اسم بسطر أو بينها فواصل).');
+      return;
+    }
+    this.pendingRouletteText.delete(uid);
+    this.privateRouletteLists.set(uid, items);
+    const winner = EXT.pickRandomFromChoices(items);
+    await this.sendMessage(
+      uid,
+      `🎰 *نتيجة الروليت*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `👥 العدد: *${items.length}*\n` +
+        `🏆 *الفائز:* *${this.mdSafe(winner)}*`,
+      [
+        [{ text: '🔄 تدوير مرة ثانية', callback_data: 'rltl:spin' }],
+        [{ text: '📝 قائمة جديدة', callback_data: 'svc:roulette_list' }],
+        [{ text: '🔙 خدمات أخرى', callback_data: 'svc:main' }]
+      ]
+    );
+  }
+
+  private async handleAgeCalcTextInput(uid: string, rawText: string) {
+    const res = EXT.calculateExactAge(rawText);
+    if (!res.ok) {
+      await this.sendMessage(uid, res.error || '⚠️ صيغة التاريخ غير صحيحة — مثال: `15/8/2003`', [
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ]);
+      return;
+    }
+    this.pendingAgeCalc.delete(uid);
+    await this.sendMessage(uid, EXT.formatAgeCard(res), [
+      [{ text: '🎂 حساب تاريخ آخر', callback_data: 'svc:age' }],
+      [{ text: '🔙 خدمات أخرى', callback_data: 'svc:main' }]
+    ]);
+  }
+
+  /** تنزيل بايتات أي ملف مرسل إلى تيليجرام عبر getFile */
+  private async downloadTelegramFileBytes(fileId: string): Promise<{ bytes: Uint8Array; filePath: string } | null> {
+    if (!this.token || !fileId) return null;
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${this.token}/getFile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId })
+      });
+      const j: any = await r.json();
+      const filePath = j?.result?.file_path;
+      if (!j?.ok || !filePath) return null;
+      const dl = await fetch(`https://api.telegram.org/file/bot${this.token}/${filePath}`);
+      if (!dl.ok) return null;
+      const bytes = new Uint8Array(await dl.arrayBuffer());
+      return { bytes, filePath: String(filePath) };
+    } catch {
+      return null;
+    }
+  }
+
+  private async sendBinaryMultipart(
+    chatId: string,
+    method: 'sendAudio' | 'sendVoice' | 'sendDocument' | 'sendPhoto' | 'sendSticker' | 'sendVideo' | 'sendAnimation',
+    fieldName: string,
+    bytes: Uint8Array,
+    fileName: string,
+    mimeType: string,
+    extraFields?: Record<string, string>
+  ): Promise<number | null> {
+    if (!this.token) return null;
+    try {
+      const form = new FormData();
+      form.append('chat_id', chatId);
+      form.append(fieldName, new Blob([bytes as unknown as ArrayBuffer], { type: mimeType }), fileName);
+      if (extraFields) {
+        for (const [k, v] of Object.entries(extraFields)) {
+          form.append(k, v);
+        }
+      }
+      const r = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST',
+        body: form
+      });
+      const j: any = await r.json();
+      if (j?.ok) return Number(j?.result?.message_id) || 1;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** استلام الملف المراد تحويل صيغته وعرض الصيغ المتاحة فوراً */
+  private async handleFormatConvertMediaInput(uid: string, msg: TelegramMessage) {
+    let fileId = '';
+    let kind = '';
+
+    if (msg.video) {
+      fileId = msg.video.file_id;
+      kind = 'video';
+    } else if (msg.animation) {
+      fileId = msg.animation.file_id;
+      kind = 'animation';
+    } else if (msg.audio) {
+      fileId = msg.audio.file_id;
+      kind = 'audio';
+    } else if (msg.voice) {
+      fileId = msg.voice.file_id;
+      kind = 'voice';
+    } else if (msg.photo && msg.photo.length) {
+      fileId = msg.photo[msg.photo.length - 1].file_id;
+      kind = 'photo';
+    } else if (msg.sticker) {
+      if (msg.sticker.is_animated) {
+        await this.sendMessage(uid, '⚠️ أرسل ملصقاً ثابتاً أو صورة لتحويلها.');
+        return;
+      }
+      fileId = msg.sticker.file_id;
+      kind = 'sticker';
+    } else if (msg.document) {
+      const mime = String(msg.document.mime_type || '').toLowerCase();
+      fileId = msg.document.file_id;
+      if (mime.startsWith('image/')) kind = 'photo';
+      else if (mime.startsWith('video/')) kind = 'video';
+      else if (mime.startsWith('audio/')) kind = 'audio';
+    }
+
+    if (!fileId || !kind) {
+      await this.sendMessage(uid, '⚠️ أرسل فيديو أو صوتاً أو بصمة أو صورة أو ملصقاً لتحويل صيغته.');
+      return;
+    }
+
+    this.pendingConvert.set(uid, { fileId, kind });
+    this.trackMediaMsg(uid, msg.message_id);
+
+    const optionsByKind: Record<string, any[][]> = {
+      video: [
+        [{ text: '🎵 تحويل إلى ملف صوتي (M4A)', callback_data: 'conv:to_audio' }],
+        [{ text: '🎙️ تحويل إلى بصمة صوتية (Voice)', callback_data: 'conv:to_voice' }],
+        [{ text: '🎞️ تحويل إلى متحركة (GIF)', callback_data: 'conv:to_gif' }]
+      ],
+      animation: [[{ text: '🎬 تحويل المتحركة إلى فيديو (MP4)', callback_data: 'conv:to_video' }]],
+      audio: [
+        [{ text: '🎙️ تحويل الأغنية إلى بصمة صوتية', callback_data: 'conv:to_voice' }],
+        [{ text: '📄 إرسال كملف (Document)', callback_data: 'conv:to_doc_mp3' }]
+      ],
+      voice: [[{ text: '🎵 تحويل البصمة إلى ملف صوتي (MP3)', callback_data: 'conv:to_audio' }]],
+      photo: [
+        [{ text: '📑 تحويل الصورة إلى PDF', callback_data: 'conv:to_pdf' }],
+        [{ text: '✨ تحويل الصورة إلى ملصق (Sticker)', callback_data: 'conv:to_sticker' }],
+        [{ text: '🖼️ ملف صورة بدون ضغط (PNG)', callback_data: 'conv:to_doc_png' }]
+      ],
+      sticker: [
+        [{ text: '🖼️ تحويل الملصق إلى صورة', callback_data: 'conv:to_photo' }],
+        [{ text: '✨ ملف PNG شفاف', callback_data: 'conv:to_doc_png' }]
+      ]
+    };
+
+    const kb = [...(optionsByKind[kind] || []), [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]];
+    const promptMsg = await this.sendMessage(uid, '🔄 *اختر الصيغة المطلوبة للتحويل:* 👇', kb);
+    if (promptMsg?.result?.message_id) this.trackMediaMsg(uid, promptMsg.result.message_id);
+  }
+
+  private async executeFormatConversion(cb: TelegramCallbackQuery, targetAction: string) {
+    const uid = String(cb.from.id);
+    const chatId = String(cb.message?.chat.id || uid);
+    const saved = this.pendingConvert.get(uid);
+    if (!saved || !saved.fileId) {
+      await this.answerCallbackQuery(cb.id, '⚠️ أرسل الملف أولاً من خدمة تحويل الصيغ.', true);
+      return;
+    }
+
+    await this.answerCallbackQuery(cb.id, '⏳ جاري التحويل...');
+    const waitMsg = await this.sendMessage(chatId, '⏳ جاري تحويل الصيغة ...');
+    const waitId = waitMsg?.result?.message_id;
+
+    try {
+      const dl = await this.downloadTelegramFileBytes(saved.fileId);
+      if (!dl) {
+        if (waitId) {
+          await this.editMessageText(chatId, waitId, '⚠️ يتعذّر قراءة هذا الملف (تأكد أن حجمه أقل من 20MB).');
+        }
+        return;
+      }
+
+      let sentId: number | null = null;
+      if (targetAction === 'to_audio') {
+        const outBytes =
+          saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
+        const isM4a = saved.kind === 'video';
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendAudio',
+          'audio',
+          outBytes,
+          isM4a ? 'converted-audio.m4a' : 'converted-audio.mp3',
+          isM4a ? 'audio/mp4' : 'audio/mpeg',
+          { title: 'ملف صوتي محوّل' }
+        );
+      } else if (targetAction === 'to_voice') {
+        const outBytes =
+          saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendVoice',
+          'voice',
+          outBytes,
+          'voice.ogg',
+          'audio/ogg'
+        );
+      } else if (targetAction === 'to_gif') {
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendAnimation',
+          'animation',
+          dl.bytes,
+          'converted.mp4',
+          'video/mp4'
+        );
+      } else if (targetAction === 'to_video') {
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendVideo',
+          'video',
+          dl.bytes,
+          'converted.mp4',
+          'video/mp4'
+        );
+      } else if (targetAction === 'to_pdf') {
+        const pdfBytes = EXT.buildPdfFromJpegBytes(dl.bytes);
+        if (pdfBytes) {
+          sentId = await this.sendBinaryMultipart(
+            chatId,
+            'sendDocument',
+            'document',
+            pdfBytes,
+            'document.pdf',
+            'application/pdf'
+          );
+        }
+      } else if (targetAction === 'to_sticker') {
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendSticker',
+          'sticker',
+          dl.bytes,
+          'sticker.webp',
+          'image/webp'
+        );
+      } else if (targetAction === 'to_photo') {
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendPhoto',
+          'photo',
+          dl.bytes,
+          'image.png',
+          'image/png'
+        );
+      } else if (targetAction === 'to_doc_png') {
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendDocument',
+          'document',
+          dl.bytes,
+          'image.png',
+          'image/png'
+        );
+      } else if (targetAction === 'to_doc_mp3') {
+        sentId = await this.sendBinaryMultipart(
+          chatId,
+          'sendDocument',
+          'document',
+          dl.bytes,
+          'audio.mp3',
+          'audio/mpeg'
+        );
+      }
+
+      if (waitId) await this.deleteMessage(chatId, waitId);
+
+      if (sentId) {
+        this.trackMediaMsg(uid, sentId);
+        this.pendingConvert.delete(uid);
+        const done = await this.sendMessage(chatId, '✅ *تم تحويل الصيغة بنجاح!*', [
+          [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
+          [
+            { text: '🔄 تحويل ملف آخر', callback_data: 'svc:convert' },
+            { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
+          ]
+        ]);
+        if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
+      } else {
+        await this.sendMessage(chatId, '⚠️ تعذّر إتمام هذا التحويل على هذا الملف — جرّب صيغة أخرى.', [
+          [{ text: '🔄 ملف آخر', callback_data: 'svc:convert' }]
+        ]);
+      }
+    } catch {
+      if (waitId) await this.deleteMessage(chatId, waitId);
+    }
+  }
+
+  /** عزل الموسيقى عن الأغنية عند إرسال ملف صوت/فيديو/بصمة */
+  private async handleVocalSeparationMediaInput(uid: string, msg: TelegramMessage) {
+    const fileObj = msg.audio || msg.voice || msg.video || msg.document;
+    if (!fileObj?.file_id) {
+      await this.sendMessage(uid, '⚠️ أرسل ملف صوت أو فيديو أو اكتب اسم الأغنية.');
+      return;
+    }
+    this.trackMediaMsg(uid, msg.message_id);
+    const titleHint = String(msg.audio?.title || msg.document?.file_name || 'الأغنية').replace(/\.[^.]+$/, '');
+    const waitMsg = await this.sendMessage(uid, '⏳ جاري فصل الصوت عن الموسيقى بالذكاء الاصطناعي ...');
+    const waitId = waitMsg?.result?.message_id;
+
+    await this.acquireDownloadSlot();
+    try {
+      const dl = await this.downloadTelegramFileBytes(fileObj.file_id);
+      if (!dl) {
+        if (waitId) {
+          await this.editMessageText(
+            uid,
+            waitId,
+            '⚠️ حجم الملف يتجاوز حد 20MB لملفات تيليجرام — اكتب اسم الأغنية نصاً وسأقوم بعزلها لك فوراً!'
+          );
+        }
+        return;
+      }
+
+      const wavFast = EXT.separateWavStereoInstant(dl.bytes);
+      const sep = wavFast || (await EXT.separateAudioViaGradioAI(dl.bytes, dl.filePath.split('/').pop() || 'song.mp3'));
+      let delivered = 0;
+
+      if (sep?.ok) {
+        if (sep.vocalsBytes) {
+          const s1 = await this.sendBinaryMultipart(
+            uid,
+            'sendAudio',
+            'audio',
+            sep.vocalsBytes,
+            `vocals.${sep.vocalsExt || 'mp3'}`,
+            sep.vocalsExt === 'wav' ? 'audio/wav' : 'audio/mpeg',
+            { title: `${titleHint} — الصوت فقط (بدون موسيقى)`, performer: 'Vocals Only' }
+          );
+          sep.vocalsBytes = undefined;
+          if (s1) {
+            this.trackMediaMsg(uid, s1);
+            delivered += 1;
+          }
+        }
+        if (sep.instrumentalBytes) {
+          const s2 = await this.sendBinaryMultipart(
+            uid,
+            'sendAudio',
+            'audio',
+            sep.instrumentalBytes,
+            `music.${sep.instrumentalExt || 'mp3'}`,
+            sep.instrumentalExt === 'wav' ? 'audio/wav' : 'audio/mpeg',
+            { title: `${titleHint} — الموسيقى فقط (بدون غناء)`, performer: 'Music Only' }
+          );
+          sep.instrumentalBytes = undefined;
+          if (s2) {
+            this.trackMediaMsg(uid, s2);
+            delivered += 1;
+          }
+        }
+      }
+
+      // إذا كانت خوادم GPU مزدحمة وكان للأغنية عنوان معروف، نجلب نسخة الموسيقى الصافية تلقائياً
+      if (delivered === 0 && titleHint && titleHint !== 'الأغنية') {
+        delivered = await this.deliverStudioKaraokeAndVocalsByQuery(uid, titleHint);
+      }
+
+      if (waitId) await this.deleteMessage(uid, waitId);
+      if (delivered > 0) {
+        this.pendingVocalSep.delete(uid);
+        const done = await this.sendMessage(uid, '✅ *تم عزل الصوت والموسيقى بنجاح!*', [
+          [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
+          [
+            { text: '🎼 عزل أغنية أخرى', callback_data: 'svc:vocal' },
+            { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
+          ]
+        ]);
+        if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
+      } else {
+        await this.sendMessage(
+          uid,
+          '⚠️ خادم العزل مزدحم حالياً — أرسل *اسم الأغنية* كتابةً أو أعد المحاولة بعد لحظات.',
+          [[{ text: '🔙 خدمات أخرى', callback_data: 'svc:main' }]]
+        );
+      }
+    } finally {
+      this.releaseDownloadSlot();
+    }
+  }
+
+  private async deliverStudioKaraokeAndVocalsByQuery(uid: string, songQuery: string): Promise<number> {
+    let delivered = 0;
+    const instHits = await MS.searchSongs(`${songQuery} instrumental karaoke بدون موسيقى`, 3);
+    const cleanInst =
+      instHits.length > 0 ? instHits[0] : (await MS.searchSongs(`${songQuery} karaoke instrumental`, 2))[0];
+    if (cleanInst) {
+      const pInst = await MS.resolveSongAudioPayload(cleanInst);
+      if (pInst) {
+        const okInst = await this.sendAudioPayload(
+          uid,
+          pInst,
+          `${songQuery} — الموسيقى فقط`,
+          'Instrumental'
+        );
+        if (okInst) delivered += 1;
+      }
+    }
+
+    const vocHits = await MS.searchSongs(`${songQuery} acapella vocals بدون موسيقى`, 2);
+    if (vocHits[0]) {
+      const pVoc = await MS.resolveSongAudioPayload(vocHits[0]);
+      if (pVoc) {
+        const okVoc = await this.sendAudioPayload(
+          uid,
+          pVoc,
+          `${songQuery} — الصوت بدون موسيقى`,
+          'Vocals Only'
+        );
+        if (okVoc) delivered += 1;
+      }
+    }
+    return delivered;
+  }
+
+  /** عزل الموسيقى عن الأغنية عند كتابة اسم الأغنية نصاً */
+  private async handleVocalSeparationTextInput(uid: string, query: string, incomingMsgId?: number) {
+    if (incomingMsgId) this.trackMediaMsg(uid, incomingMsgId);
+    const waitMsg = await this.sendMessage(uid, `⏳ جاري جلب وعزل «*${this.mdSafe(query)}*» ...`);
+    const waitId = waitMsg?.result?.message_id;
+
+    await this.acquireDownloadSlot();
+    try {
+      let delivered = 0;
+      const baseHits = await MS.searchSongs(query, 2);
+      if (baseHits[0]) {
+        const srcAudio = await MS.resolveSongAudioPayload(baseHits[0]);
+        if (srcAudio?.bytes || srcAudio?.url) {
+          let rawBytes = srcAudio.bytes;
+          if (!rawBytes && srcAudio.url) {
+            const fetched = await fetch(srcAudio.url).catch(() => null);
+            if (fetched?.ok) rawBytes = new Uint8Array(await fetched.arrayBuffer());
+          }
+          if (rawBytes && rawBytes.byteLength < 25 * 1024 * 1024) {
+            const aiSep = await EXT.separateAudioViaGradioAI(rawBytes, 'song.mp3');
+            rawBytes = undefined;
+            if (aiSep?.ok) {
+              if (aiSep.vocalsBytes) {
+                const s1 = await this.sendBinaryMultipart(
+                  uid,
+                  'sendAudio',
+                  'audio',
+                  aiSep.vocalsBytes,
+                  'vocals.mp3',
+                  'audio/mpeg',
+                  { title: `${baseHits[0].title} — الصوت فقط (بدون موسيقى)`, performer: baseHits[0].artist }
+                );
+                aiSep.vocalsBytes = undefined;
+                if (s1) {
+                  this.trackMediaMsg(uid, s1);
+                  delivered += 1;
+                }
+              }
+              if (aiSep.instrumentalBytes) {
+                const s2 = await this.sendBinaryMultipart(
+                  uid,
+                  'sendAudio',
+                  'audio',
+                  aiSep.instrumentalBytes,
+                  'music.mp3',
+                  'audio/mpeg',
+                  { title: `${baseHits[0].title} — الموسيقى فقط`, performer: baseHits[0].artist }
+                );
+                aiSep.instrumentalBytes = undefined;
+                if (s2) {
+                  this.trackMediaMsg(uid, s2);
+                  delivered += 1;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (delivered === 0) {
+        delivered = await this.deliverStudioKaraokeAndVocalsByQuery(uid, query);
+      }
+
+      if (waitId) await this.deleteMessage(uid, waitId);
+      if (delivered > 0) {
+        this.pendingVocalSep.delete(uid);
+        const done = await this.sendMessage(uid, '✅ *تم عزل الصوت والموسيقى بنجاح!*', [
+          [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
+          [
+            { text: '🎼 عزل أغنية أخرى', callback_data: 'svc:vocal' },
+            { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
+          ]
+        ]);
+        if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
+      } else {
+        await this.sendMessage(uid, '⚠️ ما لكيت نسخة متاحة لهذه الأغنية — جرّب إرسال ملف الأغنية مباشرة.', [
+          [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+        ]);
+      }
+    } finally {
+      this.releaseDownloadSlot();
     }
   }
 
@@ -6688,12 +7704,17 @@ export class TelegramBotManager {
       offsetSec
     );
 
+    // إذا كان مساعد المكالمات الحقيقي متصلاً بالمكالمة الآن، يصعد بالمكالمة مباشرة دون إغراق المحادثة بملف صوتي مكرر!
+    if (this.isVoiceAssistantActive()) {
+      return true;
+    }
+
     if (!payload) return false;
 
     let effectivePayload = payload;
     let displayTitle = track.title;
     if (offsetSec > 1) {
-      displayTitle = `▶️ ${track.title} (إكمال من ${MQ.formatSecMMSS(offsetSec)})`;
+      displayTitle = `▶️ ${track.title} (${MQ.formatSecMMSS(offsetSec)})`;
       if (payload.bytes && payload.ext === 'mp3') {
         effectivePayload = {
           ...payload,
@@ -6707,7 +7728,7 @@ export class TelegramBotManager {
 
   /** رسم أو تحديث لوحة التحكم بالمكالمة الصوتية في القناة/الكروب */
   private async paintMusicCallSession(session: MQ.MusicCallSession, sendFreshIfMissing = true): Promise<void> {
-    const view = MQ.renderMusicCallView(session);
+    const view = MQ.renderMusicCallView(session, Date.now(), this.isVoiceAssistantActive());
     const fullText = await this.withBotFooter(view.text, true);
     if (session.controlMessageId) {
       const edited = await this.editMessageText(
@@ -6736,19 +7757,14 @@ export class TelegramBotManager {
     const chatId = String(message.chat.id);
     const sender = message.from;
 
-    // 1) فحص صلاحية «إدارة البثوث المباشرة» وتنبيه المشرف بوضوح إن كانت ناقصة
     const perm = await this.checkBotLiveStreamPermission(message.chat);
     if (!perm.ok && perm.warning) {
       await this.sendMessage(chatId, perm.warning);
     }
 
-    // 2) البحث عن الأغنية المطلوبة
     const hits = await MS.searchSongs(rawQuery, 4);
     if (!hits.length) {
-      await this.sendMessage(
-        chatId,
-        `⚠️ ما لكيت أغنية مطابقة لـ «${this.mdSafe(rawQuery)}» — جرّب كتابة اسم الأغنية مع اسم الفنان.`
-      );
+      await this.sendMessage(chatId, `⚠️ ما لكيت نتيجة لـ «${this.mdSafe(rawQuery)}»`);
       return;
     }
 
@@ -6765,20 +7781,16 @@ export class TelegramBotManager {
 
     const existing = this.musicCalls.get(chatId);
 
-    // 3) إذا توجد أغنية شغّالة (أو متوقفة مؤقتاً) حالياً -> تبقى ثابتة بمكانها وتُضاف الأغنية الجديدة بالترتيب!
     if (existing && existing.status !== 'ended' && existing.current) {
       const pos = MQ.enqueueTrackSmart(existing, queuedTrack);
       await this.paintMusicCallSession(existing, false);
       await this.sendMessage(
         chatId,
-        `➕ *تمت إضافة الأغنية لقائمة الانتظار بالترتيب (#${pos})*!\n` +
-          `🎵 *${this.mdSafe(queuedTrack.title)}* — _${this.mdSafe(queuedTrack.artist)}_\n` +
-          `🔒 الأغنية الشغّالة حالياً تبقى ثابتة بمكانها، وراح تشتغل هاي تلقائياً أول ما تخلص اللي قبلها!`
+        `➕ *بالانتظار (#${pos}):* ${this.mdSafe(queuedTrack.title)}`
       );
       return;
     }
 
-    // 4) لا توجد أغنية شغّالة -> يبدأ البوت جلسة البث والمكالمة الصوتية فوراً ويثبّت صاحب الأمر كمتحكم وحيد!
     const ownerId = sender?.id ? String(sender.id) : '';
     const ownerName = sender
       ? `${sender.first_name}${sender.last_name ? ` ${sender.last_name}` : ''}`
@@ -6792,10 +7804,19 @@ export class TelegramBotManager {
       queuedTrack,
       message.author_signature
     );
+    session.inviteLink = await this.resolveChatJoinTarget(message.chat);
     this.musicCalls.set(chatId, session);
 
+    if (!this.isVoiceAssistantActive() && this.ownerId && message.chat.type !== 'private') {
+      await this.sendMessage(
+        this.ownerId,
+        `🎙️ *لتصعيد المساعد فعلياً داخل المكالمة الصوتية:*\n` +
+          `تيليجرام تمنع حسابات البوتات من دخول المكالمات، وتحتاج ربط *حساب المساعد* لمرة واحدة من الزر أدناه 👇`,
+        [[{ text: '🎙️ إعداد مساعد المكالمات الصوتية', callback_data: 'admin:voice' }]]
+      );
+    }
+
     await this.deliverTrackAudioForSession(session, queuedTrack, 0);
-    // نرسل لوحة التحكم التفاعلية أسفل الأغنية لتكون ظاهرة مباشرة للأمام
     session.controlMessageId = undefined;
     await this.paintMusicCallSession(session, true);
   }
@@ -8981,6 +10002,7 @@ export class TelegramBotManager {
 
     return [
       [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
+      [{ text: '🎙️ مساعد المكالمات الصوتية', callback_data: 'admin:voice' }],
       [{ text: '📊 إحصائيات الألعاب', callback_data: 'gstat:main' }],
       [
         { text: `👥 المستخدمون (${users.length})`, callback_data: 'admin:list:all:0' },
