@@ -82,13 +82,6 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'المتصدر بالنهاية ياخذ *0.004 – 0.015* 💵'
   },
-  wordle: {
-    maxMoney: 0.012,
-    winXp: 8,
-    loseXp: 3,
-    online: true,
-    note: 'من يحل الكلمة بالقناة يكسب نقاط وخبرة وجوائز'
-  },
   poet: {
     maxMoney: 0.015,
     winXp: 8,
@@ -138,13 +131,6 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'المتصدر بالنهاية ياخذ *0.004 – 0.016* 💵'
   },
-  mastermind: {
-    maxMoney: 0.02,
-    winXp: 10,
-    loseXp: 4,
-    online: true,
-    note: 'كاسر الرقم السري ياخذ *0.006 – 0.02* 💵'
-  },
   mafia: {
     maxMoney: 0.03,
     winXp: 12,
@@ -158,7 +144,12 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     loseXp: 4,
     online: true,
     note: 'الأعلى نقاطاً ياخذ *0.006 – 0.02* 💵'
-  }
+  },
+  arena_group: { maxMoney: 0.018, winXp: 10, loseXp: 4, online: true, note: 'المتصدر بالنهاية ياخذ *0.006 – 0.018* 💵' },
+  arena_duo: { maxMoney: 0.015, winXp: 9, loseXp: 4, online: true, note: 'الفائز بالمواجهة ياخذ *0.005 – 0.015* 💵' },
+  arena_team: { maxMoney: 0.026, winXp: 12, loseXp: 5, online: true, note: 'الفريق الفائز (2v2) ياخذ *0.008 – 0.026* 💵' },
+  arena_team3: { maxMoney: 0.034, winXp: 13, loseXp: 5, online: true, note: 'الفريق الفائز (3v3) ياخذ *0.010 – 0.034* 💵' },
+  arena_team4: { maxMoney: 0.045, winXp: 15, loseXp: 6, online: true, note: 'العشيرة الفائزة (4v4) تاخذ *0.012 – 0.045* 💵' }
 };
 
 /** سطر «الفلوس» اللي يبين بصفحة اللعبة */

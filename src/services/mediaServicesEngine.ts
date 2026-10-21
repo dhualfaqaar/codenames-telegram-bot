@@ -355,12 +355,14 @@ async function tryFetchMediaBytes(
 // =====================================================================
 
 export interface SongSearchHit {
-  /** sc:<trackId> أو yt:<videoId> */
+  /** sc:<trackId> أو sv:<url> أو ht:<url> أو yt:<videoId> */
   videoId: string;
   title: string;
   artist: string;
   duration: string;
   thumbnail: string;
+  directAudioUrl?: string;
+  directExt?: 'mp3' | 'm4a';
 }
 
 export interface ResolvedAudioPayload {
@@ -373,38 +375,81 @@ export interface ResolvedAudioPayload {
 let cachedScClientId: { id: string; exp: number } | null = null;
 let cachedVisitorData: { id: string; exp: number } | null = null;
 
-/** استخراج client_id حي وتلقائي من حزم SoundCloud الرسمية (لا ينتهي أبداً ولا يحظر Cloudflare) */
+/** استخراج client_id حي وتلقائي من مشغّل SoundCloud المدمج العام (w.soundcloud.com/player بدون أي حظر WAF على Cloudflare Workers!) + النسخة المحمولة والويب */
 async function getSoundCloudClientId(): Promise<string | null> {
   if (cachedScClientId && cachedScClientId.exp > Date.now()) {
     return cachedScClientId.id;
   }
-  try {
-    const resp = await fetch('https://soundcloud.com', {
-      headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' }
-    });
-    if (resp.ok) {
+
+  const probeClientId = async (cid: string): Promise<boolean> => {
+    try {
+      const r = await fetch(`https://api-v2.soundcloud.com/tracks/293?client_id=${encodeURIComponent(cid)}`, {
+        headers: {
+          'User-Agent': BROWSER_UA,
+          Origin: 'https://w.soundcloud.com',
+          Referer: 'https://w.soundcloud.com/'
+        }
+      });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  // 1) المصدر الذهبي الأول: مشغّل الـ Widget العام (widget.sndcdn.com) — مفتوح عالمياً من كل السيرفرات وCloudflare بدون أي WAF!
+  const pageTargets = [
+    'https://w.soundcloud.com/player/?url=https%3A%2F%2Fapi.soundcloud.com%2Ftracks%2F293',
+    'https://m.soundcloud.com',
+    'https://soundcloud.com'
+  ];
+
+  for (const pageUrl of pageTargets) {
+    try {
+      const resp = await fetch(pageUrl, {
+        headers: {
+          'User-Agent': BROWSER_UA,
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
+        }
+      });
+      if (!resp.ok) continue;
       const html = await resp.text();
-      const scripts = html.match(/https:\/\/a-v2\.sndcdn\.com\/assets\/[^\s"']+\.js/g) || [];
-      for (const scriptUrl of scripts.slice(-6).reverse()) {
+
+      // قد يوجد client_id مباشرة داخل HTML المشغّل المدمج!
+      const inlineMatch =
+        html.match(/["']client_id["']\s*:\s*["']([a-zA-Z0-9_-]{20,64})["']/) ||
+        html.match(/client_id\s*:\s*["']([a-zA-Z0-9_-]{20,64})["']/) ||
+        html.match(/client_id=([a-zA-Z0-9_-]{20,64})/);
+      if (inlineMatch?.[1] && (await probeClientId(inlineMatch[1]))) {
+        cachedScClientId = { id: inlineMatch[1], exp: Date.now() + 6 * 3600_000 };
+        return inlineMatch[1];
+      }
+
+      const scripts =
+        html.match(/https:\/\/(?:widget|a-v2|m)\.sndcdn\.com\/[^\s"'<>]+\.js/g) || [];
+      for (const scriptUrl of scripts.slice(-8).reverse()) {
         try {
           const sResp = await fetch(scriptUrl, { headers: { 'User-Agent': BROWSER_UA } });
           if (!sResp.ok) continue;
           const js = await sResp.text();
-          const m =
-            js.match(/client_id\s*:\s*["']([a-zA-Z0-9_-]{18,64})["']/) ||
-            js.match(/client_id=([a-zA-Z0-9_-]{18,64})/);
-          if (m?.[1]) {
-            cachedScClientId = { id: m[1], exp: Date.now() + 6 * 3600_000 };
-            return m[1];
+          const candidates = Array.from(
+            js.matchAll(/(?:["']?client_id["']?\s*[:=]\s*["']?)([a-zA-Z0-9_-]{24,48})/g)
+          ).map(m => m[1]);
+          for (const cid of candidates.slice(0, 4)) {
+            if (await probeClientId(cid)) {
+              cachedScClientId = { id: cid, exp: Date.now() + 6 * 3600_000 };
+              return cid;
+            }
           }
         } catch {
           continue;
         }
       }
+    } catch {
+      continue;
     }
-  } catch {
-    // continue to public fallback IDs
   }
+
   return null;
 }
 
@@ -490,67 +535,89 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
     const track: any = await infoRes.json();
     const transcodings: any[] = track?.media?.transcodings || [];
 
-    // 1) الأولوية للرابط المباشر Progressive MP3 (ملف واحد جاهز فوري على CloudFront)
-    const progMp3 = transcodings.find(
-      t => t?.format?.protocol === 'progressive' && String(t?.format?.mime_type || '').includes('mpeg')
-    ) || transcodings.find(t => t?.format?.protocol === 'progressive');
+    // 1) الأولوية للرابط المباشر Progressive MP3 مع فحص البايتات الفعلي بالذاكرة
+    const progMp3 =
+      transcodings.find(
+        t => t?.format?.protocol === 'progressive' && String(t?.format?.mime_type || '').includes('mpeg')
+      ) || transcodings.find(t => t?.format?.protocol === 'progressive');
 
     if (progMp3?.url) {
-      const sRes = await fetch(`${progMp3.url}${progMp3.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`, {
-        headers: { 'User-Agent': BROWSER_UA }
-      });
+      const sRes = await fetch(
+        `${progMp3.url}${progMp3.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`,
+        { headers: { 'User-Agent': BROWSER_UA } }
+      );
       if (sRes.ok) {
         const sj: any = await sRes.json();
         if (sj?.url) {
-          return { url: String(sj.url), ext: 'mp3', headers: { 'User-Agent': BROWSER_UA } };
+          const verifiedProg = await tryFetchMediaBytes(String(sj.url), { 'User-Agent': BROWSER_UA }, 20_000);
+          if (verifiedProg) {
+            return { bytes: verifiedProg, url: String(sj.url), ext: 'mp3', headers: { 'User-Agent': BROWSER_UA } };
+          }
         }
       }
     }
 
-    // 2) إذا كانت الأغنية بصيغة HLS MP3 (.m3u8) نسحب الشرائح بالتوازي من CloudFront وندمجها بملف MP3 واحد نقي!
-    const hlsMp3 =
-      transcodings.find(
+    // 2) إذا كانت الأغنية بصيغة HLS (.m3u8) نسحب ترويسة #EXT-X-MAP (إن وجدت لملفات fMP4/AAC) + الشرائح بالتوازي من CloudFront!
+    const hlsCandidates = [
+      ...transcodings.filter(
         t => t?.format?.protocol === 'hls' && String(t?.format?.mime_type || '').includes('mpeg')
-      ) || transcodings.find(t => t?.format?.protocol === 'hls');
+      ),
+      ...transcodings.filter(
+        t => t?.format?.protocol === 'hls' && String(t?.format?.mime_type || '').includes('mp4')
+      ),
+      ...transcodings.filter(
+        t => t?.format?.protocol === 'hls' && !String(t?.format?.mime_type || '').includes('ogg')
+      )
+    ];
 
-    if (hlsMp3?.url) {
-      const sRes = await fetch(`${hlsMp3.url}${hlsMp3.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`, {
-        headers: { 'User-Agent': BROWSER_UA }
-      });
-      if (sRes.ok) {
-        const sj: any = await sRes.json();
-        if (sj?.url) {
-          const m3uRes = await fetch(String(sj.url), { headers: { 'User-Agent': BROWSER_UA } });
-          if (m3uRes.ok) {
-            const m3uText = await m3uRes.text();
-            const segUrls = m3uText
-              .split(/\r?\n/)
-              .map(l => l.trim())
-              .filter(l => l && !l.startsWith('#'))
-              .map(l => (l.startsWith('http') ? l : new URL(l, String(sj.url)).toString()));
+    for (const hlsEntry of hlsCandidates) {
+      if (!hlsEntry?.url) continue;
+      const mimeStr = String(hlsEntry?.format?.mime_type || '').toLowerCase();
+      const sRes = await fetch(
+        `${hlsEntry.url}${hlsEntry.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`,
+        { headers: { 'User-Agent': BROWSER_UA } }
+      );
+      if (!sRes.ok) continue;
+      const sj: any = await sRes.json();
+      if (!sj?.url) continue;
 
-            if (segUrls.length > 0) {
-              // سقف آمن ٤٠ شريحة (~٧ دقائق صوت نقي متواصل) لعدم تجاوز سقف الـ ٥٠ طلب فرعي في Cloudflare Workers المجاني أبداً!
-              const safeSegs = segUrls.slice(0, 40);
-              const chunks: Uint8Array[] = [];
-              const batchSize = 10;
-              for (let i = 0; i < safeSegs.length; i += batchSize) {
-                const batch = safeSegs.slice(i, i + batchSize);
-                const buffers = await Promise.all(
-                  batch.map(async u => {
-                    const r = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
-                    if (!r.ok) throw new Error('seg_failed');
-                    return new Uint8Array(await r.arrayBuffer());
-                  })
-                );
-                chunks.push(...buffers);
-              }
-              const merged = concatUint8Arrays(chunks);
-              if (merged.byteLength > 4000) {
-                return { bytes: merged, ext: 'mp3' };
-              }
-            }
-          }
+      const m3uRes = await fetch(String(sj.url), { headers: { 'User-Agent': BROWSER_UA } });
+      if (!m3uRes.ok) continue;
+      const m3uText = await m3uRes.text();
+
+      // مهم جداً: التقاط مقطع التهيئة #EXT-X-MAP:URI="..." حتى لا يرفض تيليجرام ملفات fMP4/M4A الحديثة!
+      const mapMatch = m3uText.match(/#EXT-X-MAP:URI="([^"]+)"/);
+      const initUrl = mapMatch?.[1]
+        ? mapMatch[1].startsWith('http')
+          ? mapMatch[1]
+          : new URL(mapMatch[1], String(sj.url)).toString()
+        : null;
+
+      const mediaSegs = m3uText
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'))
+        .map(l => (l.startsWith('http') ? l : new URL(l, String(sj.url)).toString()));
+
+      if (mediaSegs.length > 0) {
+        const allUrls = initUrl ? [initUrl, ...mediaSegs.slice(0, 38)] : mediaSegs.slice(0, 39);
+        const chunks: Uint8Array[] = [];
+        const batchSize = 10;
+        for (let i = 0; i < allUrls.length; i += batchSize) {
+          const batch = allUrls.slice(i, i + batchSize);
+          const buffers = await Promise.all(
+            batch.map(async u => {
+              const r = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
+              if (!r.ok) throw new Error('seg_failed');
+              return new Uint8Array(await r.arrayBuffer());
+            })
+          );
+          chunks.push(...buffers);
+        }
+        const merged = concatUint8Arrays(chunks);
+        if (merged.byteLength > 20_000) {
+          const ext: 'mp3' | 'm4a' = initUrl || mimeStr.includes('mp4') ? 'm4a' : 'mp3';
+          return { bytes: merged, ext };
         }
       }
     }
@@ -592,6 +659,12 @@ interface YTClientProfile {
 
 const YT_NATIVE_CLIENTS: YTClientProfile[] = [
   {
+    name: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
+    version: '2.0',
+    ua: 'Mozilla/5.0 (PlayStation; PlayStation 4/11.52) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15',
+    extraContext: {}
+  },
+  {
     name: 'ANDROID_VR',
     version: '1.65.10',
     ua: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
@@ -629,19 +702,33 @@ async function extractViaYouTubeNative(
       };
       if (visitorData) clientObj.visitorData = visitorData;
 
+      const contextBody: Record<string, any> = { client: clientObj };
+      if (profile.name === 'TVHTML5_SIMPLY_EMBEDDED_PLAYER') {
+        contextBody.thirdParty = { embedUrl: 'https://www.youtube.com/' };
+      }
+
+      const clientIdHeader =
+        profile.name === 'IOS'
+          ? '5'
+          : profile.name === 'ANDROID_VR'
+            ? '28'
+            : profile.name === 'TVHTML5_SIMPLY_EMBEDDED_PLAYER'
+              ? '85'
+              : '101';
+
       const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': profile.ua,
-          'X-YouTube-Client-Name': profile.name === 'IOS' ? '5' : profile.name === 'ANDROID_VR' ? '28' : '101',
+          'X-YouTube-Client-Name': clientIdHeader,
           'X-YouTube-Client-Version': profile.version
         },
         body: JSON.stringify({
           videoId,
           contentCheckOk: true,
           racyCheckOk: true,
-          context: { client: clientObj }
+          context: contextBody
         })
       });
       if (!playerRes.ok) continue;
@@ -677,7 +764,46 @@ async function extractViaYouTubeNative(
     }
   }
 
-  // بدائل Invidious / Piped غير المحجوبة
+  // بدائل Piped الموزّعة (تمرّر الصوت الحقيقي عبر بروكسيات خارج داتاسنتر Cloudflare مع فحص البايتات الفعلي!)
+  const pipedNodes = [
+    'https://api.piped.private.coffee',
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.ducks.party'
+  ];
+  for (const pNode of pipedNodes) {
+    try {
+      const pRes = await fetch(`${pNode}/streams/${encodeURIComponent(videoId)}`, {
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
+      });
+      if (!pRes.ok) continue;
+      const pData: any = await pRes.json();
+      if (mode === 'audio') {
+        const aStreams: any[] = pData?.audioStreams || [];
+        const bestA =
+          aStreams.find(s => String(s.mimeType || '').includes('mp4') && s.url) ||
+          aStreams.find(s => s.url);
+        if (bestA?.url) {
+          const verified = await tryFetchMediaBytes(String(bestA.url), { 'User-Agent': BROWSER_UA }, 20_000);
+          if (verified) {
+            return { url: String(bestA.url), bytes: verified, ua: BROWSER_UA, ext: 'm4a' };
+          }
+        }
+      } else {
+        const vStreams: any[] = (pData?.videoStreams || []).filter((s: any) => !s.videoOnly && s.url);
+        if (vStreams[0]?.url) {
+          const verified = await tryFetchMediaBytes(String(vStreams[0].url), { 'User-Agent': BROWSER_UA }, 20_000);
+          if (verified) {
+            return { url: String(vStreams[0].url), bytes: verified, ua: BROWSER_UA, ext: 'mp4' };
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // بدائل Invidious (مقترنة إلزامياً بـ tryFetchMediaBytes حتى لا تمر أي صفحة HTML/Anubis أبداً!)
   const invidiousNodes = [
     'https://inv.nadeko.net',
     'https://invidious.nerdvpn.de',
@@ -695,11 +821,27 @@ async function extractViaYouTubeNative(
         const a =
           adaptive.find(x => String(x.itag) === '140' && x.url) ||
           adaptive.find(x => String(x.type || '').startsWith('audio/') && x.url);
-        if (a?.url) return { url: `${node}/latest_version?id=${videoId}&itag=${a.itag || 140}&local=true`, ua: BROWSER_UA, ext: 'm4a' };
+        if (a?.url) {
+          const proxied = `${node}/latest_version?id=${videoId}&itag=${a.itag || 140}&local=true`;
+          const verified =
+            (await tryFetchMediaBytes(proxied, { 'User-Agent': BROWSER_UA }, 20_000)) ||
+            (await tryFetchMediaBytes(String(a.url), { 'User-Agent': BROWSER_UA }, 20_000));
+          if (verified) {
+            return { url: proxied, bytes: verified, ua: BROWSER_UA, ext: 'm4a' };
+          }
+        }
       } else {
         const formats: any[] = data?.formatStreams || [];
         const v = formats.find(x => x.url) || null;
-        if (v?.url) return { url: `${node}/latest_version?id=${videoId}&itag=${v.itag || 18}&local=true`, ua: BROWSER_UA, ext: 'mp4' };
+        if (v?.url) {
+          const proxied = `${node}/latest_version?id=${videoId}&itag=${v.itag || 18}&local=true`;
+          const verified =
+            (await tryFetchMediaBytes(proxied, { 'User-Agent': BROWSER_UA }, 20_000)) ||
+            (await tryFetchMediaBytes(String(v.url), { 'User-Agent': BROWSER_UA }, 20_000));
+          if (verified) {
+            return { url: proxied, bytes: verified, ua: BROWSER_UA, ext: 'mp4' };
+          }
+        }
       }
     } catch {
       continue;
@@ -777,45 +919,140 @@ async function searchYouTubeSongs(query: string, limit = 5): Promise<SongSearchH
   return [];
 }
 
-/** البحث الموحّد والسريع عن الأغاني (يجمع SoundCloud المباشر المضمون 100% + YouTube) */
+/** محرك JioSaavn العالمي للأغاني الكاملة بجودة 320kbps مباشرة من Akamai CDN (بدون أي حظر على Cloudflare Workers!) */
+async function searchSaavnSongs(query: string, limit = 5): Promise<SongSearchHit[]> {
+  const endpoints = [
+    `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
+    `https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`
+  ];
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(ep, { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' } });
+      if (!r.ok) continue;
+      const j: any = await r.json();
+      const results: any[] = j?.data?.results || j?.results || [];
+      const out: SongSearchHit[] = [];
+      for (const item of results) {
+        const dlArr: any[] = Array.isArray(item?.downloadUrl) ? item.downloadUrl : [];
+        const best =
+          dlArr[dlArr.length - 1]?.url ||
+          dlArr[dlArr.length - 1]?.link ||
+          item?.download_url ||
+          '';
+        if (!best || !String(best).startsWith('http')) continue;
+        const durSec = Number(item.duration || 0);
+        if (durSec > 0 && durSec < 25) continue;
+        const title = cleanSongTitle(String(item.name || item.title || query).replace(/&quot;/g, '"'));
+        const artist =
+          item?.artists?.primary?.map((a: any) => a.name).join(', ') ||
+          String(item.primaryArtists || 'فنان');
+        out.push({
+          videoId: `sv:${item.id || out.length}`,
+          title: title || query,
+          artist,
+          duration: durSec ? formatDurationSec(durSec) : '3:30',
+          thumbnail: '',
+          directAudioUrl: String(best),
+          directExt: 'm4a'
+        });
+        if (out.length >= limit) break;
+      }
+      if (out.length) return out;
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+/** محرك Hearthis.at العام المفتوح للبث الصوتي المباشر بصيغة MP3 كاملة بدون أي حظر IP */
+async function searchHearthisSongs(query: string, limit = 4): Promise<SongSearchHit[]> {
+  try {
+    const r = await fetch(
+      `https://api-v2.hearthis.at/search/?t=${encodeURIComponent(query)}&page=1&count=${limit}`,
+      { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' } }
+    );
+    if (!r.ok) return [];
+    const arr: any[] = await r.json();
+    if (!Array.isArray(arr)) return [];
+    const out: SongSearchHit[] = [];
+    for (const item of arr) {
+      const streamUrl = item?.stream_url || item?.download_url;
+      const durSec = Number(item?.duration || 0);
+      if (!streamUrl || !String(streamUrl).startsWith('http') || durSec < 25 || durSec > 25 * 60) continue;
+      out.push({
+        videoId: `ht:${item.id || out.length}`,
+        title: cleanSongTitle(String(item.title || query)),
+        artist: String(item?.user?.username || 'فنان'),
+        duration: formatDurationSec(durSec),
+        thumbnail: String(item.thumb || ''),
+        directAudioUrl: String(streamUrl),
+        directExt: 'mp3'
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** البحث الموحّد والسريع عن الأغاني (يجمع SoundCloud المباشر + YouTube + Saavn CDN + Hearthis) */
 export async function searchSongs(query: string, limit = 5): Promise<SongSearchHit[]> {
   const q = String(query || '').trim();
   if (!q) return [];
 
-  const [scHits, ytHits] = await Promise.all([
+  const [scHits, ytHits, svHits, htHits] = await Promise.all([
     searchSoundCloudSongs(q, limit).catch(() => []),
-    searchYouTubeSongs(q, limit).catch(() => [])
+    searchYouTubeSongs(q, limit).catch(() => []),
+    searchSaavnSongs(q, 3).catch(() => []),
+    searchHearthisSongs(q, 2).catch(() => [])
   ]);
 
   const combined: SongSearchHit[] = [];
-  for (const h of scHits) {
-    if (combined.length < limit) combined.push(h);
-  }
-  for (const h of ytHits) {
+  for (const h of [...scHits, ...ytHits, ...svHits, ...htHits]) {
     if (combined.length < limit) combined.push(h);
   }
   return combined;
 }
 
-/** استخراج الصوت الكامل لأي نتيجة بحث (SoundCloud أو YouTube مع تعويض تلقائي مزدوج مضمون 100%) */
+/** استخراج الصوت الكامل لأي نتيجة بحث (يفحص البايتات الثنائية الحقيقية عبر 6 محركات مستقلة 100%) */
 export async function resolveSongAudioPayload(hit: SongSearchHit): Promise<ResolvedAudioPayload | null> {
   const rawId = String(hit.videoId || '');
 
-  // 1) إذا النتيجة من SoundCloud → سحب فوري من AWS CloudFront (Progressive أو HLS مدمج)
+  // 0) إذا النتيجة تحتوي رابط CDN مباشر (Saavn 320kbps أو Hearthis MP3)
+  if (hit.directAudioUrl) {
+    const verifiedDirect = await tryFetchMediaBytes(hit.directAudioUrl, { 'User-Agent': BROWSER_UA }, 20_000);
+    if (verifiedDirect) {
+      return {
+        bytes: verifiedDirect,
+        url: hit.directAudioUrl,
+        ext: hit.directExt || 'mp3',
+        headers: { 'User-Agent': BROWSER_UA }
+      };
+    }
+  }
+
+  // 1) إذا النتيجة من SoundCloud → سحب فوري من AWS CloudFront (Progressive أو HLS مع ترويسة MP4)
   if (rawId.startsWith('sc:')) {
     const scAudio = await resolveSoundCloudAudio(rawId.slice(3));
     if (scAudio) return scAudio;
   }
 
   const ytId = rawId.startsWith('yt:') ? rawId.slice(3) : rawId;
+  const searchTerm = `${hit.title} ${hit.artist}`.trim();
 
-  // 2) إذا النتيجة من YouTube: نجرب أولاً SoundCloud المطابق بالاسم لضمان MP3 نقي فوري من CloudFront، ثم YouTube Native مع User-Agent مطابق
-  const [ytNative, scFallbackList] = await Promise.all([
-    ytId && !rawId.startsWith('sc:') ? extractViaYouTubeNative(ytId, 'audio') : Promise.resolve(null),
-    searchSoundCloudSongs(`${hit.title} ${hit.artist}`, 2).catch(() => [])
+  // 2) تشغيل SoundCloud + YouTube/Piped/Invidious + Saavn + Hearthis بالتوازي ثم اختبار كل بديل حتى نحصل على بايتات صوتية حقيقية 100%!
+  const [scFallbackList, ytNative, svFallback, htFallback] = await Promise.all([
+    searchSoundCloudSongs(searchTerm, 3).catch(() => []),
+    ytId && !rawId.startsWith('sc:') && !rawId.startsWith('sv:') && !rawId.startsWith('ht:')
+      ? extractViaYouTubeNative(ytId, 'audio').catch(() => null)
+      : Promise.resolve(null),
+    searchSaavnSongs(hit.title, 2).catch(() => []),
+    searchHearthisSongs(hit.title, 2).catch(() => [])
   ]);
 
-  if (ytNative?.url) {
+  if (ytNative?.bytes) {
     return {
       url: ytNative.url,
       bytes: ytNative.bytes,
@@ -824,9 +1061,36 @@ export async function resolveSongAudioPayload(hit: SongSearchHit): Promise<Resol
     };
   }
 
-  if (scFallbackList.length > 0) {
-    const scAudio = await resolveSoundCloudAudio(scFallbackList[0].videoId.slice(3));
-    if (scAudio) return scAudio;
+  for (const scItem of scFallbackList) {
+    if (scItem.videoId.startsWith('sc:')) {
+      const scAudio = await resolveSoundCloudAudio(scItem.videoId.slice(3));
+      if (scAudio) return scAudio;
+    }
+  }
+
+  // إعادة محاولة البحث في SoundCloud بعنوان الأغنية وحده بدون اسم القناة
+  if (!scFallbackList.length && hit.title) {
+    const titleOnlySc = await searchSoundCloudSongs(hit.title, 3).catch(() => []);
+    for (const scItem of titleOnlySc) {
+      if (scItem.videoId.startsWith('sc:')) {
+        const scAudio = await resolveSoundCloudAudio(scItem.videoId.slice(3));
+        if (scAudio) return scAudio;
+      }
+    }
+  }
+
+  for (const directItem of [...svFallback, ...htFallback]) {
+    if (directItem.directAudioUrl) {
+      const verified = await tryFetchMediaBytes(directItem.directAudioUrl, { 'User-Agent': BROWSER_UA }, 20_000);
+      if (verified) {
+        return {
+          bytes: verified,
+          url: directItem.directAudioUrl,
+          ext: directItem.directExt || 'm4a',
+          headers: { 'User-Agent': BROWSER_UA }
+        };
+      }
+    }
   }
 
   return null;
