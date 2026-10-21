@@ -318,7 +318,8 @@ export class CodenamesEngine {
   public static guessCard(
     game: CodenamesGame,
     cardId: number,
-    operativeName: string = 'العميل'
+    operativeName: string = 'العميل',
+    operativeTeam?: Team
   ): { 
     success: boolean; 
     message: string; 
@@ -329,6 +330,10 @@ export class CodenamesEngine {
   } {
     if (game.status !== 'operative_turn') {
       return { success: false, message: 'ليس دور التخمين حالياً.', game };
+    }
+    if (operativeTeam && operativeTeam !== game.currentTurn) {
+      const teamName = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+      return { success: false, message: `مو دور فريقك — التخمين هسه لفريق ${teamName}.`, game };
     }
 
     const card = game.cards.find(c => c.id === cardId);
@@ -804,34 +809,42 @@ export class CodenamesEngine {
       ];
     }
 
-    // 5x5 cards
+    // Keep buttons compact in pairs, but give long words a full-width row so Telegram
+    // doesn't squeeze or visually cut their labels on mobile clients.
     const keyboard: any[][] = [];
+    let compactRow: any[] = [];
+    const flushCompactRow = () => {
+      if (compactRow.length) keyboard.push(compactRow);
+      compactRow = [];
+    };
 
-    for (let r = 0; r < 5; r++) {
-      const rowButtons = [];
-      for (let c = 0; c < 5; c++) {
-        const card = game.cards[r * 5 + c];
-        if (!card) continue;
-
-        if (card.revealed) {
-          let prefix = '⚪';
-          if (card.type === 'blue') prefix = '🔵';
-          if (card.type === 'red') prefix = '🔴';
-          if (card.type === 'assassin') prefix = '💣';
-
-          rowButtons.push({
-            text: `${prefix} ${card.word}`,
-            callback_data: `info:revealed:${card.id}:${game.id}`
-          });
-        } else {
-          rowButtons.push({
-            text: card.word,
-            callback_data: `guess:${card.id}:${game.id}`
-          });
-        }
+    for (const card of game.cards) {
+      let button: any;
+      if (card.revealed) {
+        let prefix = '⚪';
+        if (card.type === 'blue') prefix = '🔵';
+        if (card.type === 'red') prefix = '🔴';
+        if (card.type === 'assassin') prefix = '💣';
+        button = {
+          text: `${prefix} ${card.word}`,
+          callback_data: `info:revealed:${card.id}:${game.id}`
+        };
+      } else {
+        button = {
+          text: card.word,
+          callback_data: `guess:${card.id}:${game.id}`
+        };
       }
-      keyboard.push(rowButtons);
+
+      if (Array.from(card.word).length > 8) {
+        flushCompactRow();
+        keyboard.push([button]);
+      } else {
+        compactRow.push(button);
+        if (compactRow.length === 2) flushCompactRow();
+      }
     }
+    flushCompactRow();
 
     // Action row
     const actionRow = [];

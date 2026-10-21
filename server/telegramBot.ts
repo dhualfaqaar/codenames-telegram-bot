@@ -2877,15 +2877,24 @@ export class TelegramBotManager {
         return;
       }
 
-      // Verify that user is not the spymaster
+      // Only a registered operative on the active team may reveal a card.
       const player = game.players.find(p => String(p.id) === String(userId));
-      if (player && player.role === 'spymaster') {
-        await this.answerCallbackQuery(cb.id, '⛔ أنت الجاسوس! لا يجوز للجواسيس الضغط على بطاقات التخمين.', true);
+      if (!player) {
+        await this.answerCallbackQuery(cb.id, '⛔ لازم تنضم للعبة وتختار مقعداً قبل التخمين.', true);
+        return;
+      }
+      if (player.role !== 'operative') {
+        await this.answerCallbackQuery(cb.id, '⛔ أنت جاسوس، والتخمين على العملاء فقط.', true);
+        return;
+      }
+      if (player.team !== game.currentTurn) {
+        const turnTeam = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+        await this.answerCallbackQuery(cb.id, `⛔ مو دور فريقك — التخمين هسه لفريق ${turnTeam}.`, true);
         return;
       }
 
       // Guess card
-      const result = CodenamesEngine.guessCard(game, cardId, userName);
+      const result = CodenamesEngine.guessCard(game, cardId, userName, player.team);
       if (!result.success) {
         await this.answerCallbackQuery(cb.id, result.message, true);
         return;
@@ -9177,6 +9186,11 @@ export class TelegramBotManager {
       await this.sendMessage(userId, '⚠️ إنت مو جاسوس بهذي اللعبة.');
       return;
     }
+    if (player.team !== game.currentTurn) {
+      this.awaitingClueWord.delete(userId);
+      await this.sendMessage(userId, '⏳ هسه دور جاسوس الفريق الثاني.');
+      return;
+    }
 
     if (game.status !== 'spymaster_turn') {
       this.awaitingClueWord.delete(userId);
@@ -9246,6 +9260,12 @@ export class TelegramBotManager {
     if (!game || game.status !== 'spymaster_turn') {
       this.pendingClueWord.delete(userId);
       await this.answerCallbackQuery(cb.id, 'ما عاد دورك، اللعبة تقدمت.', true);
+      return;
+    }
+    const player = game.players.find(p => String(p.id) === userId);
+    if (!player || player.role !== 'spymaster' || player.team !== game.currentTurn) {
+      this.pendingClueWord.delete(userId);
+      await this.answerCallbackQuery(cb.id, '⛔ هذا التلميح مو إلك — انتظر دور فريقك.', true);
       return;
     }
 
@@ -10135,7 +10155,7 @@ export class TelegramBotManager {
     }
 
     if (action === 'guess') {
-      const res = CodenamesEngine.guessCard(game, payload.cardId, payload.operativeName);
+      const res = CodenamesEngine.guessCard(game, payload.cardId, payload.operativeName, payload.operativeTeam);
       if (res.success) {
         this.games.set(chatId, res.game);
         if (res.game.status === 'game_over') {
