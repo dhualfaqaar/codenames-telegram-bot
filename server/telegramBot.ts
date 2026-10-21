@@ -14,6 +14,7 @@ import * as ARX from '../src/services/arenaGamesEngine';
 import * as TRN from '../src/services/tournamentEngine';
 import * as MQ from '../src/services/musicQueueEngine';
 import * as EXT from '../src/services/extraToolsEngine';
+import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
 function encodeHiddenTag(payload: string): string {
@@ -954,6 +955,8 @@ export class TelegramBotManager {
   private pendingRouletteText: Set<string> = new Set();
   private pendingAgeCalc: Set<string> = new Set();
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
+  private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
+  private avatarDeliveredV1: boolean = false;
   private pendingVocalSep: Set<string> = new Set();
   private voiceAssistantSession: string = '';
   private voiceAssistantName: string = '';
@@ -1601,6 +1604,8 @@ export class TelegramBotManager {
       pendingRouletteText: Array.from(this.pendingRouletteText.values()),
       pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
       pendingConvert: Array.from(this.pendingConvert.entries()),
+      audioEditDrafts: Array.from(this.audioEditDrafts.entries()),
+      avatarDeliveredV1: this.avatarDeliveredV1,
       pendingVocalSep: Array.from(this.pendingVocalSep.values()),
       voiceAssistantSession: this.voiceAssistantSession,
       voiceAssistantName: this.voiceAssistantName,
@@ -1654,6 +1659,8 @@ export class TelegramBotManager {
     if (Array.isArray(state.pendingRouletteText)) this.pendingRouletteText = new Set(state.pendingRouletteText);
     if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
+    if (Array.isArray(state.audioEditDrafts)) this.audioEditDrafts = new Map(state.audioEditDrafts);
+    if (typeof state.avatarDeliveredV1 === 'boolean') this.avatarDeliveredV1 = state.avatarDeliveredV1;
     if (Array.isArray(state.pendingVocalSep)) this.pendingVocalSep = new Set(state.pendingVocalSep);
     if (typeof state.voiceAssistantSession === 'string') this.voiceAssistantSession = state.voiceAssistantSession;
     if (typeof state.voiceAssistantName === 'string') this.voiceAssistantName = state.voiceAssistantName;
@@ -1890,8 +1897,74 @@ export class TelegramBotManager {
     this.commandsSyncVer = 3;
   }
 
+  public async applyAndDeliverOfficialAvatar(force = false): Promise<{ applied: boolean; sent: boolean }> {
+    if (!this.token) return { applied: false, sent: false };
+    if (this.avatarDeliveredV1 && !force) return { applied: true, sent: false };
+    this.avatarDeliveredV1 = true;
+
+    let applied = false;
+    let sent = false;
+    try {
+      const jpgBin = Uint8Array.from(atob(BOT_AVATAR_JPG_BASE64), c => c.charCodeAt(0));
+      const pngBin = Uint8Array.from(atob(BOT_AVATAR_PNG_BASE64), c => c.charCodeAt(0));
+
+      // 1) محاولة تعيين الصورة الشخصية للبوت مباشرة عبر واجهة تيليجرام الرسمية setMyProfilePhoto (Bot API 9.4+)
+      try {
+        const avatarForm = new FormData();
+        avatarForm.append('photo', JSON.stringify({ type: 'static', photo: 'attach://avatar_file' }));
+        avatarForm.append(
+          'avatar_file',
+          new Blob([jpgBin as unknown as ArrayBuffer], { type: 'image/jpeg' }),
+          'code-games-avatar.jpg'
+        );
+        const setRes = await fetch(`https://api.telegram.org/bot${this.token}/setMyProfilePhoto`, {
+          method: 'POST',
+          body: avatarForm
+        });
+        const setJson: any = await setRes.json().catch(() => null);
+        applied = Boolean(setJson?.ok);
+      } catch {
+        applied = false;
+      }
+
+      // 2) إرسال النسخة المربعة المضبوطة 1024×1024 مباشرة لمحادثة المالك بالخاص (صورة + ملف PNG أصلي كامل الدقة قابل للحفظ بنقرة واحدة)
+      if (this.ownerId) {
+        const pId = await this.sendBinaryMultipart(
+          this.ownerId,
+          'sendPhoto',
+          'photo',
+          jpgBin,
+          'Code-Games-1024x1024.jpg',
+          'image/jpeg',
+          {
+            caption: applied
+              ? '🖼️ تم تثبيت لوغو البوت المربع (1024×1024) على حساب البوت مباشرة، وهذه النسخة جاهزة للحفظ بجهازك ✅'
+              : '🖼️ لوغو البوت الأبيض ذو البطاقتين بمقاس مربع مضبوط 1024×1024 جاهز للحفظ بجهازك ✅'
+          }
+        );
+        const dId = await this.sendBinaryMultipart(
+          this.ownerId,
+          'sendDocument',
+          'document',
+          pngBin,
+          'Code-Games-Logo-1024x1024.png',
+          'image/png',
+          { caption: '📎 النسخة الأصلية بدون ضغط (PNG — 1024×1024)' }
+        );
+        sent = Boolean(pId || dId);
+      }
+    } catch {
+      // ignore
+    }
+    return { applied, sent };
+  }
+
   private async ensureCommandsSynced(): Promise<void> {
-    if (this.commandsSyncVer === 3 || !this.token) return;
+    if (!this.token) return;
+    if (!this.avatarDeliveredV1) {
+      await this.applyAndDeliverOfficialAvatar(false);
+    }
+    if (this.commandsSyncVer === 3) return;
     await this.syncBotCommands();
   }
 
@@ -1975,6 +2048,22 @@ export class TelegramBotManager {
           message.animation ||
           message.document
       );
+      const editDraft = this.audioEditDrafts.get(mUid);
+      if (hasMedia && editDraft?.waitingField === 'cover') {
+        const coverFid =
+          message.photo?.[message.photo.length - 1]?.file_id ||
+          (String(message.document?.mime_type || '').startsWith('image/')
+            ? message.document.file_id
+            : '');
+        if (coverFid) {
+          editDraft.coverFileId = coverFid;
+          editDraft.waitingField = undefined;
+          this.audioEditDrafts.set(mUid, editDraft);
+          this.trackMediaMsg(mUid, message.message_id);
+          await this.sendAudioMetadataEditorCard(mUid);
+          return;
+        }
+      }
       if (hasMedia && this.pendingVocalSep.has(mUid)) {
         await this.handleVocalSeparationMediaInput(mUid, message);
         return;
@@ -2012,6 +2101,20 @@ export class TelegramBotManager {
       const uid = String(sender.id);
       if (this.isOwner(sender.id) && this.voiceAuthStep.startsWith('wait_')) {
         await this.handleOwnerVoiceAuthInput(uid, text);
+        return;
+      }
+      const activeAudioDraft = this.audioEditDrafts.get(uid);
+      if (activeAudioDraft?.waitingField && activeAudioDraft.waitingField !== 'cover') {
+        const cleanedVal = text.trim();
+        if (activeAudioDraft.waitingField === 'title') activeAudioDraft.title = cleanedVal;
+        else if (activeAudioDraft.waitingField === 'artist') activeAudioDraft.artist = cleanedVal;
+        else if (activeAudioDraft.waitingField === 'fileName') {
+          activeAudioDraft.fileName = cleanedVal.replace(/[\\/:*?"<>|]/g, '').trim() || 'audio';
+        }
+        activeAudioDraft.waitingField = undefined;
+        this.audioEditDrafts.set(uid, activeAudioDraft);
+        this.trackMediaMsg(uid, message.message_id);
+        await this.sendAudioMetadataEditorCard(uid);
         return;
       }
       if (this.pendingWhispers.has(uid)) {
@@ -2360,6 +2463,14 @@ export class TelegramBotManager {
         return;
       }
 
+      if (data === 'admin:avatar') {
+        await this.answerCallbackQuery(cb.id, '🖼️ جاري تثبيت وإرسال لوغو البوت المربع...');
+        const res = await this.applyAndDeliverOfficialAvatar(true);
+        if (!res.sent) {
+          await this.sendMessage(chatId, '✅ تم تنفيذ تثبيت لوغو البوت المربع (1024×1024).');
+        }
+        return;
+      }
       if (data === 'admin:voice') {
         await this.answerCallbackQuery(cb.id, '');
         await this.sendVoiceAssistantPanel(chatId, messageId);
@@ -6490,6 +6601,7 @@ export class TelegramBotManager {
       this.pendingAgeCalc.delete(userId);
       this.pendingRouletteText.delete(userId);
       this.pendingConvert.delete(userId);
+      this.audioEditDrafts.delete(userId);
       this.pendingVocalSep.delete(userId);
     }
 
@@ -6798,15 +6910,15 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── 🔄 تحويل الصيغ ──
+    // ── 🔄 تحويل الصيغ وتعديل معلومات الصوتيات ──
     if (data === 'svc:convert') {
       this.pendingConvert.set(userId, { fileId: '', kind: 'waiting' });
       const text =
-        `🔄 *تحويل الصيغ*\n` +
+        `🔄 *تحويل الصيغ وتعديل الصوتيات*\n` +
         `${SEP}\n` +
-        `أرسل الآن الملف الذي تريد تحويله هنا بالمحادثة:\n` +
+        `أرسل الآن الملف هنا بالمحادثة:\n` +
+        `• 🎵 أغنية أو 🎙️ بصمة ⬅️ تحويل الصيغة أو *تعديل الاسم والفنان والملف والصورة*\n` +
         `• 🎬 فيديو ⬅️ صوت / بصمة / GIF\n` +
-        `• 🎵 أغنية ⇄ 🎙️ بصمة صوتية\n` +
         `• 🖼️ صورة ⇄ ✨ ملصق / 📑 PDF\n` +
         `• 🎞️ متحركة GIF ⬅️ 🎬 فيديو`;
       const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
@@ -7250,18 +7362,38 @@ export class TelegramBotManager {
     this.pendingConvert.set(uid, { fileId, kind });
     this.trackMediaMsg(uid, msg.message_id);
 
+    if (kind === 'audio' || kind === 'voice' || kind === 'video') {
+      const initialTitle = String(msg.audio?.title || '').trim();
+      const initialArtist = String(msg.audio?.performer || '').trim();
+      const rawName = String(msg.audio?.file_name || msg.document?.file_name || 'audio')
+        .replace(/\.[^.]+$/, '')
+        .trim();
+      this.audioEditDrafts.set(uid, {
+        fileId,
+        sourceKind: kind,
+        title: initialTitle,
+        artist: initialArtist,
+        fileName: rawName || 'audio'
+      });
+    }
+
     const optionsByKind: Record<string, any[][]> = {
       video: [
         [{ text: '🎵 تحويل إلى ملف صوتي (M4A)', callback_data: 'conv:to_audio' }],
+        [{ text: '✏️ استخراج الصوت وتعديل الاسم والفنان والصورة', callback_data: 'conv:edit_open' }],
         [{ text: '🎙️ تحويل إلى بصمة صوتية (Voice)', callback_data: 'conv:to_voice' }],
         [{ text: '🎞️ تحويل إلى متحركة (GIF)', callback_data: 'conv:to_gif' }]
       ],
       animation: [[{ text: '🎬 تحويل المتحركة إلى فيديو (MP4)', callback_data: 'conv:to_video' }]],
       audio: [
+        [{ text: '✏️ تعديل الاسم والفنان والملف والصورة', callback_data: 'conv:edit_open' }],
         [{ text: '🎙️ تحويل الأغنية إلى بصمة صوتية', callback_data: 'conv:to_voice' }],
         [{ text: '📄 إرسال كملف (Document)', callback_data: 'conv:to_doc_mp3' }]
       ],
-      voice: [[{ text: '🎵 تحويل البصمة إلى ملف صوتي (MP3)', callback_data: 'conv:to_audio' }]],
+      voice: [
+        [{ text: '🎵 تحويل البصمة إلى ملف صوتي (MP3)', callback_data: 'conv:to_audio' }],
+        [{ text: '✏️ تحويل وتعديل الاسم والفنان والملف والصورة', callback_data: 'conv:edit_open' }]
+      ],
       photo: [
         [{ text: '📑 تحويل الصورة إلى PDF', callback_data: 'conv:to_pdf' }],
         [{ text: '✨ تحويل الصورة إلى ملصق (Sticker)', callback_data: 'conv:to_sticker' }],
@@ -7274,13 +7406,156 @@ export class TelegramBotManager {
     };
 
     const kb = [...(optionsByKind[kind] || []), [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]];
-    const promptMsg = await this.sendMessage(uid, '🔄 *اختر الصيغة المطلوبة للتحويل:* 👇', kb);
+    const promptMsg = await this.sendMessage(uid, '🔄 *اختر الإجراء أو الصيغة المطلوبة:* 👇', kb);
     if (promptMsg?.result?.message_id) this.trackMediaMsg(uid, promptMsg.result.message_id);
+  }
+
+  private async sendAudioMetadataEditorCard(uid: string, editMsgId?: number) {
+    const draft = this.audioEditDrafts.get(uid);
+    if (!draft) return;
+    const text =
+      `🎛️ *تعديل معلومات وصورة المقطع الصوتي*\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `🎵 *اسم الأغنية:* ${this.mdSafe(draft.title || 'غير محدد')}\n` +
+      `🎤 *اسم الفنان:* ${this.mdSafe(draft.artist || 'غير محدد')}\n` +
+      `📁 *اسم الملف:* \`${this.mdSafe(draft.fileName || 'audio')}.mp3\`\n` +
+      `🖼️ *صورة الغلاف:* ${draft.coverFileId ? 'تمت إضافتها ✅' : 'بدون صورة'}`;
+
+    const kb: any[][] = [
+      [
+        { text: '📝 اسم الأغنية', callback_data: 'conv:ef:title' },
+        { text: '🎤 اسم الفنان', callback_data: 'conv:ef:artist' }
+      ],
+      [
+        { text: '📁 اسم الملف', callback_data: 'conv:ef:fileName' },
+        { text: '🖼️ الصورة', callback_data: 'conv:ef:cover' }
+      ],
+      [{ text: '✅ حفظ وإرسال المقطع بالتعديلات', callback_data: 'conv:edit_send' }],
+      [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]
+    ];
+
+    if (editMsgId) {
+      const ed = await this.editMessageText(uid, editMsgId, text, kb);
+      if (ed?.ok) return;
+    }
+    const sent = await this.sendMessage(uid, text, kb);
+    if (sent?.result?.message_id) this.trackMediaMsg(uid, sent.result.message_id);
   }
 
   private async executeFormatConversion(cb: TelegramCallbackQuery, targetAction: string) {
     const uid = String(cb.from.id);
     const chatId = String(cb.message?.chat.id || uid);
+
+    if (targetAction === 'edit_open') {
+      const draft = this.audioEditDrafts.get(uid);
+      if (!draft) {
+        await this.answerCallbackQuery(cb.id, '⚠️ أرسل الأغنية أو البصمة أولاً.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '');
+      await this.sendAudioMetadataEditorCard(uid, cb.message?.message_id);
+      return;
+    }
+
+    if (targetAction.startsWith('ef:')) {
+      const field = targetAction.slice(3) as 'title' | 'artist' | 'fileName' | 'cover';
+      const draft = this.audioEditDrafts.get(uid);
+      if (!draft) {
+        await this.answerCallbackQuery(cb.id, '⚠️ أرسل الأغنية أو البصمة أولاً.', true);
+        return;
+      }
+      draft.waitingField = field;
+      this.audioEditDrafts.set(uid, draft);
+      await this.answerCallbackQuery(cb.id, '');
+      const prompts: Record<string, string> = {
+        title: '📝 أرسل الآن *اسم الأغنية الجديد*:',
+        artist: '🎤 أرسل الآن *اسم الفنان الجديد*:',
+        fileName: '📁 أرسل الآن *اسم الملف الجديد* (بدون امتداد):',
+        cover: '🖼️ أرسل الآن *الصورة* التي تريد وضعها غلافاً للأغنية:'
+      };
+      const pMsg = await this.sendMessage(chatId, prompts[field] || 'أرسل القيمة الجديدة:', [
+        [{ text: '🔙 رجوع للمحرر', callback_data: 'conv:edit_open' }]
+      ]);
+      if (pMsg?.result?.message_id) this.trackMediaMsg(uid, pMsg.result.message_id);
+      return;
+    }
+
+    if (targetAction === 'edit_send') {
+      const draft = this.audioEditDrafts.get(uid);
+      if (!draft || !draft.fileId) {
+        await this.answerCallbackQuery(cb.id, '⚠️ أرسل الأغنية أو البصمة أولاً.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '⏳ جارٍ تجهيز المقطع بالتعديلات...');
+      const waitMsg = await this.sendMessage(chatId, '⏳ جارٍ حفظ التعديلات وإرسال المقطع...');
+      const waitId = waitMsg?.result?.message_id;
+
+      try {
+        const srcDl = await this.downloadTelegramFileBytes(draft.fileId);
+        if (!srcDl) {
+          if (waitId) await this.editMessageText(chatId, waitId, '⚠️ تعذّر قراءة الملف (تأكد أن حجمه أقل من 20MB).');
+          return;
+        }
+
+        let audioBytes =
+          draft.sourceKind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(srcDl.bytes) : srcDl.bytes;
+        let coverBytes: Uint8Array | undefined;
+        if (draft.coverFileId) {
+          const covDl = await this.downloadTelegramFileBytes(draft.coverFileId);
+          if (covDl?.bytes) coverBytes = covDl.bytes;
+        }
+
+        const isM4a = draft.sourceKind === 'video';
+        if (!isM4a) {
+          audioBytes = EXT.writeId3v23Tags(audioBytes, {
+            title: draft.title,
+            artist: draft.artist,
+            coverBytes
+          });
+        }
+
+        const safeBase = (draft.fileName || draft.title || 'audio').replace(/[\\/:*?"<>|]/g, '').trim() || 'audio';
+        const outExt = isM4a ? 'm4a' : 'mp3';
+        const outMime = isM4a ? 'audio/mp4' : 'audio/mpeg';
+
+        const form = new FormData();
+        form.append('chat_id', chatId);
+        form.append('audio', new Blob([audioBytes as unknown as ArrayBuffer], { type: outMime }), `${safeBase}.${outExt}`);
+        if (draft.title) form.append('title', draft.title);
+        if (draft.artist) form.append('performer', draft.artist);
+        if (coverBytes) {
+          form.append('thumbnail', new Blob([coverBytes as unknown as ArrayBuffer], { type: 'image/jpeg' }), 'thumb.jpg');
+        }
+
+        const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
+          method: 'POST',
+          body: form
+        });
+        const upJson: any = await up.json();
+        if (waitId) await this.deleteMessage(chatId, waitId);
+
+        if (upJson?.ok) {
+          const sentMsgId = Number(upJson?.result?.message_id) || 1;
+          this.trackMediaMsg(uid, sentMsgId);
+          this.audioEditDrafts.delete(uid);
+          this.pendingConvert.delete(uid);
+          const done = await this.sendMessage(chatId, '✅ *تم إرسال المقطع الصوتي بالتعديلات الجديدة!*', [
+            [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
+            [
+              { text: '🔄 تعديل / تحويل ملف آخر', callback_data: 'svc:convert' },
+              { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
+            ]
+          ]);
+          if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
+        } else {
+          await this.sendMessage(chatId, '⚠️ تعذّر إرسال الملف المعدّل — حاول مجدداً.');
+        }
+      } catch {
+        if (waitId) await this.deleteMessage(chatId, waitId);
+      }
+      return;
+    }
+
     const saved = this.pendingConvert.get(uid);
     if (!saved || !saved.fileId) {
       await this.answerCallbackQuery(cb.id, '⚠️ أرسل الملف أولاً من خدمة تحويل الصيغ.', true);
@@ -7425,7 +7700,7 @@ export class TelegramBotManager {
     }
     this.trackMediaMsg(uid, msg.message_id);
     const titleHint = String(msg.audio?.title || msg.document?.file_name || 'الأغنية').replace(/\.[^.]+$/, '');
-    const waitMsg = await this.sendMessage(uid, '⏳ جاري فصل الصوت عن الموسيقى بالذكاء الاصطناعي ...');
+    const waitMsg = await this.sendMessage(uid, '⏳ جارٍ فصل الصوت عن الموسيقى...');
     const waitId = waitMsg?.result?.message_id;
 
     await this.acquireDownloadSlot();
@@ -7546,7 +7821,7 @@ export class TelegramBotManager {
   /** عزل الموسيقى عن الأغنية عند كتابة اسم الأغنية نصاً */
   private async handleVocalSeparationTextInput(uid: string, query: string, incomingMsgId?: number) {
     if (incomingMsgId) this.trackMediaMsg(uid, incomingMsgId);
-    const waitMsg = await this.sendMessage(uid, `⏳ جاري جلب وعزل «*${this.mdSafe(query)}*» ...`);
+    const waitMsg = await this.sendMessage(uid, '⏳ جارٍ فصل الصوت عن الموسيقى...');
     const waitId = waitMsg?.result?.message_id;
 
     await this.acquireDownloadSlot();
@@ -10002,6 +10277,7 @@ export class TelegramBotManager {
 
     return [
       [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
+      [{ text: '🖼️ تثبيت وإرسال لوغو البوت (1024×1024)', callback_data: 'admin:avatar' }],
       [{ text: '🎙️ مساعد المكالمات الصوتية', callback_data: 'admin:voice' }],
       [{ text: '📊 إحصائيات الألعاب', callback_data: 'gstat:main' }],
       [
