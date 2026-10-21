@@ -127,7 +127,7 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   general: {
     emoji: '📚',
     title: 'أسئلة عامة',
-    intro: 'منافسة أسئلة عامة متجددة من ١٠ جولات 📚'
+    intro: 'منافسة أسئلة عامة متجددة من 10 جولات 📚'
   },
   geo: {
     emoji: '🗺️',
@@ -147,31 +147,31 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   trivia: {
     emoji: '🧠',
     title: 'معركة المعلومات',
-    intro: 'منافسة معلومات عامة من ١٠ جولات 🧠'
+    intro: 'منافسة معلومات عامة من 10 جولات 🧠'
   },
   country: {
     emoji: '🏳️',
-    title: 'خمّن الدولة',
+    title: 'الدول',
     intro: 'اعرف الدولة من المعلومة المميزة عنها 🌍'
   },
   movie: {
     emoji: '🎬',
-    title: 'خمّن الفيلم',
+    title: 'الأفلام',
     intro: 'اعرف الفيلم الشهير من نبذة قصته 🍿'
   },
   series: {
     emoji: '📺',
-    title: 'خمّن المسلسل',
+    title: 'المسلسلات',
     intro: 'اعرف المسلسل الشهير من نبذة قصته 📺'
   },
   number: {
     emoji: '🔢',
-    title: 'خمّن الرقم',
+    title: 'الأرقام',
     intro: 'أسئلة وحقائق رقمية ممتعة 🔢'
   },
   food: {
     emoji: '🍲',
-    title: 'خمّن الأكلة',
+    title: 'الأكلات',
     intro: 'اعرف الأكلة الشهيرة من وصفها 🍽️'
   },
   math: {
@@ -181,12 +181,12 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   flags: {
     emoji: '🚩',
-    title: 'خمّن العلم',
+    title: 'الأعلام',
     intro: 'اعرف الدولة صاحبة العلم 🚩'
   },
   capitals: {
     emoji: '🏛️',
-    title: 'خمّن العاصمة',
+    title: 'العواصم',
     intro: 'اعرف العاصمة الصحيحة لكل دولة 🏛️'
   },
   continents: {
@@ -201,22 +201,22 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   player: {
     emoji: '⚽',
-    title: 'خمّن اللاعب',
+    title: 'اللاعبون',
     intro: 'اعرف نجم كرة القدم من مسيرته وألقابه ⚽'
   },
   poet: {
     emoji: '🎭',
-    title: 'خمّن الشاعر',
+    title: 'الشعراء',
     intro: 'اعرف الشاعر صاحب البيت الشهير 🎭'
   },
   song_ar: {
     emoji: '🎤',
-    title: 'خمّن الأغنية العربية',
+    title: 'الأغاني العربية',
     intro: 'لمنو هاي الأغنية العربية الشهيرة؟ 🎤'
   },
   song_en: {
     emoji: '🎸',
-    title: 'خمّن الأغنية الإنجليزية',
+    title: 'الأغاني الإنجليزية',
     intro: 'لمنو هاي الأغنية الإنجليزية الشهيرة؟ 🎸'
   },
   islamic: {
@@ -266,72 +266,72 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   novel: {
     emoji: '📚',
-    title: 'خمّن الرواية أو الكتاب الشهير',
+    title: 'الروايات والكتب',
     intro: 'اعرف الرواية أو الكتاب الشهير من فكرته وأبطاله 📚'
   },
   landmark: {
     emoji: '🏛️',
-    title: 'خمّن المعلم السياحي',
+    title: 'المعالم السياحية',
     intro: 'اعرف المعلم الأثري أو السياحي العالمي والعراقي من وصفه 🏛️'
   },
   vgame: {
     emoji: '🎮',
-    title: 'خمّن لعبة الفيديو',
+    title: 'ألعاب الفيديو',
     intro: 'اعرف اللعبة الإلكترونية الشهيرة من فكرتها وأبطالها 🎮'
   },
   creature: {
     emoji: '🐾',
-    title: 'خمّن الكائن الحي',
+    title: 'الكائنات الحية',
     intro: 'اعرف الكائن الحي من صفاته وحقائقه المدهشة 🐾'
   },
   movie_emoji: {
     emoji: '🎬',
-    title: 'خمّن الفيلم — نظام الإيموجي 😀',
+    title: 'الأفلام — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الفيلم المقصود بسرعة 🎬😀'
   },
   series_emoji: {
     emoji: '📺',
-    title: 'خمّن المسلسل — نظام الإيموجي 😀',
+    title: 'المسلسلات — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف المسلسل المقصود بسرعة 📺😀'
   },
   country_emoji: {
     emoji: '🏳️',
-    title: 'خمّن الدولة — نظام الإيموجي 😀',
+    title: 'الدول — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الدولة المقصودة بسرعة 🏳️😀'
   },
   food_emoji: {
     emoji: '🍲',
-    title: 'خمّن الأكلة — نظام الإيموجي 😀',
+    title: 'الأكلات — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الأكلة المقصودة بسرعة 🍲😀'
   },
   player_emoji: {
     emoji: '⚽',
-    title: 'خمّن اللاعب — نظام الإيموجي 😀',
+    title: 'اللاعبون — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف اللاعب المقصود بسرعة ⚽😀'
   },
   song_emoji: {
     emoji: '🎵',
-    title: 'خمّن الأغنية — نظام الإيموجي 😀',
+    title: 'الأغاني — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الأغنية المقصودة بسرعة 🎵😀'
   },
   novel_emoji: {
     emoji: '📚',
-    title: 'خمّن الرواية أو الكتاب — نظام الإيموجي 😀',
+    title: 'الروايات والكتب — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الكتاب أو الرواية المقصودة 📚😀'
   },
   landmark_emoji: {
     emoji: '🏛️',
-    title: 'خمّن المعلم السياحي — نظام الإيموجي 😀',
+    title: 'المعالم السياحية — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف المعلم السياحي المقصود 🏛️😀'
   },
   vgame_emoji: {
     emoji: '🎮',
-    title: 'خمّن لعبة الفيديو — نظام الإيموجي 😀',
+    title: 'ألعاب الفيديو — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف لعبة الفيديو المقصودة 🎮😀'
   },
   creature_emoji: {
     emoji: '🐾',
-    title: 'خمّن الكائن الحي — نظام الإيموجي 😀',
+    title: 'الكائنات الحية — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الكائن الحي المقصود 🐾😀'
   },
   brands_emoji: {
@@ -341,7 +341,7 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   capitals_emoji: {
     emoji: '🏛️',
-    title: 'خمّن العاصمة — نظام الإيموجي 😀',
+    title: 'العواصم — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف العاصمة المقصودة بسرعة 🏛️😀'
   }
 };
@@ -356,7 +356,7 @@ export function isSpeedQuiz(game: QuizGame | { kind: QuizKind }): boolean {
   );
 }
 
-/** يولّد مسائل حسابية عشوائية متنوّعة (جمع، طرح، ضرب، قسمة صحيحة، وتربيع) مع ٣ إجابات غلط قريبة */
+/** يولّد مسائل حسابية عشوائية متنوّعة (جمع، طرح، ضرب، قسمة صحيحة، وتربيع) مع 3 إجابات غلط قريبة */
 function mathRows(): GQRow[] {
   const rows: GQRow[] = [];
   const used = new Set<string>();
@@ -411,12 +411,12 @@ function mathRows(): GQRow[] {
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 10;
 
-/** رقم بالأرقام العربية (٢٥١٣…) */
+/** رقم بالأرقام العربية (2513…) */
 function arNum(n: number): string {
-  return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
+  return String(n);
 }
 export const TOTAL_ROUNDS = 10;
-/** مهلة كل سؤال بالثواني (١٥ ثانية) — اللي ما يجاوب خلالها يتحوّل السؤال تلقائياً للي بعده */
+/** مهلة كل سؤال بالثواني (15 ثانية) — اللي ما يجاوب خلالها يتحوّل السؤال تلقائياً للي بعده */
 export const ROUND_MS = 15_000;
 /** مهلة عرض نتيجة الجولة لما الكل يجاوب قبل انتهاء المهلة */
 export const RESULT_MS = 2_000;
@@ -437,7 +437,7 @@ export function scoreLine(rank: number, name: string, score: number, mark = ''):
   return `> ${rank} \\- \\| *${md(name)}* \\| \\(p ${score}\\)${mark}`;
 }
 
-/** يحوّل نص بعلامات عريض/مائل واقتباسات > إلى MarkdownV2 سليم ١٠٠٪ بلا أي رمز غير مهروّب */
+/** يحوّل نص بعلامات عريض/مائل واقتباسات > إلى MarkdownV2 سليم 100٪ بلا أي رمز غير مهروّب */
 function convertV2Inline(seg: string): string {
   let out = '';
   let i = 0;
@@ -510,7 +510,7 @@ export interface QuizGame {
   players: QuizPlayer[];
   round: number;
   totalRounds: number;
-  /** بنك جولات هاي المباراة (مخلوط جاهز — ٤ أو ٥ خيارات) */
+  /** بنك جولات هاي المباراة (مخلوط جاهز — 4 أو 5 خيارات) */
   deck: string[][];
   qIndex: number;
   /** خيارات الجولة بعد الخلط + مكان الإجابة الصحيحة */
@@ -518,7 +518,7 @@ export interface QuizGame {
   correctIdx: number;
   /** نص ملخص آخر جولة (لعرضه بشاشة النتيجة) */
   lastLine: string;
-  /** موعد انتهاء مهلة السؤال الحالي (١٠ ثواني) */
+  /** موعد انتهاء مهلة السؤال الحالي (10 ثواني) */
   roundDeadline?: number;
   /** موعد الانتقال التلقائي بعد شاشة النتيجة القصيرة */
   resultDeadline?: number;
@@ -676,12 +676,12 @@ export function createQuiz(chatId: string, chatName: string, kind: QuizKind): Qu
 export function quizJoin(game: QuizGame, id: string, name: string): { ok: boolean; msg: string } {
   if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت — شارك بالجاية' };
   if (game.players.some(p => p.id === id)) return { ok: false, msg: '✅ أنت مشترك' };
-  if (game.players.length >= MAX_PLAYERS) return { ok: false, msg: '🚫 اكتمل العدد (١٠ لاعبين)' };
+  if (game.players.length >= MAX_PLAYERS) return { ok: false, msg: '🚫 اكتمل العدد (10 لاعبين)' };
   game.players.push({ id, name, score: 0, done: false });
   return { ok: true, msg: '✅ انضميت!' };
 }
 
-/** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين ويبدأ مؤقت ١٠ ثواني */
+/** يجهّز الجولة الحالية: يخلط الخيارات ويصفّر إجابات اللاعبين ويبدأ مؤقت 10 ثواني */
 function loadRound(game: QuizGame) {
   const row = game.deck[game.qIndex];
   const correct = row[1];
@@ -746,7 +746,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
     game.roundDeadline = undefined;
     game.resultDeadline = Date.now() + RESULT_MS;
     game.lastLine = `> ⚡ \\| *${md(p.name)}* \\| سبق الكل — الجواب: *${md(correctText)}*`;
-    return { ok: true, msg: '⚡ صح وسباق! +١ نقطة', roundClosed: true };
+    return { ok: true, msg: '⚡ صح وسباق! +1 نقطة', roundClosed: true };
   }
 
   // 🧩 باقي الأنواع: الكل يجاوب وكل صح يحسب
@@ -756,7 +756,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
 
   const allDone = game.players.every(x => x.done);
   if (!allDone) {
-    return { ok: true, msg: isRight ? '✅ صح! +١ نقطة' : '❌ غلط', roundClosed: false };
+    return { ok: true, msg: isRight ? '✅ صح! +1 نقطة' : '❌ غلط', roundClosed: false };
   }
 
   game.status = 'result';
@@ -770,7 +770,7 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
   } else {
     game.lastLine = '';
   }
-  return { ok: true, msg: isRight ? '✅ صح! +١ نقطة' : '❌ غلط', roundClosed: true };
+  return { ok: true, msg: isRight ? '✅ صح! +1 نقطة' : '❌ غلط', roundClosed: true };
 }
 
 /** يختم الجولة على طول (بس لاعب جاوب أصلاً يكدر يضغطها) */
@@ -787,7 +787,7 @@ export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string
   return { ok: true, msg: '⏭️ انختمت الجولة' };
 }
 
-/** بعد عرض نتيجة الجولة أو انتهاء ١٠ ثواني: نتأكد ماكو نهاية مبكرة ونجهّز الجولة الجاية أو نختم */
+/** بعد عرض نتيجة الجولة أو انتهاء 10 ثواني: نتأكد ماكو نهاية مبكرة ونجهّز الجولة الجاية أو نختم */
 export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
   // 🧠 نهاية ذكية (وضع السرعة): إذا المتصدر مستحيل ينلحق
   if (isSpeedQuiz(game) && game.players.length) {
@@ -874,7 +874,7 @@ export function renderQuiz(game: QuizGame): string {
   return lines.join('\n');
 }
 
-/** لوحة الأزرار أثناء اللعب — ٤ خيارات (٢×٢) */
+/** لوحة الأزرار أثناء اللعب — 4 خيارات (2×2) */
 export function quizKeyboard(game: QuizGame): any[][] {
   const chatId = game.chatId;
 
@@ -908,7 +908,7 @@ function cut(s: string, n: number): string {
 }
 
 // ---------------------------------------------------------------------
-// 🔐 ماسترمايند — كسر الرقم السري (٤ أرقام غير مكررة)
+// 🔐 ماسترمايند — كسر الرقم السري (4 أرقام غير مكررة)
 // ---------------------------------------------------------------------
 export interface MMPlayer {
   id: string;
@@ -952,7 +952,7 @@ export function mmCreate(chatId: string, chatName: string): MMGame {
 export function mmJoin(game: MMGame, id: string, name: string): { ok: boolean; msg: string } {
   if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت — شارك بالجاية' };
   if (game.players.some(p => p.id === id)) return { ok: false, msg: '✅ أنت مشترك' };
-  if (game.players.length >= MAX_PLAYERS) return { ok: false, msg: '🚫 امتلأت (١٠ لاعبين)' };
+  if (game.players.length >= MAX_PLAYERS) return { ok: false, msg: '🚫 امتلأت (10 لاعبين)' };
   game.players.push({ id, name, tries: 0 });
   return { ok: true, msg: '✅ انضميت!' };
 }
@@ -997,7 +997,7 @@ export function mmPress(game: MMGame, id: string, digit: string): { ok: boolean;
   if (game.status !== 'playing') return { ok: false, msg: '⏳ ماكو جولة شغالة' };
   const cur = mmCurrent(game);
   if (!cur || cur.id !== id) return { ok: false, msg: '⏳ مو دورك هسه' };
-  if (game.entry.length >= 4) return { ok: false, msg: '☑️ كمّلت ٤ أرقام — اضغط تأكيد أو مسح' };
+  if (game.entry.length >= 4) return { ok: false, msg: '☑️ كمّلت 4 أرقام — اضغط تأكيد أو مسح' };
   game.entry += digit;
   return { ok: true, msg: '' };
 }
@@ -1023,7 +1023,7 @@ export function mmConfirm(game: MMGame, id: string): MMConfirm {
   const cur = mmCurrent(game);
   if (!cur || cur.id !== id) return { ok: false, msg: '⏳ مو دورك هسه', won: false, stuck: false };
   if (new Set(game.entry).size !== game.entry.length || game.entry.length !== 4) {
-    return { ok: false, msg: '⚠️ لازم ٤ أرقام مختلفة (بلا تكرار)', won: false, stuck: false };
+    return { ok: false, msg: '⚠️ لازم 4 أرقام مختلفة (بلا تكرار)', won: false, stuck: false };
   }
 
   const { black, white } = mmScoreGuess(game.secret, game.entry);

@@ -101,7 +101,7 @@ export function answer(round: SongRound, index: number): SongRound {
 }
 
 export function renderMessage(round: SongRound): string {
-  const lines = [`🎵 *خمّن الأغنية*`, `━━━━━━━━━━━━━━━━━━━`];
+  const lines = [`🎵 *الأغاني*`, `━━━━━━━━━━━━━━━━━━━`];
   lines.push(`❝ ${round.snippet} ❞`);
   lines.push(`━━━━━━━━━━━━━━━━━━━`);
   if (!round.done) {

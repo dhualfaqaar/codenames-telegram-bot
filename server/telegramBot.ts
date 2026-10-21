@@ -151,7 +151,7 @@ interface BotGameCard {
   id: string;
   emoji: string;
   title: string;
-  category: 'duo' | 'team' | 'team3' | 'team4' | 'group' | 'fast' | 'guess';
+  category: 'duo' | 'team' | 'team3' | 'team4' | 'group' | 'fast';
   /** كم لاعب */
   players: string;
   /** وين تنلعب */
@@ -181,7 +181,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🕵️',
     title: 'المافيا',
     category: 'group',
-    players: 'من ٤ إلى ١٢ لاعباً',
+    players: 'من 4 إلى 12 لاعباً',
     where: 'في القناة أو المجموعة',
     goal: 'كشف أفراد المافيا وطردهم قبل سيطرتهم على المدينة',
     reward: 'خبرة وجوائز للفريق الفائز',
@@ -197,7 +197,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🎭',
     title: 'منو برا السالفة؟',
     category: 'group',
-    players: 'من ٣ إلى ١٠ لاعبين',
+    players: 'من 3 إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'كشف اللاعب الوحيد الذي لا يعرف السالفة السرية',
     reward: 'نقاط وخبرة وجوائز للأذكى بالتصويت والتخمين',
@@ -236,7 +236,6 @@ const BOT_GAMES: BotGameCard[] = [
     about:
       'مواجهة ثنائية كلاسيكية: الحجرة تكسر المقص، والمقص يقص الورقة، والورقة تغطي الحجرة.\n' +
       'التعادل يعيد الجولة، وصاحب أعلى نقاط في النهاية يحسم الفوز.',
-    play: { label: '🎮 العب بالقناة', data: 'hub:channel' },
     channel: true,
     ready: true
   },
@@ -252,20 +251,19 @@ const BOT_GAMES: BotGameCard[] = [
     goal: 'كشف جميع بطاقات فريقك قبل الفريق المنافس',
     about:
       'يتنافس الفريقان الأزرق 🔵 والأحمر 🔴 لكشف بطاقاتهما السرية على اللوحة.\n' +
-      'يعطي الجاسوس تلميحاً من كلمة واحدة مع عدد البطاقات المرتبطة بها، ويخمّن العميل البطاقات المقصودة.\n' +
+      'يعطي الجاسوس تلميحاً من كلمة واحدة مع عدد البطاقات المرتبطة بها، ويختار العميل البطاقات المقصودة.\n' +
       'الفريق الذي يكشف جميع بطاقاته أولاً يفوز، ومن يكشف بطاقة القاتل 💀 يخسر فوراً.',
     channel: true,
     ready: true
   },
 
-  // ─────────────── 🧩 ألعاب التخمين بالقناة ───────────────
+  // ─────────────── 🎉 الألعاب الجماعية بالقناة ───────────────
   {
     id: 'poet',
     emoji: '🎭',
-    title: 'خمّن الشاعر',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'الشعراء',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الشاعر صاحب البيت الشهير',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -278,10 +276,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_player',
     emoji: '⚽',
-    title: 'خمّن اللاعب',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'اللاعبون',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة اسم لاعب كرة القدم من مسيرته وألقابه',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -294,10 +291,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_song',
     emoji: '🎵',
-    title: 'خمّن الأغنية',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'الأغاني',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الفنان صاحب الأغنية المعروضة',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -310,9 +306,8 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'odd_word',
     emoji: '🕵️',
     title: 'الكلمة الغريبة',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'اكتشاف الكلمة الدخيلة التي لا تنتمي لبقية الكلمات',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -324,18 +319,18 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
 
-  // ─────────────── 🎉 الألعاب الجماعية بالقناة (من لاعبين إلى ١٠ لاعبين) ───────────────
+  // ─────────────── 🎉 الألعاب الجماعية بالقناة (من لاعبين إلى 10 لاعبين) ───────────────
   {
     id: 'math',
     emoji: '🧮',
     title: 'تحدي الحساب',
     category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى نقاط عبر سرعة الحل الصحيح',
     reward: 'نقطة لأسرع إجابة صحيحة في كل جولة',
     about:
-      'مسائل حسابية سريعة في الجمع والطرح والضرب من ١٠ جولات.\n' +
+      'مسائل حسابية سريعة في الجمع والطرح والضرب من 10 جولات.\n' +
       'يكسب نقطة الجولة أسرع لاعب يختار الناتج الصحيح، وصاحب أعلى رصيد في النهاية يفوز.',
     channel: true,
     inline: 'gq math',
@@ -346,12 +341,12 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '⚡',
     title: 'مسابقة السرعة',
     category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى نقاط عبر سرعة الإجابة الصحيحة',
     reward: 'نقطة لأسرع إجابة صحيحة في كل جولة',
     about:
-      'أسئلة ثقافية سريعة من ١٠ جولات.\n' +
+      'أسئلة ثقافية سريعة من 10 جولات.\n' +
       'أسرع لاعب يختار الإجابة الصحيحة يكسب نقطة الجولة، والأعلى نقاطاً يفوز.',
     channel: true,
     inline: 'gq speed',
@@ -362,12 +357,12 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🧠',
     title: 'معركة المعلومات',
     category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'تحقيق أعلى مجموع نقاط في ١٠ جولات',
+    goal: 'تحقيق أعلى مجموع نقاط في 10 جولات',
     reward: 'نقطة لكل إجابة صحيحة',
     about:
-      'منافسة معلومات عامة من ١٠ جولات في مختلف المجالات.\n' +
+      'منافسة معلومات عامة من 10 جولات في مختلف المجالات.\n' +
       'كل إجابة صحيحة تمنح صاحبها نقطة، وصاحب أعلى مجموع في النهاية يفوز.',
     channel: true,
     inline: 'gq trivia',
@@ -378,13 +373,13 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '📚',
     title: 'أسئلة عامة',
     category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'حصد أعلى نقاط في ١٠ جولات ثقافية متنوعة',
+    goal: 'حصد أعلى نقاط في 10 جولات ثقافية متنوعة',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
     about:
-      'مسابقة جماعية متجددة من ١٠ جولات تغطي العلوم والفضاء واللغة والطبيعة والثقافة العامة.\n' +
-      'تُحتسب نقطة لكل إجابة صحيحة خلال ١٥ ثانية، وصاحب أعلى رصيد في النهاية يحسم الفوز.',
+      'مسابقة جماعية متجددة من 10 جولات تغطي العلوم والفضاء واللغة والطبيعة والثقافة العامة.\n' +
+      'تُحتسب نقطة لكل إجابة صحيحة خلال 15 ثانية، وصاحب أعلى رصيد في النهاية يحسم الفوز.',
     channel: true,
     inline: 'gq general',
     ready: true
@@ -394,12 +389,12 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🗺️',
     title: 'جغرافيا',
     category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'حصد أعلى نقاط في ١٠ جولات جغرافية',
+    goal: 'حصد أعلى نقاط في 10 جولات جغرافية',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
     about:
-      'منافسة جغرافية شيّقة من ١٠ جولات تشمل الدول والجزر والمضائق والأنهار والجبال والمحيطات وجغرافية العراق والعالم.\n' +
+      'منافسة جغرافية شيّقة من 10 جولات تشمل الدول والجزر والمضائق والأنهار والجبال والمحيطات وجغرافية العراق والعالم.\n' +
       'كل إجابة صحيحة تمنح نقطة، والأعلى رصيداً في ختام الجولات يفوز.',
     channel: true,
     inline: 'gq geo',
@@ -410,12 +405,12 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🏛️',
     title: 'تاريخ',
     category: 'group',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'حصد أعلى نقاط في ١٠ جولات تاريخية',
+    goal: 'حصد أعلى نقاط في 10 جولات تاريخية',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
     about:
-      'منافسة تاريخية ممتعة من ١٠ جولات تمتد من حضارات سومر وبابل وآشور في العراق إلى التاريخ العربي والإسلامي وأبرز محطات التاريخ العالمي.\n' +
+      'منافسة تاريخية ممتعة من 10 جولات تمتد من حضارات سومر وبابل وآشور في العراق إلى التاريخ العربي والإسلامي وأبرز محطات التاريخ العالمي.\n' +
       'كل إجابة صحيحة تمنح نقطة، وصاحب الصدارة في النهاية يفوز.',
     channel: true,
     inline: 'gq history',
@@ -424,10 +419,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_country',
     emoji: '🏳️',
-    title: 'خمّن الدولة',
+    title: 'الدول',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الدول الصحيحة',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -440,10 +434,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_movie',
     emoji: '🎬',
-    title: 'خمّن الفيلم',
+    title: 'الأفلام',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الأفلام الصحيحة',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -456,10 +449,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_series',
     emoji: '📺',
-    title: 'خمّن المسلسل',
+    title: 'المسلسلات',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من المسلسلات الصحيحة',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -472,10 +464,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_number',
     emoji: '🔢',
-    title: 'خمّن الرقم',
+    title: 'الأرقام',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الأرقام الصحيحة',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -488,10 +479,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_food',
     emoji: '🍲',
-    title: 'خمّن الأكلة',
+    title: 'الأكلات',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من الأكلات الصحيحة',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -504,10 +494,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_flags',
     emoji: '🚩',
-    title: 'خمّن العلم',
+    title: 'الأعلام',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من أعلام الدول',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -520,10 +509,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'gq_capitals',
     emoji: '🏛️',
-    title: 'خمّن العاصمة',
+    title: 'العواصم',
     category: 'group',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أكبر عدد من عواصم الدول',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -539,7 +527,7 @@ const BOT_GAMES: BotGameCard[] = [
     title: 'دولة القارة',
     category: 'group',
     guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الدولة التي تقع ضمن القارة المطلوبة',
     reward: 'نقطة لكل إجابة صحيحة',
@@ -550,7 +538,7 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
 
-  // ─────────────── 🏟️ جميع الألعاب التفاعلية الـ ٢٥ الجديدة (جماعية + 1v1 + 2v2 + 3v3 + 4v4) ───────────────
+  // ─────────────── 🏟️ جميع الألعاب التفاعلية الـ 25 الجديدة (جماعية + 1v1 + 2v2 + 3v3 + 4v4) ───────────────
   ...(Object.keys(ARX.ARENA_MODES) as ARX.ArenaMode[]).map(m => {
     const meta = ARX.ARENA_MODES[m];
     return {
@@ -575,11 +563,11 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🕌',
     title: 'إسلاميات وتراث',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى النقاط في القصص القرآنية والسيرة والتراث الأصيل',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'منافسة متجددة من ١٠ جولات تشمل السور والأنبياء والصحابة والأمثال الشعبية والتراث العراقي والعربي.',
+    about: 'منافسة متجددة من 10 جولات تشمل السور والأنبياء والصحابة والأمثال الشعبية والتراث العراقي والعربي.',
     channel: true,
     inline: 'gq islamic',
     ready: true
@@ -589,7 +577,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🔬',
     title: 'علوم وفضاء واختراعات',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى النقاط في العلوم والفضاء والاختراعات',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -603,7 +591,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🦁',
     title: 'عالم الحيوان والطبيعة',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أسرار الكائنات والطبيعة وحصد الصدارة',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -617,7 +605,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '💻',
     title: 'تقنية وألعاب فيديو',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'التفوّق في عالم التقنية والحواسيب والألعاب الإلكترونية',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -631,7 +619,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🗣️',
     title: 'معاني الكلمات واللهجات',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة معاني المفردات العراقية والعربية المتنوعة',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -645,7 +633,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🚗',
     title: 'شعارات وماركات وسيارات',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أشهر الشركات والسيارات وبلدان منشئها',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -659,7 +647,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🏆',
     title: 'كرة قدم عالمية وعراقية',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد صدارة الكرة العراقية والعالمية',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -673,7 +661,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '✅',
     title: 'صح لو خطأ السريع',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'سباق سرعة حاسم لاختيار صح أو خطأ قبل الجميع',
     reward: 'نقطة لأسرع إجابة صحيحة في كل جولة',
@@ -687,7 +675,7 @@ const BOT_GAMES: BotGameCard[] = [
     emoji: '🧮',
     title: 'إيموجي المعادلات الذكية',
     category: 'fast',
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حل المعادلات المصوّرة بالإيموجي بأسرع وقت',
     reward: 'نقطة لأسرع حل صحيح في كل جولة',
@@ -697,18 +685,16 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
 
-  // ─────────────── 🧩 ألعاب خمّن الأربع الجديدة للقنوات ───────────────
   {
     id: 'guess_novel',
     emoji: '📚',
-    title: 'خمّن الرواية أو الكتاب الشهير',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'الروايات والكتب',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الرواية أو الكتاب الشهير من فكرته وأبطاله',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'نبذة مشوّقة عن كتاب أو رواية عربية أو عالمية خالدة مع ٤ خيارات لاختيار العمل الصحيح.',
+    about: 'نبذة مشوّقة عن كتاب أو رواية عربية أو عالمية خالدة مع 4 خيارات لاختيار العمل الصحيح.',
     channel: true,
     inline: 'gq novel',
     ready: true
@@ -716,10 +702,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_landmark',
     emoji: '🏛️',
-    title: 'خمّن المعلم السياحي',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'المعالم السياحية',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة المعلم السياحي أو الأثري الشهير من وصفه',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -731,14 +716,13 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_vgame',
     emoji: '🎮',
-    title: 'خمّن لعبة الفيديو',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'ألعاب الفيديو',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة اللعبة الإلكترونية الشهيرة من قصتها أو طريقة لعبها',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
-    about: 'وصف لعالم اللعبة أو بطلها الشهير مع ٤ خيارات لمعرفة اللعبة الإلكترونية الصحيحة.',
+    about: 'وصف لعالم اللعبة أو بطلها الشهير مع 4 خيارات لمعرفة اللعبة الإلكترونية الصحيحة.',
     channel: true,
     inline: 'gq vgame',
     ready: true
@@ -746,10 +730,9 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'guess_creature',
     emoji: '🐾',
-    title: 'خمّن الكائن الحي',
-    category: 'guess',
-    guess: true,
-    players: 'من لاعبين إلى ١٠ لاعبين',
+    title: 'الكائنات الحية',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة الكائن الحي من صفاته وحقائقه الفريدة',
     reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
@@ -770,32 +753,27 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
   team: {
     emoji: '⚔️',
     title: 'ألعاب الفرق (2 ضد 2)',
-    intro: 'منافسات تكتيكية وتعاونية بنظام الفريقين (٢ ضد ٢).'
+    intro: 'منافسات تكتيكية وتعاونية بنظام الفريقين (2 ضد 2).'
   },
   team3: {
     emoji: '🔥',
     title: 'ألعاب ثلاثية (3v3)',
-    intro: 'مواجهات حماسية بنظام الفريقين الثلاثيين (٣ ضد ٣).'
+    intro: 'مواجهات حماسية بنظام الفريقين الثلاثيين (3 ضد 3).'
   },
   team4: {
     emoji: '🏰',
     title: 'ألعاب رباعية (4v4)',
-    intro: 'معارك عشائر وفرق كبرى بنظام (٤ ضد ٤).'
+    intro: 'معارك عشائر وفرق كبرى بنظام (4 ضد 4).'
   },
   group: {
     emoji: '🎉',
     title: 'الألعاب الجماعية',
-    intro: 'ألعاب جماعية في القناة أو المجموعة من لاعبين إلى ١٠ لاعبين.'
+    intro: 'ألعاب جماعية في القناة أو المجموعة من لاعبين إلى 10 لاعبين.'
   },
   fast: {
     emoji: '⚡',
     title: 'المسابقات السريعة',
     intro: 'مسابقات ثقافية وتفاعلية سريعة ومتجددة في مختلف المجالات.'
-  },
-  guess: {
-    emoji: '🧩',
-    title: 'ألعاب خمّن',
-    intro: 'ألعاب ذكاء وتخمين ممتعة في القنوات والمجموعات.'
   }
 };
 
@@ -965,6 +943,11 @@ export class TelegramBotManager {
   private whispers: Map<string, MS.WhisperRecord> = new Map();
   private pendingWhispers: Map<string, MS.PendingWhisperDraft> = new Map();
   private pendingSocialDl: Map<string, MS.SocialPlatform> = new Map();
+  private seenUpdateIds: Set<number> = new Set();
+  private activeSocialDownloads: Set<string> = new Set();
+  private mediaSessionMsgs: Map<string, number[]> = new Map();
+  private activeDownloadSlots: number = 0;
+  private waitingDownloadResolvers: Array<() => void> = [];
   private songSearches: Map<string, MS.SongSearchHit[]> = new Map();
   private lastInlineDeployer?: { id: string; at: number };
   private commandsSyncVer: number = 0;
@@ -1880,6 +1863,17 @@ export class TelegramBotManager {
 
   public async handleUpdate(update: TelegramUpdate) {
     try {
+      const uidNum = Number((update as any)?.update_id);
+      if (Number.isFinite(uidNum)) {
+        if (this.seenUpdateIds.has(uidNum)) {
+          return;
+        }
+        this.seenUpdateIds.add(uidNum);
+        if (this.seenUpdateIds.size > 1500) {
+          const oldest = this.seenUpdateIds.values().next().value;
+          if (oldest !== undefined) this.seenUpdateIds.delete(oldest);
+        }
+      }
       await this.ensureCommandsSynced();
       const incoming = update.message || update.channel_post;
 
@@ -1965,12 +1959,14 @@ export class TelegramBotManager {
         return;
       }
       if (this.pendingSocialDl.has(uid)) {
-        await this.handleSocialDownloadInput(uid, text);
+        await this.handleSocialDownloadInput(uid, text, message.message_id);
         return;
       }
       if (this.pendingClosestNum.has(uid)) {
         const targetChat = this.pendingClosestNum.get(uid)!;
-        const parsed = parseFloat(text.replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/,/g, ''));
+        const parsed = parseFloat(
+          text.replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660)).replace(/,/g, '')
+        );
         if (!Number.isFinite(parsed)) {
           await this.sendMessage(uid, '⚠️ أرسل رقماً صحيحاً فقط (مثال: `1850`).');
           return;
@@ -2309,7 +2305,13 @@ export class TelegramBotManager {
     }
 
     // ---- ✨ الخدمات الإضافية + الهمسات + تحميل السوشيال ميديا + الأغاني ----
-    if (data.startsWith('svc:') || data.startsWith('wh:') || data.startsWith('dl:') || data.startsWith('yts:')) {
+    if (
+      data.startsWith('svc:') ||
+      data.startsWith('wh:') ||
+      data.startsWith('dl:') ||
+      data.startsWith('ytq:') ||
+      data.startsWith('yts:')
+    ) {
       await this.handleExtraServicesCb(cb, data);
       return;
     }
@@ -2352,7 +2354,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // ---- 🏟️ الألعاب التفاعلية الـ ٢٥ الجديدة ----
+    // ---- 🏟️ الألعاب التفاعلية الـ 25 الجديدة ----
     if (data.startsWith('arx:')) {
       await this.handleArenaCb(cb, data);
       return;
@@ -3108,9 +3110,9 @@ export class TelegramBotManager {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🎯 اختار كم راوند تلعبون بالقناة:`,
       keyboard: [
-        [{ text: '🎮 بالقناة — ٥ راوندات', switch_inline_query: 'rps 5' }],
-        [{ text: '🎮 بالقناة — ١٠ راوندات', switch_inline_query: 'rps 10' }],
-        [{ text: '🎮 بالقناة — ١٥ راوندات', switch_inline_query: 'rps 15' }],
+        [{ text: '🎮 بالقناة — 5 راوندات', switch_inline_query: 'rps 5' }],
+        [{ text: '🎮 بالقناة — 10 راوندات', switch_inline_query: 'rps 10' }],
+        [{ text: '🎮 بالقناة — 15 راوندات', switch_inline_query: 'rps 15' }],
         [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
       ]
     });
@@ -3223,7 +3225,7 @@ export class TelegramBotManager {
     };
   }
 
-  /** بطاقة بطولة إقصائية (8 / 16 / 32) نظيفة ١٠٠٪ بدون أي كود ظاهر */
+  /** بطاقة بطولة إقصائية (8 / 16 / 32) نظيفة 100٪ بدون أي كود ظاهر */
   private trnCard(rawDiscipline: string, rawCap: string | number, deployerId?: string): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     const uid = deployerId ? `|${deployerId}` : '';
@@ -3232,7 +3234,7 @@ export class TelegramBotManager {
       : 'general';
     const capacity = TRN.parseCapacity(rawCap);
     const meta = TRN.getDisciplineMeta(discipline);
-    const arCap = String(capacity).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
+    const arCap = String(capacity);
     const hidden = encodeHiddenTag(`trn:${discipline}:${capacity}${uid}`);
     return {
       type: 'article',
@@ -3255,7 +3257,7 @@ export class TelegramBotManager {
     };
   }
 
-  /** بطاقة لعبة جماعية نظيفة ١٠٠٪ بدون أي كود ظاهر أو نص تحضير */
+  /** بطاقة لعبة جماعية نظيفة 100٪ بدون أي كود ظاهر أو نص تحضير */
   private gqCard(kind: string, deployerId?: string): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     const uid = deployerId ? `|${deployerId}` : '';
@@ -3343,7 +3345,7 @@ export class TelegramBotManager {
           type: 'article',
           id: 'mf',
           title: '🕵️ لعبة المافيا',
-          description: 'اضغط لإرسال لعبة المافيا مباشرة للقناة (٤ – ١٢ لاعباً)',
+          description: 'اضغط لإرسال لعبة المافيا مباشرة للقناة (4 – 12 لاعباً)',
           input_message_content: {
             message_text: `🕵️ *لعبة المافيا*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
             parse_mode: 'Markdown'
@@ -3364,7 +3366,7 @@ export class TelegramBotManager {
           type: 'article',
           id: 'ool',
           title: '🎭 منو برا السالفة؟',
-          description: 'اضغط لإرسال اللعبة مباشرة للقناة (٣ – ١٠ لاعبين)',
+          description: 'اضغط لإرسال اللعبة مباشرة للقناة (3 – 10 لاعبين)',
           input_message_content: {
             message_text: `🎭 *منو برا السالفة؟*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
             parse_mode: 'Markdown'
@@ -3398,7 +3400,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── 🏟️ الألعاب التفاعلية الـ ٢٥ الجديدة (arx <shortCode>) ──
+    // ── 🏟️ الألعاب التفاعلية الـ 25 الجديدة (arx <shortCode>) ──
     if (q.startsWith('arx ') || q.startsWith('arx:')) {
       const code = q.slice(4).trim();
       const mode = ARX.findArenaModeByShort(code);
@@ -3650,7 +3652,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── 🏟️ الألعاب التفاعلية الـ ٢٥ الجديدة بالقناة ──
+    // ── 🏟️ الألعاب التفاعلية الـ 25 الجديدة بالقناة ──
     if (arxMode && ARX.ARENA_MODES[arxMode]) {
       const ag = ARX.createArenaLobby(chatId, message.chat.title || 'المحادثة', arxMode);
       ag.messageId = message.message_id;
@@ -3816,7 +3818,7 @@ export class TelegramBotManager {
     return new Promise(r => setTimeout(r, ms));
   }
 
-  /** أقرب موعد انتهاء جولة أو شاشة نتيجة (للمنبّه التلقائي ١٠ ثواني) */
+  /** أقرب موعد انتهاء جولة أو شاشة نتيجة (للمنبّه التلقائي 10 ثواني) */
   public getNextQuizDeadline(): number | null {
     let earliest = Infinity;
     const now = Date.now();
@@ -3968,7 +3970,7 @@ export class TelegramBotManager {
     }
   }
 
-  /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد ١٥ ثانية أو بعد شاشة النتيجة القصيرة) */
+  /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد 15 ثانية أو بعد شاشة النتيجة القصيرة) */
   public async processQuizTimers(): Promise<void> {
     const now = Date.now();
     for (const g of Array.from(this.gqGames.values())) {
@@ -4838,10 +4840,7 @@ export class TelegramBotManager {
     const backStats = [{ text: '🔙 رجوع للإحصائيات', callback_data: 'gstat:main' }];
 
     if (section === 'cat:group' || section === 'cat:guess') {
-      const isGuess = section === 'cat:guess';
-      const list = isGuess
-        ? BOT_GAMES.filter(g => g.category === 'guess' || (g.category === 'group' && g.guess))
-        : BOT_GAMES.filter(g => g.category === 'group' && !g.guess);
+      const list = BOT_GAMES.filter(g => g.category === 'group');
       const kb: any[][] = [];
       for (let i = 0; i < list.length; i += 2) {
         const row: any[] = [{ text: `${list[i].emoji} ${list[i].title}`, callback_data: `gstat:f:${list[i].id}` }];
@@ -4852,9 +4851,7 @@ export class TelegramBotManager {
       }
       kb.push(backStats);
       return {
-        text: isGuess
-          ? `🧩 *إحصائيات ألعاب خمّن*\n${SEP}\nاختر اللعبة لعرض إحصائياتها ومقارنتك بالمتصدرين:`
-          : `🎉 *إحصائيات الألعاب الجماعية*\n${SEP}\nاختر اللعبة لعرض إحصائياتها ومقارنتك بالمتصدرين:`,
+        text: `🎉 *إحصائيات الألعاب الجماعية*\n${SEP}\nاختر اللعبة لعرض إحصائياتها ومقارنتك بالمتصدرين:`,
         keyboard: kb
       };
     }
@@ -4867,9 +4864,6 @@ export class TelegramBotManager {
       : fromHub
         ? (() => {
             const gCard = findBotGame(gameId);
-            if (gCard && (gCard.category === 'guess' || gCard.guess)) {
-              return [{ text: '🔙 رجوع لقائمة خمّن', callback_data: 'gstat:cat:guess' }];
-            }
             if (gCard && gCard.category === 'group') {
               return [{ text: '🔙 رجوع للجماعية', callback_data: 'gstat:cat:group' }];
             }
@@ -4879,7 +4873,7 @@ export class TelegramBotManager {
 
     const myRec = viewerId ? this.users.get(String(viewerId)) : undefined;
 
-    // 🎉 1) الألعاب الجماعية الـ ١١
+    // 🎉 1) الألعاب الجماعية الـ 11
     const gqKind = gameId ? TelegramBotManager.GQ_GAME_KIND[gameId] : undefined;
     if (gqKind) {
       const meta = GG.QUIZ_KINDS[gqKind];
@@ -5042,7 +5036,7 @@ export class TelegramBotManager {
       return { text, keyboard: [backRow] };
     }
 
-    // 🏟️ إحصائيات جميع الألعاب التفاعلية الـ ٢٥ الجديدة (1v1 / 2v2 / 3v3 / 4v4 / الجماعية)
+    // 🏟️ إحصائيات جميع الألعاب التفاعلية الـ 25 الجديدة (1v1 / 2v2 / 3v3 / 4v4 / الجماعية)
     if (gameId && ARX.ARENA_MODES[gameId as ARX.ArenaMode]) {
       const meta = ARX.ARENA_MODES[gameId as ARX.ArenaMode];
       const rows = n.users
@@ -5131,7 +5125,7 @@ export class TelegramBotManager {
       });
 
       const text =
-        `🎵 *إحصائيات خمّن الأغنية*\n` +
+        `🎵 *إحصائيات الأغاني*\n` +
         `👥 اللاعبون المشاركون: *${rows.length}*\n` +
         `🎮 المشاركات المكتملة: *${totalParticipations}*\n` +
         `🏆 إجمالي مرات الفوز: *${totalWins}*\n` +
@@ -5349,13 +5343,12 @@ export class TelegramBotManager {
     const keyboard: any[][] = [
       [
         { text: '🎉 إحصائيات الجماعية', callback_data: 'gstat:cat:group' },
-        { text: '🧩 إحصائيات ألعاب خمّن', callback_data: 'gstat:cat:guess' }
+        { text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }
       ],
       [
         { text: '⚔️ كود نيمز', callback_data: 'gstat:cn' },
         { text: '✊ حجرة ورقة مقص', callback_data: 'gstat:f:rps' }
       ],
-      [{ text: '🏆 لوحة الأبطال', callback_data: 'gstat:top' }],
       [{ text: '🔙 رجوع', callback_data: 'hub:main' }],
       [{ text: '👑 لوحة التحكم', callback_data: 'admin:panel' }]
     ];
@@ -5564,11 +5557,11 @@ export class TelegramBotManager {
     const botUser = await this.getBotUsername();
     const back = [{ text: '🔙 رجوع', callback_data: 'hub:main' }];
 
-    // 📂 صفحة الصنف: ألعاب الصنف فقط + رجوع
+    // 📂 صفحة اختيار نوع الأغاني
     if (section === 'songpick') {
       return {
         text:
-          `🎵 *خمّن الأغنية*\n` +
+          `🎵 *الأغاني*\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
           `👇 اختار نوع الأغاني لتحويل اللعبة للقناة:`,
         keyboard: [
@@ -5579,31 +5572,46 @@ export class TelegramBotManager {
       };
     }
 
-    if (GAME_CATEGORIES[section]) {
-      const cat = GAME_CATEGORIES[section];
-      // الجماعية تعرض بطولات القناة بس (ألعاب خمّن عندها قسمها الداخلي)،
-      // وصفحة «خمّن» تجمع ألعاب الخمّن كلها (قناة + خاص)
-      let list: BotGameCard[];
-      if (section === 'group') list = BOT_GAMES.filter(g => g.category === 'group' && !g.guess);
-      else if (section === 'guess') list = BOT_GAMES.filter(g => g.category === 'guess' || (g.category === 'group' && g.guess));
-      else list = BOT_GAMES.filter(g => g.category === section);
+    // ✊ حجرة ورقة مقص — النظام العادي (اختيار عدد الراوندات القابلة للتحويل فوراً)
+    if (section === 'rps_normal') {
+      return {
+        text:
+          `✊ *حجرة ورقة مقص — النظام العادي*\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `🎯 اختار عدد الراوندات لتحويل اللعبة للقناة أو المجموعة:`,
+        keyboard: [
+          [{ text: '🎮 5 راوندات', switch_inline_query: 'rps 5' }],
+          [{ text: '🎮 10 راوندات', switch_inline_query: 'rps 10' }],
+          [{ text: '🎮 15 راوند', switch_inline_query: 'rps 15' }],
+          [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
+        ]
+      };
+    }
 
-      const keyboard: any[][] = list.map(g => [
-        {
-          text: `${g.emoji} ${g.title}`,
-          callback_data: `hub:g:${g.id}`
+    const normalizedSection = section === 'guess' ? 'group' : section;
+    if (GAME_CATEGORIES[normalizedSection]) {
+      const cat = GAME_CATEGORIES[normalizedSection];
+      const list = BOT_GAMES.filter(g => g.category === normalizedSection);
+
+      // أزرار صغيرة مرتبة: مربعان بكل سطر بدلاً من الأزرار العريضة الطويلة
+      const keyboard: any[][] = [];
+      for (let i = 0; i < list.length; i += 2) {
+        const row: any[] = [
+          {
+            text: `${list[i].emoji} ${list[i].title}`,
+            callback_data: `hub:g:${list[i].id}`
+          }
+        ];
+        if (list[i + 1]) {
+          row.push({
+            text: `${list[i + 1].emoji} ${list[i + 1].title}`,
+            callback_data: `hub:g:${list[i + 1].id}`
+          });
         }
-      ]);
-
-      // 🎉 داخل الجماعية: أول زر ينقلك لقسم «ألعاب خمّن» الداخلي
-      if (section === 'group') {
-        keyboard.unshift([{ text: '🧩 ألعاب خمّن', callback_data: 'hub:guess' }]);
-        keyboard.push(back);
-      } else if (section === 'guess') {
-        keyboard.push([{ text: '🔙 رجوع للجماعية', callback_data: 'hub:group' }]);
-      } else {
-        keyboard.push(back);
+        keyboard.push(row);
       }
+
+      keyboard.push(back);
 
       const text =
         `${cat.emoji} *${cat.title}*\n` +
@@ -5614,7 +5622,7 @@ export class TelegramBotManager {
       return { text, keyboard };
     }
 
-    // 🏆 شاشة اختيار سعة البطولة الإقصائية (٨ / ١٦ / ٣٢) للعبة المختارة
+    // 🏆 شاشة اختيار سعة البطولة الإقصائية (8 / 16 / 32) للعبة المختارة
     if (section.startsWith('trn:') || section.startsWith('trn_emoji:')) {
       const useEmoji = section.startsWith('trn_emoji:');
       const targetGameId = useEmoji ? section.slice('trn_emoji:'.length) : section.slice('trn:'.length);
@@ -5629,23 +5637,23 @@ export class TelegramBotManager {
       if (game.id === 'guess_song' && !useEmoji) {
         return {
           text:
-            `🏆 *نظام البطولات والدوريات — 🎵 خمّن الأغنية*\n` +
+            `🏆 *نظام البطولات والدوريات — 🎵 الأغاني*\n` +
             `━━━━━━━━━━━━━━━━━━━\n` +
             `خروج المغلوب مثل أدوار كرة القدم تماماً حتى يتوَّج لاعب واحد فقط باللقب!\n` +
             `يشترط عدد زوجي من اللاعبين عند بدء القرعة.\n\n` +
             `👇 اختار نوع الأغاني وسعة البطولة:`,
           keyboard: [
             [
-              { text: '🎤 عربي — ٨', switch_inline_query: 'trn song_ar 8' },
-              { text: '🎤 عربي — ١٦', switch_inline_query: 'trn song_ar 16' },
-              { text: '🎤 عربي — ٣٢', switch_inline_query: 'trn song_ar 32' }
+              { text: '🎤 عربي — 8', switch_inline_query: 'trn song_ar 8' },
+              { text: '🎤 عربي — 16', switch_inline_query: 'trn song_ar 16' },
+              { text: '🎤 عربي — 32', switch_inline_query: 'trn song_ar 32' }
             ],
             [
-              { text: '🎸 إنجليزي — ٨', switch_inline_query: 'trn song_en 8' },
-              { text: '🎸 إنجليزي — ١٦', switch_inline_query: 'trn song_en 16' },
-              { text: '🎸 إنجليزي — ٣٢', switch_inline_query: 'trn song_en 32' }
+              { text: '🎸 إنجليزي — 8', switch_inline_query: 'trn song_en 8' },
+              { text: '🎸 إنجليزي — 16', switch_inline_query: 'trn song_en 16' },
+              { text: '🎸 إنجليزي — 32', switch_inline_query: 'trn song_en 32' }
             ],
-            [{ text: '😀 بطولات الإيموجي (٨ / ١٦ / ٣٢)', callback_data: 'hub:trn_emoji:guess_song' }],
+            [{ text: '😀 بطولات الإيموجي (8 / 16 / 32)', callback_data: 'hub:trn_emoji:guess_song' }],
             [{ text: '🔙 رجوع للعبة', callback_data: `hub:g:${game.id}` }]
           ]
         };
@@ -5664,12 +5672,12 @@ export class TelegramBotManager {
             : baseKind || 'general';
 
       const kb: any[][] = [
-        [{ text: '🥇 دوري الـ ٨ لاعبين', switch_inline_query: `trn ${disc} 8` }],
-        [{ text: '🥈 دوري الـ ١٦ لاعباً', switch_inline_query: `trn ${disc} 16` }],
-        [{ text: '👑 دوري الـ ٣٢ لاعباً', switch_inline_query: `trn ${disc} 32` }]
+        [{ text: '🥇 دوري الـ 8 لاعبين', switch_inline_query: `trn ${disc} 8` }],
+        [{ text: '🥈 دوري الـ 16 لاعباً', switch_inline_query: `trn ${disc} 16` }],
+        [{ text: '👑 دوري الـ 32 لاعباً', switch_inline_query: `trn ${disc} 32` }]
       ];
       if (!useEmoji && emojiVariant) {
-        kb.push([{ text: '😀 بطولات نظام الإيموجي (٨ / ١٦ / ٣٢)', callback_data: `hub:trn_emoji:${game.id}` }]);
+        kb.push([{ text: '😀 بطولات نظام الإيموجي (8 / 16 / 32)', callback_data: `hub:trn_emoji:${game.id}` }]);
       } else if (useEmoji) {
         kb.push([{ text: '🏆 رجوع لبطولات النظام العادي', callback_data: `hub:trn:${game.id}` }]);
       }
@@ -5681,7 +5689,7 @@ export class TelegramBotManager {
           `🏆 *نظام البطولات والدوريات — ${game.emoji} ${game.title}${modeTag}*\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
           `يتواجه كل لاعبين اثنين وجهاً لوجه بنظام خروج المغلوب مثل أدوار كرة القدم تماماً:\n` +
-          `🏟️ دور الـ ٣٢ ⬅️ دور الـ ١٦ ⬅️ ربع النهائي ⬅️ نصف النهائي ⬅️ النهائي الكبير 🏆\n` +
+          `🏟️ دور الـ 32 ⬅️ دور الـ 16 ⬅️ ربع النهائي ⬅️ نصف النهائي ⬅️ النهائي الكبير 🏆\n` +
           `يشترط اكتمال *عدد زوجي* من اللاعبين لبدء القرعة، ويتوَّج *لاعب واحد فقط* بطلاً في النهاية!\n\n` +
           `👇 اختار حجم البطولة للإرسال للقناة أو المجموعة:`,
         keyboard: kb
@@ -5721,25 +5729,23 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات ٨/١٦/٣٢ | إيموجي) ──
+        // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات 8/16/32 | إيموجي) ──
         if (game.channel) {
           if (game.id === 'guess_song') {
             keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', callback_data: 'hub:songpick' }]);
-            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (٨ / ١٦ / ٣٢)', callback_data: `hub:trn:${game.id}` }]);
+            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
               keyboard.push([{ text: '😀 نظام الإيموجي (العب بالقناة)', switch_inline_query: `gq ${emojiKind}` }]);
             }
           } else if (gqKind && game.inline) {
             keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', switch_inline_query: game.inline }]);
-            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (٨ / ١٦ / ٣٢)', callback_data: `hub:trn:${game.id}` }]);
+            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
               keyboard.push([{ text: '😀 نظام الإيموجي (العب بالقناة)', switch_inline_query: `gq ${emojiKind}` }]);
             }
           } else if (game.id === 'rps') {
-            keyboard.push([{ text: '🎮 النظام العادي — ٥ راوندات', switch_inline_query: 'rps 5' }]);
-            keyboard.push([{ text: '🎮 النظام العادي — ١٠ راوندات', switch_inline_query: 'rps 10' }]);
-            keyboard.push([{ text: '🎮 النظام العادي — ١٥ راوندات', switch_inline_query: 'rps 15' }]);
-            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (٨ / ١٦ / ٣٢)', callback_data: 'hub:trn:rps' }]);
+            keyboard.push([{ text: '🎮 النظام العادي', callback_data: 'hub:rps_normal' }]);
+            keyboard.push([{ text: '🏆 نظام البطولات', callback_data: 'hub:trn:rps' }]);
           } else if (game.inline) {
             keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: game.inline }]);
           } else {
@@ -6018,7 +6024,7 @@ export class TelegramBotManager {
 
     const round = this.poet.get(userId);
     if (!round) {
-      await this.answerCallbackQuery(cb.id, 'اضغط «🎭 خمّن الشاعر» من قائمة الألعاب.', true);
+      await this.answerCallbackQuery(cb.id, 'اضغط «🎭 الشعراء» من قائمة الألعاب.', true);
       return;
     }
 
@@ -6102,7 +6108,7 @@ export class TelegramBotManager {
 
     const round = this.song.get(userId);
     if (!round) {
-      await this.answerCallbackQuery(cb.id, 'اضغط «🎵 خمّن الأغنية» من قائمة الألعاب.', true);
+      await this.answerCallbackQuery(cb.id, 'اضغط «🎵 الأغاني» من قائمة الألعاب.', true);
       return;
     }
 
@@ -6382,11 +6388,11 @@ export class TelegramBotManager {
           { text: '👥 لشخصين', callback_data: 'wh:m:2' }
         ],
         [
-          { text: '👥 لـ ٣ أشخاص', callback_data: 'wh:m:3' },
-          { text: '👥 لـ ٤ أشخاص', callback_data: 'wh:m:4' }
+          { text: '👥 لـ 3 أشخاص', callback_data: 'wh:m:3' },
+          { text: '👥 لـ 4 أشخاص', callback_data: 'wh:m:4' }
         ],
         [
-          { text: '👥 لـ ٥ أشخاص', callback_data: 'wh:m:5' },
+          { text: '👥 لـ 5 أشخاص', callback_data: 'wh:m:5' },
           { text: '🌍 للجميع', callback_data: 'wh:m:all' }
         ],
         [{ text: '⚡ لأول شخص فقط (تقفل بعده)', callback_data: 'wh:m:first' }],
@@ -6471,6 +6477,94 @@ export class TelegramBotManager {
       return;
     }
 
+    // ── مسح جميع رسائل الميديا والروابط المحمّلة لتخفيف الضغط والحفاظ على سرعة البوت ──
+    if (data === 'dl:clean') {
+      const tracked = this.mediaSessionMsgs.get(userId) || [];
+      const toDelete = new Set<number>(tracked);
+      if (messageId) toDelete.add(messageId);
+      this.mediaSessionMsgs.delete(userId);
+      await this.answerCallbackQuery(cb.id, '🗑️ تم مسح الميديا والروابط المحمّلة بنجاح!', false);
+      await Promise.allSettled(Array.from(toDelete).map(mid => this.deleteMessage(chatId, mid)));
+      return;
+    }
+
+    // ── تحميل فيديو يوتيوب بدقة عالية HD (1080p / 720p) حتى لو تجاوز 50MB ──
+    if (data.startsWith('ytq:hd:')) {
+      const videoId = data.slice('ytq:hd:'.length).trim();
+      const lockKey = `hd:${userId}`;
+      if (this.activeSocialDownloads.has(lockKey)) {
+        await this.answerCallbackQuery(cb.id, '⏳ جاري تجهيز نسخة HD بالفعل، انتظر لحظات...', false);
+        return;
+      }
+      this.activeSocialDownloads.add(lockKey);
+      await this.answerCallbackQuery(cb.id, '🎬 جاري تجهيز النسخة عالية الدقة HD...');
+
+      const waitMsg = await this.sendMessage(chatId, '⏳ جاري استخراج وتحميل النسخة عالية الدقة *HD* ...');
+      const waitMsgId = waitMsg?.result?.message_id;
+
+      await this.acquireDownloadSlot();
+      try {
+        const hdRes = await MS.extractYouTubeHighDefinition(videoId);
+        if (waitMsgId) await this.deleteMessage(chatId, waitMsgId);
+
+        if (!hdRes.ok || !hdRes.items.length) {
+          const errSent = await this.sendMessage(
+            chatId,
+            hdRes.error || '⚠️ تعذّر استخراج نسخة HD حالياً — حاول مجدداً بعد لحظات.'
+          );
+          if (errSent?.result?.message_id) this.trackMediaMsg(userId, errSent.result.message_id);
+          return;
+        }
+
+        const hdItem = hdRes.items[0];
+        let deliveredInline = false;
+        if (!hdItem.oversized) {
+          const sentId = await this.sendMediaBinaryOrUrl(
+            chatId,
+            'video',
+            hdItem.url,
+            hdItem.headers,
+            hdItem.bytes
+          );
+          hdItem.bytes = undefined;
+          if (sentId) {
+            this.trackMediaMsg(userId, sentId);
+            deliveredInline = true;
+          }
+        } else {
+          hdItem.bytes = undefined;
+        }
+
+        const qBadge = hdItem.quality ? `${hdItem.quality}p ` : '';
+        const sizeNote = hdItem.sizeMB ? ` (${hdItem.sizeMB} MB)` : '';
+        const kb: any[][] = [];
+        if (!deliveredInline) {
+          kb.push([{ text: `📥 تنزيل نسخة ${qBadge}HD الكاملة مباشرة${sizeNote}`, url: hdItem.url }]);
+        }
+        kb.push([{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }]);
+        kb.push([
+          { text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' },
+          { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
+        ]);
+
+        const doneMsg = await this.sendMessage(
+          chatId,
+          deliveredInline
+            ? `🎬 *تم إرسال النسخة عالية الدقة (${qBadge}HD) بنجاح!*\n\n` +
+                `💡 _ملاحظة: بعد حفظ الفيديو بجهازك، ننصحك بالضغط على «🗑️ مسح الميديا المحمّلة» لحذف الرسائل والوسائط المنتهية والحفاظ على خفة وسرعة البوت للجميع._`
+            : `🎬 *النسخة عالية الدقة (${qBadge}HD) جاهزة للتحميل الكامل${sizeNote}!*\n` +
+                `بما أن حجم النسخة يتجاوز سقف الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيل الملف الكامل بأقصى سرعة مباشرة إلى جهازك:\n\n` +
+                `💡 _ملاحظة: بعد إتمام التنزيل، ننصحك بالضغط على «🗑️ مسح الميديا المحمّلة» لحذف الروابط والرسائل المنتهية والحفاظ على خفة وسرعة البوت._`,
+          kb
+        );
+        if (doneMsg?.result?.message_id) this.trackMediaMsg(userId, doneMsg.result.message_id);
+      } finally {
+        this.releaseDownloadSlot();
+        this.activeSocialDownloads.delete(lockKey);
+      }
+      return;
+    }
+
     // ── اختيار منصة التحميل ──
     if (data.startsWith('dl:')) {
       const platform = data.slice(3) as MS.SocialPlatform;
@@ -6481,8 +6575,13 @@ export class TelegramBotManager {
         `${SEP}\n` +
         `🔗 أرسل الآن *رابط المنشور* هنا بالمحادثة ليتم تحميله وإرساله لك مباشرة 👇`;
       const keyboard = [[{ text: '🔙 رجوع للمنصات', callback_data: 'svc:dl' }]];
-      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
-      else await this.sendMessage(chatId, text, keyboard);
+      if (messageId) {
+        await this.editMessageText(chatId, messageId, text, keyboard);
+        this.trackMediaMsg(userId, messageId);
+      } else {
+        const promptSent = await this.sendMessage(chatId, text, keyboard);
+        if (promptSent?.result?.message_id) this.trackMediaMsg(userId, promptSent.result.message_id);
+      }
       await this.answerCallbackQuery(cb.id, '');
       return;
     }
@@ -6894,49 +6993,133 @@ export class TelegramBotManager {
     );
   }
 
-  /** معالجة رابط التحميل المرسل بالخاص من يوتيوب / بنترست / تيك توك / إنستغرام */
-  private async handleSocialDownloadInput(userId: string, rawUrl: string) {
+  private trackMediaMsg(userId: string, msgId?: number | null) {
+    if (!msgId || !Number.isFinite(msgId)) return;
+    const arr = this.mediaSessionMsgs.get(userId) || [];
+    if (!arr.includes(msgId)) arr.push(msgId);
+    if (arr.length > 60) arr.shift();
+    this.mediaSessionMsgs.set(userId, arr);
+  }
+
+  private async acquireDownloadSlot(): Promise<void> {
+    if (this.activeDownloadSlots < 2) {
+      this.activeDownloadSlots += 1;
+      return;
+    }
+    await new Promise<void>(resolve => {
+      this.waitingDownloadResolvers.push(resolve);
+    });
+  }
+
+  private releaseDownloadSlot(): void {
+    const next = this.waitingDownloadResolvers.shift();
+    if (next) {
+      next();
+    } else {
+      this.activeDownloadSlots = Math.max(0, this.activeDownloadSlots - 1);
+    }
+  }
+
+  /** معالجة رابط التحميل المرسل بالخاص من يوتيوب / بنترست / تيك توك / إنستغرام (يدعم > 50MB + زر HD + مسح الميديا + منع التكرار 100%) */
+  private async handleSocialDownloadInput(userId: string, rawUrl: string, incomingMsgId?: number) {
     const platform = this.pendingSocialDl.get(userId);
     if (!platform) return;
+
+    // قفل فوري لكل مستخدم حتى يستحيل إرسال «جاري تحميل المنشور...» أكثر من مرة واحدة إطلاقاً!
+    if (this.activeSocialDownloads.has(userId)) {
+      return;
+    }
+    this.activeSocialDownloads.add(userId);
+    if (incomingMsgId) this.trackMediaMsg(userId, incomingMsgId);
 
     const statusMsg = await this.sendMessage(userId, `⏳ جاري تحميل المنشور من *${MS.socialPlatformLabel(platform)}* ...`);
     const statusMsgId = statusMsg?.result?.message_id;
 
-    const result = await MS.downloadFromPlatform(platform, rawUrl);
-    if (!result.ok || !result.items.length) {
-      const errText = result.error || '⚠️ تعذّر تحميل هذا الرابط — تأكد أنه رابط منشور عام وصحيح.';
-      if (statusMsgId) {
-        await this.editMessageText(userId, statusMsgId, errText, [
-          [{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]
+    await this.acquireDownloadSlot();
+    try {
+      const result = await MS.downloadFromPlatform(platform, rawUrl);
+      if (!result.ok || !result.items.length) {
+        const errText = result.error || '⚠️ تعذّر تحميل هذا الرابط — تأكد أنه رابط منشور عام وصحيح.';
+        if (statusMsgId) {
+          await this.editMessageText(userId, statusMsgId, errText, [
+            [{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]
+          ]);
+        } else {
+          await this.sendMessage(userId, errText, [[{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]]);
+        }
+        return;
+      }
+
+      let deliveredInline = 0;
+      const oversizedButtons: Array<{ text: string; url: string }> = [];
+
+      for (const item of result.items.slice(0, 5)) {
+        if (item.oversized) {
+          item.bytes = undefined;
+          const sizeTag = item.sizeMB ? ` (${item.sizeMB} MB)` : '';
+          oversizedButtons.push({
+            text: `📥 تنزيل الفيديو الكامل مباشرة${sizeTag}`,
+            url: item.url
+          });
+          continue;
+        }
+
+        const sentId = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url, item.headers, item.bytes);
+        // تحرير البايتات من الذاكرة فوراً بعد الإرسال لمنع أي ضغط على البوت عند تعدد المستخدمين
+        item.bytes = undefined;
+
+        if (sentId) {
+          this.trackMediaMsg(userId, sentId);
+          deliveredInline += 1;
+        } else if (item.url && item.url.startsWith('http')) {
+          oversizedButtons.push({
+            text: '📥 تنزيل الفيديو الكامل مباشرة',
+            url: item.url
+          });
+        }
+      }
+
+      if (deliveredInline > 0 || oversizedButtons.length > 0) {
+        this.pendingSocialDl.delete(userId);
+        if (statusMsgId) {
+          await this.deleteMessage(userId, statusMsgId);
+        }
+
+        const kb: any[][] = [];
+        for (const btn of oversizedButtons) {
+          kb.push([btn]);
+        }
+        if (platform === 'yt' && result.videoId) {
+          kb.push([{ text: '🎬 تحميل بدقة عالية HD', callback_data: `ytq:hd:${result.videoId}` }]);
+        }
+        kb.push([{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }]);
+        kb.push([
+          { text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' },
+          { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
         ]);
-      } else {
-        await this.sendMessage(userId, errText, [[{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]]);
-      }
-      return;
-    }
 
-    let delivered = 0;
-    for (const item of result.items.slice(0, 5)) {
-      const ok = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url, item.headers, item.bytes);
-      if (ok) delivered += 1;
-    }
+        const noteLine =
+          `💡 _ملاحظة: بعد حفظ الفيديو أو الصورة بجهازك، ننصحك بالضغط على زر «🗑️ مسح الميديا المحمّلة» بالأسفل لحذف الروابط والوسائط المنتهية والحفاظ على خفة وسرعة البوت للجميع._`;
 
-    if (delivered > 0) {
-      this.pendingSocialDl.delete(userId);
-      if (statusMsgId) {
-        await this.deleteMessage(userId, statusMsgId);
+        const doneText =
+          deliveredInline > 0
+            ? `✅ *تم تحميل وإرسال المنشور بنجاح!*\n\n${noteLine}`
+            : `✅ *تم تجهيز الفيديو الكامل بنجاح (حجم أكبر من 50MB)!*\n` +
+              `بما أن حجم الفيديو يتجاوز حد الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيله كاملاً مباشرة وبأقصى سرعة:\n\n${noteLine}`;
+
+        const doneMsg = await this.sendMessage(userId, doneText, kb);
+        if (doneMsg?.result?.message_id) this.trackMediaMsg(userId, doneMsg.result.message_id);
+      } else if (statusMsgId) {
+        await this.editMessageText(
+          userId,
+          statusMsgId,
+          '⚠️ تعذّر استلام الملف من المصدر حالياً — حاول مرة أخرى بعد لحظات.',
+          [[{ text: '🔙 رجوع', callback_data: 'svc:dl' }]]
+        );
       }
-      await this.sendMessage(userId, '✅ تم تحميل وإرسال المنشور بنجاح!', [
-        [{ text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' }],
-        [{ text: '🔙 خدمات أخرى', callback_data: 'svc:main' }]
-      ]);
-    } else if (statusMsgId) {
-      await this.editMessageText(
-        userId,
-        statusMsgId,
-        '⚠️ تعذّر رفع الملف إلى تيليجرام (قد يتجاوز حجم الفيديو الحد المسموح 50MB).',
-        [[{ text: '🔙 رجوع', callback_data: 'svc:dl' }]]
-      );
+    } finally {
+      this.releaseDownloadSlot();
+      this.activeSocialDownloads.delete(userId);
     }
   }
 
@@ -7064,15 +7247,15 @@ export class TelegramBotManager {
     }
   }
 
-  /** إرسال فيديو أو صورة (مع تمرير Cookies + Referer + User-Agent الأصلي أو البايتات المفحوصة لتجاوز أي حظر CDN 403) */
+  /** إرسال فيديو أو صورة (مع حماية كاملة للذاكرة وإعادة message_id ليتم مسحها بضغطة زر «مسح الميديا المحمّلة») */
   private async sendMediaBinaryOrUrl(
     chatId: string,
     kind: 'video' | 'photo',
     mediaUrl: string,
     customHeaders?: Record<string, string>,
     preloadedBytes?: Uint8Array
-  ): Promise<boolean> {
-    if (!this.token) return false;
+  ): Promise<number | null> {
+    if (!this.token) return null;
     const method = kind === 'video' ? 'sendVideo' : 'sendPhoto';
     const field = kind === 'video' ? 'video' : 'photo';
 
@@ -7090,7 +7273,7 @@ export class TelegramBotManager {
           body: form
         });
         const upJson: any = await up.json();
-        if (upJson?.ok) return true;
+        if (upJson?.ok) return Number(upJson?.result?.message_id) || 1;
       } catch {
         // continue
       }
@@ -7107,21 +7290,26 @@ export class TelegramBotManager {
         redirect: 'follow'
       });
       if (r.ok) {
-        const buf = await r.arrayBuffer();
-        if (buf.byteLength > 500 && buf.byteLength <= 49 * 1024 * 1024) {
-          const mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
-          const ext = kind === 'video' ? 'mp4' : 'jpg';
-          const form = new FormData();
-          form.append('chat_id', chatId);
-          form.append(field, new Blob([buf], { type: mime }), `media.${ext}`);
-          if (kind === 'video') form.append('supports_streaming', 'true');
+        const declaredLen = parseInt(r.headers.get('content-length') || '0', 10);
+        if (declaredLen > 49 * 1024 * 1024) {
+          await r.body?.cancel().catch(() => undefined);
+        } else {
+          const buf = await r.arrayBuffer();
+          if (buf.byteLength > 500 && buf.byteLength <= 49 * 1024 * 1024) {
+            const mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
+            const ext = kind === 'video' ? 'mp4' : 'jpg';
+            const form = new FormData();
+            form.append('chat_id', chatId);
+            form.append(field, new Blob([buf], { type: mime }), `media.${ext}`);
+            if (kind === 'video') form.append('supports_streaming', 'true');
 
-          const up = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-            method: 'POST',
-            body: form
-          });
-          const upJson: any = await up.json();
-          if (upJson?.ok) return true;
+            const up = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+              method: 'POST',
+              body: form
+            });
+            const upJson: any = await up.json();
+            if (upJson?.ok) return Number(upJson?.result?.message_id) || 1;
+          }
         }
       }
     } catch {
@@ -7137,9 +7325,10 @@ export class TelegramBotManager {
         body: JSON.stringify(payload)
       });
       const dj: any = await direct.json();
-      return Boolean(dj?.ok);
+      if (dj?.ok) return Number(dj?.result?.message_id) || 1;
+      return null;
     } catch {
-      return false;
+      return null;
     }
   }
 
