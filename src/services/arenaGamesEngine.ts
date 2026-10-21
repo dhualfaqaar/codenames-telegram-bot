@@ -1488,14 +1488,25 @@ export function resolvePlayingRound(game: ArenaGame, now = Date.now()) {
       const kickerIdx = (game.round - 1) % 2;
       const kicker = game.players[kickerIdx];
       const keeper = game.players[1 - kickerIdx];
-      const kChoice = kicker.choice ?? Math.floor(Math.random() * 3);
-      const gChoice = keeper.choice ?? Math.floor(Math.random() * 3);
-      const saved = kChoice === gChoice;
-      if (!saved) {
+      const kickerPicked = Boolean(kicker?.done && typeof kicker.choice === 'number');
+      const keeperPicked = Boolean(keeper?.done && typeof keeper.choice === 'number');
+
+      // No shot was taken when the kicker did not choose; never invent a random goal on timeout.
+      if (!kickerPicked || !kicker) {
+        game.lastSummary = `⏰ *انتهى الوقت قبل التسديدة — ماكو هدف\\!*`;
+        break;
+      }
+      if (!keeperPicked || !keeper) {
+        kicker.score += 1;
+        game.lastSummary = `⚽ *هدف — الحارس ما اختار زاويته\\!* لصالح:\n> \\| *${md(kicker.name)}* \\|`;
+        break;
+      }
+
+      if (kicker.choice === keeper.choice) {
+        game.lastSummary = `🧤 *تصدٍّ أسطوري\\!* صدّ الحارس الكرة ببراعة:\n> \\| *${md(keeper.name)}* \\|`;
+      } else {
         kicker.score += 1;
         game.lastSummary = `⚽ *هدف رائع\\!* سكن الشباك لصالح:\n> \\| *${md(kicker.name)}* \\|`;
-      } else {
-        game.lastSummary = `🧤 *تصدٍّ أسطوري\\!* صدّ الحارس الكرة ببراعة:\n> \\| *${md(keeper.name)}* \\|`;
       }
       break;
     }
@@ -1510,15 +1521,28 @@ export function resolvePlayingRound(game: ArenaGame, now = Date.now()) {
       const keeper = blueKicking
         ? reds[Math.floor((game.round - 1) / 2) % reds.length]
         : blues[Math.floor((game.round - 1) / 2) % blues.length];
-      const kChoice = kicker?.choice ?? 0;
-      const gChoice = keeper?.choice ?? 1;
-      if (kChoice !== gChoice) {
+      const kickerPicked = Boolean(kicker?.done && typeof kicker.choice === 'number');
+      const keeperPicked = Boolean(keeper?.done && typeof keeper.choice === 'number');
+
+      if (!kickerPicked || !kicker) {
+        game.lastSummary = `⏰ *انتهى الوقت قبل التسديدة — ماكو هدف\\!*`;
+        break;
+      }
+      if (!keeperPicked || !keeper) {
         if (blueKicking) game.blueScore += 1;
         else game.redScore += 1;
-        if (kicker) kicker.score += 1;
+        kicker.score += 1;
+        game.lastSummary = `⚽ *هدف — الحارس ما اختار زاويته\\!*`;
+        break;
+      }
+
+      if (kicker.choice !== keeper.choice) {
+        if (blueKicking) game.blueScore += 1;
+        else game.redScore += 1;
+        kicker.score += 1;
         game.lastSummary = `⚽ *هدف جميل في الشباك\\!*`;
       } else {
-        if (keeper) keeper.score += 1;
+        keeper.score += 1;
         game.lastSummary = `🧤 *تصدٍّ بارع من حارس المرمى\\!*`;
       }
       break;
@@ -2067,6 +2091,14 @@ export function renderArenaKeyboard(game: ArenaGame, botUsername?: string): any[
         { text: `🏦 ثبّت الرصيد (+${game.pot})`, callback_data: `arx:act:bank:0:${c}` }
       ]
     ];
+  }
+
+  if ((game.mode === 'football_1v1' || game.mode === 'football_2v2') && game.status === 'playing') {
+    return [[
+      { text: '⬅️ يسار', callback_data: `arx:act:opt:0:${c}` },
+      { text: '⬆️ وسط', callback_data: `arx:act:opt:1:${c}` },
+      { text: '➡️ يمين', callback_data: `arx:act:opt:2:${c}` }
+    ]];
   }
 
   if (game.mode === 'battleship_1v1' || game.mode === 'battleship_2v2') {
