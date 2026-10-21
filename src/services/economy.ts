@@ -54,6 +54,13 @@ export const GAME_ECONOMY: Record<string, GameEconomy> = {
     online: true,
     note: 'الفائز ياخذ *0.012 – 0.06* 💵 حسب أداءه'
   },
+  tournament: {
+    maxMoney: 0.035,
+    winXp: 14,
+    loseXp: 5,
+    online: true,
+    note: 'بطل البطولة الإقصائية ياخذ *0.015 – 0.035* 💵 + *14 XP* 👑'
+  },
   math: {
     maxMoney: 0.015,
     winXp: 8,

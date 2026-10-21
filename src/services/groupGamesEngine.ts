@@ -42,6 +42,20 @@ import {
   GUESS_VIDEOGAMES,
   GUESS_CREATURES
 } from './fastAndGuessBanks';
+import {
+  MOVIE_EMOJI,
+  SERIES_EMOJI,
+  COUNTRY_EMOJI,
+  FOOD_EMOJI,
+  PLAYER_EMOJI,
+  SONG_EMOJI,
+  NOVEL_EMOJI,
+  LANDMARK_EMOJI,
+  VGAME_EMOJI,
+  CREATURE_EMOJI,
+  BRANDS_EMOJI,
+  CAPITALS_EMOJI
+} from './emojiModeBanks';
 
 // ---------------------------------------------------------------------
 // 🧩 أنواع الألعاب
@@ -78,7 +92,36 @@ export type QuizKind =
   | 'novel'
   | 'landmark'
   | 'vgame'
-  | 'creature';
+  | 'creature'
+  | 'movie_emoji'
+  | 'series_emoji'
+  | 'country_emoji'
+  | 'food_emoji'
+  | 'player_emoji'
+  | 'song_emoji'
+  | 'novel_emoji'
+  | 'landmark_emoji'
+  | 'vgame_emoji'
+  | 'creature_emoji'
+  | 'brands_emoji'
+  | 'capitals_emoji';
+
+/** خريطة ربط اللعبة الأصلية بنسخة «نظام الإيموجي 😀» الخاصة بها */
+export const EMOJI_VARIANT_OF: Partial<Record<QuizKind, QuizKind>> = {
+  movie: 'movie_emoji',
+  series: 'series_emoji',
+  country: 'country_emoji',
+  food: 'food_emoji',
+  player: 'player_emoji',
+  song_ar: 'song_emoji',
+  song_en: 'song_emoji',
+  novel: 'novel_emoji',
+  landmark: 'landmark_emoji',
+  vgame: 'vgame_emoji',
+  creature: 'creature_emoji',
+  brands: 'brands_emoji',
+  capitals: 'capitals_emoji'
+};
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
   general: {
@@ -240,6 +283,66 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🐾',
     title: 'خمّن الكائن الحي',
     intro: 'اعرف الكائن الحي من صفاته وحقائقه المدهشة 🐾'
+  },
+  movie_emoji: {
+    emoji: '🎬',
+    title: 'خمّن الفيلم — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الفيلم المقصود بسرعة 🎬😀'
+  },
+  series_emoji: {
+    emoji: '📺',
+    title: 'خمّن المسلسل — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف المسلسل المقصود بسرعة 📺😀'
+  },
+  country_emoji: {
+    emoji: '🏳️',
+    title: 'خمّن الدولة — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الدولة المقصودة بسرعة 🏳️😀'
+  },
+  food_emoji: {
+    emoji: '🍲',
+    title: 'خمّن الأكلة — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الأكلة المقصودة بسرعة 🍲😀'
+  },
+  player_emoji: {
+    emoji: '⚽',
+    title: 'خمّن اللاعب — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف اللاعب المقصود بسرعة ⚽😀'
+  },
+  song_emoji: {
+    emoji: '🎵',
+    title: 'خمّن الأغنية — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الأغنية المقصودة بسرعة 🎵😀'
+  },
+  novel_emoji: {
+    emoji: '📚',
+    title: 'خمّن الرواية أو الكتاب — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الكتاب أو الرواية المقصودة 📚😀'
+  },
+  landmark_emoji: {
+    emoji: '🏛️',
+    title: 'خمّن المعلم السياحي — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف المعلم السياحي المقصود 🏛️😀'
+  },
+  vgame_emoji: {
+    emoji: '🎮',
+    title: 'خمّن لعبة الفيديو — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف لعبة الفيديو المقصودة 🎮😀'
+  },
+  creature_emoji: {
+    emoji: '🐾',
+    title: 'خمّن الكائن الحي — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الكائن الحي المقصود 🐾😀'
+  },
+  brands_emoji: {
+    emoji: '🚗',
+    title: 'شعارات وماركات — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف الماركة العالمية المقصودة 🚗😀'
+  },
+  capitals_emoji: {
+    emoji: '🏛️',
+    title: 'خمّن العاصمة — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة واعرف العاصمة المقصودة بسرعة 🏛️😀'
   }
 };
 
@@ -477,10 +580,44 @@ function packFor(kind: QuizKind): string[][] {
     case 'landmark': return GUESS_LANDMARKS;
     case 'vgame': return GUESS_VIDEOGAMES;
     case 'creature': return GUESS_CREATURES;
+    case 'movie_emoji': return MOVIE_EMOJI;
+    case 'series_emoji': return SERIES_EMOJI;
+    case 'country_emoji': return COUNTRY_EMOJI;
+    case 'food_emoji': return FOOD_EMOJI;
+    case 'player_emoji': return PLAYER_EMOJI;
+    case 'song_emoji': return SONG_EMOJI;
+    case 'novel_emoji': return NOVEL_EMOJI;
+    case 'landmark_emoji': return LANDMARK_EMOJI;
+    case 'vgame_emoji': return VGAME_EMOJI;
+    case 'creature_emoji': return CREATURE_EMOJI;
+    case 'brands_emoji': return BRANDS_EMOJI;
+    case 'capitals_emoji': return CAPITALS_EMOJI;
     case 'math': return mathRows();
     case 'odd': return oddWordRows();
     default: return GENERAL; // speed + trivia
   }
+}
+
+/** يسحب سؤالاً واحداً جديداً غير مكرر مع خياراته المخلوطة لاستخدامه في مباريات البطولات الإقصائية */
+export function drawQuizQuestion(
+  kind: QuizKind,
+  usedPrompts: Set<string>
+): { prompt: string; options: string[]; correctIdx: number } {
+  const pool = packFor(kind);
+  let candidates = pool.filter(r => !usedPrompts.has(r[0]));
+  if (!candidates.length) {
+    usedPrompts.clear();
+    candidates = pool.slice();
+  }
+  const picked = candidates[Math.floor(Math.random() * candidates.length)];
+  usedPrompts.add(picked[0]);
+  const correct = picked[1];
+  const opts = shuffle(picked.slice(1).filter(Boolean));
+  return {
+    prompt: picked[0],
+    options: opts,
+    correctIdx: opts.indexOf(correct)
+  };
 }
 
 /**
