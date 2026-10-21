@@ -15,9 +15,6 @@ interface Env {
   WEBHOOK_URL?: string;
   /** Optional: Telegram id of the bot owner (otherwise it is auto-detected). */
   OWNER_ID?: string;
-  /** Optional: PyTgCalls / WebRTC voice chat bridge endpoint + bearer secret. */
-  VOICE_BRIDGE_URL?: string;
-  VOICE_BRIDGE_SECRET?: string;
   BOT_STATE: any;
 }
 
@@ -131,9 +128,6 @@ export class BotState {
     if (this.bot) return this.bot;
 
     const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, true);
-    if (this.env.VOICE_BRIDGE_URL) {
-      bot.configureVoiceBridge(this.env.VOICE_BRIDGE_URL, this.env.VOICE_BRIDGE_SECRET);
-    }
     try {
       const saved = await this.state.storage.get('state');
       if (saved) bot.importState(saved);
@@ -202,16 +196,6 @@ export class BotState {
       return new Response('invalid json', { status: 400 });
     }
 
-    const reqUrl = new URL(request.url);
-    if (reqUrl.pathname === '/voice-sync') {
-      const reply = await bot.handleVoiceSyncRequest(update);
-      try {
-        await this.state.storage.put('state', bot.exportState());
-      } catch (e) {
-        console.error('Failed to persist state on voice-sync:', e);
-      }
-      return Response.json(reply);
-    }
 
     // منع تكرار نفس التحديث نهائياً (يحمي من إعادة إرسال «جاري تحميل المنشور...» أكثر من مرة واحدة!)
     const uid = Number(update?.update_id);
@@ -259,21 +243,6 @@ export default {
         webhook,
         // تأكيد أن إعداد المالك مضبوط على حسابك (رقم واحد فقط)
         ownerIsYou: String(env.OWNER_ID || '') === OWNER_ONLY_ID
-      });
-    }
-
-    const inUrl = new URL(request.url);
-    if (inUrl.pathname === '/voice-sync' && request.method === 'POST') {
-      const providedKey = request.headers.get('x-voice-key') || '';
-      const expectedKey = env.VOICE_BRIDGE_SECRET || 'cg-voice-bridge-v1-8885518661';
-      if (providedKey !== expectedKey) {
-        return new Response('unauthorized', { status: 401 });
-      }
-      const vBody = await request.text();
-      return stub.fetch('https://bot.internal/voice-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: vBody
       });
     }
 
