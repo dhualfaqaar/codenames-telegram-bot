@@ -650,6 +650,161 @@ async function getYouTubeVisitorData(): Promise<string> {
   return '';
 }
 
+export function parseDurationSeconds(dur?: string): number {
+  const parts = String(dur || '')
+    .trim()
+    .split(':')
+    .map(p => parseInt(p, 10));
+  if (parts.some(n => !Number.isFinite(n))) return 210;
+  if (parts.length === 3) return Math.max(15, parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  if (parts.length === 2) return Math.max(15, parts[0] * 60 + parts[1]);
+  if (parts.length === 1 && parts[0] > 0) return Math.max(15, parts[0]);
+  return 210;
+}
+
+/** فك تشفير استجابة Savetube السحابية (AES-128-CBC عبر WebCrypto المدمج في Cloudflare Workers) وسحب ملف MP4/MP3 العام غير المقيّد بالـ IP */
+async function extractViaSavetubeCloud(
+  videoId: string,
+  mode: 'video' | 'audio'
+): Promise<{ url: string; bytes: Uint8Array; title?: string; ext: 'mp4' | 'm4a' } | null> {
+  const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const keyHex = 'C5D58EF67A7584E4A29F6C35BBC4EB12';
+  const keyBytes = new Uint8Array(keyHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
+
+  const cdns: string[] = [];
+  try {
+    const cdnRes = await fetch('https://media.savetube.me/api/random-cdn', {
+      headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
+    });
+    if (cdnRes.ok) {
+      const cj: any = await cdnRes.json();
+      if (cj?.cdn) cdns.push(String(cj.cdn));
+    }
+  } catch {
+    // fallback cdns below
+  }
+  for (const fallbackCdn of ['cdn59.savetube.su', 'cdn54.savetube.su', 'cdn61.savetube.su']) {
+    if (!cdns.includes(fallbackCdn)) cdns.push(fallbackCdn);
+  }
+
+  for (const cdn of cdns.slice(0, 3)) {
+    try {
+      const infoRes = await fetch(`https://${cdn}/v2/info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': BROWSER_UA,
+          Origin: 'https://yt.savetube.me',
+          Referer: 'https://yt.savetube.me/'
+        },
+        body: JSON.stringify({ url: ytUrl })
+      });
+      if (!infoRes.ok) continue;
+      const infoJson: any = await infoRes.json();
+      const b64 = String(infoJson?.data || '').replace(/\s+/g, '');
+      if (!b64) continue;
+
+      const rawBin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      if (rawBin.byteLength <= 16) continue;
+      const iv = rawBin.slice(0, 16);
+      const encrypted = rawBin.slice(16);
+
+      const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
+      const plainBuf = await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, cryptoKey, encrypted);
+      const parsed: any = JSON.parse(new TextDecoder().decode(plainBuf));
+      const dlKey = parsed?.key;
+      if (!dlKey) continue;
+
+      const qualities = mode === 'audio' ? ['128'] : ['360', '480', '720'];
+      for (const q of qualities) {
+        const dlRes = await fetch(`https://${cdn}/download`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'User-Agent': BROWSER_UA,
+            Origin: 'https://yt.savetube.me',
+            Referer: 'https://yt.savetube.me/'
+          },
+          body: JSON.stringify({
+            downloadType: mode === 'audio' ? 'audio' : 'video',
+            quality: q,
+            key: dlKey
+          })
+        });
+        if (!dlRes.ok) continue;
+        const dlJson: any = await dlRes.json();
+        const fileUrl = dlJson?.data?.downloadUrl;
+        if (fileUrl && String(fileUrl).startsWith('http')) {
+          const verified = await tryFetchMediaBytes(String(fileUrl), { 'User-Agent': BROWSER_UA }, 8_000);
+          if (verified) {
+            return {
+              url: String(fileUrl),
+              bytes: verified,
+              title: parsed?.title ? String(parsed.title) : undefined,
+              ext: mode === 'audio' ? 'm4a' : 'mp4'
+            };
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/** سحب الفيديو/الصوت عبر خادم OceanSaver السحابي (يعمل من أي IP على Cloudflare Workers ويعيد ملف MP4 عام جاهز) */
+async function extractViaOceanSaverCloud(
+  videoId: string,
+  mode: 'video' | 'audio'
+): Promise<{ url: string; bytes: Uint8Array; title?: string; ext: 'mp4' | 'm4a' } | null> {
+  try {
+    const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const fmt = mode === 'audio' ? 'm4a' : '360';
+    const startUrl =
+      `https://p.oceansaver.in/ajax/download.php?copyright=0&format=${fmt}` +
+      `&url=${encodeURIComponent(ytUrl)}&api=dfcb6d76f2f6a9894gjkege8a4ab232222`;
+    const r = await fetch(startUrl, {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Accept: 'application/json',
+        Referer: 'https://y2down.cc/'
+      }
+    });
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    const jobId = j?.id;
+    if (!jobId) return null;
+
+    for (let poll = 0; poll < 9; poll++) {
+      await new Promise(res => setTimeout(res, poll === 0 ? 500 : 900));
+      const pr = await fetch(`https://p.oceansaver.in/ajax/progress.php?id=${encodeURIComponent(String(jobId))}`, {
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
+      });
+      if (!pr.ok) continue;
+      const pj: any = await pr.json();
+      if (pj?.download_url && String(pj.download_url).startsWith('http')) {
+        const verified = await tryFetchMediaBytes(String(pj.download_url), { 'User-Agent': BROWSER_UA }, 8_000);
+        if (verified) {
+          return {
+            url: String(pj.download_url),
+            bytes: verified,
+            title: j?.title ? String(j.title) : undefined,
+            ext: mode === 'audio' ? 'm4a' : 'mp4'
+          };
+        }
+        break;
+      }
+      if (pj?.success === 0 && Number(pj?.progress || 0) >= 1000) break;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 interface YTClientProfile {
   name: string;
   version: string;
@@ -658,6 +813,12 @@ interface YTClientProfile {
 }
 
 const YT_NATIVE_CLIENTS: YTClientProfile[] = [
+  {
+    name: 'ANDROID_TESTSUITE',
+    version: '1.9',
+    ua: 'com.google.android.youtube/1.9 (Linux; U; Android 12; US) gzip',
+    extraContext: { androidSdkVersion: 31, osName: 'Android', osVersion: '12' }
+  },
   {
     name: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
     version: '2.0',
@@ -1144,6 +1305,18 @@ export async function resolveSongAudioPayload(hit: SongSearchHit): Promise<Resol
     }
   }
 
+  // خط دفاع إضافي للصوت عبر Savetube / OceanSaver إذا كان المعرّف من يوتيوب
+  if (ytId && !rawId.startsWith('sc:') && !rawId.startsWith('sv:') && !rawId.startsWith('ht:')) {
+    const stAudio = await extractViaSavetubeCloud(ytId, 'audio');
+    if (stAudio?.bytes) {
+      return { url: stAudio.url, bytes: stAudio.bytes, ext: 'm4a', headers: { 'User-Agent': BROWSER_UA } };
+    }
+    const ocAudio = await extractViaOceanSaverCloud(ytId, 'audio');
+    if (ocAudio?.bytes) {
+      return { url: ocAudio.url, bytes: ocAudio.bytes, ext: 'm4a', headers: { 'User-Agent': BROWSER_UA } };
+    }
+  }
+
   return null;
 }
 
@@ -1418,45 +1591,137 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور تيك توك — تأكد أن المنشور عام وصحيح.' };
 }
 
-/** 📌 تحميل من بنترست (يفك جميع الروابط المختصرة pin.it وترميز JSON الداخلي \u002F للفيديو والصور الأصلية) */
+/** 📌 تحميل من بنترست (يستخرج وسائط المنشور الحقيقية حصراً عبر بصمة المنشور نفسه دون التقاط صور واجهة بنترست الخلفية أبداً!) */
 async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
   try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': BROWSER_UA,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
-      }
-    });
-    if (res.ok) {
-      const rawHtml = await res.text();
-      // فك جميع ترميزات JSON المضمّنة داخل بنترست (\u002F -> /) لكشف روابط v1.pinimg.com المخفية!
-      const html = rawHtml.replace(/\\u002F/gi, '/').replace(/\\\//g, '/');
+    const chain = await fetchWithCookieChain(url, BROWSER_UA);
+    let finalUrl = chain?.finalUrl || url;
+    let rawHtml = chain?.html || '';
 
-      // 1) البحث عن ملفات الفيديو الأصلية عالية الجودة MP4
-      const mp4Matches = html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s<>\\]+\.mp4/gi);
-      if (mp4Matches && mp4Matches.length > 0) {
-        const bestMp4 =
-          mp4Matches.find(u => u.includes('720w') || u.includes('expMp4')) ||
-          mp4Matches.find(u => !u.includes('hls')) ||
-          mp4Matches[0];
-        return { ok: true, items: [{ kind: 'video', url: bestMp4 }] };
+    // إذا كان الرابط المختصر قد حوّل إلى مسار فرعي مثل /sent/ نجلب صفحة الـ Pin النقية مباشرة
+    const pinId = finalUrl.match(/\/pin\/(?:[^/?#]*--)?(\d{8,24})/)?.[1] || url.match(/\/pin\/(?:[^/?#]*--)?(\d{8,24})/)?.[1] || '';
+    if ((!rawHtml || rawHtml.length < 4000) && pinId) {
+      const cleanPage = await fetchWithCookieChain(`https://www.pinterest.com/pin/${pinId}/`, BROWSER_UA);
+      if (cleanPage?.html) {
+        finalUrl = cleanPage.finalUrl || finalUrl;
+        rawHtml = cleanPage.html;
+      }
+    }
+
+    if (rawHtml) {
+      const html = rawHtml.replace(/\\u002F/gi, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+
+      // 1) فحص مقاطع الفيديو الحقيقية الخاصة بالمنشور (MP4 مباشر مفحوص بالبايتات)
+      const mp4Matches = Array.from(
+        new Set(html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s<>\\]+\.mp4/gi) || [])
+      );
+      if (mp4Matches.length > 0) {
+        const orderedMp4 = [
+          ...mp4Matches.filter(u => u.includes('720w') || u.includes('720p') || u.includes('expMp4')),
+          ...mp4Matches
+        ];
+        for (const candidateMp4 of Array.from(new Set(orderedMp4)).slice(0, 4)) {
+          const verifiedVid = await tryFetchMediaBytes(candidateMp4, { 'User-Agent': BROWSER_UA }, 4_000);
+          if (verifiedVid) {
+            return {
+              ok: true,
+              items: [{ kind: 'video', url: candidateMp4, bytes: verifiedVid, headers: { 'User-Agent': BROWSER_UA } }]
+            };
+          }
+        }
       }
 
-      // 2) البحث عن الصورة الأصلية الكاملة بدون ضغط (originals ثم 736x)
-      const origImg =
-        html.match(/https:\/\/i\.pinimg\.com\/originals\/[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp)/i)?.[0] ||
-        html.match(/https:\/\/i\.pinimg\.com\/736x\/[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp)/i)?.[0];
-      if (origImg) {
-        return { ok: true, items: [{ kind: 'photo', url: origImg }] };
+      // 1-ب) فحص مقاطع الفيديو بنظام البث HLS (.m3u8) ودمج مقاطعها في الذاكرة لترسل كملف فيديو MP4 كامل!
+      const hlsPin = html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s<>\\]+\.m3u8/i)?.[0];
+      if (hlsPin) {
+        try {
+          const mRes = await fetch(hlsPin, { headers: { 'User-Agent': BROWSER_UA } });
+          if (mRes.ok) {
+            const mTxt = await mRes.text();
+            const subPlaylists = mTxt
+              .split(/\r?\n/)
+              .map(l => l.trim())
+              .filter(l => l && !l.startsWith('#'))
+              .map(l => (l.startsWith('http') ? l : new URL(l, hlsPin).toString()));
+            const targetPl = subPlaylists.some(u => u.includes('.m3u8'))
+              ? subPlaylists.filter(u => u.includes('.m3u8')).pop()!
+              : hlsPin;
+            const segPlTxt =
+              targetPl === hlsPin
+                ? mTxt
+                : await (await fetch(targetPl, { headers: { 'User-Agent': BROWSER_UA } })).text();
+            const segUrls = segPlTxt
+              .split(/\r?\n/)
+              .map(l => l.trim())
+              .filter(l => l && !l.startsWith('#'))
+              .map(l => (l.startsWith('http') ? l : new URL(l, targetPl).toString()));
+            if (segUrls.length > 0 && segUrls.length <= 45) {
+              const chunks: Uint8Array[] = [];
+              for (let i = 0; i < segUrls.length; i += 10) {
+                const batch = segUrls.slice(i, i + 10);
+                const bufs = await Promise.all(
+                  batch.map(async u => {
+                    const sr = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
+                    if (!sr.ok) throw new Error('pin_seg_err');
+                    return new Uint8Array(await sr.arrayBuffer());
+                  })
+                );
+                chunks.push(...bufs);
+              }
+              const merged = concatUint8Arrays(chunks);
+              if (merged.byteLength > 10_000 && merged.byteLength <= 48 * 1024 * 1024) {
+                return {
+                  ok: true,
+                  items: [{ kind: 'video', url: hlsPin, bytes: merged, headers: { 'User-Agent': BROWSER_UA } }]
+                };
+              }
+            }
+          }
+        } catch {
+          // ننتقل لفحص صورة المنشور
+        }
       }
 
-      const ogImg =
-        html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
-        html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
-      if (ogImg && ogImg.startsWith('http')) {
-        return { ok: true, items: [{ kind: 'photo', url: ogImg }] };
+      // 2) استخراج صورة المنشور الحقيقية حصراً عبر وسم المنشور نفسه (og:image / twitter:image) ثم ترقية نفس البصمة فقط إلى originals!
+      // ⚠️ ممنوع تماماً التقاط أول رابط originals عشوائي بالصفحة لأن بنترست يضع صورة خلفية متدرجة ملونة بأعلى الصفحة!
+      const pinMetaImg =
+        html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https:\/\/i\.pinimg\.com\/[^"']+)["']/i)?.[1] ||
+        html.match(/<meta[^>]+content=["'](https:\/\/i\.pinimg\.com\/[^"']+)["'][^>]+property=["']og:image["']/i)?.[1] ||
+        html.match(/<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["'](https:\/\/i\.pinimg\.com\/[^"']+)["']/i)?.[1] ||
+        html.match(/<meta[^>]+content=["'](https:\/\/i\.pinimg\.com\/[^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/i)?.[1] ||
+        (pinId
+          ? html
+              .slice(Math.max(0, html.indexOf(`"id":"${pinId}"`) - 400), html.indexOf(`"id":"${pinId}"`) + 5000)
+              .match(/https:\/\/i\.pinimg\.com\/originals\/[^"'\s<>\\]+\.(?:jpg|jpeg|png|webp)/i)?.[0]
+          : undefined);
+
+      if (pinMetaImg) {
+        const candidatePhotos: string[] = [];
+        // استخراج البصمة السداسية عشرية الدقيقة للمنشور (مثال: ab/cd/ef/abcdef123456) وترقيتها إلى النسخة الأصلية الكاملة بدون ضغط!
+        const hashMatch = pinMetaImg.match(/i\.pinimg\.com\/[^/]+\/([0-9a-f]{2}\/[0-9a-f]{2}\/[0-9a-f]{2}\/[0-9a-f]{16,40})\.(jpg|jpeg|png|webp)/i);
+        if (hashMatch) {
+          const hashSubpath = hashMatch[1];
+          const escapedHash = hashSubpath.replace(/\//g, '\\/');
+          const exactOrigInHtml = html.match(
+            new RegExp(`https:\\/\\/i\\.pinimg\\.com\\/originals\\/${escapedHash}\\.(?:jpg|jpeg|png|webp)`, 'i')
+          )?.[0];
+          if (exactOrigInHtml) candidatePhotos.push(exactOrigInHtml);
+          candidatePhotos.push(`https://i.pinimg.com/originals/${hashSubpath}.${hashMatch[2]}`);
+          candidatePhotos.push(`https://i.pinimg.com/originals/${hashSubpath}.jpg`);
+          candidatePhotos.push(`https://i.pinimg.com/originals/${hashSubpath}.png`);
+          candidatePhotos.push(`https://i.pinimg.com/736x/${hashSubpath}.jpg`);
+        }
+        candidatePhotos.push(pinMetaImg);
+
+        for (const pUrl of Array.from(new Set(candidatePhotos))) {
+          const verifiedImg = await tryFetchMediaBytes(pUrl, { 'User-Agent': BROWSER_UA }, 2_000);
+          if (verifiedImg) {
+            return {
+              ok: true,
+              items: [{ kind: 'photo', url: pUrl, bytes: verifiedImg, headers: { 'User-Agent': BROWSER_UA } }]
+            };
+          }
+        }
       }
     }
   } catch {
@@ -1709,16 +1974,58 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
 }
 
-/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) مع إرفاق البايتات الثنائية المفحوصة مباشرة + طبقات Piped/Cobalt احتياطية */
+/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) عبر ٥ محركات سحابية مستقلة غير مقيدة بالـ IP + فحص كامل للبايتات */
 async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   const vid = extractYoutubeVideoId(url);
   if (!vid) {
     return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط يوتيوب أو Shorts صحيح.' };
   }
 
-  // الطبقة 1: العملاء الأصليون (ANDROID_TESTSUITE + TVHTML5_SIMPLY_EMBEDDED + ANDROID_VR + IOS HLS + Piped + Invidious) مع الاحتفاظ بالبايتات المحمّلة!
+  // الطبقة 1 (الأسرع والأضمن على Cloudflare Workers): Savetube Cloud CDN (فك تشفير AES-CBC ورابط MP4 عام غير مقيّد بالـ IP!)
+  const savetube = await extractViaSavetubeCloud(vid, 'video');
+  if (savetube?.bytes) {
+    return {
+      ok: true,
+      title: savetube.title,
+      items: [{ kind: 'video', url: savetube.url, bytes: savetube.bytes, headers: { 'User-Agent': BROWSER_UA } }]
+    };
+  }
+
+  // الطبقة 2: OceanSaver Cloud Transcoder (يحوّل على خوادمه الخاصة ويعيد رابط MP4 عام مباشر على CDN مفتوح!)
+  const ocean = await extractViaOceanSaverCloud(vid, 'video');
+  if (ocean?.bytes) {
+    return {
+      ok: true,
+      title: ocean.title,
+      items: [{ kind: 'video', url: ocean.url, bytes: ocean.bytes, headers: { 'User-Agent': BROWSER_UA } }]
+    };
+  }
+
+  // الطبقة 3: البث الممرّر عبر بروكسي Invidious المحلي (&local=true يتجاوز قفل ip= الخاص بـ googlevideo تماماً!)
+  const invLocalHosts = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.jing.rocks',
+    'https://yewtu.be'
+  ];
+  for (const host of invLocalHosts) {
+    try {
+      const proxiedUrl = `${host}/latest_version?id=${encodeURIComponent(vid)}&itag=18&local=true`;
+      const verified = await tryFetchMediaBytes(proxiedUrl, { 'User-Agent': BROWSER_UA }, 10_000);
+      if (verified) {
+        return {
+          ok: true,
+          items: [{ kind: 'video', url: proxiedUrl, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // الطبقة 4: العملاء الأصليون (ANDROID_TESTSUITE + TVHTML5_SIMPLY_EMBEDDED + ANDROID_VR + IOS HLS + Piped)
   const native = await extractViaYouTubeNative(vid, 'video');
-  if (native?.bytes || native?.url) {
+  if (native?.bytes) {
     return {
       ok: true,
       items: [
@@ -1732,7 +2039,7 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
     };
   }
 
-  // الطبقة 2: عقد Cobalt المجتمعية المفتوحة بصيغة JSON API كخط دفاع إضافي مع فحص البايتات الفعلي
+  // الطبقة 5: عقد Cobalt السحابية كخط دفاع خامس مع فحص البايتات الفعلي
   const cobaltNodes = [
     'https://cobalt-api.kwiatekmiki.com',
     'https://cobalt-backend.canine.tools',
@@ -1770,7 +2077,7 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
     }
   }
 
-  return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام وليس بثاً مباشراً.' };
+  return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام ولا يتجاوز حد 50MB.' };
 }
 
 export async function downloadFromPlatform(platform: SocialPlatform, rawInput: string): Promise<SocialDownloadResult> {
