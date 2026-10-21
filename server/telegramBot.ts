@@ -290,6 +290,20 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
+    id: 'football_emoji_group',
+    emoji: '⚽',
+    title: 'خمن لاعب كرة القدم بالإيموجي',
+    category: 'group',
+    players: 'من لاعبين إلى 10 لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'معرفة نجم كرة القدم من الإيموجيات قبل بقية اللاعبين',
+    reward: 'نقطة لكل إجابة صحيحة وجوائز للمتصدر',
+    about: 'تتحول التلميحات عن لاعب كرة القدم إلى إيموجيات، وأسرع لاعب يعرف النجم الصحيح يحصد النقطة.',
+    channel: true,
+    inline: 'gq player_emoji',
+    ready: true
+  },
+  {
     id: 'guess_song',
     emoji: '🎵',
     title: 'الأغاني',
@@ -4026,7 +4040,7 @@ export class TelegramBotManager {
       }
     }
     for (const ool of this.oolGames.values()) {
-      if ((ool.status === 'voting' || ool.status === 'guessing') && ool.phaseDeadline !== undefined) {
+      if ((ool.status === 'questioning' || ool.status === 'voting' || ool.status === 'guessing') && ool.phaseDeadline !== undefined) {
         if (ool.phaseDeadline < earliest) earliest = ool.phaseDeadline;
       }
     }
@@ -4188,7 +4202,10 @@ export class TelegramBotManager {
 
     for (const ool of Array.from(this.oolGames.values())) {
       if (ool.phaseDeadline === undefined || now < ool.phaseDeadline) continue;
-      if (ool.status === 'voting') {
+      if (ool.status === 'questioning') {
+        OOL.oolAdvanceQuestion(ool, undefined, now);
+        await this.paintOOL(ool);
+      } else if (ool.status === 'voting') {
         OOL.oolFinishVoting(ool);
         await this.paintOOL(ool);
       } else if (ool.status === 'guessing') {
@@ -8428,6 +8445,16 @@ export class TelegramBotManager {
         for (const p of game.players) {
           await this.sendMessage(p.id, OOL.oolSecretPopup(game, p.id));
         }
+        await this.paintOOL(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+
+    if (op === 'q') {
+      const r = OOL.oolAdvanceQuestion(game, userId);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) {
         await this.paintOOL(game);
         this.scheduleLocalQuizTimer();
       }

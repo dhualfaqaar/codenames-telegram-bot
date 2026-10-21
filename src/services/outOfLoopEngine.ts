@@ -8,7 +8,7 @@
  *   - يتناقش اللاعبون ويصوّتون على المشتبه به، ثم يحصل «اللي برا السالفة» على 15 ثانية لتخمين السالفة من 8 خيارات!
  */
 
-export type OOLStatus = 'lobby' | 'voting' | 'guessing' | 'finished';
+export type OOLStatus = 'lobby' | 'questioning' | 'voting' | 'guessing' | 'finished';
 
 export interface OOLPlayer {
   id: string;
@@ -127,6 +127,9 @@ export interface OOLGame {
   secretWord: string;
   outsiderId: string;
   questionPairs: Array<[string, string]>;
+  /** Randomized player ids used to run one clear question turn per player. */
+  questionOrder?: string[];
+  questionIndex?: number;
   votes: Record<string, string>;
   guessOptions: string[];
   caughtOutsider?: boolean;
@@ -138,6 +141,7 @@ export interface OOLGame {
 
 export const MIN_OOL_PLAYERS = 3;
 export const MAX_OOL_PLAYERS = 10;
+export const OOL_QUESTION_MS = 20_000;
 export const OOL_VOTE_MS = 45_000;
 export const OOL_GUESS_MS = 15_000;
 
@@ -168,6 +172,8 @@ export function createOOLLobby(chatId: string, chatName: string, createdBy?: str
     secretWord: '',
     outsiderId: '',
     questionPairs: [],
+    questionOrder: [],
+    questionIndex: 0,
     votes: {},
     guessOptions: []
   };
@@ -216,12 +222,60 @@ export function oolStart(game: OOLGame): { ok: boolean; msg: string } {
   game.secretWord = secret;
   game.outsiderId = outsider.id;
   game.questionPairs = pairs;
+  game.questionOrder = order.map(p => p.id);
+  game.questionIndex = 0;
   game.votes = {};
   game.guessOptions = shuffle([secret, ...others]);
-  game.status = 'voting';
-  game.phaseDeadline = Date.now() + OOL_VOTE_MS;
+  game.status = 'questioning';
+  game.phaseDeadline = Date.now() + OOL_QUESTION_MS;
 
-  return { ok: true, msg: '🎭 بدأت الجولة! اضغط «🔒 اكشف السالفة» لمعرفة وضعك.' };
+  return { ok: true, msg: '🎭 بدأت الجولة! افتح الخاص لمعرفة وضعك، وابدأوا الأسئلة حسب الدور الظاهر.' };
+}
+
+export function oolCurrentQuestion(game: OOLGame): { index: number; total: number; asker: OOLPlayer; target: OOLPlayer } | null {
+  const order = game.questionOrder || [];
+  const index = game.questionIndex || 0;
+  if (index >= order.length || order.length < 2) return null;
+  const asker = game.players.find(p => p.id === order[index]);
+  const target = game.players.find(p => p.id === order[(index + 1) % order.length]);
+  if (!asker || !target) return null;
+  return { index, total: order.length, asker, target };
+}
+
+/** Advance after the named asker has asked and received an answer; timer may advance automatically. */
+export function oolAdvanceQuestion(
+  game: OOLGame,
+  actorId?: string,
+  now = Date.now()
+): { ok: boolean; msg: string; allDone: boolean } {
+  if (game.status !== 'questioning') {
+    return { ok: false, msg: 'انتهت مرحلة الأسئلة.', allDone: false };
+  }
+  const current = oolCurrentQuestion(game);
+  if (!current) {
+    game.status = 'voting';
+    game.phaseDeadline = now + OOL_VOTE_MS;
+    return { ok: true, msg: '🗳️ انتهت الأسئلة، بدأ التصويت!', allDone: true };
+  }
+  if (actorId && actorId !== current.asker.id) {
+    return { ok: false, msg: `⏳ الدور على ${current.asker.name} حتى يسأل ${current.target.name}.`, allDone: false };
+  }
+
+  game.questionIndex = current.index + 1;
+  if (game.questionIndex >= current.total) {
+    game.status = 'voting';
+    game.votes = {};
+    game.phaseDeadline = now + OOL_VOTE_MS;
+    return { ok: true, msg: '✅ خلصت الأسئلة — هسه صوّتوا على اللي تشكّون بيه!', allDone: true };
+  }
+
+  game.phaseDeadline = now + OOL_QUESTION_MS;
+  const next = oolCurrentQuestion(game);
+  return {
+    ok: true,
+    msg: next ? `✅ تم السؤال — هسه ${next.asker.name} يسأل ${next.target.name}.` : '✅ انتقل الدور للسؤال التالي.',
+    allDone: false
+  };
 }
 
 export function oolSecretPopup(game: OOLGame, playerId: string): string {
@@ -231,14 +285,14 @@ export function oolSecretPopup(game: OOLGame, playerId: string): string {
     return (
       `🕵️ إنت «برا السالفة»!\n` +
       `📂 الصنف: ${game.categoryTitle}\n` +
-      `🤫 سوّي روحك فاهم السالفة وركّز بكلامهم حتى تخدعهم وتعرف الكلمة!`
+      `🎤 تابع الأسئلة باللوحة وجاوب بشكل طبيعي، وحاول تعرف الكلمة من إجاباتهم!`
     );
   }
   return (
     `✅ إنت داخل السالفة!\n` +
     `📂 الصنف: ${game.categoryTitle}\n` +
     `🔑 السالفة السرية: «${game.secretWord}»\n` +
-    `🤫 اسأل بذكاء بدون ما تفضح الكلمة للي برا السالفة!`
+    `🤫 من يطلع اسمك باللوحة، اسأل اللاعب المحدد سؤالاً عن الصنف بدون ما تذكر الكلمة.`
   );
 }
 
@@ -361,16 +415,31 @@ export function renderOOLBoard(game: OOLGame): string {
     return lines.join('\n');
   }
 
-  if (game.status === 'voting') {
-    lines.push(`🎭 *منو برا السالفة؟*`);
+  if (game.status === 'questioning') {
+    const current = oolCurrentQuestion(game);
+    lines.push(`🎭 *مرحلة الأسئلة — منو برا السالفة؟*`);
     lines.push(`${game.categoryEmoji} *الصنف:* *${oolMd(game.categoryTitle)}*`);
     lines.push(SEP);
-    lines.push(`🎤 *ترتيب الأسئلة المقترح:*`);
-    lines.push(
-      game.questionPairs
-        .map(([a, b], i) => `> ${i + 1} \\- \\| *${oolMd(a)}* \\| يسأل \\| *${oolMd(b)}* \\|`)
-        .join('\n')
-    );
+    if (current) {
+      lines.push(`❓ *السؤال ${current.index + 1} من ${current.total}*`);
+      lines.push(`> \\| *${oolMd(current.asker.name)}* \\| يسأل \\| *${oolMd(current.target.name)}* \\|`);
+      lines.push('');
+      lines.push(`1\\. *${oolMd(current.asker.name)}:* اسأل سؤالاً واحداً عن الصنف، بدون ذكر الكلمة السرية\\.`);
+      lines.push(`2\\. *${oolMd(current.target.name)}:* جاوب بشكل طبيعي بدون ما تفضح السالفة\\.`);
+      lines.push(SEP);
+      lines.push(`⏳ عندكم 20 ثانية\\. بعد الجواب، ${oolMd(current.asker.name)} يضغط «✅ خلص السؤال» حتى ينتقل الدور\\.`);
+    } else {
+      lines.push(`✅ اكتملت الأسئلة — بدأ التصويت\\!`);
+    }
+    return lines.join('\n');
+  }
+
+  if (game.status === 'voting') {
+    lines.push(`🎭 *مرحلة التصويت — منو برا السالفة؟*`);
+    lines.push(`${game.categoryEmoji} *الصنف:* *${oolMd(game.categoryTitle)}*`);
+    lines.push(SEP);
+    lines.push(`🗳️ *اختاروا الشخص اللي تشكّون بيه:*`);
+    lines.push(`كل لاعب يصوّت على شخص واحد\\. ما يصير تصوّت على نفسك\\.`);
     lines.push(SEP);
     lines.push(`🗳️ *حالة التصويت:*`);
     lines.push(
@@ -434,6 +503,14 @@ export function oolBoardKeyboard(game: OOLGame): any[][] {
     }
     if (game.players.length >= MIN_OOL_PLAYERS) {
       rows.push([{ text: '🚀 ابدأ اللعبة', callback_data: `ool:s:${game.chatId}` }]);
+    }
+    return rows;
+  }
+
+  if (game.status === 'questioning') {
+    rows.push([{ text: '🔒 اكشف السالفة', callback_data: `ool:sec:${game.chatId}` }]);
+    if (oolCurrentQuestion(game)) {
+      rows.push([{ text: '✅ خلص السؤال — انتقل للتالي', callback_data: `ool:q:${game.chatId}` }]);
     }
     return rows;
   }
