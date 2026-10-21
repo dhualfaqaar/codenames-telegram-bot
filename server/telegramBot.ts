@@ -11,6 +11,7 @@ import * as MF from '../src/services/mafiaEngine';
 import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
 import * as ARX from '../src/services/arenaGamesEngine';
+import * as TRN from '../src/services/tournamentEngine';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
 function encodeHiddenTag(payload: string): string {
@@ -953,6 +954,7 @@ export class TelegramBotManager {
   private mafiaGames: Map<string, MF.MafiaGame> = new Map();
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
+  private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
   private pendingWhispers: Map<string, MS.PendingWhisperDraft> = new Map();
@@ -1582,6 +1584,7 @@ export class TelegramBotManager {
       mafiaGames: Array.from(this.mafiaGames.entries()),
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
+      tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
       pendingWhispers: Array.from(this.pendingWhispers.entries()),
@@ -1622,6 +1625,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.mafiaGames)) this.mafiaGames = new Map(state.mafiaGames);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
+    if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
     if (Array.isArray(state.pendingWhispers)) this.pendingWhispers = new Map(state.pendingWhispers);
@@ -2313,6 +2317,12 @@ export class TelegramBotManager {
     // ---- 🎉 ألعاب الجماعة بالقنوات (أسئلة) ----
     if (data.startsWith('gq')) {
       await this.handleGroupQuizCb(cb, data);
+      return;
+    }
+
+    // ---- 🏆 نظام البطولات والدوريات الإقصائية (8 / 16 / 32) ----
+    if (data.startsWith('trn:')) {
+      await this.handleTournamentCallback(cb, data);
       return;
     }
 
@@ -3187,6 +3197,38 @@ export class TelegramBotManager {
     };
   }
 
+  /** بطاقة بطولة إقصائية (8 / 16 / 32) نظيفة ١٠٠٪ بدون أي كود ظاهر */
+  private trnCard(rawDiscipline: string, rawCap: string | number, deployerId?: string): any {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    const uid = deployerId ? `|${deployerId}` : '';
+    const discipline: TRN.TournamentDiscipline = TRN.isValidDiscipline(rawDiscipline)
+      ? rawDiscipline
+      : 'general';
+    const capacity = TRN.parseCapacity(rawCap);
+    const meta = TRN.getDisciplineMeta(discipline);
+    const arCap = String(capacity).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
+    const hidden = encodeHiddenTag(`trn:${discipline}:${capacity}${uid}`);
+    return {
+      type: 'article',
+      id: `trn:${discipline}:${capacity}`,
+      title: `🏆 دوري الـ ${arCap} لاعباً — ${meta.emoji} ${meta.title}`,
+      description: `اضغط لإرسال البطولة الإقصائية (خروج المغلوب حتى يتوَّج فائز واحد فقط)`,
+      input_message_content: {
+        message_text:
+          `🏆 *بطولة إقصائية — ${meta.emoji} ${meta.title}*${hidden}\n` +
+          `${SEP}\n` +
+          `🏟️ فئة البطولة: *دوري الـ ${arCap} لاعباً* (خروج المغلوب)\n` +
+          `👥 *المسجلون:* بانتظار انضمام اللاعبين`,
+        parse_mode: 'Markdown'
+      },
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: `🙋 انضمام للبطولة (0/${capacity})`, callback_data: `trn:auto:${discipline}:${capacity}` }]
+        ]
+      }
+    };
+  }
+
   /** بطاقة لعبة جماعية نظيفة ١٠٠٪ بدون أي كود ظاهر أو نص تحضير */
   private gqCard(kind: string, deployerId?: string): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
@@ -3362,6 +3404,15 @@ export class TelegramBotManager {
       }
     }
 
+    // ── 🏆 نظام البطولات والدوريات الإقصائية (trn <discipline> <8|16|32>) ──
+    if (q.startsWith('trn')) {
+      const parts = q.replace(/^trn[:\s]*/, '').trim().split(/\s+/).filter(Boolean);
+      const disc = parts[0] || 'general';
+      const cap = parts[1] || '8';
+      await this.answerInlineQuery(iq.id, [this.trnCard(disc, cap, deployerId)]);
+      return;
+    }
+
     // ── 🎉 ألعاب الجماعة والمسابقات السريعة وألعاب خمّن ──
     if (q.startsWith('gq')) {
       const kind = q.replace(/^gq\s*/, '').trim() || 'speed';
@@ -3460,10 +3511,14 @@ export class TelegramBotManager {
     const hidden = decodeHiddenTag(text);
     const hiddenTag = hidden?.tag || '';
 
-    let gqMark: string[] | null = hiddenTag.startsWith('gq:')
+    const isTrnCard = hiddenTag.startsWith('trn:');
+
+    let gqMark: string[] | null = !isTrnCard && hiddenTag.startsWith('gq:')
       ? [hiddenTag, hiddenTag.slice(3)]
-      : text.match(/gq:(\w+)/);
-    if (!gqMark) {
+      : !isTrnCard
+        ? text.match(/gq:(\w+)/)
+        : null;
+    if (!isTrnCard && !gqMark) {
       for (const k of Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]) {
         if (text.includes(GG.QUIZ_KINDS[k].title)) {
           gqMark = [`gq:${k}`, k];
@@ -3471,10 +3526,10 @@ export class TelegramBotManager {
         }
       }
     }
-    let arxMode: ARX.ArenaMode | undefined = hiddenTag.startsWith('arx:')
+    let arxMode: ARX.ArenaMode | undefined = !isTrnCard && hiddenTag.startsWith('arx:')
       ? (hiddenTag.slice(4) as ARX.ArenaMode)
       : undefined;
-    if (!arxMode) {
+    if (!isTrnCard && !arxMode) {
       for (const m of Object.keys(ARX.ARENA_MODES) as ARX.ArenaMode[]) {
         if (text.includes(ARX.ARENA_MODES[m].title)) {
           arxMode = m;
@@ -3482,13 +3537,13 @@ export class TelegramBotManager {
         }
       }
     }
-    const isMafiaCard = hiddenTag === 'mf' || (text.includes('لعبة المافيا') && text.includes('المنضمون'));
-    const isOOLCard = hiddenTag === 'ool' || (text.includes('منو برا السالفة') && text.includes('المنضمون'));
-    const isWkCard = hiddenTag === 'wk' || text.includes('wk:start') || (text.includes('منو يعرف الثاني') && (text.includes('تحضير') || text.includes('بانتظار')));
-    const isCodenamesCard = hiddenTag === 'cn' || text.includes('كود نيمز');
-    const isRpsCard = hiddenTag.startsWith('rps:') || text.includes('حجرة ورقة مقص');
+    const isMafiaCard = !isTrnCard && (hiddenTag === 'mf' || (text.includes('لعبة المافيا') && text.includes('المنضمون')));
+    const isOOLCard = !isTrnCard && (hiddenTag === 'ool' || (text.includes('منو برا السالفة') && text.includes('المنضمون')));
+    const isWkCard = !isTrnCard && (hiddenTag === 'wk' || text.includes('wk:start') || (text.includes('منو يعرف الثاني') && (text.includes('تحضير') || text.includes('بانتظار'))));
+    const isCodenamesCard = !isTrnCard && (hiddenTag === 'cn' || text.includes('كود نيمز'));
+    const isRpsCard = !isTrnCard && (hiddenTag.startsWith('rps:') || text.includes('حجرة ورقة مقص'));
 
-    if (!gqMark && !arxMode && !isMafiaCard && !isOOLCard && !isWkCard && !isCodenamesCard && !isRpsCard) return;
+    if (!isTrnCard && !gqMark && !arxMode && !isMafiaCard && !isOOLCard && !isWkCard && !isCodenamesCard && !isRpsCard) return;
 
     await this.ensureBotInfo();
     const ours =
@@ -3505,6 +3560,30 @@ export class TelegramBotManager {
     const deployerRecord = deployerUserId ? this.users.get(deployerUserId) : undefined;
     const deployerName = message.from?.first_name || deployerRecord?.name || 'الناشر';
     const deployerUsername = message.from?.username || deployerRecord?.username;
+
+    // ── 🏆 البطولات والدوريات الإقصائية ──
+    if (isTrnCard) {
+      const trnParts = hiddenTag.split(':');
+      const rawDisc = trnParts[1] || 'general';
+      const rawCap = trnParts[2] || '8';
+      const discipline: TRN.TournamentDiscipline = TRN.isValidDiscipline(rawDisc) ? rawDisc : 'general';
+      const capacity = TRN.parseCapacity(rawCap);
+      const trnId = this.newTournamentId();
+      const trnGame = TRN.createTournamentLobby(
+        trnId,
+        chatId,
+        message.chat.title || 'المحادثة',
+        discipline,
+        capacity
+      );
+      trnGame.messageId = message.message_id;
+      if (deployerUserId) {
+        TRN.joinTournament(trnGame, deployerUserId, deployerName);
+      }
+      this.tournamentGames.set(trnId, trnGame);
+      await this.paintTournament(trnGame);
+      return;
+    }
 
     // ── 🕵️ المافيا ──
     if (isMafiaCard) {
@@ -3739,6 +3818,13 @@ export class TelegramBotManager {
         if (ag.deadline < earliest) earliest = ag.deadline;
       }
     }
+    for (const trn of this.tournamentGames.values()) {
+      if (trn.status === 'playing' && trn.roundDeadline !== undefined && trn.roundDeadline < earliest) {
+        earliest = trn.roundDeadline;
+      } else if (trn.status === 'between' && trn.resultDeadline !== undefined && trn.resultDeadline < earliest) {
+        earliest = trn.resultDeadline;
+      }
+    }
     return Number.isFinite(earliest) ? earliest : null;
   }
 
@@ -3904,7 +3990,247 @@ export class TelegramBotManager {
       }
     }
 
+    for (const trn of Array.from(this.tournamentGames.values())) {
+      if (TRN.handleTournamentTimeout(trn)) {
+        if (trn.status === 'finished') {
+          this.recordTournamentFinish(trn);
+        }
+        await this.paintTournament(trn);
+      }
+    }
+
     this.scheduleLocalQuizTimer();
+  }
+
+  private newTournamentId(): string {
+    let id = '';
+    do {
+      id = Math.random().toString(36).slice(2, 9);
+    } while (this.tournamentGames.has(id));
+    return id;
+  }
+
+  private recordTournamentFinish(game: TRN.TournamentGame) {
+    if (game.rewarded || !game.champion || !game.players.length) return;
+    game.rewarded = true;
+
+    const champId = game.champion.id;
+    const avgOpponentLevel =
+      game.players.reduce((s, p) => s + Economy.levelFromXp(this.users.get(p.id)?.xp || 0), 0) /
+      Math.max(1, game.players.length);
+
+    for (const p of game.players) {
+      const rec = this.ensureUser(p.id, p.name);
+      const won = p.id === champId;
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      rec.points = (rec.points || 0) + (won ? 8 : game.runnerUp?.id === p.id ? 3 : 1);
+      if (game.discipline === 'rps') {
+        rec.rpsGames = (rec.rpsGames || 0) + 1;
+        if (won) rec.rpsWins = (rec.rpsWins || 0) + 1;
+      } else {
+        if (!rec.gqStats) rec.gqStats = {};
+        const st = rec.gqStats[game.discipline] || { games: 0, wins: 0, points: 0 };
+        st.games += 1;
+        if (won) st.wins += 1;
+        st.points += won ? 5 : 1;
+        rec.gqStats[game.discipline] = st;
+      }
+      if (won) {
+        rec.onlineWins = (rec.onlineWins || 0) + 1;
+        const levelBefore = Economy.levelFromXp(rec.xp || 0);
+        const perf = Math.min(1, 0.7 + game.players.length / 32);
+        const money = Economy.moneyForWin({
+          gameId: 'tournament',
+          performance: perf,
+          level: levelBefore,
+          opponentLevel: avgOpponentLevel,
+          earnedToday: Economy.earnedToday(rec)
+        });
+        if (money > 0) {
+          rec.money = Economy.roundMoney((rec.money || 0) + money);
+          Economy.addEarned(rec, money);
+        }
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('tournament', true, perf);
+      } else {
+        rec.xp = (rec.xp || 0) + Economy.xpForResult('tournament', false, game.runnerUp?.id === p.id ? 0.8 : 0.5);
+      }
+      this.users.set(rec.id, rec);
+    }
+  }
+
+  private async paintTournament(game: TRN.TournamentGame) {
+    const rendered = TRN.renderTournamentView(game);
+    const fullText = await this.withBotFooter(rendered.text, true);
+    if (game.messageId && game.chatId && !game.chatId.startsWith('inline:')) {
+      await this.editMessageText(game.chatId, game.messageId, fullText, rendered.buttons, 'MarkdownV2');
+    } else if (game.inlineMessageId) {
+      await this.editInlineMessageText(game.inlineMessageId, fullText, rendered.buttons, 'MarkdownV2');
+    }
+    this.scheduleLocalQuizTimer();
+  }
+
+  private async handleTournamentCallback(cb: TelegramCallbackQuery, rawData: string) {
+    const parts = rawData.split(':');
+    const action = parts[1] || '';
+    const userId = String(cb.from.id);
+    const userName = cb.from.first_name || cb.from.username || 'لاعب';
+
+    // التهيئة الفورية إذا نقر لاعب على بطاقة إنلاين قبل أو بدون وصول رسالة المحادثة
+    if (action === 'auto') {
+      const rawDisc = parts[2] || 'general';
+      const rawCap = parts[3] || '8';
+      const discipline: TRN.TournamentDiscipline = TRN.isValidDiscipline(rawDisc) ? rawDisc : 'general';
+      const capacity = TRN.parseCapacity(rawCap);
+      const chatKey = cb.message ? String(cb.message.chat.id) : `inline:${cb.inline_message_id || userId}`;
+
+      let existing: TRN.TournamentGame | undefined;
+      for (const g of this.tournamentGames.values()) {
+        if (cb.message && g.chatId === chatKey && g.messageId === cb.message.message_id) {
+          existing = g;
+          break;
+        }
+        if (cb.inline_message_id && g.inlineMessageId === cb.inline_message_id) {
+          existing = g;
+          break;
+        }
+      }
+
+      if (!existing) {
+        const id = this.newTournamentId();
+        existing = TRN.createTournamentLobby(
+          id,
+          chatKey,
+          cb.message?.chat.title || 'البطولة',
+          discipline,
+          capacity
+        );
+        if (cb.message) existing.messageId = cb.message.message_id;
+        if (cb.inline_message_id) existing.inlineMessageId = cb.inline_message_id;
+        this.tournamentGames.set(id, existing);
+      }
+
+      const j = TRN.joinTournament(existing, userId, userName);
+      if (!j.ok) {
+        await this.answerCallbackQuery(cb.id, j.reason || '', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '✅ انضممت للبطولة الإقصائية!');
+      await this.paintTournament(existing);
+      return;
+    }
+
+    const trnId = parts[2] || '';
+    const game = this.tournamentGames.get(trnId);
+    if (!game) {
+      await this.answerCallbackQuery(cb.id, '⚠️ انتهت صلاحية هذه البطولة — أنشئ بطولة جديدة من البوت.', true);
+      return;
+    }
+    if (cb.inline_message_id && !game.inlineMessageId) {
+      game.inlineMessageId = cb.inline_message_id;
+    }
+
+    if (action === 'j') {
+      const j = TRN.joinTournament(game, userId, userName);
+      if (!j.ok) {
+        await this.answerCallbackQuery(cb.id, j.reason || '', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '✅ تم تسجيلك في البطولة!');
+      await this.paintTournament(game);
+      return;
+    }
+
+    if (action === 'l') {
+      const lv = TRN.leaveTournament(game, userId);
+      if (!lv.ok) {
+        await this.answerCallbackQuery(cb.id, lv.reason || '', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, 'تم انسحابك من البطولة.');
+      await this.paintTournament(game);
+      return;
+    }
+
+    if (action === 's') {
+      const st = TRN.startTournament(game);
+      if (!st.ok) {
+        await this.answerCallbackQuery(cb.id, st.reason || '', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '🎲 انطلقت القرعة والمواجهات الإقصائية!');
+      await this.paintTournament(game);
+      return;
+    }
+
+    if (action === 'a') {
+      const optIdx = parseInt(parts[3] || '0', 10);
+      const ans = TRN.handleTournamentQuizAnswer(game, userId, optIdx);
+      if (!ans.ok) {
+        await this.answerCallbackQuery(cb.id, ans.alert || '', Boolean(ans.alert));
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, ans.alert || '');
+      if (game.status === 'finished') {
+        this.recordTournamentFinish(game);
+      }
+      if (ans.changed) {
+        await this.paintTournament(game);
+      }
+      return;
+    }
+
+    if (action === 'r') {
+      const mv = (parts[3] || 'r') as TRN.RpsThrow;
+      if (mv !== 'r' && mv !== 'p' && mv !== 's') {
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+      const res = TRN.handleTournamentRpsMove(game, userId, mv);
+      if (!res.ok) {
+        await this.answerCallbackQuery(cb.id, res.alert || '', Boolean(res.alert));
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, res.alert || '');
+      if (game.status === 'finished') {
+        this.recordTournamentFinish(game);
+      }
+      if (res.changed) {
+        await this.paintTournament(game);
+      }
+      return;
+    }
+
+    if (action === 'n') {
+      const freshId = this.newTournamentId();
+      const fresh = TRN.createTournamentLobby(
+        freshId,
+        game.chatId,
+        game.chatName,
+        game.discipline,
+        game.capacity
+      );
+      TRN.joinTournament(fresh, userId, userName);
+      // لا نحذف لوحة التتويج السابقة في القناة أبداً — نرسل لوحة البطولة الجديدة أسفلها
+      if (game.chatId && !game.chatId.startsWith('inline:')) {
+        const rendered = TRN.renderTournamentView(fresh);
+        const fullText = await this.withBotFooter(rendered.text, true);
+        const sent = await this.sendMessage(game.chatId, fullText, rendered.buttons, 'MarkdownV2');
+        if (sent?.ok && sent.result?.message_id) {
+          fresh.messageId = sent.result.message_id;
+          this.tournamentGames.set(freshId, fresh);
+          await this.answerCallbackQuery(cb.id, '🏆 نزّلت بطولة إقصائية جديدة أسفل القناة!');
+          return;
+        }
+      }
+      if (game.inlineMessageId) {
+        fresh.inlineMessageId = game.inlineMessageId;
+        this.tournamentGames.set(freshId, fresh);
+        await this.answerCallbackQuery(cb.id, '🏆 بدأت بطولة جديدة!');
+        await this.paintTournament(fresh);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '');
+    }
   }
 
   private async paintArena(game: ARX.ArenaGame) {
@@ -5245,6 +5571,80 @@ export class TelegramBotManager {
       return { text, keyboard };
     }
 
+    // 🏆 شاشة اختيار سعة البطولة الإقصائية (٨ / ١٦ / ٣٢) للعبة المختارة
+    if (section.startsWith('trn:') || section.startsWith('trn_emoji:')) {
+      const useEmoji = section.startsWith('trn_emoji:');
+      const targetGameId = useEmoji ? section.slice('trn_emoji:'.length) : section.slice('trn:'.length);
+      const game = findBotGame(targetGameId);
+      if (!game) {
+        return {
+          text: `ما لكيت هاي اللعبة — ارجع واختار من القائمة.`,
+          keyboard: [[{ text: 'رجوع', callback_data: 'hub:main' }]]
+        };
+      }
+
+      if (game.id === 'guess_song' && !useEmoji) {
+        return {
+          text:
+            `🏆 *نظام البطولات والدوريات — 🎵 خمّن الأغنية*\n` +
+            `━━━━━━━━━━━━━━━━━━━\n` +
+            `خروج المغلوب مثل أدوار كرة القدم تماماً حتى يتوَّج لاعب واحد فقط باللقب!\n` +
+            `يشترط عدد زوجي من اللاعبين عند بدء القرعة.\n\n` +
+            `👇 اختار نوع الأغاني وسعة البطولة:`,
+          keyboard: [
+            [
+              { text: '🎤 عربي — ٨', switch_inline_query: 'trn song_ar 8' },
+              { text: '🎤 عربي — ١٦', switch_inline_query: 'trn song_ar 16' },
+              { text: '🎤 عربي — ٣٢', switch_inline_query: 'trn song_ar 32' }
+            ],
+            [
+              { text: '🎸 إنجليزي — ٨', switch_inline_query: 'trn song_en 8' },
+              { text: '🎸 إنجليزي — ١٦', switch_inline_query: 'trn song_en 16' },
+              { text: '🎸 إنجليزي — ٣٢', switch_inline_query: 'trn song_en 32' }
+            ],
+            [{ text: '😀 بطولات الإيموجي (٨ / ١٦ / ٣٢)', callback_data: 'hub:trn_emoji:guess_song' }],
+            [{ text: '🔙 رجوع للعبة', callback_data: `hub:g:${game.id}` }]
+          ]
+        };
+      }
+
+      let baseKind: GG.QuizKind | null = null;
+      if (game.id === 'guess_song') baseKind = 'song_ar';
+      else if (game.inline?.startsWith('gq ')) baseKind = game.inline.slice(3).trim() as GG.QuizKind;
+
+      const emojiVariant = baseKind ? GG.EMOJI_VARIANT_OF[baseKind] : undefined;
+      const disc: TRN.TournamentDiscipline =
+        game.id === 'rps'
+          ? 'rps'
+          : useEmoji && emojiVariant
+            ? emojiVariant
+            : baseKind || 'general';
+
+      const kb: any[][] = [
+        [{ text: '🥇 دوري الـ ٨ لاعبين', switch_inline_query: `trn ${disc} 8` }],
+        [{ text: '🥈 دوري الـ ١٦ لاعباً', switch_inline_query: `trn ${disc} 16` }],
+        [{ text: '👑 دوري الـ ٣٢ لاعباً', switch_inline_query: `trn ${disc} 32` }]
+      ];
+      if (!useEmoji && emojiVariant) {
+        kb.push([{ text: '😀 بطولات نظام الإيموجي (٨ / ١٦ / ٣٢)', callback_data: `hub:trn_emoji:${game.id}` }]);
+      } else if (useEmoji) {
+        kb.push([{ text: '🏆 رجوع لبطولات النظام العادي', callback_data: `hub:trn:${game.id}` }]);
+      }
+      kb.push([{ text: '🔙 رجوع للعبة', callback_data: `hub:g:${game.id}` }]);
+
+      const modeTag = useEmoji ? ' (نظام الإيموجي 😀)' : '';
+      return {
+        text:
+          `🏆 *نظام البطولات والدوريات — ${game.emoji} ${game.title}${modeTag}*\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `يتواجه كل لاعبين اثنين وجهاً لوجه بنظام خروج المغلوب مثل أدوار كرة القدم تماماً:\n` +
+          `🏟️ دور الـ ٣٢ ⬅️ دور الـ ١٦ ⬅️ ربع النهائي ⬅️ نصف النهائي ⬅️ النهائي الكبير 🏆\n` +
+          `يشترط اكتمال *عدد زوجي* من اللاعبين لبدء القرعة، ويتوَّج *لاعب واحد فقط* بطلاً في النهاية!\n\n` +
+          `👇 اختار حجم البطولة للإرسال للقناة أو المجموعة:`,
+        keyboard: kb
+      };
+    }
+
     // 🎯 قائمة اللعبة
     if (section.startsWith('g:')) {
       const game = findBotGame(section.slice(2));
@@ -5255,10 +5655,22 @@ export class TelegramBotManager {
         };
       }
 
+      const gqKind: GG.QuizKind | null =
+        game.id === 'guess_song'
+          ? 'song_ar'
+          : game.inline?.startsWith('gq ')
+            ? (game.inline.slice(3).trim() as GG.QuizKind)
+            : null;
+      const emojiKind: GG.QuizKind | undefined = gqKind ? GG.EMOJI_VARIANT_OF[gqKind] : undefined;
+      const supportsMultiMode = Boolean(gqKind || game.id === 'rps');
+
       const lines = [`${game.emoji} *${game.title}*`];
 
       if (game.ready) {
         if (game.players) lines.push(game.players);
+        if (supportsMultiMode) {
+          lines.push(`⚙️ *اختر نظام نوع اللعب:* 👇`);
+        }
       } else {
         lines.push('قريباً');
       }
@@ -5266,16 +5678,27 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
-        // ── أول خيار: العب بالقناة ──
+        // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات ٨/١٦/٣٢ | إيموجي) ──
         if (game.channel) {
           if (game.id === 'guess_song') {
-            keyboard.push([{ text: '🎮 العب بالقناة', callback_data: 'hub:songpick' }]);
+            keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', callback_data: 'hub:songpick' }]);
+            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (٨ / ١٦ / ٣٢)', callback_data: `hub:trn:${game.id}` }]);
+            if (emojiKind) {
+              keyboard.push([{ text: '😀 نظام الإيموجي (العب بالقناة)', switch_inline_query: `gq ${emojiKind}` }]);
+            }
+          } else if (gqKind && game.inline) {
+            keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', switch_inline_query: game.inline }]);
+            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (٨ / ١٦ / ٣٢)', callback_data: `hub:trn:${game.id}` }]);
+            if (emojiKind) {
+              keyboard.push([{ text: '😀 نظام الإيموجي (العب بالقناة)', switch_inline_query: `gq ${emojiKind}` }]);
+            }
+          } else if (game.id === 'rps') {
+            keyboard.push([{ text: '🎮 النظام العادي — ٥ راوندات', switch_inline_query: 'rps 5' }]);
+            keyboard.push([{ text: '🎮 النظام العادي — ١٠ راوندات', switch_inline_query: 'rps 10' }]);
+            keyboard.push([{ text: '🎮 النظام العادي — ١٥ راوندات', switch_inline_query: 'rps 15' }]);
+            keyboard.push([{ text: '🏆 نظام البطولات والدوريات (٨ / ١٦ / ٣٢)', callback_data: 'hub:trn:rps' }]);
           } else if (game.inline) {
             keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: game.inline }]);
-          } else if (game.id === 'rps') {
-            keyboard.push([{ text: '🎮 العب بالقناة (٥ راوندات)', switch_inline_query: 'rps 5' }]);
-            keyboard.push([{ text: '🎮 العب بالقناة (١٠ راوندات)', switch_inline_query: 'rps 10' }]);
-            keyboard.push([{ text: '🎮 العب بالقناة (١٥ راوندات)', switch_inline_query: 'rps 15' }]);
           } else {
             keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: 'cn' }]);
           }
@@ -5356,10 +5779,10 @@ export class TelegramBotManager {
         { text: '⚡ المسابقات السريعة', callback_data: 'hub:fast' }
       ]
     ];
-    // 💵 المتصدرون + خدمات إضافية، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
+    // 💵 المتصدرون + خدمات أخرى، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
     keyboard.push([
       { text: '🏅 المتصدرون', callback_data: 'rank:menu' },
-      { text: '✨ خدمات إضافية', callback_data: 'svc:main' }
+      { text: '✨ خدمات أخرى', callback_data: 'svc:main' }
     ]);
     if (botUser) {
       keyboard.push([
@@ -5886,10 +6309,10 @@ export class TelegramBotManager {
       this.pendingSocialDl.delete(userId);
     }
 
-    // ── القائمة الرئيسية للخدمات الإضافية ──
+    // ── القائمة الرئيسية للخدمات الأخرى ──
     if (data === 'svc:main') {
       const text =
-        `✨ *الخدمات الإضافية*\n` +
+        `✨ *خدمات أخرى*\n` +
         `${SEP}\n` +
         `اختر الخدمة التي تريد استخدامها 👇`;
       const keyboard = [
@@ -6160,7 +6583,7 @@ export class TelegramBotManager {
       }
       await this.sendMessage(userId, '✅ تم تحميل وإرسال المنشور بنجاح!', [
         [{ text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' }],
-        [{ text: '🔙 الخدمات الإضافية', callback_data: 'svc:main' }]
+        [{ text: '🔙 خدمات أخرى', callback_data: 'svc:main' }]
       ]);
     } else if (statusMsgId) {
       await this.editMessageText(

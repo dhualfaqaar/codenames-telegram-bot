@@ -708,13 +708,15 @@ async function extractViaYouTubeNative(
       }
 
       const clientIdHeader =
-        profile.name === 'IOS'
-          ? '5'
-          : profile.name === 'ANDROID_VR'
-            ? '28'
-            : profile.name === 'TVHTML5_SIMPLY_EMBEDDED_PLAYER'
-              ? '85'
-              : '101';
+        profile.name === 'ANDROID_TESTSUITE'
+          ? '30'
+          : profile.name === 'IOS'
+            ? '5'
+            : profile.name === 'ANDROID_VR'
+              ? '28'
+              : profile.name === 'TVHTML5_SIMPLY_EMBEDDED_PLAYER'
+                ? '85'
+                : '101';
 
       const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
         method: 'POST',
@@ -748,14 +750,63 @@ async function extractViaYouTubeNative(
           }
         }
       } else {
-        const vid =
-          muxed.find(f => f.itag === 22 && f.url) ||
-          muxed.find(f => f.itag === 18 && f.url) ||
-          muxed.find(f => f.url);
-        if (vid?.url) {
-          const verified = await tryFetchMediaBytes(String(vid.url), { 'User-Agent': profile.ua }, 2000);
+        // نرتّب الجودات المدمجة (صوت + صورة بملف MP4 واحد تحت سقف تيليجرام 50MB): itag 18 (360p مضمون دائماً بالحجم) ثم 22 (720p)
+        const candidates = [
+          ...muxed.filter(f => f.itag === 18 && f.url),
+          ...muxed.filter(f => f.itag === 22 && f.url),
+          ...muxed.filter(f => f.url)
+        ];
+        for (const vid of candidates) {
+          const verified = await tryFetchMediaBytes(String(vid.url), { 'User-Agent': profile.ua }, 10_000);
           if (verified) {
             return { url: String(vid.url), bytes: verified, ua: profile.ua, ext: 'mp4' };
+          }
+        }
+
+        // دعم إضافي لـ HLS المدمج (IOS hlsManifestUrl بدون أي حاجة لـ poToken!) للمقاطع القصيرة وShorts
+        const hlsMaster = String(pJson?.streamingData?.hlsManifestUrl || '');
+        if (hlsMaster.startsWith('http')) {
+          try {
+            const masterRes = await fetch(hlsMaster, { headers: { 'User-Agent': profile.ua } });
+            if (masterRes.ok) {
+              const masterTxt = await masterRes.text();
+              const variantUrls = masterTxt
+                .split(/\r?\n/)
+                .map(l => l.trim())
+                .filter(l => l.startsWith('http'));
+              const chosenVariant = variantUrls[Math.floor(variantUrls.length / 2)] || variantUrls[0];
+              if (chosenVariant) {
+                const plRes = await fetch(chosenVariant, { headers: { 'User-Agent': profile.ua } });
+                if (plRes.ok) {
+                  const plTxt = await plRes.text();
+                  const segs = plTxt
+                    .split(/\r?\n/)
+                    .map(l => l.trim())
+                    .filter(l => l && !l.startsWith('#'))
+                    .map(l => (l.startsWith('http') ? l : new URL(l, chosenVariant).toString()));
+                  if (segs.length > 0 && segs.length <= 36) {
+                    const chunks: Uint8Array[] = [];
+                    for (let i = 0; i < segs.length; i += 9) {
+                      const batch = segs.slice(i, i + 9);
+                      const bufs = await Promise.all(
+                        batch.map(async u => {
+                          const r = await fetch(u, { headers: { 'User-Agent': profile.ua } });
+                          if (!r.ok) throw new Error('seg_err');
+                          return new Uint8Array(await r.arrayBuffer());
+                        })
+                      );
+                      chunks.push(...bufs);
+                    }
+                    const mergedTs = concatUint8Arrays(chunks);
+                    if (mergedTs.byteLength > 15_000 && mergedTs.byteLength <= 48 * 1024 * 1024) {
+                      return { url: chosenVariant, bytes: mergedTs, ua: profile.ua, ext: 'mp4' };
+                    }
+                  }
+                }
+              }
+            }
+          } catch {
+            // continue
           }
         }
       }
@@ -1415,61 +1466,131 @@ async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر استخراج المنشور من بنترست — تأكد من إرسال رابط المنشور الصحيح.' };
 }
 
-/** 📸 تحميل من إنستغرام (يدعم روابط /share/reel/... الحديثة + وسطاء العرض بدون خطأ www. + GraphQL + Embed) */
+/** 📸 تحميل من إنستغرام (٥ طبقات مفحوصة بالبايتات: SSR Polaris JSON + Embed الرسمي + GraphQL الحي + وسطاء العرض الفعّالة) */
 async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   let targetUrl = url;
 
-  // فك روابط المشاركة الحديثة instagram.com/share/reel/... للحصول على الـ shortcode الحقيقي
+  // فك روابط المشاركة الحديثة instagram.com/share/reel/... أو /share/p/... للحصول على الـ shortcode الحقيقي
   if (targetUrl.includes('/share/')) {
     try {
-      const r = await fetch(targetUrl, {
-        redirect: 'follow',
-        headers: { 'User-Agent': MOBILE_SAFARI_UA }
-      });
-      if (r.url) targetUrl = r.url;
+      const chain = await fetchWithCookieChain(targetUrl, MOBILE_SAFARI_UA);
+      if (chain?.finalUrl) targetUrl = chain.finalUrl;
     } catch {
       // continue
     }
   }
 
-  const scMatch = String(targetUrl).match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
+  const scMatch = String(targetUrl).match(/instagram\.com\/(?:[^/?#]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
   const shortcode = scMatch ? scMatch[1] : '';
+  if (!shortcode) {
+    return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط منشور أو ريلز إنستغرام صحيح.' };
+  }
 
-  if (shortcode) {
-    // الطبقة 1: وسطاء العرض المباشر المخصصة لبوتات تيليجرام بدون www. (ddinstagram / kkinstagram / instagramez / vxinstagram)
-    for (const host of ['ddinstagram.com', 'kkinstagram.com', 'instagramez.com', 'vxinstagram.com']) {
-      try {
-        const proxyUrl = `https://${host}/reel/${shortcode}`;
-        const r = await fetch(proxyUrl, {
-          headers: { 'User-Agent': TG_BOT_UA },
-          redirect: 'follow'
-        });
-        if (!r.ok) continue;
-        const html = await r.text();
-        const vidUrl =
-          html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
-          html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
-        if (vidUrl && vidUrl.startsWith('http')) {
-          return {
-            ok: true,
-            items: [{ kind: 'video', url: vidUrl.replace(/&amp;/g, '&'), headers: { 'User-Agent': BROWSER_UA } }]
-          };
+  const igHeaders: Record<string, string> = {
+    'User-Agent': BROWSER_UA,
+    Referer: 'https://www.instagram.com/'
+  };
+
+  let liveLsd = 'AVqbxe3J_YA';
+  let liveCookies = '';
+
+  // الطبقة 1: السحب المباشر من صفحة إنستغرام الرسمية SSR (<script type="application/json"> Polaris video_versions / image_versions2) تماماً مثل طريقة تيك توك الشغّالة 100%!
+  try {
+    const pageChain = await fetchWithCookieChain(`https://www.instagram.com/reel/${shortcode}/`, BROWSER_UA);
+    if (pageChain?.html) {
+      liveCookies = pageChain.cookies || '';
+      const lsdMatch =
+        pageChain.html.match(/"LSD"\s*,\s*\[[^\]]*\]\s*,\s*\{\s*"token"\s*:\s*"([^"]+)"/) ||
+        pageChain.html.match(/"lsd"\s*:\s*"([^"]+)"/) ||
+        pageChain.html.match(/name=["']lsd["'][^>]*value=["']([^"']+)["']/i) ||
+        pageChain.html.match(/value=["']([^"']+)["'][^>]*name=["']lsd["']/i);
+      if (lsdMatch?.[1]) liveLsd = lsdMatch[1];
+
+      const unescaped = pageChain.html.replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&');
+
+      // أ) فحص روابط الفيديو المباشرة video_versions من CDN إنستغرام الرسمي
+      const vidMatches = Array.from(
+        unescaped.matchAll(/"video_versions"\s*:\s*\[\s*\{[^}]*?"url"\s*:\s*"(https:\/\/[^"]+)"/g)
+      ).map(m => m[1]);
+      if (vidMatches.length > 0) {
+        const verifiedItems: DownloadedMediaItem[] = [];
+        for (const vu of Array.from(new Set(vidMatches)).slice(0, 5)) {
+          const b = await tryFetchMediaBytes(vu, igHeaders, 4_000);
+          if (b) verifiedItems.push({ kind: 'video', url: vu, bytes: b, headers: igHeaders });
         }
-        const imgUrl =
-          html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
-          html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
-        if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('logo')) {
-          return {
-            ok: true,
-            items: [{ kind: 'photo', url: imgUrl.replace(/&amp;/g, '&'), headers: { 'User-Agent': BROWSER_UA } }]
-          };
+        if (verifiedItems.length > 0) {
+          return { ok: true, items: verifiedItems };
         }
-      } catch {
-        continue;
+      }
+
+      // ب) فحص video_url المباشر داخل SSR JSON
+      const directVid = unescaped.match(/"video_url"\s*:\s*"(https:\/\/[^"]+)"/)?.[1];
+      if (directVid) {
+        const b = await tryFetchMediaBytes(directVid, igHeaders, 4_000);
+        if (b) return { ok: true, items: [{ kind: 'video', url: directVid, bytes: b, headers: igHeaders }] };
+      }
+
+      // ج) فحص الصور عالية الدقة display_url / image_versions2 للمنشورات المصوّرة
+      const imgMatches = Array.from(
+        unescaped.matchAll(/"display_url"\s*:\s*"(https:\/\/[^"]+)"/g)
+      ).map(m => m[1]);
+      if (imgMatches.length > 0) {
+        const verifiedPhotos: DownloadedMediaItem[] = [];
+        for (const iu of Array.from(new Set(imgMatches)).slice(0, 5)) {
+          const b = await tryFetchMediaBytes(iu, igHeaders, 3_000);
+          if (b) verifiedPhotos.push({ kind: 'photo', url: iu, bytes: b, headers: igHeaders });
+        }
+        if (verifiedPhotos.length > 0) {
+          return { ok: true, items: verifiedPhotos };
+        }
       }
     }
+  } catch {
+    // ننتقل للطبقة التالية
+  }
 
-    // الطبقة 2: GraphQL الرسمي لإنستغرام
+  // الطبقة 2: صفحة التضمين الرسمية Embed (تعمل بدون تسجيل دخول على جميع المنشورات العامة!)
+  for (const embPath of [`https://www.instagram.com/p/${shortcode}/embed/captioned/`, `https://www.instagram.com/reel/${shortcode}/embed/`]) {
+    try {
+      const emb = await fetch(embPath, {
+        headers: {
+          'User-Agent': MOBILE_SAFARI_UA,
+          Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      });
+      if (!emb.ok) continue;
+      const rawHtml = await emb.text();
+      const unescaped = rawHtml
+        .replace(/\\\\"/g, '"')
+        .replace(/\\\//g, '/')
+        .replace(/\\u0026/gi, '&')
+        .replace(/&amp;/g, '&');
+
+      const vMatch = unescaped.match(/"video_url"\s*:\s*"(https:\/\/[^"]+)"/);
+      if (vMatch?.[1]) {
+        const b = await tryFetchMediaBytes(vMatch[1], igHeaders, 4_000);
+        if (b) return { ok: true, items: [{ kind: 'video', url: vMatch[1], bytes: b, headers: igHeaders }] };
+      }
+
+      const imgMatch =
+        rawHtml.match(/class="EmbeddedMediaImage"[^>]+src="([^"]+)"/i)?.[1] ||
+        unescaped.match(/"display_src"\s*:\s*"(https:\/\/[^"]+)"/)?.[1];
+      if (imgMatch && !imgMatch.includes('static.cdninstagram.com')) {
+        const cleanImg = imgMatch.replace(/&amp;/g, '&');
+        const b = await tryFetchMediaBytes(cleanImg, igHeaders, 3_000);
+        if (b) return { ok: true, items: [{ kind: 'photo', url: cleanImg, bytes: b, headers: igHeaders }] };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // الطبقة 3: GraphQL الرسمي لإنستغرام عبر كلا المسارين الرسميين (/api/graphql و /graphql/query) مع توكن LSD الحيّ
+  for (const [gqlEndpoint, docId] of [
+    ['https://www.instagram.com/api/graphql', '8845758582119845'],
+    ['https://www.instagram.com/graphql/query', '10015901848480474']
+  ] as const) {
     try {
       const form = new URLSearchParams({
         av: '0',
@@ -1477,7 +1598,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         __user: '0',
         __a: '1',
         __req: '3',
-        lsd: 'AVqbxe3J_YA',
+        lsd: liveLsd,
         fb_api_caller_class: 'RelayModern',
         fb_api_req_friendly_name: 'PolarisPostActionLoadPostQueryQuery',
         variables: JSON.stringify({
@@ -1493,87 +1614,160 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
           hoisted_comment_id: null,
           hoisted_reply_id: null
         }),
-        doc_id: '10015901848480474'
+        doc_id: docId
       });
-      const r = await fetch('https://www.instagram.com/api/graphql', {
+      const gqlHeaders: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': BROWSER_UA,
+        'X-IG-App-ID': '936619743392459',
+        'X-FB-LSD': liveLsd,
+        'X-ASBD-ID': '129477',
+        'Sec-Fetch-Site': 'same-origin',
+        Origin: 'https://www.instagram.com',
+        Referer: `https://www.instagram.com/p/${shortcode}/`
+      };
+      if (liveCookies) gqlHeaders.Cookie = liveCookies;
+
+      const r = await fetch(gqlEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': BROWSER_UA,
-          'X-IG-App-ID': '936619743392459',
-          'X-FB-LSD': 'AVqbxe3J_YA',
-          'X-ASBD-ID': '129477',
-          Origin: 'https://www.instagram.com',
-          Referer: `https://www.instagram.com/p/${shortcode}/`
-        },
+        headers: gqlHeaders,
         body: form.toString()
       });
-      if (r.ok) {
-        const j: any = await r.json();
-        const media = j?.data?.xdt_shortcode_media;
-        if (media) {
-          const edges: any[] = media?.edge_sidecar_to_children?.edges || [];
-          if (edges.length > 0) {
-            const items: DownloadedMediaItem[] = edges
-              .map((e: any) => e?.node)
-              .filter(Boolean)
-              .map((n: any) =>
-                n.is_video && n.video_url
-                  ? { kind: 'video' as const, url: String(n.video_url) }
-                  : { kind: 'photo' as const, url: String(n.display_url) }
-              )
-              .filter(x => Boolean(x.url));
-            if (items.length) return { ok: true, items };
-          }
-          if (media.is_video && media.video_url) {
-            return { ok: true, items: [{ kind: 'video', url: String(media.video_url) }] };
-          }
-          if (media.display_url) {
-            return { ok: true, items: [{ kind: 'photo', url: String(media.display_url) }] };
-          }
-        }
-      }
-    } catch {
-      // continue
-    }
+      if (!r.ok) continue;
+      const j: any = await r.json();
+      const media = j?.data?.xdt_shortcode_media;
+      if (!media) continue;
 
-    // الطبقة 3: صفحة التضمين الرسمية Embed
-    try {
-      const emb = await fetch(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, {
-        headers: { 'User-Agent': BROWSER_UA }
-      });
-      if (emb.ok) {
-        const html = await emb.text();
-        const vMatch = html.match(/"video_url":"([^"]+)"/);
-        if (vMatch?.[1]) {
-          return { ok: true, items: [{ kind: 'video', url: JSON.parse(`"${vMatch[1]}"`) }] };
+      const edges: any[] = media?.edge_sidecar_to_children?.edges || [];
+      if (edges.length > 0) {
+        const verifiedItems: DownloadedMediaItem[] = [];
+        for (const e of edges.slice(0, 5)) {
+          const n = e?.node;
+          if (!n) continue;
+          const u = n.is_video && n.video_url ? String(n.video_url) : String(n.display_url || '');
+          const kind: 'video' | 'photo' = n.is_video && n.video_url ? 'video' : 'photo';
+          if (!u) continue;
+          const b = await tryFetchMediaBytes(u, igHeaders, 3_000);
+          if (b) verifiedItems.push({ kind, url: u, bytes: b, headers: igHeaders });
         }
-        const imgMatch = html.match(/class="EmbeddedMediaImage"[^>]+src="([^"]+)"/i);
-        if (imgMatch?.[1]) {
-          return { ok: true, items: [{ kind: 'photo', url: imgMatch[1].replace(/&amp;/g, '&') }] };
+        if (verifiedItems.length > 0) return { ok: true, items: verifiedItems };
+      }
+
+      if (media.is_video && media.video_url) {
+        const b = await tryFetchMediaBytes(String(media.video_url), igHeaders, 4_000);
+        if (b) return { ok: true, items: [{ kind: 'video', url: String(media.video_url), bytes: b, headers: igHeaders }] };
+      }
+      if (media.display_url) {
+        const b = await tryFetchMediaBytes(String(media.display_url), igHeaders, 3_000);
+        if (b) return { ok: true, items: [{ kind: 'photo', url: String(media.display_url), bytes: b, headers: igHeaders }] };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // الطبقة 4: وسطاء العرض المخصصة لبوتات تيليجرام مع فحص البايتات الفعلي إلزامياً (لا يُقبل أي رابط وهمي!)
+  for (const host of ['instagramez.com', 'kkinstagram.com', 'vxinstagram.com', 'eeinstagram.com', 'ddinstagram.com']) {
+    try {
+      const r = await fetch(`https://${host}/reel/${shortcode}`, {
+        headers: { 'User-Agent': TG_BOT_UA },
+        redirect: 'follow'
+      });
+      if (!r.ok) continue;
+      const html = await r.text();
+      const vidUrl =
+        html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
+        html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
+      if (vidUrl && vidUrl.startsWith('http')) {
+        const cleanVid = vidUrl.replace(/&amp;/g, '&');
+        const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 4_000);
+        if (verified) {
+          return {
+            ok: true,
+            items: [{ kind: 'video', url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+          };
+        }
+      }
+      const imgUrl =
+        html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
+        html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
+      if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('logo')) {
+        const cleanImg = imgUrl.replace(/&amp;/g, '&');
+        const verified = await tryFetchMediaBytes(cleanImg, { 'User-Agent': BROWSER_UA }, 3_000);
+        if (verified) {
+          return {
+            ok: true,
+            items: [{ kind: 'photo', url: cleanImg, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+          };
         }
       }
     } catch {
-      // continue
+      continue;
     }
   }
 
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
 }
 
-/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) عبر العملاء الأصليين مع تمرير الـ User-Agent المطابق */
+/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) مع إرفاق البايتات الثنائية المفحوصة مباشرة + طبقات Piped/Cobalt احتياطية */
 async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   const vid = extractYoutubeVideoId(url);
   if (!vid) {
     return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط يوتيوب أو Shorts صحيح.' };
   }
 
+  // الطبقة 1: العملاء الأصليون (ANDROID_TESTSUITE + TVHTML5_SIMPLY_EMBEDDED + ANDROID_VR + IOS HLS + Piped + Invidious) مع الاحتفاظ بالبايتات المحمّلة!
   const native = await extractViaYouTubeNative(vid, 'video');
-  if (native?.url) {
+  if (native?.bytes || native?.url) {
     return {
       ok: true,
-      items: [{ kind: 'video', url: native.url, headers: { 'User-Agent': native.ua } }]
+      items: [
+        {
+          kind: 'video',
+          url: native.url,
+          bytes: native.bytes,
+          headers: { 'User-Agent': native.ua }
+        }
+      ]
     };
+  }
+
+  // الطبقة 2: عقد Cobalt المجتمعية المفتوحة بصيغة JSON API كخط دفاع إضافي مع فحص البايتات الفعلي
+  const cobaltNodes = [
+    'https://cobalt-api.kwiatekmiki.com',
+    'https://cobalt-backend.canine.tools',
+    'https://capi.3kh0.net'
+  ];
+  for (const node of cobaltNodes) {
+    try {
+      const r = await fetch(node, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': BROWSER_UA
+        },
+        body: JSON.stringify({
+          url: `https://www.youtube.com/watch?v=${vid}`,
+          videoQuality: '480',
+          filenameStyle: 'basic'
+        })
+      });
+      if (!r.ok) continue;
+      const j: any = await r.json();
+      const dlUrl = j?.url;
+      if (dlUrl && String(dlUrl).startsWith('http')) {
+        const verified = await tryFetchMediaBytes(String(dlUrl), { 'User-Agent': BROWSER_UA }, 10_000);
+        if (verified) {
+          return {
+            ok: true,
+            items: [{ kind: 'video', url: String(dlUrl), bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+          };
+        }
+      }
+    } catch {
+      continue;
+    }
   }
 
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام وليس بثاً مباشراً.' };
