@@ -3037,6 +3037,17 @@ export class TelegramBotManager {
     return this.botInfo?.username;
   }
 
+  /** Caption attribution for sent songs, rendered by Telegram as a quote. */
+  private async getSongBotQuote(): Promise<{ caption: string; caption_entities: Array<{ type: 'blockquote'; offset: number; length: number }> } | null> {
+    const username = await this.getBotUsername();
+    if (!username) return null;
+    const caption = `@${username}`;
+    return {
+      caption,
+      caption_entities: [{ type: 'blockquote', offset: 0, length: caption.length }]
+    };
+  }
+
   /**
    * Every game message ends with the bot's username, so anyone who still has
    * not started the bot can tap it and press Start (and save it if he wants).
@@ -7011,6 +7022,13 @@ export class TelegramBotManager {
       const form = new FormData();
       form.append('chat_id', chatId);
       form.append(fieldName, new Blob([bytes as unknown as ArrayBuffer], { type: mimeType }), fileName);
+      if (method === 'sendAudio') {
+        const quote = await this.getSongBotQuote();
+        if (quote) {
+          form.append('caption', quote.caption);
+          form.append('caption_entities', JSON.stringify(quote.caption_entities));
+        }
+      }
       if (extraFields) {
         for (const [k, v] of Object.entries(extraFields)) {
           form.append(k, v);
@@ -7230,6 +7248,11 @@ export class TelegramBotManager {
         const form = new FormData();
         form.append('chat_id', chatId);
         form.append('audio', new Blob([audioBytes as unknown as ArrayBuffer], { type: outMime }), `${safeBase}.${outExt}`);
+        const quote = await this.getSongBotQuote();
+        if (quote) {
+          form.append('caption', quote.caption);
+          form.append('caption_entities', JSON.stringify(quote.caption_entities));
+        }
         if (draft.title) form.append('title', draft.title);
         if (draft.artist) form.append('performer', draft.artist);
         if (coverBytes) {
@@ -7868,6 +7891,7 @@ export class TelegramBotManager {
     if (!this.token) return false;
     const mime = payload.ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
     const fileName = `${title.replace(/[\\/:*?"<>|]/g, '').slice(0, 60) || 'song'}.${payload.ext}`;
+    const quote = await this.getSongBotQuote();
 
     // 1) إذا كانت البيانات الثنائية جاهزة مسبقاً بالذاكرة (مثل HLS المجمّع من SoundCloud CloudFront)
     if (payload.bytes && payload.bytes.byteLength > 1000 && payload.bytes.byteLength <= 49 * 1024 * 1024) {
@@ -7876,6 +7900,10 @@ export class TelegramBotManager {
         form.append('chat_id', chatId);
         form.append('title', title);
         form.append('performer', performer);
+        if (quote) {
+          form.append('caption', quote.caption);
+          form.append('caption_entities', JSON.stringify(quote.caption_entities));
+        }
         form.append('audio', new Blob([payload.bytes as unknown as ArrayBuffer], { type: mime }), fileName);
 
         const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
@@ -7916,6 +7944,10 @@ export class TelegramBotManager {
           form.append('chat_id', chatId);
           form.append('title', title);
           form.append('performer', performer);
+          if (quote) {
+            form.append('caption', quote.caption);
+            form.append('caption_entities', JSON.stringify(quote.caption_entities));
+          }
           form.append('audio', blob, fileName);
 
           const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
@@ -7938,7 +7970,8 @@ export class TelegramBotManager {
           chat_id: chatId,
           audio: payload.url,
           title,
-          performer
+          performer,
+          ...(quote || {})
         })
       });
       const dj: any = await direct.json();
