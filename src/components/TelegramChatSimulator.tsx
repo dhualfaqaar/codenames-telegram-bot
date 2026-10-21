@@ -204,7 +204,7 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
 
     pushMessage(activePlayer.name, `[اختار البطاقة: "${card.word}"]`, false, activePlayer.team === 'blue' ? '#2481cc' : '#ef5350');
 
-    const res = CodenamesEngine.guessCard(game, cardId, activePlayer.name);
+    const res = CodenamesEngine.guessCard(game, cardId, activePlayer.name, activePlayer.team);
     setGame(res.game);
 
     if (res.cardType === 'assassin') {
