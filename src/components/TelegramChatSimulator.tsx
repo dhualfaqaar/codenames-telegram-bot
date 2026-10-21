@@ -194,13 +194,34 @@ export const TelegramChatSimulator: React.FC<TelegramChatSimulatorProps> = ({ on
 
   // Guess Card
   const handleGuess = (cardId: number) => {
+    const card = game.cards.find(c => c.id === cardId);
+    if (!card) return;
+    const typeLabel = card.type === 'assassin'
+      ? '💣 القنبلة'
+      : card.type === 'bystander'
+        ? '⚪ كلمة محايدة'
+        : card.type === activePlayer.team
+          ? '🔹 كلمة لفريقك'
+          : '🔸 كلمة للخصم';
+    const cardDetails = `━━━━━━━━━━━━━━\n🔤 الكلمة: ${card.word}\n🏷 النوع: ${typeLabel}`;
+
     if (game.status !== 'operative_turn') {
-      pushMessage('بوت كود نيمز', '⚠️ ليس دور التخمين الآن! بانتظار تلميح الجاسوس.', true);
+      pushMessage('بوت كود نيمز', `⚠️ ليس دور التخمين الآن! بانتظار تلميح الجاسوس.\n${cardDetails}`, true);
       return;
     }
 
-    const card = game.cards.find(c => c.id === cardId);
-    if (!card || card.revealed) return;
+    if (card.revealed) {
+      pushMessage('بوت كود نيمز', `✅ تم كشف هذه الكلمة مسبقاً.\n${cardDetails}`, true);
+      return;
+    }
+    if (activePlayer.role !== 'operative') {
+      pushMessage('بوت كود نيمز', `⛔ التخمين للعملاء فقط.\n${cardDetails}`, true);
+      return;
+    }
+    if (activePlayer.team !== game.currentTurn) {
+      pushMessage('بوت كود نيمز', `⛔ مو دور فريقك، التخمين هسه للفريق ${game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴'}.\n${cardDetails}`, true);
+      return;
+    }
 
     pushMessage(activePlayer.name, `[اختار البطاقة: "${card.word}"]`, false, activePlayer.team === 'blue' ? '#2481cc' : '#ef5350');
 
