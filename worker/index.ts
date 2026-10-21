@@ -178,6 +178,14 @@ export class BotState {
     const bot = await this.getBot();
 
     if (request.method !== 'POST') {
+      const avatarSync = await bot.applyAndDeliverOfficialAvatar(false);
+      if (avatarSync.sent || avatarSync.applied) {
+        try {
+          await this.state.storage.put('state', bot.exportState());
+        } catch {
+          // ignore
+        }
+      }
       const games = bot.getGames() as any[];
       return Response.json({
         ok: true,
@@ -296,9 +304,17 @@ export default {
    */
   async scheduled(_event: ScheduledEvent, env: any, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      ensureWebhook(env, true).then(r => {
+      (async () => {
+        const r = await ensureWebhook(env, true);
         if (r.error) console.log('cron webhook check failed:', r.error);
-      })
+        try {
+          const id = env.BOT_STATE.idFromName('main');
+          const stub = env.BOT_STATE.get(id);
+          await stub.fetch('https://bot.internal/status');
+        } catch {
+          // ignore
+        }
+      })()
     );
   }
 };

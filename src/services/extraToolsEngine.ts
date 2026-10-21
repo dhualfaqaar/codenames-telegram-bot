@@ -569,6 +569,117 @@ export function stripVideoTracksFromMp4ToM4a(mp4Bytes: Uint8Array): Uint8Array {
   }
 }
 
+export interface AudioMetadataDraft {
+  fileId: string;
+  sourceKind: string;
+  title: string;
+  artist: string;
+  fileName: string;
+  coverFileId?: string;
+  waitingField?: 'title' | 'artist' | 'fileName' | 'cover';
+}
+
+function encodeUtf16LeFrameText(text: string): Uint8Array {
+  const clean = String(text || '');
+  // 0x01 = UTF-16 with BOM, 0xFF 0xFE = Little-Endian BOM
+  const buf = new Uint8Array(3 + clean.length * 2);
+  buf[0] = 0x01;
+  buf[1] = 0xff;
+  buf[2] = 0xfe;
+  for (let i = 0; i < clean.length; i++) {
+    const code = clean.charCodeAt(i);
+    buf[3 + i * 2] = code & 0xff;
+    buf[3 + i * 2 + 1] = (code >> 8) & 0xff;
+  }
+  return buf;
+}
+
+function makeId3v23Frame(frameId: string, payload: Uint8Array): Uint8Array {
+  const out = new Uint8Array(10 + payload.byteLength);
+  for (let i = 0; i < 4; i++) out[i] = frameId.charCodeAt(i);
+  new DataView(out.buffer).setUint32(4, payload.byteLength, false);
+  // flags = 0x00 0x00
+  out.set(payload, 10);
+  return out;
+}
+
+/**
+ * حقن وسوم ID3v2.3 القياسية (اسم الأغنية TIT2 + الفنان TPE1 + صورة الغلاف APIC) داخل الملف الصوتي مباشرة
+ * بحيث يظهر الغلاف والاسم والفنان في تيليجرام وفي مشغّل الهاتف والسيارة وكل البرامج!
+ */
+export function writeId3v23Tags(
+  rawBytes: Uint8Array,
+  meta: { title?: string; artist?: string; coverBytes?: Uint8Array }
+): Uint8Array {
+  let bodyStart = 0;
+  // إزالة أي ترويسة ID3v2 قديمة من بداية الملف إن وجدت
+  if (
+    rawBytes.byteLength > 10 &&
+    rawBytes[0] === 0x49 &&
+    rawBytes[1] === 0x44 &&
+    rawBytes[2] === 0x33
+  ) {
+    const oldSize =
+      ((rawBytes[6] & 0x7f) << 21) |
+      ((rawBytes[7] & 0x7f) << 14) |
+      ((rawBytes[8] & 0x7f) << 7) |
+      (rawBytes[9] & 0x7f);
+    if (10 + oldSize < rawBytes.byteLength) {
+      bodyStart = 10 + oldSize;
+    }
+  }
+
+  const audioBody = rawBytes.subarray(bodyStart);
+  const frames: Uint8Array[] = [];
+
+  if (meta.title && meta.title.trim()) {
+    frames.push(makeId3v23Frame('TIT2', encodeUtf16LeFrameText(meta.title.trim())));
+  }
+  if (meta.artist && meta.artist.trim()) {
+    frames.push(makeId3v23Frame('TPE1', encodeUtf16LeFrameText(meta.artist.trim())));
+  }
+  if (meta.coverBytes && meta.coverBytes.byteLength > 64) {
+    // APIC: encoding(0x00 ISO-8859-1) + "image/jpeg\0" + picType(0x03 Front Cover) + desc("\0") + bytes
+    const mimeBytes = new TextEncoder().encode('image/jpeg');
+    const apicPayload = new Uint8Array(1 + mimeBytes.byteLength + 1 + 1 + 1 + meta.coverBytes.byteLength);
+    let p = 0;
+    apicPayload[p++] = 0x00;
+    apicPayload.set(mimeBytes, p);
+    p += mimeBytes.byteLength;
+    apicPayload[p++] = 0x00; // null terminator for MIME
+    apicPayload[p++] = 0x03; // Front Cover
+    apicPayload[p++] = 0x00; // empty description null terminator
+    apicPayload.set(meta.coverBytes, p);
+    frames.push(makeId3v23Frame('APIC', apicPayload));
+  }
+
+  if (!frames.length) return rawBytes;
+
+  const framesLen = frames.reduce((s, f) => s + f.byteLength, 0);
+  const header = new Uint8Array(10);
+  header[0] = 0x49; // 'I'
+  header[1] = 0x44; // 'D'
+  header[2] = 0x33; // '3'
+  header[3] = 0x03; // ID3v2.3
+  header[4] = 0x00;
+  header[5] = 0x00;
+  // Synchsafe 28-bit integer size
+  header[6] = (framesLen >> 21) & 0x7f;
+  header[7] = (framesLen >> 14) & 0x7f;
+  header[8] = (framesLen >> 7) & 0x7f;
+  header[9] = framesLen & 0x7f;
+
+  const total = new Uint8Array(10 + framesLen + audioBody.byteLength);
+  total.set(header, 0);
+  let offset = 10;
+  for (const f of frames) {
+    total.set(f, offset);
+    offset += f.byteLength;
+  }
+  total.set(audioBody, offset);
+  return total;
+}
+
 // =====================================================================
 // 4) 🎼 عزل الموسيقى عن الأغنية (AI Neural Demucs / MDX-Net GPU Spaces + WAV DSP + Studio Fallback)
 // =====================================================================
