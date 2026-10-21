@@ -1,6 +1,7 @@
 services:
-  - type: worker
-    name: code-games-voice-assistant
+  - type: web
+    name: code-games-rtmp-streamer
     runtime: docker
     dockerfilePath: ./voice-bridge/Dockerfile
     plan: free
+    healthCheckPath: /
