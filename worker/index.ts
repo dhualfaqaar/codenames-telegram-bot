@@ -145,7 +145,7 @@ export class BotState {
     return bot;
   }
 
-  /** يضبط منبّه الـ Durable Object على أقرب موعد جولة شغّالة (١٥ ثانية للسؤال / ٢ ثانية للنتيجة) */
+  /** يضبط منبّه الـ Durable Object على أقرب موعد جولة شغّالة (15 ثانية للسؤال / 2 ثانية للنتيجة) */
   private async syncAlarm(bot: TelegramBotManager): Promise<void> {
     try {
       const nextAt = bot.getNextQuizDeadline();
@@ -194,6 +194,20 @@ export class BotState {
       return new Response('invalid json', { status: 400 });
     }
 
+    // منع تكرار نفس التحديث نهائياً (يحمي من إعادة إرسال «جاري تحميل المنشور...» أكثر من مرة واحدة!)
+    const uid = Number(update?.update_id);
+    if (Number.isFinite(uid)) {
+      if ((this as any)._seenIds?.has(uid)) {
+        return new Response('ok');
+      }
+      if (!(this as any)._seenIds) (this as any)._seenIds = new Set<number>();
+      (this as any)._seenIds.add(uid);
+      if ((this as any)._seenIds.size > 1500) {
+        const oldest = (this as any)._seenIds.values().next().value;
+        if (oldest !== undefined) (this as any)._seenIds.delete(oldest);
+      }
+    }
+
     await bot.handleUpdate(update);
 
     try {
@@ -212,7 +226,7 @@ export class BotState {
  * Worker entrypoint: Telegram webhook receiver.
  */
 export default {
-  async fetch(request: Request, env: any): Promise<Response> {
+  async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
 
@@ -236,11 +250,18 @@ export default {
 
     const body = await request.text();
 
-    return stub.fetch('https://bot.internal/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body
-    });
+    // الرد الفوري بـ ok خلال أقل من 1ms وتمرير التحديث بالخلفية عبر ctx.waitUntil يمنع إعادة محاولات تيليجرام الـ 3 نهائياً!
+    ctx.waitUntil(
+      stub
+        .fetch('https://bot.internal/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body
+        })
+        .catch((err: unknown) => console.error('DO webhook processing error:', err))
+    );
+
+    return new Response('ok');
   },
 
   /**

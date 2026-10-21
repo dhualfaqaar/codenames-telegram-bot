@@ -45,11 +45,11 @@ export function whisperModeLabel(mode: WhisperMode): string {
     case '2':
       return 'لشخصين';
     case '3':
-      return 'لـ ٣ أشخاص';
+      return 'لـ 3 أشخاص';
     case '4':
-      return 'لـ ٤ أشخاص';
+      return 'لـ 4 أشخاص';
     case '5':
-      return 'لـ ٥ أشخاص';
+      return 'لـ 5 أشخاص';
     case 'all':
       return 'للجميع';
     case 'first':
@@ -324,11 +324,24 @@ function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
  * يسحب الملف الثنائي فعلياً ويتأكد أنه فيديو/صورة/صوت حقيقي وليس صفحة خطأ HTML أو 403،
  * حتى إذا فشل أحد المزوّدين ينتقل الكود تلقائياً للطبقة التالية بدون أن تتوقف العملية!
  */
-async function tryFetchMediaBytes(
+interface ProbedMediaResult {
+  directUrl: string;
+  bytes?: Uint8Array;
+  oversized: boolean;
+  sizeMB?: number;
+}
+
+/**
+ * فحص ذكي وآمن للذاكرة (لا يتجاوز سقف ذاكرة Cloudflare البالغ 128MB أبداً مهما بلغ حجم الفيديو 500MB أو 2GB!):
+ * - إذا كان الملف <= 49MB يسحب بايتاته كاملة ليرفعها مباشرة داخل محادثة تيليجرام.
+ * - إذا تجاوز 49MB يتحقق من أول حزمة ثنائية حقيقية ثم يغلق الدفق فوراً خلال جزء من الثانية ويعيد الرابط المباشر السحابي الكامل!
+ */
+async function probeMediaStreamOrBytes(
   url: string,
   headers?: Record<string, string>,
   minBytes = 1500
-): Promise<Uint8Array | null> {
+): Promise<ProbedMediaResult | null> {
+  const MAX_TG_BYTES = 49 * 1024 * 1024;
   try {
     const r = await fetch(url, {
       redirect: 'follow',
@@ -337,17 +350,90 @@ async function tryFetchMediaBytes(
         ...(headers || {})
       }
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      await r.body?.cancel().catch(() => undefined);
+      return null;
+    }
     const ct = (r.headers.get('content-type') || '').toLowerCase();
-    if (ct.includes('text/html') || ct.includes('application/json')) return null;
-    const buf = new Uint8Array(await r.arrayBuffer());
-    if (buf.byteLength < minBytes || buf.byteLength > 49 * 1024 * 1024) return null;
-    // فحص إضافي: إذا بدأ الملف بـ <!DOCTYPE أو <html نرفضه فوراً
-    if (buf[0] === 0x3c && (buf[1] === 0x21 || buf[1] === 0x68 || buf[1] === 0x48)) return null;
-    return buf;
+    if (ct.includes('text/html') || ct.includes('application/json')) {
+      await r.body?.cancel().catch(() => undefined);
+      return null;
+    }
+
+    const finalUrl = r.url || url;
+    const declaredLen = parseInt(r.headers.get('content-length') || '0', 10);
+
+    // إذا أعلن الخادم مسبقاً أن الحجم أكبر من 49MB: نفحص أول بايتات فقط ثم نغلق الاتصال فوراً دون استهلاك الذاكرة!
+    if (declaredLen > MAX_TG_BYTES && r.body) {
+      const reader = r.body.getReader();
+      const first = await reader.read();
+      await reader.cancel().catch(() => undefined);
+      const sample = first.value;
+      if (!sample || sample.byteLength < 64) return null;
+      if (sample[0] === 0x3c && (sample[1] === 0x21 || sample[1] === 0x68 || sample[1] === 0x48)) return null;
+      return {
+        directUrl: finalUrl,
+        oversized: true,
+        sizeMB: Math.round((declaredLen / (1024 * 1024)) * 10) / 10
+      };
+    }
+
+    if (!r.body) {
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf.byteLength < minBytes) return null;
+      if (buf[0] === 0x3c && (buf[1] === 0x21 || buf[1] === 0x68 || buf[1] === 0x48)) return null;
+      if (buf.byteLength > MAX_TG_BYTES) {
+        return {
+          directUrl: finalUrl,
+          oversized: true,
+          sizeMB: Math.round((buf.byteLength / (1024 * 1024)) * 10) / 10
+        };
+      }
+      return { directUrl: finalUrl, bytes: buf, oversized: false };
+    }
+
+    // قراءة تدريجية محمية السقف حتى في حال عدم إرسال Content-Length
+    const reader = r.body.getReader();
+    const parts: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.byteLength > 0) {
+        if (total === 0 && value[0] === 0x3c && (value[1] === 0x21 || value[1] === 0x68 || value[1] === 0x48)) {
+          await reader.cancel().catch(() => undefined);
+          return null;
+        }
+        total += value.byteLength;
+        if (total > MAX_TG_BYTES) {
+          await reader.cancel().catch(() => undefined);
+          parts.length = 0;
+          return {
+            directUrl: finalUrl,
+            oversized: true,
+            sizeMB: declaredLen > 0 ? Math.round((declaredLen / (1024 * 1024)) * 10) / 10 : undefined
+          };
+        }
+        parts.push(value);
+      }
+    }
+
+    if (total < minBytes) return null;
+    const merged = concatUint8Arrays(parts);
+    parts.length = 0;
+    return { directUrl: finalUrl, bytes: merged, oversized: false };
   } catch {
     return null;
   }
+}
+
+async function tryFetchMediaBytes(
+  url: string,
+  headers?: Record<string, string>,
+  minBytes = 1500
+): Promise<Uint8Array | null> {
+  const res = await probeMediaStreamOrBytes(url, headers, minBytes);
+  return res?.bytes || null;
 }
 
 // =====================================================================
@@ -662,11 +748,22 @@ export function parseDurationSeconds(dur?: string): number {
   return 210;
 }
 
-/** فك تشفير استجابة Savetube السحابية (AES-128-CBC عبر WebCrypto المدمج في Cloudflare Workers) وسحب ملف MP4/MP3 العام غير المقيّد بالـ IP */
+interface CloudExtractResult {
+  url: string;
+  bytes?: Uint8Array;
+  oversized?: boolean;
+  sizeMB?: number;
+  quality?: string;
+  title?: string;
+  ext: 'mp4' | 'm4a';
+}
+
+/** فك تشفير استجابة Savetube السحابية (AES-128-CBC عبر WebCrypto المدمج في Cloudflare Workers) وسحب ملف MP4/MP3 العام حتى لو تجاوز 50MB! */
 async function extractViaSavetubeCloud(
   videoId: string,
-  mode: 'video' | 'audio'
-): Promise<{ url: string; bytes: Uint8Array; title?: string; ext: 'mp4' | 'm4a' } | null> {
+  mode: 'video' | 'audio',
+  customQualities?: string[]
+): Promise<CloudExtractResult | null> {
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const keyHex = 'C5D58EF67A7584E4A29F6C35BBC4EB12';
   const keyBytes = new Uint8Array(keyHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
@@ -686,6 +783,8 @@ async function extractViaSavetubeCloud(
   for (const fallbackCdn of ['cdn59.savetube.su', 'cdn54.savetube.su', 'cdn61.savetube.su']) {
     if (!cdns.includes(fallbackCdn)) cdns.push(fallbackCdn);
   }
+
+  let bestOversized: CloudExtractResult | null = null;
 
   for (const cdn of cdns.slice(0, 3)) {
     try {
@@ -716,7 +815,8 @@ async function extractViaSavetubeCloud(
       const dlKey = parsed?.key;
       if (!dlKey) continue;
 
-      const qualities = mode === 'audio' ? ['128'] : ['360', '480', '720'];
+      // ترتيب تنازلي ذكي: إذا كانت 360p أكبر من 49MB نحفظ رابطها المباشر الكامل ونفحص 240p ثم 144p لرفع نسخة تعمل داخل تيليجرام أيضاً!
+      const qualities = customQualities || (mode === 'audio' ? ['128'] : ['360', '240', '144']);
       for (const q of qualities) {
         const dlRes = await fetch(`https://${cdn}/download`, {
           method: 'POST',
@@ -737,32 +837,45 @@ async function extractViaSavetubeCloud(
         const dlJson: any = await dlRes.json();
         const fileUrl = dlJson?.data?.downloadUrl;
         if (fileUrl && String(fileUrl).startsWith('http')) {
-          const verified = await tryFetchMediaBytes(String(fileUrl), { 'User-Agent': BROWSER_UA }, 8_000);
-          if (verified) {
+          const probed = await probeMediaStreamOrBytes(String(fileUrl), { 'User-Agent': BROWSER_UA }, 8_000);
+          if (probed?.bytes) {
             return {
-              url: String(fileUrl),
-              bytes: verified,
+              url: probed.directUrl,
+              bytes: probed.bytes,
+              quality: q,
+              title: parsed?.title ? String(parsed.title) : undefined,
+              ext: mode === 'audio' ? 'm4a' : 'mp4'
+            };
+          }
+          if (probed?.oversized && !bestOversized) {
+            bestOversized = {
+              url: probed.directUrl,
+              oversized: true,
+              sizeMB: probed.sizeMB,
+              quality: q,
               title: parsed?.title ? String(parsed.title) : undefined,
               ext: mode === 'audio' ? 'm4a' : 'mp4'
             };
           }
         }
       }
+      if (bestOversized) return bestOversized;
     } catch {
       continue;
     }
   }
-  return null;
+  return bestOversized;
 }
 
-/** سحب الفيديو/الصوت عبر خادم OceanSaver السحابي (يعمل من أي IP على Cloudflare Workers ويعيد ملف MP4 عام جاهز) */
+/** سحب الفيديو/الصوت عبر خادم OceanSaver السحابي (يعمل من أي IP على Cloudflare Workers ويدعم حتى الأحجام الأكبر من 50MB!) */
 async function extractViaOceanSaverCloud(
   videoId: string,
-  mode: 'video' | 'audio'
-): Promise<{ url: string; bytes: Uint8Array; title?: string; ext: 'mp4' | 'm4a' } | null> {
+  mode: 'video' | 'audio',
+  preferredFormat?: string
+): Promise<CloudExtractResult | null> {
   try {
     const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const fmt = mode === 'audio' ? 'm4a' : '360';
+    const fmt = preferredFormat || (mode === 'audio' ? 'm4a' : '360');
     const startUrl =
       `https://p.oceansaver.in/ajax/download.php?copyright=0&format=${fmt}` +
       `&url=${encodeURIComponent(ytUrl)}&api=dfcb6d76f2f6a9894gjkege8a4ab232222`;
@@ -786,11 +899,22 @@ async function extractViaOceanSaverCloud(
       if (!pr.ok) continue;
       const pj: any = await pr.json();
       if (pj?.download_url && String(pj.download_url).startsWith('http')) {
-        const verified = await tryFetchMediaBytes(String(pj.download_url), { 'User-Agent': BROWSER_UA }, 8_000);
-        if (verified) {
+        const probed = await probeMediaStreamOrBytes(String(pj.download_url), { 'User-Agent': BROWSER_UA }, 8_000);
+        if (probed?.bytes) {
           return {
-            url: String(pj.download_url),
-            bytes: verified,
+            url: probed.directUrl,
+            bytes: probed.bytes,
+            quality: fmt,
+            title: j?.title ? String(j.title) : undefined,
+            ext: mode === 'audio' ? 'm4a' : 'mp4'
+          };
+        }
+        if (probed?.oversized) {
+          return {
+            url: probed.directUrl,
+            oversized: true,
+            sizeMB: probed.sizeMB,
+            quality: fmt,
             title: j?.title ? String(j.title) : undefined,
             ext: mode === 'audio' ? 'm4a' : 'mp4'
           };
@@ -1342,6 +1466,9 @@ export interface DownloadedMediaItem {
   kind: 'video' | 'photo';
   url: string;
   bytes?: Uint8Array;
+  oversized?: boolean;
+  sizeMB?: number;
+  quality?: string;
   headers?: Record<string, string>;
 }
 
@@ -1349,6 +1476,7 @@ export interface SocialDownloadResult {
   ok: boolean;
   items: DownloadedMediaItem[];
   title?: string;
+  videoId?: string;
   error?: string;
 }
 
@@ -1731,7 +1859,7 @@ async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر استخراج المنشور من بنترست — تأكد من إرسال رابط المنشور الصحيح.' };
 }
 
-/** 📸 تحميل من إنستغرام (٥ طبقات مفحوصة بالبايتات: SSR Polaris JSON + Embed الرسمي + GraphQL الحي + وسطاء العرض الفعّالة) */
+/** 📸 تحميل من إنستغرام (5 طبقات مفحوصة بالبايتات: SSR Polaris JSON + Embed الرسمي + GraphQL الحي + وسطاء العرض الفعّالة) */
 async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   let targetUrl = url;
 
@@ -1974,30 +2102,52 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
 }
 
-/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) عبر ٥ محركات سحابية مستقلة غير مقيدة بالـ IP + فحص كامل للبايتات */
+/** ▶️ تحميل فيديو من يوتيوب (عادي أو Shorts) عبر 5 محركات سحابية مستقلة غير مقيدة بالـ IP + فحص كامل للبايتات */
 async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   const vid = extractYoutubeVideoId(url);
   if (!vid) {
     return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط يوتيوب أو Shorts صحيح.' };
   }
 
-  // الطبقة 1 (الأسرع والأضمن على Cloudflare Workers): Savetube Cloud CDN (فك تشفير AES-CBC ورابط MP4 عام غير مقيّد بالـ IP!)
+  // الطبقة 1 (الأسرع والأضمن على Cloudflare Workers): Savetube Cloud CDN — يدعم حتى الفيديوهات الأكبر من 50MB!
   const savetube = await extractViaSavetubeCloud(vid, 'video');
-  if (savetube?.bytes) {
+  if (savetube?.bytes || savetube?.oversized) {
     return {
       ok: true,
+      videoId: vid,
       title: savetube.title,
-      items: [{ kind: 'video', url: savetube.url, bytes: savetube.bytes, headers: { 'User-Agent': BROWSER_UA } }]
+      items: [
+        {
+          kind: 'video',
+          url: savetube.url,
+          bytes: savetube.bytes,
+          oversized: savetube.oversized,
+          sizeMB: savetube.sizeMB,
+          quality: savetube.quality,
+          headers: { 'User-Agent': BROWSER_UA }
+        }
+      ]
     };
   }
 
-  // الطبقة 2: OceanSaver Cloud Transcoder (يحوّل على خوادمه الخاصة ويعيد رابط MP4 عام مباشر على CDN مفتوح!)
+  // الطبقة 2: OceanSaver Cloud Transcoder — يدعم حتى الفيديوهات الأكبر من 50MB!
   const ocean = await extractViaOceanSaverCloud(vid, 'video');
-  if (ocean?.bytes) {
+  if (ocean?.bytes || ocean?.oversized) {
     return {
       ok: true,
+      videoId: vid,
       title: ocean.title,
-      items: [{ kind: 'video', url: ocean.url, bytes: ocean.bytes, headers: { 'User-Agent': BROWSER_UA } }]
+      items: [
+        {
+          kind: 'video',
+          url: ocean.url,
+          bytes: ocean.bytes,
+          oversized: ocean.oversized,
+          sizeMB: ocean.sizeMB,
+          quality: ocean.quality,
+          headers: { 'User-Agent': BROWSER_UA }
+        }
+      ]
     };
   }
 
@@ -2011,11 +2161,21 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   for (const host of invLocalHosts) {
     try {
       const proxiedUrl = `${host}/latest_version?id=${encodeURIComponent(vid)}&itag=18&local=true`;
-      const verified = await tryFetchMediaBytes(proxiedUrl, { 'User-Agent': BROWSER_UA }, 10_000);
-      if (verified) {
+      const probed = await probeMediaStreamOrBytes(proxiedUrl, { 'User-Agent': BROWSER_UA }, 10_000);
+      if (probed?.bytes || probed?.oversized) {
         return {
           ok: true,
-          items: [{ kind: 'video', url: proxiedUrl, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+          videoId: vid,
+          items: [
+            {
+              kind: 'video',
+              url: probed.directUrl,
+              bytes: probed.bytes,
+              oversized: probed.oversized,
+              sizeMB: probed.sizeMB,
+              headers: { 'User-Agent': BROWSER_UA }
+            }
+          ]
         };
       }
     } catch {
@@ -2028,6 +2188,7 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   if (native?.bytes) {
     return {
       ok: true,
+      videoId: vid,
       items: [
         {
           kind: 'video',
@@ -2039,7 +2200,7 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
     };
   }
 
-  // الطبقة 5: عقد Cobalt السحابية كخط دفاع خامس مع فحص البايتات الفعلي
+  // الطبقة 5: عقد Cobalt السحابية كخط دفاع خامس مع دعم الأحجام الأكبر من 50MB
   const cobaltNodes = [
     'https://cobalt-api.kwiatekmiki.com',
     'https://cobalt-backend.canine.tools',
@@ -2064,11 +2225,21 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
       const j: any = await r.json();
       const dlUrl = j?.url;
       if (dlUrl && String(dlUrl).startsWith('http')) {
-        const verified = await tryFetchMediaBytes(String(dlUrl), { 'User-Agent': BROWSER_UA }, 10_000);
-        if (verified) {
+        const probed = await probeMediaStreamOrBytes(String(dlUrl), { 'User-Agent': BROWSER_UA }, 10_000);
+        if (probed?.bytes || probed?.oversized) {
           return {
             ok: true,
-            items: [{ kind: 'video', url: String(dlUrl), bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+            videoId: vid,
+            items: [
+              {
+                kind: 'video',
+                url: probed.directUrl,
+                bytes: probed.bytes,
+                oversized: probed.oversized,
+                sizeMB: probed.sizeMB,
+                headers: { 'User-Agent': BROWSER_UA }
+              }
+            ]
           };
         }
       }
@@ -2077,7 +2248,58 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
     }
   }
 
-  return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام ولا يتجاوز حد 50MB.' };
+  return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام ثم حاول مجدداً.' };
+}
+
+/** استخراج النسخة عالية الدقة (1080p / 720p HD) لزر «🎬 تحميل بدقة عالية HD» حتى لو تجاوزت 50MB */
+export async function extractYouTubeHighDefinition(videoId: string): Promise<SocialDownloadResult> {
+  const savetubeHd = await extractViaSavetubeCloud(videoId, 'video', ['1080', '720', '480']);
+  if (savetubeHd?.bytes || savetubeHd?.oversized) {
+    return {
+      ok: true,
+      videoId,
+      title: savetubeHd.title,
+      items: [
+        {
+          kind: 'video',
+          url: savetubeHd.url,
+          bytes: savetubeHd.bytes,
+          oversized: savetubeHd.oversized,
+          sizeMB: savetubeHd.sizeMB,
+          quality: savetubeHd.quality || 'HD',
+          headers: { 'User-Agent': BROWSER_UA }
+        }
+      ]
+    };
+  }
+
+  const oceanHd =
+    (await extractViaOceanSaverCloud(videoId, 'video', '1080')) ||
+    (await extractViaOceanSaverCloud(videoId, 'video', '720'));
+  if (oceanHd?.bytes || oceanHd?.oversized) {
+    return {
+      ok: true,
+      videoId,
+      title: oceanHd.title,
+      items: [
+        {
+          kind: 'video',
+          url: oceanHd.url,
+          bytes: oceanHd.bytes,
+          oversized: oceanHd.oversized,
+          sizeMB: oceanHd.sizeMB,
+          quality: oceanHd.quality || 'HD',
+          headers: { 'User-Agent': BROWSER_UA }
+        }
+      ]
+    };
+  }
+
+  return {
+    ok: false,
+    items: [],
+    error: '⚠️ تعذّر استخراج النسخة عالية الدقة (HD) لهذا الفيديو حالياً — حاول مجدداً بعد لحظات.'
+  };
 }
 
 export async function downloadFromPlatform(platform: SocialPlatform, rawInput: string): Promise<SocialDownloadResult> {

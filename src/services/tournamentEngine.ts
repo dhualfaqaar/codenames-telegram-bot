@@ -1,10 +1,10 @@
 /**
- * 🏆 محرك نظام البطولات والدوريات الإقصائية (٨ / ١٦ / ٣٢ لاعباً)
+ * 🏆 محرك نظام البطولات والدوريات الإقصائية (8 / 16 / 32 لاعباً)
  *
  * نظام خروج المغلوب مثل أدوار كرة القدم تماماً:
- *   دور الـ ٣٢ ⬅️ دور الـ ١٦ ⬅️ ربع النهائي ⬅️ نصف النهائي ⬅️ النهائي الكبير 🏆
+ *   دور الـ 32 ⬅️ دور الـ 16 ⬅️ ربع النهائي ⬅️ نصف النهائي ⬅️ النهائي الكبير 🏆
  *
- * - يشترط عدد زوجي من اللاعبين عند الانطلاق (٢، ٤، ٦، ٨، … حتى ٣٢).
+ * - يشترط عدد زوجي من اللاعبين عند الانطلاق (2، 4، 6، 8، … حتى 32).
  * - يتواجه كل لاعبين اثنين وجهاً لوجه (1 ضد 1) حتى يتأهل فائز واحد من كل مواجهة.
  * - يدعم جميع ألعاب الأسئلة والسرعة و«خمّن» (بما فيها نظام الإيموجي) + لعبة «حجرة ورقة مقص ✊».
  * - ينتهي دائماً بتتويج لاعب واحد فقط بطلاً للبطولة بالكامل 👑.
@@ -93,7 +93,7 @@ const RPS_META: Record<RpsThrow, { icon: string; label: string; beats: RpsThrow 
 };
 
 function arNum(n: number): string {
-  return String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[+d]);
+  return String(n);
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -128,8 +128,8 @@ function computeStageName(participantCount: number): string {
   if (participantCount <= 2) return 'النهائي الكبير 🏆';
   if (participantCount <= 4) return 'نصف النهائي 🔥';
   if (participantCount <= 8) return 'ربع النهائي ⚡';
-  if (participantCount <= 16) return 'دور الـ ١٦ 🎯';
-  return 'دور الـ ٣٢ 🏟️';
+  if (participantCount <= 16) return 'دور الـ 16 🎯';
+  return 'دور الـ 32 🏟️';
 }
 
 export function createTournamentLobby(
@@ -208,7 +208,7 @@ function prepareTurn(game: TournamentGame): void {
   game.roundDeadline = Date.now() + ROUND_MS;
 
   if (game.discipline === 'rps') {
-    game.prompt = 'اختَر حركتك السرية الآن قبل انتهاء الـ ١٥ ثانية!';
+    game.prompt = 'اختَر حركتك السرية الآن قبل انتهاء الـ 15 ثانية!';
     game.options = [];
     game.correctIdx = 0;
     return;
@@ -232,7 +232,7 @@ function setupStage(game: TournamentGame, entrants: TournamentPlayer[]): void {
 
   const pool = entrants.slice();
   if (pool.length % 2 === 1) {
-    // في حال نتج عدد فردي بالأدوار المتقدمة (مثلاً ٣ متأهلين من ٦ لاعبين) يتأهل لاعب بالقرعة الذهبية ليكتمل النهائي الفردي
+    // في حال نتج عدد فردي بالأدوار المتقدمة (مثلاً 3 متأهلين من 6 لاعبين) يتأهل لاعب بالقرعة الذهبية ليكتمل النهائي الفردي
     let byeIdx = pool.findIndex(p => !p.hadBye);
     if (byeIdx === -1) byeIdx = pool.length - 1;
     const [lucky] = pool.splice(byeIdx, 1);
@@ -268,7 +268,7 @@ export function startTournament(game: TournamentGame): { ok: boolean; reason?: s
   if (n % 2 !== 0) {
     return {
       ok: false,
-      reason: `⚠️ العدد الحالي فردي (${arNum(n)})! نظام البطولات يشترط عدد زوجي (٢، ٤، ٦، ٨، …) حتى يتواجه كل اثنين سوه.`
+      reason: `⚠️ العدد الحالي فردي (${arNum(n)})! نظام البطولات يشترط عدد زوجي (2، 4، 6، 8، …) حتى يتواجه كل اثنين سوه.`
     };
   }
 
@@ -493,7 +493,7 @@ export function handleTournamentRpsMove(
       awardPointAndAdvance(
         game,
         side,
-        `${m1.icon} ضد ${m2.icon} — بعد ٣ تعادلات متتالية حُسمت النقطة بالقرعة الفاصلة ⚡`
+        `${m1.icon} ضد ${m2.icon} — بعد 3 تعادلات متتالية حُسمت النقطة بالقرعة الفاصلة ⚡`
       );
       return { ok: true, changed: true };
     }
@@ -513,7 +513,7 @@ export function handleTournamentRpsMove(
   return { ok: true, changed: true };
 }
 
-/** يعالج انتهاء مهلة الـ ١٥ ثانية تلقائياً دون أي تعليق للبطولة */
+/** يعالج انتهاء مهلة الـ 15 ثانية تلقائياً دون أي تعليق للبطولة */
 export function handleTournamentTimeout(game: TournamentGame): boolean {
   const now = Date.now();
   if (game.status === 'between' && game.resultDeadline && now >= game.resultDeadline) {
@@ -525,14 +525,14 @@ export function handleTournamentTimeout(game: TournamentGame): boolean {
     const fx = game.fixtures[game.currentMatchIdx];
     if (!fx) return false;
 
-    // في حجرة ورقة مقص: إذا ثبت لاعب واحد فقط حركته وتأخر الآخر ١٥ ثانية يفوز الملتزم بالنقطة فوراً
+    // في حجرة ورقة مقص: إذا ثبت لاعب واحد فقط حركته وتأخر الآخر 15 ثانية يفوز الملتزم بالنقطة فوراً
     if (game.discipline === 'rps') {
       if (game.p1Locked && !game.p2Locked) {
-        awardPointAndAdvance(game, 1, '⏱️ انتهت الـ ١٥ ثانية — نقطة للطرف الأول لالتزامه بالوقت!');
+        awardPointAndAdvance(game, 1, '⏱️ انتهت الـ 15 ثانية — نقطة للطرف الأول لالتزامه بالوقت!');
         return true;
       }
       if (game.p2Locked && !game.p1Locked) {
-        awardPointAndAdvance(game, 2, '⏱️ انتهت الـ ١٥ ثانية — نقطة للطرف الثاني لالتزامه بالوقت!');
+        awardPointAndAdvance(game, 2, '⏱️ انتهت الـ 15 ثانية — نقطة للطرف الثاني لالتزامه بالوقت!');
         return true;
       }
       game.stallCount += 1;
@@ -551,7 +551,7 @@ export function handleTournamentTimeout(game: TournamentGame): boolean {
       game.status = 'between';
       game.roundDeadline = undefined;
       game.resultDeadline = now + RESULT_MS;
-      game.lastSummary = '⏱️ انتهت الـ ١٥ ثانية بلا حركة — رمية جديدة الآن!';
+      game.lastSummary = '⏱️ انتهت الـ 15 ثانية بلا حركة — رمية جديدة الآن!';
       return true;
     }
 
@@ -578,14 +578,14 @@ export function handleTournamentTimeout(game: TournamentGame): boolean {
     game.status = 'between';
     game.roundDeadline = undefined;
     game.resultDeadline = now + RESULT_MS;
-    game.lastSummary = `⏱️ انتهت الـ ١٥ ثانية! الإجابة الصحيحة: *${correctAns}*`;
+    game.lastSummary = `⏱️ انتهت الـ 15 ثانية! الإجابة الصحيحة: *${correctAns}*`;
     return true;
   }
 
   return false;
 }
 
-/** يرسم لوحة البطولة كاملة بصيغة MarkdownV2 سليمة ١٠٠٪ مع وضع كل اسم لاعب داخل اقتباس */
+/** يرسم لوحة البطولة كاملة بصيغة MarkdownV2 سليمة 100٪ مع وضع كل اسم لاعب داخل اقتباس */
 export function renderTournamentView(game: TournamentGame): TrnView {
   const meta = getDisciplineMeta(game.discipline);
   const id = game.id;
@@ -701,7 +701,7 @@ export function renderTournamentView(game: TournamentGame): TrnView {
     `⚔️ *المواجهة الجارية الآن (المباراة ${arNum(game.currentMatchIdx + 1)} من ${arNum(game.fixtures.length)}):*\n` +
     `${duelSides}\n\n` +
     `❓ *${game.prompt}*\n` +
-    `⏱️ _المهلة: ١٥ ثانية فقط!_`;
+    `⏱️ _المهلة: 15 ثانية فقط!_`;
 
   const buttons: TrnButton[][] = [];
   if (game.discipline === 'rps') {

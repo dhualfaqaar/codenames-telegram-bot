@@ -6,7 +6,7 @@
  *    يسأل البوت كل مشارك أسئلة شخصية (أكلتك المفضلة، لونك المفضل…)، ويكتب اللاعب جوابه بنفسه.
  *    يقوم البوت بتصحيح الأخطاء الإملائية العربية تلقائياً وحفظ الجواب السري المصحّح.
  * 3) المرحلة الثانية بالخاص (رسالة واحدة تتحدّث بمكانها):
- *    يعرض البوت للطرف الثاني ٤ خيارات من نفس صنف السؤال (الجواب الحقيقي الذي كتبه المقابل + ٣ إجابات خاطئة من نفس التصنيف)،
+ *    يعرض البوت للطرف الثاني 4 خيارات من نفس صنف السؤال (الجواب الحقيقي الذي كتبه المقابل + 3 إجابات خاطئة من نفس التصنيف)،
  *    وتتعدل نفس الرسالة تلقائياً مع كل سؤال بدون إرسال رسائل متكررة.
  * 4) النهاية:
  *    - بالخاص: يُرسل «كشف البطاقات 🃏» الكامل والمفصّل لكلا المشاركين.
@@ -19,7 +19,7 @@ export interface WKQuestion {
   shortLabel: string;
   askSelf: string;
   askGuess: string;
-  /** بنك واسع من نفس صنف السؤال لتوليد ٣ خيارات خاطئة متجانسة + التصحيح الإملائي */
+  /** بنك واسع من نفس صنف السؤال لتوليد 3 خيارات خاطئة متجانسة + التصحيح الإملائي */
   categoryPool: string[];
 }
 
@@ -149,7 +149,7 @@ export interface WKPlayer {
   name: string;
   /** إجابات اللاعب عن نفسه بعد التصحيح الإملائي */
   answers: string[];
-  /** مجموعات الخيارات الـ ٤ المجهّزة لمرحلة التخمين (جواب المقابل الحقيقي + ٣ خيارات خاطئة من نفس الصنف) */
+  /** مجموعات الخيارات الـ 4 المجهّزة لمرحلة التخمين (جواب المقابل الحقيقي + 3 خيارات خاطئة من نفس الصنف) */
   choiceSets?: string[][];
   /** تخمينات اللاعب لإجابات الطرف الثاني */
   guesses: string[];
@@ -408,11 +408,11 @@ export function autoCorrectAnswer(question: WKQuestion | undefined, raw: string)
   const normFull = bareNormalize(candidateSurface);
   const normNoAl = normFull.startsWith('ال') && normFull.length > 3 ? normFull.slice(2) : normFull;
 
-  // ١) فحص قاموس التصحيح المباشر
+  // 1) فحص قاموس التصحيح المباشر
   if (SPELLING_CANONICAL[normFull]) return SPELLING_CANONICAL[normFull];
   if (SPELLING_CANONICAL[normNoAl]) return SPELLING_CANONICAL[normNoAl];
 
-  // ٢) مطابقة إملائية ذكية مع بنك نفس صنف السؤال أولاً ثم بقية الأصناف
+  // 2) مطابقة إملائية ذكية مع بنك نفس صنف السؤال أولاً ثم بقية الأصناف
   const candidates = [
     ...(question ? question.categoryPool : []),
     ...WK_QUESTIONS.flatMap(q => q.categoryPool)
@@ -482,7 +482,7 @@ export function answersMatch(realAnswer: string, guess: string): boolean {
   return false;
 }
 
-/** يبني ٤ خيارات ذكية لكل سؤال: الجواب الحقيقي الذي كتبه المقابل + ٣ إجابات خاطئة من نفس صنف السؤال */
+/** يبني 4 خيارات ذكية لكل سؤال: الجواب الحقيقي الذي كتبه المقابل + 3 إجابات خاطئة من نفس صنف السؤال */
 export function buildGuessChoiceSet(question: WKQuestion, realAnswer: string): string[] {
   const wrongPool = shuffle(
     question.categoryPool.filter(item => !answersMatch(realAnswer, item))
@@ -626,7 +626,7 @@ export function wkSubmitGuess(
   };
 }
 
-/** نص السؤال بالخاص (المرحلة ١ كتابة نصية، المرحلة ٢ أربعة أزرار تتحدث بنفس الرسالة) بصيغة MarkdownV2 */
+/** نص السؤال بالخاص (المرحلة 1 كتابة نصية، المرحلة 2 أربعة أزرار تتحدث بنفس الرسالة) بصيغة MarkdownV2 */
 export function renderWKPrompt(game: WKGame, userId: string): { text: string; keyboard: any[][] } | null {
   const p = game.players.find(x => x.id === userId);
   const other = wkPartner(game, userId);
@@ -736,7 +736,7 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
   }
 
   if (game.status === 'answering') {
-    lines.push(`📝 *المرحلة ١: كتابة الإجابات بالخاص \\(${game.questions.length} أسئلة\\)*`);
+    lines.push(`📝 *المرحلة 1: كتابة الإجابات بالخاص \\(${game.questions.length} أسئلة\\)*`);
     lines.push(SEP);
     lines.push(
       game.players
@@ -753,7 +753,7 @@ export function renderWKBoard(game: WKGame, notice?: string): string {
   }
 
   if (game.status === 'guessing') {
-    lines.push(`🃏 *المرحلة ٢: تخمين اختيارات الطرف الثاني بالخاص*`);
+    lines.push(`🃏 *المرحلة 2: تخمين اختيارات الطرف الثاني بالخاص*`);
     lines.push(SEP);
     lines.push(
       game.players

@@ -153,7 +153,7 @@ export function answer(round: PoetRound, index: number): PoetRound {
 
 /** نص الرسالة (البيت + الخيارات أو النتيجة) */
 export function renderMessage(round: PoetRound): string {
-  const lines = [`🎭 *خمّن الشاعر*`, `━━━━━━━━━━━━━━━━━━━`];
+  const lines = [`🎭 *الشعراء*`, `━━━━━━━━━━━━━━━━━━━`];
   lines.push(`❝ ${round.verse} ❞`);
   lines.push(`━━━━━━━━━━━━━━━━━━━`);
 

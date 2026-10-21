@@ -241,7 +241,7 @@ export function advanceMusicOnTrackEnd(
   return { startedNext: null, finishedAll: true };
 }
 
-/** رسم لوحة البث والمكالمة الصوتية بصيغة MarkdownV2 سليمة ١٠٠٪ مع وضع اسم صاحب الأمر داخل اقتباس */
+/** رسم لوحة البث والمكالمة الصوتية بصيغة MarkdownV2 سليمة 100٪ مع وضع اسم صاحب الأمر داخل اقتباس */
 export function renderMusicCallView(
   session: MusicCallSession,
   now = Date.now()
