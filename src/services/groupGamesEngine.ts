@@ -27,6 +27,21 @@ import {
   SONGS_EN
 } from './groupQuizData';
 import { ODD_WORD_PUZZLES } from './oddWordEngine';
+import {
+  ISLAMIC_HERITAGE,
+  SCIENCE_SPACE,
+  ANIMALS_NATURE,
+  TECH_GAMING,
+  DIALECTS_MEANINGS,
+  BRANDS_CARS,
+  FOOTBALL_DEEP,
+  TRUE_FALSE_FAST,
+  EMOJI_MATH,
+  GUESS_NOVELS,
+  GUESS_LANDMARKS,
+  GUESS_VIDEOGAMES,
+  GUESS_CREATURES
+} from './fastAndGuessBanks';
 
 // ---------------------------------------------------------------------
 // 🧩 أنواع الألعاب
@@ -50,7 +65,20 @@ export type QuizKind =
   | 'player'
   | 'poet'
   | 'song_ar'
-  | 'song_en';
+  | 'song_en'
+  | 'islamic'
+  | 'science'
+  | 'animals'
+  | 'tech'
+  | 'dialects'
+  | 'brands'
+  | 'fbquiz'
+  | 'tf'
+  | 'emath'
+  | 'novel'
+  | 'landmark'
+  | 'vgame'
+  | 'creature';
 
 export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro: string }> = {
   general: {
@@ -147,12 +175,82 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🎸',
     title: 'خمّن الأغنية الإنجليزية',
     intro: 'لمنو هاي الأغنية الإنجليزية الشهيرة؟ 🎸'
+  },
+  islamic: {
+    emoji: '🕌',
+    title: 'إسلاميات وتراث',
+    intro: 'أسئلة شيّقة بالقصص القرآنية والسيرة والتراث العراقي والعربي 🕌'
+  },
+  science: {
+    emoji: '🔬',
+    title: 'علوم وفضاء واختراعات',
+    intro: 'عجائب الفضاء وجسم الإنسان والاختراعات العلمية 🔬'
+  },
+  animals: {
+    emoji: '🦁',
+    title: 'عالم الحيوان والطبيعة',
+    intro: 'معلومات مدهشة وأرقام قياسية عن الكائنات والطبيعة 🦁'
+  },
+  tech: {
+    emoji: '💻',
+    title: 'تقنية وألعاب فيديو',
+    intro: 'عالم التقنية والحواسيب وأشهر الألعاب الإلكترونية 💻'
+  },
+  dialects: {
+    emoji: '🗣️',
+    title: 'معاني الكلمات واللهجات',
+    intro: 'معاني المفردات العراقية والعربية الفصيحة والشعبية 🗣️'
+  },
+  brands: {
+    emoji: '🚗',
+    title: 'شعارات وماركات وسيارات',
+    intro: 'اعرف الماركات العالمية والسيارات وبلدانها 🚗'
+  },
+  fbquiz: {
+    emoji: '🏆',
+    title: 'كرة قدم عالمية وعراقية',
+    intro: 'أسود الرافدين وكأس العالم ودوري الأبطال وأساطير الكرة 🏆'
+  },
+  tf: {
+    emoji: '✅',
+    title: 'صح لو خطأ السريع',
+    intro: 'معلومة سريعة وزرّين بس — أسرع إجابة صحيحة تحصد النقطة ⚡'
+  },
+  emath: {
+    emoji: '🧮',
+    title: 'إيموجي المعادلات الذكية',
+    intro: 'حل ألغاز المعادلات المصوّرة بالإيموجي بسرعة وذكاء 🧮'
+  },
+  novel: {
+    emoji: '📚',
+    title: 'خمّن الرواية أو الكتاب الشهير',
+    intro: 'اعرف الرواية أو الكتاب الشهير من فكرته وأبطاله 📚'
+  },
+  landmark: {
+    emoji: '🏛️',
+    title: 'خمّن المعلم السياحي',
+    intro: 'اعرف المعلم الأثري أو السياحي العالمي والعراقي من وصفه 🏛️'
+  },
+  vgame: {
+    emoji: '🎮',
+    title: 'خمّن لعبة الفيديو',
+    intro: 'اعرف اللعبة الإلكترونية الشهيرة من فكرتها وأبطالها 🎮'
+  },
+  creature: {
+    emoji: '🐾',
+    title: 'خمّن الكائن الحي',
+    intro: 'اعرف الكائن الحي من صفاته وحقائقه المدهشة 🐾'
   }
 };
 
 /** هل نوع اللعبة سباق سرعة (أول صح يسجّل)؟ */
 export function isSpeedQuiz(game: QuizGame | { kind: QuizKind }): boolean {
-  return game.kind === 'speed' || game.kind === 'math';
+  return (
+    game.kind === 'speed' ||
+    game.kind === 'math' ||
+    game.kind === 'tf' ||
+    game.kind === 'emath'
+  );
 }
 
 /** يولّد مسائل حسابية عشوائية متنوّعة (جمع، طرح، ضرب، قسمة صحيحة، وتربيع) مع ٣ إجابات غلط قريبة */
@@ -366,6 +464,19 @@ function packFor(kind: QuizKind): string[][] {
     case 'poet': return POETS;
     case 'song_ar': return SONGS_AR;
     case 'song_en': return SONGS_EN;
+    case 'islamic': return ISLAMIC_HERITAGE;
+    case 'science': return SCIENCE_SPACE;
+    case 'animals': return ANIMALS_NATURE;
+    case 'tech': return TECH_GAMING;
+    case 'dialects': return DIALECTS_MEANINGS;
+    case 'brands': return BRANDS_CARS;
+    case 'fbquiz': return FOOTBALL_DEEP;
+    case 'tf': return TRUE_FALSE_FAST;
+    case 'emath': return EMOJI_MATH;
+    case 'novel': return GUESS_NOVELS;
+    case 'landmark': return GUESS_LANDMARKS;
+    case 'vgame': return GUESS_VIDEOGAMES;
+    case 'creature': return GUESS_CREATURES;
     case 'math': return mathRows();
     case 'odd': return oddWordRows();
     default: return GENERAL; // speed + trivia
@@ -437,7 +548,7 @@ export function quizJoin(game: QuizGame, id: string, name: string): { ok: boolea
 function loadRound(game: QuizGame) {
   const row = game.deck[game.qIndex];
   const correct = row[1];
-  const opts = shuffle(row.slice(1) as string[]);
+  const opts = shuffle((row.slice(1) as string[]).filter(x => String(x || '').trim().length > 0));
   game.options = opts;
   game.correctIdx = opts.indexOf(correct);
   game.roundDeadline = Date.now() + ROUND_MS;
