@@ -12,6 +12,7 @@ import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
 import * as ARX from '../src/services/arenaGamesEngine';
 import * as TRN from '../src/services/tournamentEngine';
+import * as MQ from '../src/services/musicQueueEngine';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
 function encodeHiddenTag(payload: string): string {
@@ -80,6 +81,8 @@ interface TelegramChatMemberUpdated {
 interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
+  sender_chat?: TelegramChat;
+  author_signature?: string;
   chat: TelegramChat;
   date: number;
   text?: string;
@@ -955,6 +958,9 @@ export class TelegramBotManager {
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
+  private musicCalls: Map<string, MQ.MusicCallSession> = new Map();
+  private voiceBridgeUrl: string = '';
+  private voiceBridgeSecret: string = '';
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
   private pendingWhispers: Map<string, MS.PendingWhisperDraft> = new Map();
@@ -1553,6 +1559,11 @@ export class TelegramBotManager {
     return this.games.get(chatId);
   }
 
+  public configureVoiceBridge(url: string, secret?: string) {
+    this.voiceBridgeUrl = String(url || '').trim();
+    this.voiceBridgeSecret = String(secret || '').trim();
+  }
+
   /**
    * Serialize every piece of mutable game state.
    * Used by the Cloudflare Worker (Durable Object) to persist games across requests.
@@ -1585,6 +1596,7 @@ export class TelegramBotManager {
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
+      musicCalls: Array.from(this.musicCalls.entries()).slice(-100),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
       pendingWhispers: Array.from(this.pendingWhispers.entries()),
@@ -1626,6 +1638,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
+    if (Array.isArray(state.musicCalls)) this.musicCalls = new Map(state.musicCalls);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
     if (Array.isArray(state.pendingWhispers)) this.pendingWhispers = new Map(state.pendingWhispers);
@@ -1927,6 +1940,13 @@ export class TelegramBotManager {
       if (message.chat.type === 'private' && sender && !this.isOwner(sender.id)) {
         await this.forwardToOwnerInbox(message, sender);
       }
+      return;
+    }
+
+    // 🎙️ أمر البث والمكالمات الصوتية الذكي «تشغيل <اسم الأغنية>» (في القنوات والكروبات والخاص)
+    const playCallMatch = text.match(/^(?:\/?(?:تشغيل|شغل))(?:\s+|:)(.+)$/i);
+    if (playCallMatch && playCallMatch[1].trim()) {
+      await this.handlePlayInCallCommand(message, playCallMatch[1].trim());
       return;
     }
 
@@ -2317,6 +2337,12 @@ export class TelegramBotManager {
     // ---- 🎉 ألعاب الجماعة بالقنوات (أسئلة) ----
     if (data.startsWith('gq')) {
       await this.handleGroupQuizCb(cb, data);
+      return;
+    }
+
+    // ---- 🎙️ لوحة التحكم بالمكالمة الصوتية (رجوع / توقيف / تقديم — حصرياً لصاحب الأمر) ----
+    if (data.startsWith('mcall:')) {
+      await this.handleMusicCallCallback(cb, data);
       return;
     }
 
@@ -3825,6 +3851,11 @@ export class TelegramBotManager {
         earliest = trn.resultDeadline;
       }
     }
+    for (const mc of this.musicCalls.values()) {
+      if (mc.status === 'playing' && mc.trackEndAt !== undefined && mc.trackEndAt < earliest) {
+        earliest = mc.trackEndAt;
+      }
+    }
     return Number.isFinite(earliest) ? earliest : null;
   }
 
@@ -3996,6 +4027,18 @@ export class TelegramBotManager {
           this.recordTournamentFinish(trn);
         }
         await this.paintTournament(trn);
+      }
+    }
+
+    for (const mc of Array.from(this.musicCalls.values())) {
+      if (mc.status === 'playing' && mc.trackEndAt !== undefined && now >= mc.trackEndAt) {
+        const adv = MQ.advanceMusicOnTrackEnd(mc, now);
+        if (adv.startedNext) {
+          await this.deliverTrackAudioForSession(mc, adv.startedNext, 0);
+        } else if (adv.finishedAll) {
+          await this.notifyVoiceBridge('stop', mc.chatId);
+        }
+        await this.paintMusicCallSession(mc, false);
       }
     }
 
@@ -6444,26 +6487,328 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── شرح خدمة الأغاني («يوت») ──
+    // ── شرح خدمة الأغاني والمكالمات الصوتية («تشغيل» + «يوت») ──
     if (data === 'svc:songs') {
       const text =
-        `🎵 *البحث وتحميل الأغاني*\n` +
+        `🎵 *الأغاني والمكالمات الصوتية بالقنوات والكروبات*\n` +
         `${SEP}\n` +
-        `تقدر تبحث وتحمّل أي أغنية بسهولة في أي مكان:\n` +
-        `• 💬 في المحادثة الخاصة مع البوت\n` +
-        `• 👥 في الكروبات والمجموعات\n` +
-        `• 📢 في القنوات\n\n` +
-        `📝 *طريقة الاستخدام:*\n` +
+        `1️⃣ *أمر البث بالمكالمة وقائمة الانتظار الذكية:*\n` +
+        `اكتب بالقناة أو الكروب:\n` +
+        `\`تشغيل كاظم الساهر كتاب الحب\`\n` +
+        `• يصعد البوت للمكالمة ويشغّل الأغنية فوراً مع لوحة تحكم تفاعلية.\n` +
+        `• إذا أرسلت بعدها \`تشغيل + أغنية ثانية\` ثم \`تشغيل + أغنية ثالثة\` تبقى الأغنية الحالية *ثابتة بمكانها* بدون قطع، وتنضاف الأغاني الجديدة بالترتيب وتشتغل تلقائياً وحدة ورا الثانية من تخلص اللي قبلها!\n` +
+        `• أزرار التحكم بالقناة: *⏮️ رجوع* | *⏸️ توقيف / ▶️ تشغيل* (يكمل من نفس اللحظة اللي وقفت بيها!) | *⏭️ تقديم* — *ومقفولة حصرياً للي كتب الأمر نفسه فقط* 🔒\n\n` +
+        `⚠️ *ملاحظة مهمة جداً:*\n` +
+        `*لازم تعطي البوت صلاحية «إدارة البثوث المباشرة» (إدارة المحادثات المرئية) ضمن صلاحيات المشرفين بالقناة أو الكروب حتى يصعد البوت للمكالمة ويشغّل البث الصوتي!*\n` +
+        `${SEP}\n` +
+        `2️⃣ *البحث السريع وتحميل ملف الأغنية:*\n` +
         `اكتب كلمة *يوت* وبعدها اسم الأغنية، مثل:\n` +
-        `\`يوت كاظم الساهر كتاب الحب\`\n` +
-        `\`يوت فيروز نسم علينا الهوى\`\n\n` +
-        `🔍 راح يبحث البوت ويعرضلك أقرب النتائج لكتابتك، وبمجرد ضغطك على الأغنية تنرسل على شكل أغنية صوتية وبس 🎶`;
+        `\`يوت فيروز نسم علينا الهوى\``;
       const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
       await this.answerCallbackQuery(cb.id, '');
       return;
     }
+  }
+
+  /** التحقق من منح البوت صلاحية «إدارة البثوث المباشرة / المحادثات المرئية» في القناة أو الكروب */
+  private async checkBotLiveStreamPermission(chat: TelegramChat): Promise<{ ok: boolean; warning?: string }> {
+    if (chat.type === 'private') return { ok: true };
+    try {
+      await this.ensureBotInfo();
+      if (!this.botInfo?.id) return { ok: true };
+      const r = await fetch(`https://api.telegram.org/bot${this.token}/getChatMember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chat.id, user_id: this.botInfo.id })
+      });
+      if (!r.ok) return { ok: true };
+      const j: any = await r.json();
+      const member = j?.result;
+      if (!member) return { ok: true };
+      if (member.status === 'creator') return { ok: true };
+      const canManageStreams =
+        member.status === 'administrator' &&
+        (member.can_manage_video_chats === true || member.can_manage_voice_chats === true);
+      if (!canManageStreams) {
+        return {
+          ok: false,
+          warning:
+            `⚠️ *تنبيه صلاحية البث المباشر!*\n` +
+            `لازم ترفع البوت مشرف وتنطيه صلاحية *«إدارة البثوث المباشرة»* (إدارة المحادثات المرئية) في إعدادات القناة/الكروب حتى يصعد البوت للمكالمة الصوتية ويشغّل الأغاني بالمكالمة!`
+        };
+      }
+      return { ok: true };
+    } catch {
+      return { ok: true };
+    }
+  }
+
+  /** إرسال أوامر التشغيل / التوقيف / الاستئناف من الثانية الدقيقة إلى جسر المكالمة الصوتية WebRTC إن وُجد */
+  private async notifyVoiceBridge(
+    action: 'play' | 'pause' | 'resume' | 'stop',
+    chatId: string,
+    streamUrl?: string,
+    offsetSec = 0
+  ): Promise<void> {
+    if (!this.voiceBridgeUrl) return;
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (this.voiceBridgeSecret) {
+        headers.Authorization = `Bearer ${this.voiceBridgeSecret}`;
+      }
+      await fetch(this.voiceBridgeUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action, chatId, streamUrl: streamUrl || '', offsetSec })
+      });
+    } catch {
+      // في حال عدم ربط جسر خارجي يستمر المشغّل الصوتي المدمج بالقناة تلقائياً دون توقف
+    }
+  }
+
+  /** تجهيز وبث الصوت للأغنية (مع دعم الإكمال الفعلي من الثانية الدقيقة عند الاستئناف بعد التوقيف!) */
+  private async deliverTrackAudioForSession(
+    session: MQ.MusicCallSession,
+    track: MQ.QueuedTrack,
+    offsetSec = 0
+  ): Promise<boolean> {
+    let payload = await MS.resolveSongAudioPayload(track.hit);
+    if (!payload && !track.hit.videoId.startsWith('sc:')) {
+      payload = await MS.resolveFallbackSongFromSoundCloud(track.hit);
+    }
+    if (payload?.url) {
+      track.streamUrl = payload.url;
+    }
+
+    await this.notifyVoiceBridge(
+      offsetSec > 0 ? 'resume' : 'play',
+      session.chatId,
+      track.streamUrl || payload?.url || track.hit.directAudioUrl,
+      offsetSec
+    );
+
+    if (!payload) return false;
+
+    let effectivePayload = payload;
+    let displayTitle = track.title;
+    if (offsetSec > 1) {
+      displayTitle = `▶️ ${track.title} (إكمال من ${MQ.formatSecMMSS(offsetSec)})`;
+      if (payload.bytes && payload.ext === 'mp3') {
+        effectivePayload = {
+          ...payload,
+          bytes: MQ.sliceMp3BytesFromOffset(payload.bytes, offsetSec, track.durationSec)
+        };
+      }
+    }
+
+    return this.sendAudioPayload(session.chatId, effectivePayload, displayTitle, track.artist);
+  }
+
+  /** رسم أو تحديث لوحة التحكم بالمكالمة الصوتية في القناة/الكروب */
+  private async paintMusicCallSession(session: MQ.MusicCallSession, sendFreshIfMissing = true): Promise<void> {
+    const view = MQ.renderMusicCallView(session);
+    const fullText = await this.withBotFooter(view.text, true);
+    if (session.controlMessageId) {
+      const edited = await this.editMessageText(
+        session.chatId,
+        session.controlMessageId,
+        fullText,
+        view.keyboard,
+        'MarkdownV2'
+      );
+      if (edited?.ok || String(edited?.description || '').includes('not modified')) {
+        this.scheduleLocalQuizTimer();
+        return;
+      }
+    }
+    if (sendFreshIfMissing) {
+      const sent = await this.sendMessage(session.chatId, fullText, view.keyboard, 'MarkdownV2');
+      if (sent?.ok && sent.result?.message_id) {
+        session.controlMessageId = sent.result.message_id;
+      }
+    }
+    this.scheduleLocalQuizTimer();
+  }
+
+  /** معالجة أمر «تشغيل + اسم الأغنية» الذكي بالقنوات والكروبات */
+  private async handlePlayInCallCommand(message: TelegramMessage, rawQuery: string) {
+    const chatId = String(message.chat.id);
+    const sender = message.from;
+
+    // 1) فحص صلاحية «إدارة البثوث المباشرة» وتنبيه المشرف بوضوح إن كانت ناقصة
+    const perm = await this.checkBotLiveStreamPermission(message.chat);
+    if (!perm.ok && perm.warning) {
+      await this.sendMessage(chatId, perm.warning);
+    }
+
+    // 2) البحث عن الأغنية المطلوبة
+    const hits = await MS.searchSongs(rawQuery, 4);
+    if (!hits.length) {
+      await this.sendMessage(
+        chatId,
+        `⚠️ ما لكيت أغنية مطابقة لـ «${this.mdSafe(rawQuery)}» — جرّب كتابة اسم الأغنية مع اسم الفنان.`
+      );
+      return;
+    }
+
+    const bestHit = hits[0];
+    const queuedTrack: MQ.QueuedTrack = {
+      id: Date.now().toString(36).slice(-5) + Math.random().toString(36).substring(2, 5),
+      hit: bestHit,
+      title: bestHit.title,
+      artist: bestHit.artist,
+      durationLabel: bestHit.duration || '3:30',
+      durationSec: MS.parseDurationSeconds(bestHit.duration),
+      streamUrl: bestHit.directAudioUrl
+    };
+
+    const existing = this.musicCalls.get(chatId);
+
+    // 3) إذا توجد أغنية شغّالة (أو متوقفة مؤقتاً) حالياً -> تبقى ثابتة بمكانها وتُضاف الأغنية الجديدة بالترتيب!
+    if (existing && existing.status !== 'ended' && existing.current) {
+      const pos = MQ.enqueueTrackSmart(existing, queuedTrack);
+      await this.paintMusicCallSession(existing, false);
+      await this.sendMessage(
+        chatId,
+        `➕ *تمت إضافة الأغنية لقائمة الانتظار بالترتيب (#${pos})*!\n` +
+          `🎵 *${this.mdSafe(queuedTrack.title)}* — _${this.mdSafe(queuedTrack.artist)}_\n` +
+          `🔒 الأغنية الشغّالة حالياً تبقى ثابتة بمكانها، وراح تشتغل هاي تلقائياً أول ما تخلص اللي قبلها!`
+      );
+      return;
+    }
+
+    // 4) لا توجد أغنية شغّالة -> يبدأ البوت جلسة البث والمكالمة الصوتية فوراً ويثبّت صاحب الأمر كمتحكم وحيد!
+    const ownerId = sender?.id ? String(sender.id) : '';
+    const ownerName = sender
+      ? `${sender.first_name}${sender.last_name ? ` ${sender.last_name}` : ''}`
+      : message.author_signature || message.chat.title || 'صاحب الأمر';
+
+    const session = MQ.createMusicCallSession(
+      chatId,
+      message.chat.title || 'القناة',
+      ownerId,
+      ownerName,
+      queuedTrack,
+      message.author_signature
+    );
+    this.musicCalls.set(chatId, session);
+
+    await this.deliverTrackAudioForSession(session, queuedTrack, 0);
+    // نرسل لوحة التحكم التفاعلية أسفل الأغنية لتكون ظاهرة مباشرة للأمام
+    session.controlMessageId = undefined;
+    await this.paintMusicCallSession(session, true);
+  }
+
+  /** معالجة أزرار لوحة المكالمة الصوتية (⏮️ رجوع | ⏸️ توقيف / ▶️ تشغيل | ⏭️ تقديم) — مقفولة حصرياً لصاحب الأمر! */
+  private async handleMusicCallCallback(cb: TelegramCallbackQuery, rawData: string) {
+    const parts = rawData.split(':');
+    const action = parts[1] || '';
+    const targetChatId = parts.slice(2).join(':') || String(cb.message?.chat.id || '');
+    const session = this.musicCalls.get(targetChatId);
+
+    if (!session || session.status === 'ended' || !session.current) {
+      await this.answerCallbackQuery(cb.id, 'ℹ️ انتهت جلسة التشغيل هذه — أرسل «تشغيل + اسم الأغنية» للبدء من جديد.', true);
+      return;
+    }
+
+    const clickerId = String(cb.from.id);
+    const clickerName = `${cb.from.first_name}${cb.from.last_name ? ` ${cb.from.last_name}` : ''}`.trim();
+
+    // التحقق الصارم: لا أحد نهائياً يقدر يستعمل هذه الأزرار غير الشخص الذي كتب أمر «تشغيل» نفسه!
+    if (session.ownerId) {
+      if (clickerId !== session.ownerId) {
+        await this.answerCallbackQuery(
+          cb.id,
+          `⛔ عذراً! هذه الأزرار خاصة فقط بـ (${session.ownerName}) الذي أرسل أمر التشغيل!`,
+          true
+        );
+        return;
+      }
+    } else {
+      // في منشورات القنوات غير الموقّعة (حيث تيليجرام لا يرسل from مع الرسالة النصية): نتحقق أن الضاغط هو مشرف البث صاحب الصلاحية ثم نقفل الجلسة باسمه ومعرّفه حصرياً!
+      let authorizedAdmin = false;
+      try {
+        const r = await fetch(`https://api.telegram.org/bot${this.token}/getChatMember`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: targetChatId, user_id: cb.from.id })
+        });
+        if (r.ok) {
+          const j: any = await r.json();
+          const m = j?.result;
+          const sigMatches =
+            !session.ownerSignature ||
+            session.ownerSignature === m?.custom_title ||
+            session.ownerSignature === clickerName;
+          authorizedAdmin =
+            sigMatches &&
+            (m?.status === 'creator' ||
+              (m?.status === 'administrator' &&
+                (m?.can_manage_video_chats === true || m?.can_post_messages === true)));
+        }
+      } catch {
+        authorizedAdmin = false;
+      }
+
+      if (!authorizedAdmin) {
+        await this.answerCallbackQuery(
+          cb.id,
+          '⛔ عذراً! هذه الأزرار خاصة فقط بصاحب أمر التشغيل الأصلي!',
+          true
+        );
+        return;
+      }
+      session.ownerId = clickerId;
+      session.ownerName = clickerName || session.ownerName;
+    }
+
+    if (action === 'toggle') {
+      const toggled = MQ.togglePauseMusicSession(session);
+      if (toggled.status === 'paused') {
+        await this.notifyVoiceBridge('pause', session.chatId, session.current.streamUrl, toggled.atSec);
+        await this.paintMusicCallSession(session, false);
+        await this.answerCallbackQuery(
+          cb.id,
+          `⏸️ توقف التشغيل مؤقتاً عند ${MQ.formatSecMMSS(toggled.atSec)} — اضغط تشغيل للإكمال من نفس المكان!`
+        );
+      } else {
+        await this.deliverTrackAudioForSession(session, session.current, toggled.atSec);
+        await this.paintMusicCallSession(session, false);
+        await this.answerCallbackQuery(
+          cb.id,
+          `▶️ استؤنف التشغيل من الدقيقة ${MQ.formatSecMMSS(toggled.atSec)}!`
+        );
+      }
+      return;
+    }
+
+    if (action === 'next') {
+      const nextRes = MQ.skipNextMusicSession(session);
+      if (!nextRes.ok || !nextRes.track) {
+        await this.answerCallbackQuery(cb.id, nextRes.reason || 'لا توجد أغنية تالية.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, `⏭️ تم التقديم إلى: ${nextRes.track.title}`);
+      await this.deliverTrackAudioForSession(session, nextRes.track, 0);
+      await this.paintMusicCallSession(session, false);
+      return;
+    }
+
+    if (action === 'prev') {
+      const prevRes = MQ.stepPrevMusicSession(session);
+      if (!prevRes.ok || !prevRes.track) {
+        await this.answerCallbackQuery(cb.id, prevRes.reason || 'لا توجد أغنية سابقة.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, `⏮️ تم الرجوع إلى: ${prevRes.track.title}`);
+      await this.deliverTrackAudioForSession(session, prevRes.track, 0);
+      await this.paintMusicCallSession(session, false);
+      return;
+    }
+
+    await this.answerCallbackQuery(cb.id, '');
   }
 
   /** معالجة رسائل المستخدم بالخاص أثناء إنشاء همسة */

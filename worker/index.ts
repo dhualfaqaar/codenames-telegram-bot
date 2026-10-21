@@ -15,6 +15,9 @@ interface Env {
   WEBHOOK_URL?: string;
   /** Optional: Telegram id of the bot owner (otherwise it is auto-detected). */
   OWNER_ID?: string;
+  /** Optional: PyTgCalls / WebRTC voice chat bridge endpoint + bearer secret. */
+  VOICE_BRIDGE_URL?: string;
+  VOICE_BRIDGE_SECRET?: string;
   BOT_STATE: any;
 }
 
@@ -128,6 +131,9 @@ export class BotState {
     if (this.bot) return this.bot;
 
     const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, true);
+    if (this.env.VOICE_BRIDGE_URL) {
+      bot.configureVoiceBridge(this.env.VOICE_BRIDGE_URL, this.env.VOICE_BRIDGE_SECRET);
+    }
     try {
       const saved = await this.state.storage.get('state');
       if (saved) bot.importState(saved);
