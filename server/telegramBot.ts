@@ -12,7 +12,6 @@ import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
 import * as ARX from '../src/services/arenaGamesEngine';
 import * as TRN from '../src/services/tournamentEngine';
-import * as MQ from '../src/services/musicQueueEngine';
 import * as EXT from '../src/services/extraToolsEngine';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
@@ -153,7 +152,7 @@ interface BotGameCard {
   id: string;
   emoji: string;
   title: string;
-  category: 'duo' | 'team' | 'team3' | 'team4' | 'group' | 'fast';
+  category: 'duo' | 'team' | 'team3' | 'team4' | 'group';
   /** كم لاعب */
   players: string;
   /** وين تنلعب */
@@ -559,12 +558,12 @@ const BOT_GAMES: BotGameCard[] = [
     } as BotGameCard;
   }),
 
-  // ─────────────── ⚡ المسابقات السريعة التسع (بدون أسرع مرتب حروف) ───────────────
+  // ─────────────── ⚡ ألعاب جماعية سريعة ───────────────
   {
     id: 'fast_islamic',
     emoji: '🕌',
     title: 'إسلاميات وتراث',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى النقاط في القصص القرآنية والسيرة والتراث الأصيل',
@@ -578,7 +577,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_science',
     emoji: '🔬',
     title: 'علوم وفضاء واختراعات',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد أعلى النقاط في العلوم والفضاء والاختراعات',
@@ -592,7 +591,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_animals',
     emoji: '🦁',
     title: 'عالم الحيوان والطبيعة',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أسرار الكائنات والطبيعة وحصد الصدارة',
@@ -606,7 +605,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_tech',
     emoji: '💻',
     title: 'تقنية وألعاب فيديو',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'التفوّق في عالم التقنية والحواسيب والألعاب الإلكترونية',
@@ -620,7 +619,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_dialects',
     emoji: '🗣️',
     title: 'معاني الكلمات واللهجات',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة معاني المفردات العراقية والعربية المتنوعة',
@@ -634,7 +633,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_brands',
     emoji: '🚗',
     title: 'شعارات وماركات وسيارات',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'معرفة أشهر الشركات والسيارات وبلدان منشئها',
@@ -648,7 +647,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_football_quiz',
     emoji: '🏆',
     title: 'كرة قدم عالمية وعراقية',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حصد صدارة الكرة العراقية والعالمية',
@@ -662,7 +661,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_tf',
     emoji: '✅',
     title: 'صح لو خطأ السريع',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'سباق سرعة حاسم لاختيار صح أو خطأ قبل الجميع',
@@ -676,7 +675,7 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'fast_emoji_math',
     emoji: '🧮',
     title: 'إيموجي المعادلات الذكية',
-    category: 'fast',
+    category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
     goal: 'حل المعادلات المصوّرة بالإيموجي بأسرع وقت',
@@ -770,13 +769,8 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
   group: {
     emoji: '🎉',
     title: 'الألعاب الجماعية',
-    intro: 'ألعاب جماعية في القناة أو المجموعة من لاعبين إلى 10 لاعبين.'
+    intro: 'ألعاب جماعية في القناة أو المجموعة، وعدد اللاعبين يختلف حسب اللعبة.'
   },
-  fast: {
-    emoji: '⚡',
-    title: 'المسابقات السريعة',
-    intro: 'مسابقات ثقافية وتفاعلية سريعة ومتجددة في مختلف المجالات.'
-  }
 };
 
 /** رقم اللعبة بمعرّفها */
@@ -938,9 +932,6 @@ export class TelegramBotManager {
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
-  private musicCalls: Map<string, MQ.MusicCallSession> = new Map();
-  private voiceBridgeUrl: string = '';
-  private voiceBridgeSecret: string = '';
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
   private pendingWhispers: Map<string, MS.PendingWhisperDraft> = new Map();
@@ -957,14 +948,7 @@ export class TelegramBotManager {
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private avatarDeliveredV2: boolean = false;
-  private rtmpTargets: Map<string, string> = new Map();
-  private rtmpServerBase: string = 'rtmps://dc4-1.rtmp.t.me/s/';
   private pendingVocalSep: Set<string> = new Set();
-  private voiceAssistantSession: string = '';
-  private voiceAssistantName: string = '';
-  private voiceAuthStep: string = '';
-  private voiceAuthData: { phone?: string; code?: string; password?: string } = {};
-  private voiceBridgeHeartbeatAt: number = 0;
   private songSearches: Map<string, MS.SongSearchHit[]> = new Map();
   private lastInlineDeployer?: { id: string; at: number };
   private commandsSyncVer: number = 0;
@@ -1559,11 +1543,6 @@ export class TelegramBotManager {
     return this.games.get(chatId);
   }
 
-  public configureVoiceBridge(url: string, secret?: string) {
-    this.voiceBridgeUrl = String(url || '').trim();
-    this.voiceBridgeSecret = String(secret || '').trim();
-  }
-
   /**
    * Serialize every piece of mutable game state.
    * Used by the Cloudflare Worker (Durable Object) to persist games across requests.
@@ -1596,7 +1575,6 @@ export class TelegramBotManager {
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
-      musicCalls: Array.from(this.musicCalls.entries()).slice(-100),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
       pendingWhispers: Array.from(this.pendingWhispers.entries()),
@@ -1608,14 +1586,7 @@ export class TelegramBotManager {
       pendingConvert: Array.from(this.pendingConvert.entries()),
       audioEditDrafts: Array.from(this.audioEditDrafts.entries()),
       avatarDeliveredV2: this.avatarDeliveredV2,
-      rtmpTargets: Array.from(this.rtmpTargets.entries()),
-      rtmpServerBase: this.rtmpServerBase,
       pendingVocalSep: Array.from(this.pendingVocalSep.values()),
-      voiceAssistantSession: this.voiceAssistantSession,
-      voiceAssistantName: this.voiceAssistantName,
-      voiceAuthStep: this.voiceAuthStep,
-      voiceAuthData: this.voiceAuthData,
-      voiceBridgeHeartbeatAt: this.voiceBridgeHeartbeatAt,
       songSearches: Array.from(this.songSearches.entries()).slice(-200),
       commandsSyncVer: this.commandsSyncVer,
       pendingChannelGame: Array.from(this.pendingChannelGame.entries())
@@ -1653,7 +1624,6 @@ export class TelegramBotManager {
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
-    if (Array.isArray(state.musicCalls)) this.musicCalls = new Map(state.musicCalls);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
     if (Array.isArray(state.pendingWhispers)) this.pendingWhispers = new Map(state.pendingWhispers);
@@ -1665,14 +1635,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
     if (Array.isArray(state.audioEditDrafts)) this.audioEditDrafts = new Map(state.audioEditDrafts);
     if (typeof state.avatarDeliveredV2 === 'boolean') this.avatarDeliveredV2 = state.avatarDeliveredV2;
-    if (Array.isArray(state.rtmpTargets)) this.rtmpTargets = new Map(state.rtmpTargets);
-    if (typeof state.rtmpServerBase === 'string' && state.rtmpServerBase) this.rtmpServerBase = state.rtmpServerBase;
     if (Array.isArray(state.pendingVocalSep)) this.pendingVocalSep = new Set(state.pendingVocalSep);
-    if (typeof state.voiceAssistantSession === 'string') this.voiceAssistantSession = state.voiceAssistantSession;
-    if (typeof state.voiceAssistantName === 'string') this.voiceAssistantName = state.voiceAssistantName;
-    if (typeof state.voiceAuthStep === 'string') this.voiceAuthStep = state.voiceAuthStep;
-    if (state.voiceAuthData && typeof state.voiceAuthData === 'object') this.voiceAuthData = state.voiceAuthData;
-    if (typeof state.voiceBridgeHeartbeatAt === 'number') this.voiceBridgeHeartbeatAt = state.voiceBridgeHeartbeatAt;
     if (Array.isArray(state.songSearches)) this.songSearches = new Map(state.songSearches);
     if (typeof state.commandsSyncVer === 'number') this.commandsSyncVer = state.commandsSyncVer;
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
@@ -2088,13 +2051,6 @@ export class TelegramBotManager {
       return;
     }
 
-    // 🎙️ أمر البث والمكالمات الصوتية الذكي «تشغيل <اسم الأغنية>» (في القنوات والكروبات والخاص)
-    const playCallMatch = text.match(/^(?:\/?(?:تشغيل|شغل))(?:\s+|:)(.+)$/i);
-    if (playCallMatch && playCallMatch[1].trim()) {
-      await this.handlePlayInCallCommand(message, playCallMatch[1].trim());
-      return;
-    }
-
     // 🎵 أمر البحث عن الأغاني «يوت <اسم الأغنية>» (يشتغل بالخاص والكروبات والقنوات!)
     const youtMatch = text.match(/^(?:\/?(?:يوت|yout))(?:\s+|:)(.+)$/i);
     if (youtMatch && youtMatch[1].trim()) {
@@ -2105,10 +2061,6 @@ export class TelegramBotManager {
     // 🤫 إكمال خطوات الخدمات الإضافية بالخاص
     if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
       const uid = String(sender.id);
-      if (this.isOwner(sender.id) && this.voiceAuthStep.startsWith('wait_')) {
-        await this.handleOwnerVoiceAuthInput(uid, text);
-        return;
-      }
       const activeAudioDraft = this.audioEditDrafts.get(uid);
       if (activeAudioDraft?.waitingField && activeAudioDraft.waitingField !== 'cover') {
         const cleanedVal = text.trim();
@@ -2477,34 +2429,6 @@ export class TelegramBotManager {
         }
         return;
       }
-      if (data === 'admin:voice') {
-        await this.answerCallbackQuery(cb.id, '');
-        await this.sendVoiceAssistantPanel(chatId, messageId);
-        return;
-      }
-      if (data === 'admin:voice_login' || data === 'admin:voice_key') {
-        this.voiceAuthStep = 'wait_rtmp';
-        this.voiceAuthData = {};
-        await this.answerCallbackQuery(cb.id, '');
-        await this.sendMessage(
-          chatId,
-          `🔑 *ربط البث الصوتي للقناة (بدون حساب ثاني)*\n` +
-            `من قناتك اضغط: *بدء بث مباشر ⬅️ البث عبر برمجية خارجية (RTMP)*\n` +
-            `وأرسل هنا *مفتاح البث (Stream Key)* أو رابط السيرفر مع المفتاح:`,
-          [[{ text: '🔙 رجوع', callback_data: 'admin:voice' }]]
-        );
-        return;
-      }
-      if (data === 'admin:voice_reset') {
-        this.rtmpTargets.clear();
-        this.voiceAssistantSession = '';
-        this.voiceAssistantName = '';
-        this.voiceAuthStep = '';
-        this.voiceAuthData = {};
-        await this.answerCallbackQuery(cb.id, 'تم مسح مفتاح البث.');
-        await this.sendVoiceAssistantPanel(chatId, messageId);
-        return;
-      }
 
       await this.answerCallbackQuery(cb.id, '');
       return;
@@ -2565,12 +2489,6 @@ export class TelegramBotManager {
     // ---- 🎉 ألعاب الجماعة بالقنوات (أسئلة) ----
     if (data.startsWith('gq')) {
       await this.handleGroupQuizCb(cb, data);
-      return;
-    }
-
-    // ---- 🎙️ لوحة التحكم بالمكالمة الصوتية (رجوع / توقيف / تقديم — حصرياً لصاحب الأمر) ----
-    if (data.startsWith('mcall:')) {
-      await this.handleMusicCallCallback(cb, data);
       return;
     }
 
@@ -3692,7 +3610,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── 🎉 ألعاب الجماعة والمسابقات السريعة وألعاب خمّن ──
+    // ── 🎉 الألعاب الجماعية وألعاب خمّن ──
     if (q.startsWith('gq')) {
       const kind = q.replace(/^gq\s*/, '').trim() || 'speed';
       const card = this.gqCard(kind, deployerId);
@@ -4104,11 +4022,6 @@ export class TelegramBotManager {
         earliest = trn.resultDeadline;
       }
     }
-    for (const mc of this.musicCalls.values()) {
-      if (mc.status === 'playing' && mc.trackEndAt !== undefined && mc.trackEndAt < earliest) {
-        earliest = mc.trackEndAt;
-      }
-    }
     return Number.isFinite(earliest) ? earliest : null;
   }
 
@@ -4280,18 +4193,6 @@ export class TelegramBotManager {
           this.recordTournamentFinish(trn);
         }
         await this.paintTournament(trn);
-      }
-    }
-
-    for (const mc of Array.from(this.musicCalls.values())) {
-      if (mc.status === 'playing' && mc.trackEndAt !== undefined && now >= mc.trackEndAt) {
-        const adv = MQ.advanceMusicOnTrackEnd(mc, now);
-        if (adv.startedNext) {
-          await this.deliverTrackAudioForSession(mc, adv.startedNext, 0);
-        } else if (adv.finishedAll) {
-          await this.notifyVoiceBridge('stop', mc.chatId);
-        }
-        await this.paintMusicCallSession(mc, false);
       }
     }
 
@@ -6074,10 +5975,7 @@ export class TelegramBotManager {
         { text: '🔥 ألعاب ثلاثية 3v3', callback_data: 'hub:team3' },
         { text: '🏰 ألعاب رباعية 4v4', callback_data: 'hub:team4' }
       ],
-      [
-        { text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' },
-        { text: '⚡ المسابقات السريعة', callback_data: 'hub:fast' }
-      ]
+      [{ text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' }]
     ];
     // 💵 المتصدرون + خدمات أخرى، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
     keyboard.push([
@@ -6852,13 +6750,12 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── خدمة الأغاني والمكالمات (مختصرة ومباشرة بدون أي حشو) ──
+    // ── 🎵 البحث عن الأغاني ──
     if (data === 'svc:songs') {
       const text =
-        `🎵 *الأغاني والمكالمات*\n` +
+        `🎵 *البحث عن الأغاني*\n` +
         `${SEP}\n` +
-        `🎙️ *بالمكالمة:* \`تشغيل\` + اسم الأغنية\n` +
-        `🔎 *تحميل أغنية:* \`يوت\` + اسم الأغنية`;
+        `اكتب \`يوت + اسم الأغنية\` للبحث والتحميل.`;
       const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
@@ -6969,197 +6866,6 @@ export class TelegramBotManager {
       await this.answerCallbackQuery(cb.id, '');
       return;
     }
-  }
-
-  /** استخراج رابط البث المباشر RTMP الخاص بالقناة أو الافتراضي (بدون حساب ثاني) */
-  private getRtmpTarget(chatId?: string): string {
-    if (chatId && this.rtmpTargets.get(chatId)) {
-      return this.rtmpTargets.get(chatId)!;
-    }
-    return this.rtmpTargets.get('default') || '';
-  }
-
-  /** هل محرّك البث الصوتي بدون حساب ثاني متصل الآن وجاهز؟ */
-  private isVoiceAssistantActive(chatId?: string): boolean {
-    const hasTarget = Boolean(this.getRtmpTarget(chatId) || this.voiceAssistantSession);
-    return Boolean(
-      hasTarget &&
-        this.voiceBridgeHeartbeatAt > 0 &&
-        Date.now() - this.voiceBridgeHeartbeatAt < 45_000
-    );
-  }
-
-  private isVoiceRunnerAlive(): boolean {
-    return this.voiceBridgeHeartbeatAt > 0 && Date.now() - this.voiceBridgeHeartbeatAt < 45_000;
-  }
-
-  /** استخراج معرّف القناة أو الكروب */
-  private async resolveChatJoinTarget(chat: TelegramChat): Promise<string> {
-    if (chat.username) return `@${chat.username}`;
-    if (!this.token) return '';
-    try {
-      const r = await fetch(`https://api.telegram.org/bot${this.token}/exportChatInviteLink`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chat.id })
-      });
-      const j: any = await r.json();
-      if (j?.ok && typeof j.result === 'string') return j.result;
-    } catch {
-      // ignore
-    }
-    return '';
-  }
-
-  /** نقطة التزامن الحية مع محرّك البث الصوتي المباشر (RTMP بدون حساب ثاني) */
-  public async handleVoiceSyncRequest(payload: any): Promise<any> {
-    this.voiceBridgeHeartbeatAt = Date.now();
-    const op = String(payload?.op || 'poll');
-
-    if (op === 'track_ended' && payload?.chatId) {
-      const cid = String(payload.chatId);
-      const sess = this.musicCalls.get(cid);
-      if (sess && sess.status === 'playing') {
-        const adv = MQ.advanceMusicOnTrackEnd(sess);
-        if (adv.startedNext) {
-          await this.prepareTrackStreamUrl(sess, adv.startedNext);
-        }
-        await this.paintMusicCallSession(sess, false);
-      }
-      return { ok: true };
-    }
-
-    const activeSessions: any[] = [];
-    for (const sess of this.musicCalls.values()) {
-      if (!sess.current && sess.status === 'ended') continue;
-      activeSessions.push({
-        chatId: sess.chatId,
-        inviteLink: sess.inviteLink || '',
-        rtmpUrl: this.getRtmpTarget(sess.chatId),
-        status: sess.status,
-        actionSeq: sess.actionSeq || 1,
-        trackId: sess.current?.id || '',
-        streamUrl: sess.current?.streamUrl || sess.current?.hit?.directAudioUrl || '',
-        ytQuery: `${sess.current?.title || ''} ${sess.current?.artist || ''}`.trim(),
-        title: sess.current?.title || '',
-        offsetSec: MQ.getCurrentElapsedSec(sess)
-      });
-    }
-
-    return {
-      ok: true,
-      mode: 'rtmp',
-      defaultRtmpUrl: this.getRtmpTarget(),
-      sessions: activeSessions
-    };
-  }
-
-  /** لوحة إعداد البث الصوتي المباشر بالقنوات (RTMP بدون حساب أو رقم ثاني) */
-  private async sendVoiceAssistantPanel(chatId: string, messageId?: number) {
-    const colabUrl =
-      'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
-    const runnerUp = this.isVoiceRunnerAlive();
-    const hasKey = Boolean(this.getRtmpTarget());
-    const callReady = this.isVoiceAssistantActive();
-
-    const statusLine = callReady
-      ? `🟢 *الحالة:* متصل وجاهز للبث بالمكالمات مباشرة`
-      : hasKey
-        ? `🟡 *مفتاح البث:* محفوظ ✅ — اضغط زر تشغيل المحرّك أدناه`
-        : runnerUp
-          ? `🟡 *المحرّك:* يعمل ✅ — أضف مفتاح البث (Stream Key)`
-          : `⚪ *الحالة:* بانتظار مفتاح البث وتشغيل المحرّك`;
-
-    const text =
-      `🎙️ *بث الأغاني بالمكالمات (بدون حساب ثاني)*\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
-      `${statusLine}\n\n` +
-      `1. من قناتك افتح *بث مباشر ⬅️ البث عبر برمجية خارجية (RTMP)* وانسخ المفتاح.\n` +
-      `2. اضغط *إدخال مفتاح البث* ثم شغّل محرّك البث بضغطة واحدة.`;
-
-    const renderDeployUrl =
-      'https://render.com/deploy?repo=https://github.com/dhualfaqaar/codenames-telegram-bot';
-    const keyboard: any[][] = [
-      [{ text: '🔑 1) إدخال مفتاح البث (Stream Key)', callback_data: 'admin:voice_key' }],
-      [{ text: '🚀 2) تشغيل البث فوراً (ضغطة واحدة)', url: colabUrl }],
-      [{ text: '☁️ استضافة البث 24/7 مجاناً', url: renderDeployUrl }],
-      [{ text: '🔄 تحديث الحالة', callback_data: 'admin:voice' }]
-    ];
-    if (hasKey) {
-      keyboard.push([{ text: '🗑️ مسح مفتاح البث المحفوظ', callback_data: 'admin:voice_reset' }]);
-    }
-    keyboard.push([{ text: '🔙 اللوحة', callback_data: 'admin:panel' }]);
-
-    if (messageId) {
-      const ed = await this.editMessageText(chatId, messageId, text, keyboard);
-      if (ed?.ok) return;
-    }
-    await this.sendMessage(chatId, text, keyboard);
-  }
-
-  private async handleOwnerVoiceAuthInput(uid: string, text: string) {
-    const clean = text.trim();
-    if (!clean) return;
-
-    // 1) إذا أرسل رابط السيرفر فقط مثل rtmps://dc4-1.rtmp.t.me/s/ بدون المفتاح بعده
-    if (/^rtmps?:\/\/[^/\s]+\/s\/?$/i.test(clean)) {
-      this.rtmpServerBase = clean.endsWith('/') ? clean : `${clean}/`;
-      this.voiceAuthStep = 'wait_rtmp_key_only';
-      await this.sendMessage(uid, `✅ تم حفظ رابط السيرفر — أرسل الآن *مفتاح البث (Stream Key)*:`, [
-        [{ text: '🔙 رجوع', callback_data: 'admin:voice' }]
-      ]);
-      return;
-    }
-
-    // 2) رابط كامل (السيرفر + المفتاح بنفس الرسالة) أو مفتاح البث مباشرة
-    let fullRtmp = '';
-    if (/^rtmps?:\/\//i.test(clean)) {
-      const parts = clean.split(/\s+/).filter(Boolean);
-      if (parts.length >= 2 && /^rtmps?:\/\//i.test(parts[0])) {
-        const base = parts[0].endsWith('/') ? parts[0] : `${parts[0]}/`;
-        fullRtmp = `${base}${parts[1]}`;
-      } else {
-        fullRtmp = clean;
-      }
-    } else {
-      const base = this.rtmpServerBase.endsWith('/') ? this.rtmpServerBase : `${this.rtmpServerBase}/`;
-      fullRtmp = `${base}${clean}`;
-    }
-
-    this.rtmpTargets.set('default', fullRtmp);
-    this.voiceAuthStep = '';
-    this.voiceAuthData = {};
-
-    const colabUrl =
-      'https://colab.research.google.com/github/dhualfaqaar/codenames-telegram-bot/blob/main/voice-bridge/Voice_Assistant_OneClick.ipynb';
-
-    if (this.isVoiceRunnerAlive()) {
-      await this.sendMessage(
-        uid,
-        `✅ *تم ربط بث القناة بنجاح بدون حساب ثاني!*\nالآن اكتب \`تشغيل + اسم الأغنية\` في القناة وسيبثها البوت مباشرة بالمكالمة 🎙️`,
-        [[{ text: '🎙️ لوحة البث', callback_data: 'admin:voice' }]]
-      );
-    } else {
-      await this.sendMessage(
-        uid,
-        `✅ *تم حفظ مفتاح البث بنجاح!*\nاضغط الزر أدناه واضغط ▶️ لتشغيل البث الصوتي فوراً:`,
-        [
-          [{ text: '🚀 تشغيل محرّك البث الآن', url: colabUrl }],
-          [{ text: '🎙️ لوحة البث', callback_data: 'admin:voice' }]
-        ]
-      );
-    }
-  }
-
-  private async prepareTrackStreamUrl(session: MQ.MusicCallSession, track: MQ.QueuedTrack) {
-    let payload = await MS.resolveSongAudioPayload(track.hit);
-    if (!payload && !track.hit.videoId.startsWith('sc:')) {
-      payload = await MS.resolveFallbackSongFromSoundCloud(track.hit);
-    }
-    if (payload?.url) {
-      track.streamUrl = payload.url;
-    }
-    return payload;
   }
 
   /** معالجة سحب الروليت التفاعلي داخل القنوات والكروبات والرسائل المضمّنة */
@@ -7903,310 +7609,6 @@ export class TelegramBotManager {
     } finally {
       this.releaseDownloadSlot();
     }
-  }
-
-  /** التحقق من منح البوت صلاحية «إدارة البثوث المباشرة / المحادثات المرئية» في القناة أو الكروب */
-  private async checkBotLiveStreamPermission(chat: TelegramChat): Promise<{ ok: boolean; warning?: string }> {
-    if (chat.type === 'private') return { ok: true };
-    try {
-      await this.ensureBotInfo();
-      if (!this.botInfo?.id) return { ok: true };
-      const r = await fetch(`https://api.telegram.org/bot${this.token}/getChatMember`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chat.id, user_id: this.botInfo.id })
-      });
-      if (!r.ok) return { ok: true };
-      const j: any = await r.json();
-      const member = j?.result;
-      if (!member) return { ok: true };
-      if (member.status === 'creator') return { ok: true };
-      const canManageStreams =
-        member.status === 'administrator' &&
-        (member.can_manage_video_chats === true || member.can_manage_voice_chats === true);
-      if (!canManageStreams) {
-        return {
-          ok: false,
-          warning:
-            `⚠️ *تنبيه صلاحية البث المباشر!*\n` +
-            `لازم ترفع البوت مشرف وتنطيه صلاحية *«إدارة البثوث المباشرة»* (إدارة المحادثات المرئية) في إعدادات القناة/الكروب حتى يصعد البوت للمكالمة الصوتية ويشغّل الأغاني بالمكالمة!`
-        };
-      }
-      return { ok: true };
-    } catch {
-      return { ok: true };
-    }
-  }
-
-  /** إرسال أوامر التشغيل / التوقيف / الاستئناف من الثانية الدقيقة إلى جسر المكالمة الصوتية WebRTC إن وُجد */
-  private async notifyVoiceBridge(
-    action: 'play' | 'pause' | 'resume' | 'stop',
-    chatId: string,
-    streamUrl?: string,
-    offsetSec = 0
-  ): Promise<void> {
-    if (!this.voiceBridgeUrl) return;
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (this.voiceBridgeSecret) {
-        headers.Authorization = `Bearer ${this.voiceBridgeSecret}`;
-      }
-      await fetch(this.voiceBridgeUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ action, chatId, streamUrl: streamUrl || '', offsetSec })
-      });
-    } catch {
-      // في حال عدم ربط جسر خارجي يستمر المشغّل الصوتي المدمج بالقناة تلقائياً دون توقف
-    }
-  }
-
-  /** تجهيز وبث الصوت للأغنية (مع دعم الإكمال الفعلي من الثانية الدقيقة عند الاستئناف بعد التوقيف!) */
-  private async deliverTrackAudioForSession(
-    session: MQ.MusicCallSession,
-    track: MQ.QueuedTrack,
-    offsetSec = 0
-  ): Promise<boolean> {
-    let payload = await MS.resolveSongAudioPayload(track.hit);
-    if (!payload && !track.hit.videoId.startsWith('sc:')) {
-      payload = await MS.resolveFallbackSongFromSoundCloud(track.hit);
-    }
-    if (payload?.url) {
-      track.streamUrl = payload.url;
-    }
-
-    await this.notifyVoiceBridge(
-      offsetSec > 0 ? 'resume' : 'play',
-      session.chatId,
-      track.streamUrl || payload?.url || track.hit.directAudioUrl,
-      offsetSec
-    );
-
-    // إذا كان مساعد المكالمات الحقيقي متصلاً بالمكالمة الآن، يصعد بالمكالمة مباشرة دون إغراق المحادثة بملف صوتي مكرر!
-    if (this.isVoiceAssistantActive(session.chatId)) {
-      return true;
-    }
-
-    if (!payload) return false;
-
-    let effectivePayload = payload;
-    let displayTitle = track.title;
-    if (offsetSec > 1) {
-      displayTitle = `▶️ ${track.title} (${MQ.formatSecMMSS(offsetSec)})`;
-      if (payload.bytes && payload.ext === 'mp3') {
-        effectivePayload = {
-          ...payload,
-          bytes: MQ.sliceMp3BytesFromOffset(payload.bytes, offsetSec, track.durationSec)
-        };
-      }
-    }
-
-    return this.sendAudioPayload(session.chatId, effectivePayload, displayTitle, track.artist);
-  }
-
-  /** رسم أو تحديث لوحة التحكم بالمكالمة الصوتية في القناة/الكروب */
-  private async paintMusicCallSession(session: MQ.MusicCallSession, sendFreshIfMissing = true): Promise<void> {
-    const view = MQ.renderMusicCallView(session, Date.now(), this.isVoiceAssistantActive(session.chatId));
-    const fullText = await this.withBotFooter(view.text, true);
-    if (session.controlMessageId) {
-      const edited = await this.editMessageText(
-        session.chatId,
-        session.controlMessageId,
-        fullText,
-        view.keyboard,
-        'MarkdownV2'
-      );
-      if (edited?.ok || String(edited?.description || '').includes('not modified')) {
-        this.scheduleLocalQuizTimer();
-        return;
-      }
-    }
-    if (sendFreshIfMissing) {
-      const sent = await this.sendMessage(session.chatId, fullText, view.keyboard, 'MarkdownV2');
-      if (sent?.ok && sent.result?.message_id) {
-        session.controlMessageId = sent.result.message_id;
-      }
-    }
-    this.scheduleLocalQuizTimer();
-  }
-
-  /** معالجة أمر «تشغيل + اسم الأغنية» الذكي بالقنوات والكروبات */
-  private async handlePlayInCallCommand(message: TelegramMessage, rawQuery: string) {
-    const chatId = String(message.chat.id);
-    const sender = message.from;
-
-    const perm = await this.checkBotLiveStreamPermission(message.chat);
-    if (!perm.ok && perm.warning) {
-      await this.sendMessage(chatId, perm.warning);
-    }
-
-    const hits = await MS.searchSongs(rawQuery, 4);
-    if (!hits.length) {
-      await this.sendMessage(chatId, `⚠️ ما لكيت نتيجة لـ «${this.mdSafe(rawQuery)}»`);
-      return;
-    }
-
-    const bestHit = hits[0];
-    const queuedTrack: MQ.QueuedTrack = {
-      id: Date.now().toString(36).slice(-5) + Math.random().toString(36).substring(2, 5),
-      hit: bestHit,
-      title: bestHit.title,
-      artist: bestHit.artist,
-      durationLabel: bestHit.duration || '3:30',
-      durationSec: MS.parseDurationSeconds(bestHit.duration),
-      streamUrl: bestHit.directAudioUrl
-    };
-
-    const existing = this.musicCalls.get(chatId);
-
-    if (existing && existing.status !== 'ended' && existing.current) {
-      const pos = MQ.enqueueTrackSmart(existing, queuedTrack);
-      await this.paintMusicCallSession(existing, false);
-      await this.sendMessage(
-        chatId,
-        `➕ *بالانتظار (#${pos}):* ${this.mdSafe(queuedTrack.title)}`
-      );
-      return;
-    }
-
-    const ownerId = sender?.id ? String(sender.id) : '';
-    const ownerName = sender
-      ? `${sender.first_name}${sender.last_name ? ` ${sender.last_name}` : ''}`
-      : message.author_signature || message.chat.title || 'صاحب الأمر';
-
-    const session = MQ.createMusicCallSession(
-      chatId,
-      message.chat.title || 'القناة',
-      ownerId,
-      ownerName,
-      queuedTrack,
-      message.author_signature
-    );
-    session.inviteLink = await this.resolveChatJoinTarget(message.chat);
-    this.musicCalls.set(chatId, session);
-
-    if (!this.isVoiceAssistantActive(chatId) && this.ownerId && message.chat.type !== 'private') {
-      await this.sendMessage(
-        this.ownerId,
-        `🎙️ *لبث الأغاني داخل مكالمة القناة مباشرة (بدون حساب ثاني):*\n` +
-          `اضغط الزر أدناه وأدخل مفتاح البث (*Stream Key*) من إعدادات البث المباشر بالقناة 👇`,
-        [[{ text: '🎙️ إعداد بث المكالمات (RTMP)', callback_data: 'admin:voice' }]]
-      );
-    }
-
-    await this.deliverTrackAudioForSession(session, queuedTrack, 0);
-    session.controlMessageId = undefined;
-    await this.paintMusicCallSession(session, true);
-  }
-
-  /** معالجة أزرار لوحة المكالمة الصوتية (⏮️ رجوع | ⏸️ توقيف / ▶️ تشغيل | ⏭️ تقديم) — مقفولة حصرياً لصاحب الأمر! */
-  private async handleMusicCallCallback(cb: TelegramCallbackQuery, rawData: string) {
-    const parts = rawData.split(':');
-    const action = parts[1] || '';
-    const targetChatId = parts.slice(2).join(':') || String(cb.message?.chat.id || '');
-    const session = this.musicCalls.get(targetChatId);
-
-    if (!session || session.status === 'ended' || !session.current) {
-      await this.answerCallbackQuery(cb.id, 'ℹ️ انتهت جلسة التشغيل هذه — أرسل «تشغيل + اسم الأغنية» للبدء من جديد.', true);
-      return;
-    }
-
-    const clickerId = String(cb.from.id);
-    const clickerName = `${cb.from.first_name}${cb.from.last_name ? ` ${cb.from.last_name}` : ''}`.trim();
-
-    // التحقق الصارم: لا أحد نهائياً يقدر يستعمل هذه الأزرار غير الشخص الذي كتب أمر «تشغيل» نفسه!
-    if (session.ownerId) {
-      if (clickerId !== session.ownerId) {
-        await this.answerCallbackQuery(
-          cb.id,
-          `⛔ عذراً! هذه الأزرار خاصة فقط بـ (${session.ownerName}) الذي أرسل أمر التشغيل!`,
-          true
-        );
-        return;
-      }
-    } else {
-      // في منشورات القنوات غير الموقّعة (حيث تيليجرام لا يرسل from مع الرسالة النصية): نتحقق أن الضاغط هو مشرف البث صاحب الصلاحية ثم نقفل الجلسة باسمه ومعرّفه حصرياً!
-      let authorizedAdmin = false;
-      try {
-        const r = await fetch(`https://api.telegram.org/bot${this.token}/getChatMember`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: targetChatId, user_id: cb.from.id })
-        });
-        if (r.ok) {
-          const j: any = await r.json();
-          const m = j?.result;
-          const sigMatches =
-            !session.ownerSignature ||
-            session.ownerSignature === m?.custom_title ||
-            session.ownerSignature === clickerName;
-          authorizedAdmin =
-            sigMatches &&
-            (m?.status === 'creator' ||
-              (m?.status === 'administrator' &&
-                (m?.can_manage_video_chats === true || m?.can_post_messages === true)));
-        }
-      } catch {
-        authorizedAdmin = false;
-      }
-
-      if (!authorizedAdmin) {
-        await this.answerCallbackQuery(
-          cb.id,
-          '⛔ عذراً! هذه الأزرار خاصة فقط بصاحب أمر التشغيل الأصلي!',
-          true
-        );
-        return;
-      }
-      session.ownerId = clickerId;
-      session.ownerName = clickerName || session.ownerName;
-    }
-
-    if (action === 'toggle') {
-      const toggled = MQ.togglePauseMusicSession(session);
-      if (toggled.status === 'paused') {
-        await this.notifyVoiceBridge('pause', session.chatId, session.current.streamUrl, toggled.atSec);
-        await this.paintMusicCallSession(session, false);
-        await this.answerCallbackQuery(
-          cb.id,
-          `⏸️ توقف التشغيل مؤقتاً عند ${MQ.formatSecMMSS(toggled.atSec)} — اضغط تشغيل للإكمال من نفس المكان!`
-        );
-      } else {
-        await this.deliverTrackAudioForSession(session, session.current, toggled.atSec);
-        await this.paintMusicCallSession(session, false);
-        await this.answerCallbackQuery(
-          cb.id,
-          `▶️ استؤنف التشغيل من الدقيقة ${MQ.formatSecMMSS(toggled.atSec)}!`
-        );
-      }
-      return;
-    }
-
-    if (action === 'next') {
-      const nextRes = MQ.skipNextMusicSession(session);
-      if (!nextRes.ok || !nextRes.track) {
-        await this.answerCallbackQuery(cb.id, nextRes.reason || 'لا توجد أغنية تالية.', true);
-        return;
-      }
-      await this.answerCallbackQuery(cb.id, `⏭️ تم التقديم إلى: ${nextRes.track.title}`);
-      await this.deliverTrackAudioForSession(session, nextRes.track, 0);
-      await this.paintMusicCallSession(session, false);
-      return;
-    }
-
-    if (action === 'prev') {
-      const prevRes = MQ.stepPrevMusicSession(session);
-      if (!prevRes.ok || !prevRes.track) {
-        await this.answerCallbackQuery(cb.id, prevRes.reason || 'لا توجد أغنية سابقة.', true);
-        return;
-      }
-      await this.answerCallbackQuery(cb.id, `⏮️ تم الرجوع إلى: ${prevRes.track.title}`);
-      await this.deliverTrackAudioForSession(session, prevRes.track, 0);
-      await this.paintMusicCallSession(session, false);
-      return;
-    }
-
-    await this.answerCallbackQuery(cb.id, '');
   }
 
   /** معالجة رسائل المستخدم بالخاص أثناء إنشاء همسة */
@@ -10281,7 +9683,6 @@ export class TelegramBotManager {
     return [
       [{ text: '🔄 تحديث الإحصائيات', callback_data: 'admin:stats' }],
       [{ text: '🖼️ تثبيت وإرسال لوغو البوت (1024×1024)', callback_data: 'admin:avatar' }],
-      [{ text: '🎙️ بث المكالمات بالقنوات', callback_data: 'admin:voice' }],
       [{ text: '📊 إحصائيات الألعاب', callback_data: 'gstat:main' }],
       [
         { text: `👥 المستخدمون (${users.length})`, callback_data: 'admin:list:all:0' },
