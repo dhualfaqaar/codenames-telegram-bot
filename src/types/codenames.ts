@@ -60,6 +60,11 @@ export interface CodenamesGame {
   lastCountdownAt?: number;
   /** آخر نشاط يُبقى ظاهراً أثناء تحديث العدّ التنازلي. */
   lastEvent?: string;
+  /** مفتاح آخر دور أُرسل له تلميح خاص، لمنع الرسائل المكررة عند إعادة التحديث. */
+  lastPrivatePromptKey?: string;
+  /** معرّف لوحة الخريطة الخاصة لكل جاسوس؛ نحدّث الرسالة بدل إنشاء رسائل متكررة. */
+  privateMapMessageIds?: Record<string, number>;
+
   clueHistory: Clue[];
   winner?: Team;
   winReason?: 'all_cards_found' | 'assassin_triggered';

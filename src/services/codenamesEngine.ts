@@ -197,6 +197,10 @@ export class CodenamesEngine {
    * Start the match and generate 25 random cards
    */
   public static startGame(game: CodenamesGame, customWords: string[] = []): { success: boolean; message: string; game: CodenamesGame } {
+    if (game.status !== 'lobby') {
+      return { success: false, message: 'اللعبة بدأت بالفعل — ما راح نرسل إشعارات مكررة.', game };
+    }
+
     let wordPool = getWordPackList(game.wordPack);
     if (game.wordPack === 'custom' && customWords.length >= 25) {
       wordPool = customWords;
@@ -691,8 +695,8 @@ export class CodenamesEngine {
       `• ممنوع تكتب كلمة موجودة أصلاً بالبوكسات (مثل «تفاح»).\n` +
       `• الرقم يعني: كم بطاقة من فريقك تخص هذا التلميح.\n\n` +
       `*شلون ترسله؟*\n` +
-      `لما يجي دورك، راح أرسللك هنا بالخاص مربع — تكتب بيه كلمة التلميح بس، وبعدها تختار الرقم من الأزرار.\n\n` +
-      `🎨 *بطاقاتك بالألوان:* اضغط زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» بالقناة، أو راح توصلك هنا.\n\n` +
+      `لما يجي دورك، اضغط زر «اطلب مربع التلميح بالخاص» بلوحة المباراة، واكتب كلمة التلميح ثم اختار الرقم.\n\n` +
+      `🎨 *بطاقاتك بالألوان:* تطلبها من زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» بالقناة. ما توصل رسائل تلقائية.\n\n` +
       `⚠️ _لا تشارك هذي الرسالة مع أحد!_`
     );
   }
@@ -819,8 +823,8 @@ export class CodenamesEngine {
 
     if (game.status === 'spymaster_turn') {
       header += `🎯 *الدور الآن:* ⏳ جاسوس الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
-        `✍️ الجاسوس يكتب تلميحه بالخاص عند البوت (كلمة وحدة + رقم).\n` +
-        `💡 الخريطة السرية للجاسوس عبر زر «🎨 بطاقاتي الملوّنة» بالأسفل.`;
+        `✍️ الجاسوس يطلب مربع التلميح بالخاص من زر اللوحة (كلمة وحدة + رقم).\n` +
+        `💡 الخريطة السرية بطلب الجاسوس من زر «🎨 بطاقاتي الملوّنة» بالأسفل.`;
     } else {
       const clue = game.currentClue;
       header += `🎯 *الدور الآن:* عملاء الفريق ${currentTurnName} ${currentTurnEmoji}\n` +
@@ -915,6 +919,9 @@ export class CodenamesEngine {
     const actionRow = [];
     if (game.status === 'operative_turn') {
       actionRow.push({ text: '⏭️ إنهاء التخمين (Pass)', callback_data: `action:pass:${game.id}` });
+    }
+    if (game.status === 'spymaster_turn') {
+      actionRow.push({ text: '✍️ اطلب مربع التلميح بالخاص', callback_data: `action:prompt_clue:${game.id}` });
     }
     actionRow.push({ text: '🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)', callback_data: `action:secret_map:${game.id}` });
     keyboard.push(actionRow);

@@ -8,6 +8,7 @@ import * as MathGame from '../src/services/mathEngine';
 import * as Economy from '../src/services/economy';
 import * as WK from '../src/services/whoKnowsEngine';
 import * as MF from '../src/services/mafiaEngine';
+import * as AU from '../src/services/amongUsEngine';
 import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
 import * as ARX from '../src/services/arenaGamesEngine';
@@ -213,6 +214,20 @@ const BOT_GAMES: BotGameCard[] = [
       'يتساءل اللاعبون ويصوّتون لكشفه، ثم يحصل هو على فرصة أخيرة لتخمين الكلمة السرية!',
     channel: true,
     inline: 'ool',
+    ready: true
+  },
+  {
+    id: 'among_us',
+    emoji: '🚀',
+    title: 'أمونغ أس — مهمة الطاقم',
+    category: 'group',
+    players: 'من 4 إلى 10 لاعبين',
+    where: 'في القناة أو المجموعة',
+    goal: 'إنجاز المهام وكشف المحتال قبل أن يسيطر على المركبة',
+    reward: 'إحصائيات للمباريات والفوز والمهام المكتملة',
+    about: 'طاقم بمهام قصيرة ومحتالون بأدوار سرية. ينفّذ الطاقم المهام، ويگدر المحتال يختار هدفاً، وبعد البلاغ يصوّت اللاعبون سراً لإخراج المشتبه به. ما توصل رسائل خاصة تلقائياً؛ كل لاعب يفتح دوره ومهامه بنفسه.',
+    channel: true,
+    inline: 'au',
     ready: true
   },
   {
@@ -787,7 +802,7 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
 
 /** ترتيب ألعاب الجماعية حسب تقارب طريقة اللعب والموضوع. */
 const GROUP_GAME_ORDER = [
-  'mafia', 'out_of_loop', 'truth_lies_group',
+  'mafia', 'out_of_loop', 'among_us', 'truth_lies_group',
   'geography_quiz', 'gq_country', 'gq_flags', 'gq_capitals', 'gq_continents',
   'history_quiz', 'fast_islamic', 'poet',
   'guess_player', 'guess_song', 'gq_movie', 'gq_series', 'guess_novel', 'guess_landmark',
@@ -872,6 +887,12 @@ interface BotUserRecord {
   wkCorrect?: number;
   mfGames?: number;
   mfWins?: number;
+  amongUsGames?: number;
+  amongUsWins?: number;
+  amongUsTasks?: number;
+  amongUsImpostorWins?: number;
+  amongUsCrewWins?: number;
+  amongUsEjections?: number;
   oolGames?: number;
   oolWins?: number;
   owGames?: number;
@@ -899,6 +920,10 @@ export class TelegramBotManager {
 
   // Active games stored in memory (Key: Chat ID string)
   private games: Map<string, CodenamesGame> = new Map();
+  /** يمنع إرسال تلميحين متزامنين لنفس دور كود نيمز. */
+  private codenamesPromptInFlight: Set<string> = new Set();
+  /** قفل مؤقت غير محفوظ يمنع النقر المزدوج على «ابدأ» من تكرار الإشعارات. */
+  private startingCodenamesGames: Set<string> = new Set();
 
   // Completed games history for statistics
   private completedGames: CodenamesGame[] = [];
@@ -956,6 +981,8 @@ export class TelegramBotManager {
   private guessEliminationGames: Map<string, GE.GuessGame> = new Map();
   private chessGames: Map<string, CH.ChessGame> = new Map();
   private mafiaGames: Map<string, MF.MafiaGame> = new Map();
+  private amongUsGames: Map<string, AU.AmongUsGame> = new Map();
+  private amongUsCompletedMatches = 0;
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
@@ -1603,6 +1630,8 @@ export class TelegramBotManager {
       guessEliminationGames: Array.from(this.guessEliminationGames.entries()).slice(-100),
       chessGames: Array.from(this.chessGames.entries()).slice(-100),
       mafiaGames: Array.from(this.mafiaGames.entries()),
+      amongUsGames: Array.from(this.amongUsGames.entries()),
+      amongUsCompletedMatches: this.amongUsCompletedMatches,
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
@@ -1655,6 +1684,8 @@ export class TelegramBotManager {
     if (Array.isArray(state.guessEliminationGames)) this.guessEliminationGames = new Map(state.guessEliminationGames);
     if (Array.isArray(state.chessGames)) this.chessGames = new Map(state.chessGames);
     if (Array.isArray(state.mafiaGames)) this.mafiaGames = new Map(state.mafiaGames);
+    if (Array.isArray(state.amongUsGames)) this.amongUsGames = new Map(state.amongUsGames);
+    if (Number.isFinite(state.amongUsCompletedMatches)) this.amongUsCompletedMatches = Number(state.amongUsCompletedMatches);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
@@ -2580,6 +2611,12 @@ export class TelegramBotManager {
       await this.handleWhoKnowsCb(cb, data);
       return;
     }
+    // ---- 🚀 أمونغ أس ----
+    if (data.startsWith('au:')) {
+      await this.handleAmongUsCb(cb, data);
+      return;
+    }
+
     // ---- 🕵️ المافيا ----
     if (data.startsWith('mf:') || data.startsWith('mfn:')) {
       await this.handleMafiaCb(cb, data);
@@ -2685,7 +2722,7 @@ export class TelegramBotManager {
     }
 
     // If no game in this chat, notify (game:new can create one from scratch)
-    if (!game && !data.startsWith('action:secret_map') && !data.startsWith('game:new')) {
+    if (!game && !data.startsWith('action:secret_map') && !data.startsWith('action:prompt_clue') && !data.startsWith('game:new')) {
       await this.answerCallbackQuery(cb.id, 'لا توجد لعبة نشطة في هذه المحادثة! ابدأ لعبة جديدة من الخاص بأمر /start.');
       return;
     }
@@ -2780,8 +2817,12 @@ export class TelegramBotManager {
       return;
     }
 
-    // 2. Start game
+    // 2. Start game — one-shot: protect against double taps and webhook retries.
     if ((data === 'game:start' || data.startsWith('game:start:')) && game) {
+      if (game.status !== 'lobby' || this.startingCodenamesGames.has(chatId)) {
+        await this.answerCallbackQuery(cb.id, 'اللعبة بدأت بالفعل — ما راح أرسل رسائل ثانية.', true);
+        return;
+      }
       const fullLobby = this.lobbyIsFull(game);
       const isJoinedPlayer = game.players.some(p => String(p.id) === String(userId));
       let allowedStarter =
@@ -2815,34 +2856,19 @@ export class TelegramBotManager {
         return;
       }
 
-      // Every captain must have opened the bot's private chat first, otherwise
-      // Telegram blocks the bot and the map / clue can never reach him.
-      const unreachable: string[] = [];
-      for (const spy of game.players.filter(p => p.role === 'spymaster')) {
-        if (!(await this.canReachPrivate(String(spy.id)))) unreachable.push(spy.name);
+      this.startingCodenamesGames.add(chatId);
+      try {
+        const result = CodenamesEngine.startGame(game, this.customWords);
+        if (!result.success) {
+          await this.answerCallbackQuery(cb.id, result.message, true);
+          return;
+        }
+        this.games.set(chatId, result.game);
+        await this.answerCallbackQuery(cb.id, 'بدأت اللعبة! ما راح أرسل رسائل خاصة تلقائية.');
+        await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
+      } finally {
+        this.startingCodenamesGames.delete(chatId);
       }
-      if (unreachable.length > 0) {
-        await this.answerCallbackQuery(
-          cb.id,
-          `⚠️ الجاسوس (${unreachable.join('، ')}) لسه ما فتح الخاص مع البوت!\n\n` +
-            `خلّيه يضغط الزر (🕵️ الجواسيس: افتحوا الخاص مع البوت) بالأسفل ويضغط Start، وبعدين اضغط ابدأ.`,
-          true
-        );
-        return;
-      }
-
-      const result = CodenamesEngine.startGame(game, this.customWords);
-      this.games.set(chatId, result.game);
-
-      await this.answerCallbackQuery(cb.id, 'بدأت اللعبة! تم توزيع الكلمات 🚀');
-      await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
-
-      // Tell everyone in the game (privately) that the round has begun
-      await this.notifyPlayersRoundStarted(result.game);
-      // Notify spymasters in private message if possible
-      await this.notifySpymasters(result.game);
-      // Immediately ask the starting spymaster for the first clue (no commands needed)
-      await this.promptSpymasterForClue(result.game);
       return;
     }
 
@@ -2867,7 +2893,23 @@ export class TelegramBotManager {
       return;
     }
 
-    // 4. View Secret Map (each spymaster sees only their own colored card)
+    // 4. Private clue prompt — only the current spymaster can request this message.
+    if (data === 'action:prompt_clue' || data.startsWith('action:prompt_clue:')) {
+      const player = game?.players.find(p => String(p.id) === String(userId));
+      if (!game || game.status !== 'spymaster_turn' || !player || player.role !== 'spymaster' || player.team !== game.currentTurn) {
+        await this.answerCallbackQuery(cb.id, 'هذا الزر للجاسوس الحالي فقط.', true);
+        return;
+      }
+      const result = await this.promptSpymasterForClue(game);
+      await this.answerCallbackQuery(
+        cb.id,
+        result === 'sent' ? 'طلب التلميح بالخاص انرسل.' : result === 'already' ? 'وصلك مربع التلميح لهذا الدور من قبل.' : 'افتح الخاص مع البوت واضغط Start، ثم اطلب التلميح مرة ثانية.',
+        result === 'unavailable'
+      );
+      return;
+    }
+
+    // 5. View Secret Map (each spymaster sees only their own colored card)
     if (data === 'action:secret_map' || data.startsWith('action:secret_map:')) {
       if (!game || game.status === 'lobby') {
         await this.answerCallbackQuery(cb.id, 'اللعبة لم تبدأ بعد!', true);
@@ -2895,13 +2937,23 @@ export class TelegramBotManager {
         `🔵 فريقك | 🔴 الخصم | ⚪ محايد | 💣 القاتل\n\n` +
         CodenamesEngine.getSecretKeyGrid(game);
 
-      // Send the full map (grid + the exact words of each color) in private.
-      const dm = await this.sendMessage(
-        String(userId),
-        `🕵️ *خريطتك السرية يا جاسوس* — إنت وحدك تشوفها:\n\n${fullMap}\n\n⚠️ _لا تشاركها مع أحد!_`
-      );
+      // الخريطة تُرسل فقط بعد ضغط الجاسوس للزر، وتُحدّث الرسالة نفسها عند تكرار الطلب.
+      const mapText = `🕵️ *خريطتك السرية يا جاسوس* — إنت وحدك تشوفها:\n\n${fullMap}\n\n⚠️ _لا تشاركها مع أحد!_`;
+      const priorMapMessageId = game.privateMapMessageIds?.[String(userId)];
+      let dm = priorMapMessageId
+        ? await this.editMessageText(String(userId), priorMapMessageId, mapText)
+        : null;
+      let delivered = Boolean(dm?.ok || String(dm?.description || '').includes('not modified'));
+      if (!delivered) {
+        dm = await this.sendMessage(String(userId), mapText);
+        delivered = Boolean(dm?.ok);
+        if (delivered && dm?.result?.message_id) {
+          game.privateMapMessageIds = { ...(game.privateMapMessageIds || {}), [String(userId)]: Number(dm.result.message_id) };
+          this.games.set(chatId, game);
+        }
+      }
 
-      if (!dm?.ok) {
+      if (!delivered) {
         await this.answerCallbackQuery(
           cb.id,
           '⚠️ ما گدرت أرسللك الخريطة بالخاص.\n' +
@@ -3011,10 +3063,7 @@ export class TelegramBotManager {
         );
       }
 
-      // If the turn moved to the other team's spymaster, prompt them privately
-      if (result.game.status === 'spymaster_turn') {
-        await this.promptSpymasterForClue(result.game);
-      }
+      // لا نرسل تلميهاً خاصاً تلقائياً؛ الجاسوس يطلبه بزر «اطلب مربع التلميح بالخاص».
       return;
     }
 
@@ -3036,8 +3085,7 @@ export class TelegramBotManager {
         `${CodenamesEngine.nameTag(userName)} أنهى الدور 🤝`
       );
 
-      // Prompt the new team's spymaster privately
-      await this.promptSpymasterForClue(result.game);
+      // الجاسوس الجديد يطلب التلميح بنفسه من زر اللوحة؛ لا نرسل رسالة تلقائية.
       return;
     }
 
@@ -3176,9 +3224,9 @@ export class TelegramBotManager {
   private async buildKeyboard(game: CodenamesGame): Promise<any[][]> {
     const keyboard = CodenamesEngine.getTelegramInlineKeyboard(game);
     const botUser = await this.getBotUsername();
-    if (botUser && game.status === 'lobby') {
+    if (botUser) {
       keyboard.push([{
-        text: '🕵️ الجواسيس: افتحوا الخاص مع البوت',
+        text: game.status === 'lobby' ? '🕵️ الجواسيس: افتحوا الخاص مع البوت' : '🕵️ افتح الخاص لطلب تلميحك السري',
         url: `https://t.me/${botUser}?start=spy`
       }]);
     }
@@ -3204,59 +3252,15 @@ export class TelegramBotManager {
     }
   }
 
-  /**
-   * Every game in which this user is a captain (spymaster).
-   */
-  private findSpymasterGames(userId: string): { game: CodenamesGame; player: Player }[] {
-    const out: { game: CodenamesGame; player: Player }[] = [];
-    for (const game of this.games.values()) {
-      const player = game.players.find(
-        p => String(p.id) === userId && p.role === 'spymaster'
-      );
-      if (player) out.push({ game, player });
-    }
-    return out;
-  }
-
-  /**
-   * The captain tapped «🕵️ الجواسيس: افتحوا الخاص مع البوت» in the channel and
-   * pressed Start. From now on the bot can DM him the map and clue prompts.
-   */
+  /** تأكيد واحد بعد أن يفتح الجاسوس الخاص بنفسه؛ لا نرسل خرائط أو تنبيهات تلقائية. */
   private async handleSpymasterReady(chatId: string, sender?: TelegramUser) {
     if (!sender) return;
-    const userId = String(sender.id);
-    const mine = this.findSpymasterGames(userId);
-
-    const lines: string[] = [];
-    if (mine.length === 0) {
-      lines.push(
-        `✅ *تم تشغيل الخاص!*\n\n` +
-          `إنت حالياً مو مسجّل جاسوس بأي لعبة. لما تنضم جاسوس بأي قناة، راح توصلك *خريطتك الملوّنة* وتلميحاتك هنا بالخاص 💬`
-      );
-    } else {
-      for (const { game, player } of mine) {
-        const teamName = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-        lines.push(`✅ *تم!* إنت الجاسوس بفريق ${teamName} بلعبة «${this.mdSafe(game.chatTitle || 'المجموعة')}».`);
-        if (game.status === 'lobby') {
-          lines.push(`📌 اللعبة بمرحلة الانضمام — أول ما تبدأ الجولة راح أرسللك خريطتك الملوّنة هنا.`);
-          lines.push(CodenamesEngine.getSpymasterGuide(player.team));
-        }
-      }
-    }
-
-    await this.sendMessage(chatId, lines.join('\n'));
-
-    // If a round is already running, push the map + guide right away.
-    for (const { game, player } of mine) {
-      if (game.status === 'spymaster_turn' || game.status === 'operative_turn') {
-        await this.sendMessage(chatId, CodenamesEngine.getSpymasterGuide(player.team));
-        await this.sendMessage(
-          chatId,
-          `🎨 *خريطتك الملوّنة (${player.team === 'blue' ? 'الفريق الأزرق 🔵' : 'الفريق الأحمر 🔴'})*\n\n` +
-            CodenamesEngine.getSecretKeyVisual(game, player.team)
-        );
-      }
-    }
+    await this.sendMessage(
+      chatId,
+      `✅ تم فتح الخاص مع البوت.\n` +
+        `ارجع للمباراة واضغط زر «🎨 بطاقاتي الملوّنة» للخريطة، أو «✍️ اطلب مربع التلميح بالخاص» عندما يحين دورك.\n` +
+        `ما راح توصلك رسائل كود نيمز تلقائياً.`
+    );
   }
 
   /** عرض قسم من قائمة الألعاب (أزرار فقط) */
@@ -3613,6 +3617,23 @@ export class TelegramBotManager {
       }
     }
 
+    // ── 🚀 أمونغ أس النصية ──
+    if (q === 'au' || q.includes('among') || q.includes('امونغ') || q.includes('أمونغ')) {
+      const hidden = encodeHiddenTag(`au${uid}`);
+      await this.answerInlineQuery(iq.id, [{
+        type: 'article',
+        id: 'among-us',
+        title: '🚀 أمونغ أس — مهمة الطاقم',
+        description: 'مهام سرية، محتالون، اجتماعات وتصويت في المجموعة — بدون رسائل تلقائية بالخاص',
+        input_message_content: {
+          message_text: `🚀 *أمونغ أس — مهمة الطاقم*${hidden}\n${SEP}\n👥 انضموا للّوبي؛ بعد البدء كل لاعب يطلب دوره ومهامه بنفسه.`,
+          parse_mode: 'Markdown'
+        },
+        reply_markup: { inline_keyboard: [[{ text: '🚀 انضم', callback_data: 'au:j:auto' }]] }
+      }]);
+      return;
+    }
+
     // ── 🕵️ المافيا ──
     if (q === 'mf' || q.includes('مافيا')) {
       const hidden = encodeHiddenTag(`mf${uid}`);
@@ -3892,6 +3913,7 @@ export class TelegramBotManager {
         }
       }
     }
+    const isAmongUsCard = !isTrnCard && hiddenTag === 'au';
     const isMafiaCard = !isTrnCard && (hiddenTag === 'mf' || (text.includes('لعبة المافيا') && text.includes('المنضمون')));
     const isOOLCard = !isTrnCard && (hiddenTag === 'ool' || (text.includes('منو برا السالفة') && text.includes('المنضمون')));
     const isWkCard = !isTrnCard && (hiddenTag === 'wk' || text.includes('wk:start') || (text.includes('منو يعرف الثاني') && (text.includes('تحضير') || text.includes('بانتظار'))));
@@ -3901,7 +3923,7 @@ export class TelegramBotManager {
     const isGuessEliminationCard = hiddenTag.startsWith('ge:');
     const isChessCard = hiddenTag === 'ch';
 
-    if (!isTrnCard && !gqMark && !arxMode && !isMafiaCard && !isOOLCard && !isWkCard && !isCodenamesCard && !isRpsCard && !isStoryCard && !isGuessEliminationCard && !isChessCard) return;
+    if (!isTrnCard && !gqMark && !arxMode && !isAmongUsCard && !isMafiaCard && !isOOLCard && !isWkCard && !isCodenamesCard && !isRpsCard && !isStoryCard && !isGuessEliminationCard && !isChessCard) return;
 
     await this.ensureBotInfo();
     const ours =
@@ -3970,6 +3992,16 @@ export class TelegramBotManager {
       }
       this.tournamentGames.set(trnId, trnGame);
       await this.paintTournament(trnGame);
+      return;
+    }
+
+    // ── 🚀 أمونغ أس ──
+    if (isAmongUsCard) {
+      const game = AU.createLobby(chatId, message.chat.title || 'المحادثة');
+      game.messageId = message.message_id;
+      if (deployerUserId) AU.join(game, deployerUserId, deployerName);
+      this.amongUsGames.set(chatId, game);
+      await this.paintAmongUs(game);
       return;
     }
 
@@ -4195,12 +4227,17 @@ export class TelegramBotManager {
     for (const game of this.games.values()) {
       if (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') continue;
       const deadline = game.turnDeadline ?? (game.turnDeadline = now + CODENAMES_TURN_MS);
-      const nextRefresh = (game.lastCountdownAt ?? now) + 3000;
+      const nextRefresh = (game.lastCountdownAt ?? now) + 15000;
       if (Math.min(deadline, nextRefresh) < earliest) earliest = Math.min(deadline, nextRefresh);
     }
     for (const mf of this.mafiaGames.values()) {
       if ((mf.status === 'night' || mf.status === 'day') && mf.phaseDeadline !== undefined) {
         if (mf.phaseDeadline < earliest) earliest = mf.phaseDeadline;
+      }
+    }
+    for (const game of this.amongUsGames.values()) {
+      if (game.status === 'meeting' && game.meetingDeadline !== undefined && game.meetingDeadline < earliest) {
+        earliest = game.meetingDeadline;
       }
     }
     for (const ool of this.oolGames.values()) {
@@ -4336,7 +4373,7 @@ export class TelegramBotManager {
   public async processQuizTimers(): Promise<void> {
     const now = Date.now();
 
-    // ⏱️ كود نيمز: تحديث العدّ كل 3 ثوانٍ، وتمرير الدور تلقائياً بعد دقيقتين.
+    // ⏱️ كود نيمز: تحديث لوحة العدّ كل 15 ثانية، وتمرير الدور بعد دقيقتين دون رسائل خاصة تلقائية.
     for (const game of Array.from(this.games.values())) {
       if (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') continue;
       if (game.turnDeadline === undefined) game.turnDeadline = now + CODENAMES_TURN_MS;
@@ -4351,15 +4388,13 @@ export class TelegramBotManager {
         const timeout = CodenamesEngine.timeoutTurn(game, now);
         if (timeout.success) {
           this.games.set(game.id, timeout.game);
-          const nextSpy = timeout.game.players.find(p => p.team === timeout.game.currentTurn && p.role === 'spymaster');
           const event = `${timeout.message} لدى الجاسوس الجديد دقيقتان للتلميح.`;
           await this.updateTelegramGameBoard(game.id, timeout.game, timeout.game.messageId, event);
-          if (nextSpy) await this.promptSpymasterForClue(timeout.game);
         }
         continue;
       }
 
-      const refreshAt = (game.lastCountdownAt ?? 0) + 3000;
+      const refreshAt = (game.lastCountdownAt ?? 0) + 15000;
       if (now >= refreshAt) {
         game.lastCountdownAt = now;
         this.games.set(game.id, game);
@@ -4394,6 +4429,12 @@ export class TelegramBotManager {
         }
         await this.paintMafia(mf);
       }
+    }
+
+    for (const game of Array.from(this.amongUsGames.values())) {
+      if (!AU.expireMeeting(game, now)) continue;
+      if (game.status === 'finished') this.recordAmongUsFinish(game);
+      await this.paintAmongUs(game);
     }
 
     for (const ool of Array.from(this.oolGames.values())) {
@@ -5418,6 +5459,47 @@ export class TelegramBotManager {
         `🎮 المشاركات المكتملة: *${totalPlayed}*\n` +
         `🏆 إجمالي مرات الفوز: *${totalWins}*\n\n` +
         `🥇 *المتصدرون:*\n${lines}` +
+        (bottom ? `\n${bottom}` : '');
+      return { text, keyboard: [backRow] };
+    }
+
+    // 🚀 إحصائيات أمونغ أس مدمجة بصفحة اللعبة
+    if (gameId === 'among_us') {
+      const players = n.users
+        .filter(u => (u.amongUsGames || 0) > 0)
+        .sort((a, b) => (b.amongUsWins || 0) - (a.amongUsWins || 0) || (b.amongUsTasks || 0) - (a.amongUsTasks || 0));
+      const totalWins = players.reduce((sum, u) => sum + (u.amongUsWins || 0), 0);
+      const totalTasks = players.reduce((sum, u) => sum + (u.amongUsTasks || 0), 0);
+      const top = players.slice(0, 10);
+      const leaders = top.length
+        ? top.map((u, i) => this.quoteRow(i + 1, u.name, `(🏆 ${u.amongUsWins || 0} فوز • 🧰 ${u.amongUsTasks || 0} مهمة)`)).join('\n')
+        : '_لا توجد نتائج مكتملة بعد_';
+      const myGames = myRec?.amongUsGames || 0;
+      const myWins = myRec?.amongUsWins || 0;
+      const myTasks = myRec?.amongUsTasks || 0;
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: myWins,
+        myGames,
+        unitLabel: 'فوز',
+        statLines: [
+          `🎮 مبارياتك: *${myGames}*`,
+          `🏆 فوزك: *${myWins}*`,
+          `🧰 مهامك المكتملة: *${myTasks}*`,
+          `🔪 انتصاراتك كمحتال: *${myRec?.amongUsImpostorWins || 0}*`,
+          `🧑‍🚀 انتصاراتك كطاقم: *${myRec?.amongUsCrewWins || 0}*`,
+          `🚪 مرات إخراجك بالتصويت: *${myRec?.amongUsEjections || 0}*`,
+          `🎯 نسبة الفوز: *${this.statPct(myWins, myGames)}*`
+        ],
+        board: players.map(u => ({ id: u.id, score: u.amongUsWins || 0 }))
+      });
+      const text =
+        `🚀 *إحصائيات أمونغ أس — مهمة الطاقم*\n` +
+        `👥 اللاعبون المشاركون: *${players.length}*\n` +
+        `🎮 المباريات المكتملة: *${this.amongUsCompletedMatches}*\n` +
+        `🏆 إجمالي انتصارات اللاعبين: *${totalWins}*\n` +
+        `🧰 المهام المكتملة: *${totalTasks}*\n\n` +
+        `🥇 *المتصدرون:*\n${leaders}` +
         (bottom ? `\n${bottom}` : '');
       return { text, keyboard: [backRow] };
     }
@@ -8383,6 +8465,206 @@ export class TelegramBotManager {
   }
 
   // ---------------------------------------------------------------------
+  // 🚀 «أمونغ أس» — مباراة جماعية، بلا رسائل خاصة تلقائية
+  // ---------------------------------------------------------------------
+
+  private async paintAmongUs(game: AU.AmongUsGame) {
+    const text = await this.withBotFooter(AU.renderBoard(game), true);
+    const keyboard = AU.boardKeyboard(game);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, keyboard, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, text, keyboard, 'MarkdownV2');
+    if (sent?.result?.message_id) {
+      game.messageId = sent.result.message_id;
+      this.amongUsGames.set(game.chatId, game);
+    }
+  }
+
+  private recordAmongUsFinish(game: AU.AmongUsGame) {
+    if (game.rewarded || game.status !== 'finished' || !game.winner) return;
+    game.rewarded = true;
+    this.amongUsCompletedMatches += 1;
+    for (const player of game.players) {
+      const rec = this.ensureUser(player.id, player.name);
+      const won = (game.winner === 'impostors' && player.role === 'impostor') ||
+        (game.winner === 'crew' && player.role === 'crewmate');
+      rec.amongUsGames = (rec.amongUsGames || 0) + 1;
+      rec.onlineGames = (rec.onlineGames || 0) + 1;
+      rec.amongUsTasks = (rec.amongUsTasks || 0) + player.completedTasks.length;
+      if (player.ejected) rec.amongUsEjections = (rec.amongUsEjections || 0) + 1;
+      if (won) {
+        rec.amongUsWins = (rec.amongUsWins || 0) + 1;
+        rec.onlineWins = (rec.onlineWins || 0) + 1;
+        rec.points = (rec.points || 0) + 1;
+        if (player.role === 'impostor') rec.amongUsImpostorWins = (rec.amongUsImpostorWins || 0) + 1;
+        else rec.amongUsCrewWins = (rec.amongUsCrewWins || 0) + 1;
+      }
+      this.users.set(rec.id, rec);
+    }
+    this.amongUsGames.set(game.chatId, game);
+  }
+
+  private async refreshAmongUsPrivatePanel(game: AU.AmongUsGame, player: AU.AmongUsPlayer) {
+    if (!player.privateMessageId) return;
+    await this.editMessageText(
+      player.id,
+      player.privateMessageId,
+      AU.privatePanelText(game, player),
+      AU.privatePanelKeyboard(game, player),
+      'MarkdownV2'
+    );
+  }
+
+  /** لا يرسل أي دور/مهمة تلقائياً؛ اللاعب يطلب لوحته السرية بزر واضح بنفسه. */
+  private async openAmongUsPrivatePanel(cb: TelegramCallbackQuery, game: AU.AmongUsGame) {
+    const player = AU.getPlayer(game, String(cb.from.id));
+    if (!player) {
+      await this.answerCallbackQuery(cb.id, 'انضم للمباراة أولاً حتى تشوف معلوماتك.', true);
+      return;
+    }
+    const text = AU.privatePanelText(game, player);
+    const keyboard = AU.privatePanelKeyboard(game, player);
+    if (player.privateMessageId) {
+      const edited = await this.editMessageText(player.id, player.privateMessageId, text, keyboard, 'MarkdownV2');
+      if (edited?.ok || String(edited?.description || '').includes('not modified')) {
+        await this.answerCallbackQuery(cb.id, 'حدّثت لوحتك السرية.');
+        return;
+      }
+    }
+    const sent = await this.sendMessage(player.id, text, keyboard, 'MarkdownV2');
+    if (sent?.ok && sent?.result?.message_id) {
+      player.privateMessageId = Number(sent.result.message_id);
+      this.amongUsGames.set(game.chatId, game);
+      await this.answerCallbackQuery(cb.id, 'وصلتك لوحتك السرية بالخاص.');
+    } else {
+      await this.answerCallbackQuery(cb.id, 'افتح الخاص مع البوت واضغط Start، وبعدها اطلب لوحتك من جديد.', true);
+    }
+  }
+
+  private async handleAmongUsCb(cb: TelegramCallbackQuery, data: string) {
+    const parts = data.split(':');
+    const op = parts[1] || '';
+    const rawChatId = parts.slice(op === 't' ? 4 : op === 'q' ? 3 : op === 'k' || op === 'v' ? 3 : 2).join(':');
+    const chatId = !rawChatId || rawChatId === 'auto'
+      ? String(cb.message?.chat.id || '')
+      : rawChatId;
+    if (!chatId) {
+      await this.answerCallbackQuery(cb.id, 'ما لكيت المحادثة المرتبطة بالمباراة.', true);
+      return;
+    }
+    const userId = String(cb.from.id);
+    const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
+    let game = this.amongUsGames.get(chatId);
+
+    if (op === 'n') {
+      const fresh = AU.createLobby(chatId, cb.message?.chat.title || 'المحادثة');
+      AU.join(fresh, userId, userName);
+      const sent = await this.sendMessage(chatId, await this.withBotFooter(AU.renderBoard(fresh), true), AU.boardKeyboard(fresh), 'MarkdownV2');
+      if (sent?.ok && sent.result?.message_id) fresh.messageId = Number(sent.result.message_id);
+      this.amongUsGames.set(chatId, fresh);
+      await this.answerCallbackQuery(cb.id, 'فتحت لوبي جديد 🚀');
+      return;
+    }
+
+    if (!game && op === 'j' && cb.message?.chat) {
+      game = AU.createLobby(chatId, cb.message.chat.title || 'المحادثة');
+      if (cb.message.message_id) game.messageId = cb.message.message_id;
+      this.amongUsGames.set(chatId, game);
+    }
+    if (!game) {
+      await this.answerCallbackQuery(cb.id, 'ما لكيت مباراة شغّالة؛ انشر اللعبة من جديد.', true);
+      return;
+    }
+    if (cb.message?.message_id && !game.messageId && cb.message.chat.type !== 'private') game.messageId = cb.message.message_id;
+
+    if (op === 'j') {
+      const result = AU.join(game, userId, userName);
+      await this.answerCallbackQuery(cb.id, result.msg, !result.ok);
+      if (result.ok) await this.paintAmongUs(game);
+      return;
+    }
+    if (op === 's') {
+      const result = AU.start(game);
+      await this.answerCallbackQuery(cb.id, result.msg, !result.ok);
+      if (result.ok) {
+        await this.paintAmongUs(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+    if (op === 'p') {
+      await this.openAmongUsPrivatePanel(cb, game);
+      return;
+    }
+    if (op === 'q') {
+      const taskId = Number(parts[2]);
+      const player = AU.getPlayer(game, userId);
+      const task = AU.taskQuestion(taskId);
+      if (!player || player.role !== 'crewmate' || !player.alive || !task || !player.tasks.includes(taskId) || player.completedTasks.includes(taskId)) {
+        await this.answerCallbackQuery(cb.id, 'المهمة مو متاحة إلك.', true);
+        return;
+      }
+      if (!player.privateMessageId) player.privateMessageId = cb.message?.message_id;
+      const text = `🧰 *مهمتك الحالية*\n${GG.toV2(task.prompt)}\nاختار جوابك:`;
+      const keyboard = AU.taskAnswerKeyboard(game, taskId);
+      keyboard.push([{ text: '🔙 رجوع إلى معلوماتي', callback_data: `au:p:${chatId}` }]);
+      await this.editMessageText(player.id, player.privateMessageId!, text, keyboard, 'MarkdownV2');
+      await this.answerCallbackQuery(cb.id, 'اختار الإجابة بالخاص.');
+      return;
+    }
+    if (op === 't') {
+      const taskId = Number(parts[2]);
+      const answerIndex = Number(parts[3]);
+      const result = AU.answerTask(game, userId, taskId, answerIndex);
+      await this.answerCallbackQuery(cb.id, result.msg, !result.ok);
+      if (result.ok) {
+        if (result.finished) this.recordAmongUsFinish(game);
+        await this.paintAmongUs(game);
+        const player = AU.getPlayer(game, userId);
+        if (player) await this.refreshAmongUsPrivatePanel(game, player);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+    if (op === 'k') {
+      const targetId = parts[2] || '';
+      const result = AU.kill(game, userId, targetId);
+      await this.answerCallbackQuery(cb.id, result.msg, !result.ok);
+      if (result.ok) {
+        if (result.finished) this.recordAmongUsFinish(game);
+        await this.paintAmongUs(game);
+        const actor = AU.getPlayer(game, userId);
+        if (actor) await this.refreshAmongUsPrivatePanel(game, actor);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+    if (op === 'r' || op === 'm') {
+      const result = AU.callMeeting(game, userId);
+      await this.answerCallbackQuery(cb.id, result.msg, !result.ok);
+      if (result.ok) {
+        await this.paintAmongUs(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+    if (op === 'v') {
+      const targetId = parts[2] || '';
+      const result = AU.vote(game, userId, targetId);
+      await this.answerCallbackQuery(cb.id, result.msg, !result.ok);
+      if (result.ok) {
+        if (game.status === 'finished') this.recordAmongUsFinish(game);
+        await this.paintAmongUs(game);
+        this.scheduleLocalQuizTimer();
+      }
+      return;
+    }
+    await this.answerCallbackQuery(cb.id, 'هذا الإجراء غير معروف.', true);
+  }
+
+  // ---------------------------------------------------------------------
   // 🕵️ «المافيا» — لعبة جماعية متكاملة بالقناة + الخاص
   // ---------------------------------------------------------------------
 
@@ -9689,78 +9971,35 @@ export class TelegramBotManager {
   }
 
   /**
-   * Notify Spymasters with their secret map in private DM
+   * يرسل مربع التلميح فقط بعد أن يطلبه الجاسوس من لوحة المباراة؛ لا توجد رسائل دور تلقائية.
    */
-  private async notifySpymasters(game: CodenamesGame) {
-    const spymasters = game.players.filter(p => p.role === 'spymaster');
-
-    for (const spy of spymasters) {
-      // 1) Explain the game in simple words (in case this is their first time)
-      await this.sendMessage(String(spy.id), CodenamesEngine.getSpymasterGuide(spy.team));
-
-      // 2) Then send the colored card map
-      await this.sendMessage(
-        String(spy.id),
-        CodenamesEngine.getSecretKeyVisual(game, spy.team) +
-          `\n\n💡 إذا ضاعت منك الخريطة، اضغط زر «🎨 بطاقاتي الملوّنة (للجاسوس 🕵️)» بالمحادثة.`
-      );
-    }
-  }
-
-  /**
-   * Tell every player — privately — that the round has started.
-   */
-  private async notifyPlayersRoundStarted(game: CodenamesGame) {
-    const firstTeam = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-
-    for (const player of game.players) {
-      const teamName = player.team === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-      const isSpy = player.role === 'spymaster';
-      const roleName = isSpy ? 'جاسوس 🕵️' : 'عميل 👤';
-
-      const tail = isSpy
-        ? `🎨 خريطتك الملوّنة وصلتك 👆 وأول ما يجي دورك راح أطلب منك التلميح هنا.`
-        : `👀 استنى *تلميح جاسوسك* — يوصلك هنا بالخاص.\n` +
-          `وبعدها خمّنوا بالضغط على أزرار الكلمات بملعب القناة 👆`;
-
-      await this.sendMessage(
-        String(player.id),
-        `🚀 *بدأت الجولة!*\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `👥 فريقك: ${teamName}\n` +
-          `🎭 دورك: ${roleName}\n` +
-          `🎯 يبدأ: ${firstTeam}\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          tail
-      );
-    }
-  }
-
-  /**
-   * Privately prompt the current team's spymaster for a clue — no commands needed.
-   * Uses a ForceReply "empty box" so the spymaster just types the word.
-   */
-  private async promptSpymasterForClue(game: CodenamesGame) {
-    if (game.status !== 'spymaster_turn') return;
+  private async promptSpymasterForClue(game: CodenamesGame): Promise<'sent' | 'already' | 'unavailable'> {
+    if (game.status !== 'spymaster_turn') return 'unavailable';
     const spy = game.players.find(p => p.team === game.currentTurn && p.role === 'spymaster');
-    if (!spy) return;
+    if (!spy) return 'unavailable';
 
+    const promptKey = `${game.id}:${game.currentTurn}:${game.turnDeadline || game.updatedAt}`;
+    if (game.lastPrivatePromptKey === promptKey || this.codenamesPromptInFlight.has(promptKey)) return 'already';
+
+    this.codenamesPromptInFlight.add(promptKey);
     const teamName = game.currentTurn === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
-    const res = await this.sendMessageRaw(
-      String(spy.id),
-      `🎯 *دورك يا جاسوس الفريق ${teamName}*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
-        `✍️ ارسل *التلميح* اللي يوصل لصديقك (بالمربع بالأسفل):\n` +
-        `• كلمة *وحدة* فقط، بلا أي كلمة ثانية.\n` +
-        `• ممنوع تستخدم كلمات فريقك الموجودة بالبوكسات.\n\n` +
-        `🔢 بعدها راح أطلب منك الرقم — خليه متساوي لعدد كلمات\n` +
-        `فريقك اللي تربطهن بالتلميح، حتى يعرف صديقك شنو يختار.\n\n` +
-        `🎨 تريد تشوف بطاقات فريقك؟ اضغط زر «🎨 بطاقاتي الملوّنة» بالقناة.`,
-      { force_reply: true, selective: true, input_field_placeholder: 'اكتب كلمة التلميح (كلمة وحدة)' }
-    );
-
-    if (res?.ok) {
+    try {
+      if (!(await this.canReachPrivate(String(spy.id)))) return 'unavailable';
+      const res = await this.sendMessageRaw(
+        String(spy.id),
+        `🎯 *دورك يا جاسوس الفريق ${teamName}*\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `✍️ اكتب كلمة تلميح واحدة فقط، ثم اختار عدد الكلمات المقصودة.\n` +
+          `🎨 خريطتك السرية متاحة من زر «بطاقاتي الملوّنة» بلوحة المباراة.`,
+        { force_reply: true, selective: true, input_field_placeholder: 'اكتب كلمة التلميح (كلمة واحدة)' }
+      );
+      if (!res?.ok) return 'unavailable';
+      game.lastPrivatePromptKey = promptKey;
+      this.games.set(String(game.id), game);
       this.awaitingClueWord.set(String(spy.id), String(game.id));
+      return 'sent';
+    } finally {
+      this.codenamesPromptInFlight.delete(promptKey);
     }
   }
 
