@@ -11,6 +11,8 @@ import {
 } from '../types/codenames';
 import { getWordPackList } from '../data/words';
 
+export const CODENAMES_TURN_MS = 2 * 60 * 1000;
+
 export class CodenamesEngine {
   /**
    * Helper to shuffle array in-place
@@ -247,6 +249,8 @@ export class CodenamesEngine {
         currentTurn: startingTeam,
         cards,
         currentClue: undefined,
+        turnDeadline: Date.now() + CODENAMES_TURN_MS,
+        lastCountdownAt: Date.now(),
         winner: undefined,
         winReason: undefined,
         logs: [...game.logs, startLog],
@@ -305,6 +309,8 @@ export class CodenamesEngine {
         ...game,
         status: 'operative_turn',
         currentClue: newClue,
+        turnDeadline: Date.now() + CODENAMES_TURN_MS,
+        lastCountdownAt: Date.now(),
         clueHistory: [...game.clueHistory, newClue],
         logs: [...game.logs, logEntry],
         updatedAt: Date.now()
@@ -378,6 +384,8 @@ export class CodenamesEngine {
           ...game,
           cards: updatedCards,
           status: 'game_over',
+          turnDeadline: undefined,
+          lastCountdownAt: undefined,
           winner: oppositeTeam,
           winReason: 'assassin_triggered',
           logs: [...game.logs, winLog],
@@ -405,6 +413,8 @@ export class CodenamesEngine {
           ...game,
           cards: updatedCards,
           status: 'game_over',
+          turnDeadline: undefined,
+          lastCountdownAt: undefined,
           winner: 'blue',
           winReason: 'all_cards_found',
           logs: [...game.logs, winLog],
@@ -431,6 +441,8 @@ export class CodenamesEngine {
           ...game,
           cards: updatedCards,
           status: 'game_over',
+          turnDeadline: undefined,
+          lastCountdownAt: undefined,
           winner: 'red',
           winReason: 'all_cards_found',
           logs: [...game.logs, winLog],
@@ -473,6 +485,8 @@ export class CodenamesEngine {
             status: 'spymaster_turn',
             currentTurn: oppositeTeam,
             currentClue: undefined,
+            turnDeadline: Date.now() + CODENAMES_TURN_MS,
+            lastCountdownAt: Date.now(),
             logs: [...game.logs, guessLog, turnSwitchLog],
             updatedAt: Date.now()
           }
@@ -522,8 +536,53 @@ export class CodenamesEngine {
         status: 'spymaster_turn',
         currentTurn: oppositeTeam,
         currentClue: undefined,
+        turnDeadline: Date.now() + CODENAMES_TURN_MS,
+        lastCountdownAt: Date.now(),
         logs: [...game.logs, failLog],
         updatedAt: Date.now()
+      }
+    };
+  }
+
+  /**
+   * Ends the current spy or operative turn after its two-minute deadline.
+   * A partial turn is still forfeited; the other team's spymaster starts fresh.
+   */
+  public static timeoutTurn(game: CodenamesGame, now = Date.now()): { success: boolean; message: string; game: CodenamesGame } {
+    if (
+      (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') ||
+      game.turnDeadline === undefined ||
+      now < game.turnDeadline
+    ) {
+      return { success: false, message: 'لم تنتهِ مهلة الدور بعد.', game };
+    }
+
+    const timedOutTeam = game.currentTurn;
+    const nextTeam: Team = timedOutTeam === 'blue' ? 'red' : 'blue';
+    const timedOutRole = game.status === 'spymaster_turn' ? 'الجاسوس' : 'العملاء';
+    const teamName = timedOutTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+    const nextName = nextTeam === 'blue' ? 'الأزرق 🔵' : 'الأحمر 🔴';
+    const message = `⏰ انتهت دقيقتا ${timedOutRole} للفريق ${teamName} من دون إكمال الدور؛ ينتقل الدور إلى جاسوس الفريق ${nextName}.`;
+    const logEntry: GameLogEntry = {
+      id: Math.random().toString(36).substring(7),
+      timestamp: now,
+      type: 'system',
+      team: timedOutTeam,
+      message
+    };
+
+    return {
+      success: true,
+      message,
+      game: {
+        ...game,
+        status: 'spymaster_turn',
+        currentTurn: nextTeam,
+        currentClue: undefined,
+        turnDeadline: now + CODENAMES_TURN_MS,
+        lastCountdownAt: now,
+        logs: [...game.logs, logEntry],
+        updatedAt: now
       }
     };
   }
@@ -553,6 +612,8 @@ export class CodenamesEngine {
         status: 'spymaster_turn',
         currentTurn: oppositeTeam,
         currentClue: undefined,
+        turnDeadline: Date.now() + CODENAMES_TURN_MS,
+        lastCountdownAt: Date.now(),
         logs: [...game.logs, logEntry],
         updatedAt: Date.now()
       }
@@ -768,6 +829,10 @@ export class CodenamesEngine {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `👇 اضغط على الكلمة من اللوحة بالأسفل لتخمينها:`;
     }
+
+    const remainingSeconds = Math.max(0, Math.ceil(((game.turnDeadline || Date.now()) - Date.now()) / 1000));
+    const remainingClock = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`;
+    header += `\n⏱️ *المهلة:* دقيقتان — المتبقي \`${remainingClock}\``;
 
     if (lastEvent) {
       header += `\n━━━━━━━━━━━━━━━━━━━\n📢 *آخر حدث:*\n> ${lastEvent}`;

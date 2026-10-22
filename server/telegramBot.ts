@@ -1,4 +1,4 @@
-import { CodenamesEngine } from '../src/services/codenamesEngine';
+import { CodenamesEngine, CODENAMES_TURN_MS } from '../src/services/codenamesEngine';
 import * as Wordle from '../src/services/wordleEngine';
 import * as Poet from '../src/services/poetEngine';
 import * as RPS from '../src/services/rpsEngine';
@@ -12,10 +12,16 @@ import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
 import * as ARX from '../src/services/arenaGamesEngine';
 import * as TRN from '../src/services/tournamentEngine';
+import * as STORY from '../src/services/truthLieEngine';
+import * as GE from '../src/services/guessEliminationEngine';
+import * as CH from '../src/services/chessGameEngine';
 import * as EXT from '../src/services/extraToolsEngine';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
+function escapeMarkdownV2Text(value: string): string {
+  return String(value || '').replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
 function encodeHiddenTag(payload: string): string {
   const bytes = Buffer.from(payload, 'utf8');
   let bits = '';
@@ -152,7 +158,7 @@ interface BotGameCard {
   id: string;
   emoji: string;
   title: string;
-  category: 'duo' | 'team' | 'team3' | 'team4' | 'group';
+  category: 'duo' | 'team' | 'team3' | 'team4' | 'group' | 'arabic';
   /** كم لاعب */
   players: string;
   /** وين تنلعب */
@@ -725,6 +731,70 @@ const BOT_GAMES: BotGameCard[] = [
     channel: true,
     inline: 'gq creature',
     ready: true
+  },
+  {
+    id: 'arabic_vocab', emoji: '📖', title: 'مفردات عربية فصيحة', category: 'arabic',
+    players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
+    goal: 'اكتشاف معنى المفردة الفصيحة من أربعة خيارات',
+    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'أسئلة في مفردات عربية فصيحة نادرة، وكل الخيارات بالعربية الفصحى.',
+    channel: true, inline: 'gq arabic_vocab', ready: true
+  },
+  {
+    id: 'arabic_synonyms', emoji: '🪶', title: 'مرادفات عربية', category: 'arabic',
+    players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
+    goal: 'اختيار مرادف الكلمة الفصيحة', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'تحدي مرادفات فصيحة بأربعة خيارات عربية خالصة.',
+    channel: true, inline: 'gq arabic_synonyms', ready: true
+  },
+  {
+    id: 'arabic_antonyms', emoji: '↔️', title: 'أضداد عربية', category: 'arabic',
+    players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
+    goal: 'اختيار ضدّ المفردة الفصيحة', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'جولات لاختيار الأضداد الصحيحة باللغة العربية الفصحى.',
+    channel: true, inline: 'gq arabic_antonyms', ready: true
+  },
+  {
+    id: 'arabic_plurals', emoji: '🔤', title: 'مفرد وجمع', category: 'arabic',
+    players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
+    goal: 'اختيار الجمع الفصيح الصحيح', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'اختبر معرفتك بجمع التكسير وجموع العربية الفصيحة.',
+    channel: true, inline: 'gq arabic_plurals', ready: true
+  },
+  {
+    id: 'arabic_grammar', emoji: '✍️', title: 'قواعد ونحو', category: 'arabic',
+    players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
+    goal: 'الإجابة عن أسئلة النحو والصرف والإعراب', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
+    about: 'أسئلة عربية فصيحة في قواعد اللغة والنحو والصرف والإعراب.',
+    channel: true, inline: 'gq arabic_grammar', ready: true
+  },
+  {
+    id: 'truth_lie_duo', emoji: '🤥', title: 'حقيقة وكذبة', category: 'duo',
+    players: 'لاعبان فقط', where: 'في المجموعة والخاص',
+    goal: 'اكتشاف الموقف المفبرك الذي يكتبه الخصم', reward: 'الفوز لمن يكتشف الكذبة',
+    about: 'كل لاعب يرسل موقفاً حقيقياً وآخر مفبركاً برسالتين منفصلتين في الخاص. بعدها يخمّن كل لاعب أيّ موقف من موقفي خصمه هو الكذبة، وتُعرض النتيجة بعد انتهاء التخمينين.',
+    channel: true, inline: 'st duo', ready: true
+  },
+  {
+    id: 'truth_lies_group', emoji: '🕵️', title: 'كذبة وحقائق', category: 'group',
+    players: 'من 3 إلى 10 لاعبين', where: 'في المجموعة والخاص',
+    goal: 'كشف اللاعب الوحيد الذي يختلق موقفاً', reward: 'يفوز الفريق إذا كشف صاحب الكذبة بالتصويت',
+    about: 'يختار البوت لاعباً سراً ليختلق موقفاً، بينما يرسل الآخرون مواقف حقيقية في الخاص. تظهر المواقف دون أسماء، ثم يصوّت اللاعبون لكشف الكاذب.',
+    channel: true, inline: 'st group', ready: true
+  },
+  {
+    id: 'guess_elimination', emoji: '🔎', title: 'خمن واستبعد', category: 'duo',
+    players: 'لاعبان فقط', where: 'في المجموعة والخاص',
+    goal: 'اكتشاف اختيار الخصم بأسئلة صفات واستبعادات', reward: 'نقطة للفائز الذي يخمّن اختيار خصمه أولاً',
+    about: 'يختار كل لاعب سراً اسماً من فئة متنوعة. يتناوب اللاعبان على أسئلة نعم/لا غير مكررة، ويستبعدان المرشحين حتى يخمّن أحدهما اختيار خصمه. تشمل الفئات لاعبي كرة، حيوانات، فواكه، مزيجاً، وأسماء مركّبة طريفة.',
+    channel: true, inline: 'ge mixed', ready: true
+  },
+  {
+    id: 'chess', emoji: '♟️', title: 'شطرنج 1 ضد 1', category: 'duo',
+    players: 'لاعبان فقط', where: 'في المجموعة',
+    goal: 'كش مات لملك الخصم', reward: 'فوز بالكش مات أو التعادل بالقواعد الرسمية',
+    about: 'مباراة شطرنج كاملة بحركات قانونية، مع اختيار قطعة ومربع وجهة من لوحة تفاعلية. الأبيض يبدأ، والترقية تتم تلقائياً إلى وزير.',
+    channel: true, inline: 'chess', ready: true
   }
 ];
 
@@ -755,6 +825,11 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
     title: 'الألعاب الجماعية',
     intro: 'ألعاب جماعية في القناة أو المجموعة، وعدد اللاعبين يختلف حسب اللعبة.'
   },
+  arabic: {
+    emoji: '📚',
+    title: 'ألعاب اللغة العربية',
+    intro: 'تحديات باللغة العربية الفصحى فقط: مفردات ومرادفات وأضداد ونحو.'
+  }
 };
 
 /** رقم اللعبة بمعرّفها */
@@ -912,6 +987,9 @@ export class TelegramBotManager {
   /** 🔢 جولات تحدي الحساب (Key: user id) */
   private mathGames: Map<string, MathGame.MathRound> = new Map();
   private wkGames: Map<string, WK.WKGame> = new Map();
+  private storyGames: Map<string, STORY.StoryGame> = new Map();
+  private guessEliminationGames: Map<string, GE.GuessGame> = new Map();
+  private chessGames: Map<string, CH.ChessGame> = new Map();
   private mafiaGames: Map<string, MF.MafiaGame> = new Map();
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
@@ -1553,6 +1631,9 @@ export class TelegramBotManager {
       song: Array.from(this.song.entries()),
       mathGames: Array.from(this.mathGames.entries()),
       wkGames: Array.from(this.wkGames.entries()),
+      storyGames: Array.from(this.storyGames.entries()).slice(-100),
+      guessEliminationGames: Array.from(this.guessEliminationGames.entries()).slice(-100),
+      chessGames: Array.from(this.chessGames.entries()).slice(-100),
       mafiaGames: Array.from(this.mafiaGames.entries()),
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
@@ -1602,6 +1683,9 @@ export class TelegramBotManager {
     if (Array.isArray(state.song)) this.song = new Map(state.song);
     if (Array.isArray(state.mathGames)) this.mathGames = new Map(state.mathGames);
     if (Array.isArray(state.wkGames)) this.wkGames = new Map(state.wkGames);
+    if (Array.isArray(state.storyGames)) this.storyGames = new Map(state.storyGames);
+    if (Array.isArray(state.guessEliminationGames)) this.guessEliminationGames = new Map(state.guessEliminationGames);
+    if (Array.isArray(state.chessGames)) this.chessGames = new Map(state.chessGames);
     if (Array.isArray(state.mafiaGames)) this.mafiaGames = new Map(state.mafiaGames);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
@@ -2102,6 +2186,12 @@ export class TelegramBotManager {
       }
     }
 
+    // 🤥 المواقف السرية في «كذبة وحقيقة / كذبة وحقائق» تُستقبل بالخاص فقط.
+    if (message.chat.type === 'private' && sender && !text.startsWith('/')) {
+      const handledStory = await this.tryHandleStoryText(sender, text);
+      if (handledStory) return;
+    }
+
     // 🤝 إذا المستخدم يشارك حالياً بلعبة «منو يعرف الثاني أكثر؟» بالخاص → نثبّت جوابه/تخمينه فوراً
     if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
       if (!message.reply_to_message && !this.awaitingClueWord.get(String(sender.id))) {
@@ -2212,6 +2302,14 @@ export class TelegramBotManager {
         const payload = rawPayload.toLowerCase();
         if (payload === 'spy') {
           await this.handleSpymasterReady(chatId, sender);
+          return;
+        }
+        if (rawPayload.startsWith('st_')) {
+          await this.handleStoryPrivateReady(chatId, sender, rawPayload.slice(3));
+          return;
+        }
+        if (rawPayload.startsWith('ge_')) {
+          await this.handleGuessPrivateReady(chatId, sender, rawPayload.slice(3));
           return;
         }
         if (rawPayload.startsWith('wk_')) {
@@ -2465,6 +2563,19 @@ export class TelegramBotManager {
     }
     if (data.startsWith('rpsm:')) {
       await this.handleRPSMove(cb, data.slice(5));
+      return;
+    }
+
+    if (data.startsWith('st:')) {
+      await this.handleStoryCallback(cb, data);
+      return;
+    }
+    if (data.startsWith('ge:')) {
+      await this.handleGuessEliminationCallback(cb, data);
+      return;
+    }
+    if (data.startsWith('ch:')) {
+      await this.handleChessCallback(cb, data);
       return;
     }
 
@@ -3441,6 +3552,18 @@ export class TelegramBotManager {
     };
   }
 
+  private inlineLobbyCard(tag: string, title: string, description: string, callbackData: string): any {
+    const hidden = encodeHiddenTag(tag);
+    return {
+      type: 'article',
+      id: `${tag}:${Date.now().toString(36)}`,
+      title,
+      description,
+      input_message_content: { message_text: `${title}${hidden}\n━━━━━━━━━━━━━━━━━━━\n👥 بانتظار اللاعبين`, parse_mode: 'Markdown' },
+      reply_markup: { inline_keyboard: [[{ text: '🙋 انضم', callback_data: callbackData }]] }
+    };
+  }
+
   /** بطاقة لعبة جماعية نظيفة 100٪ بدون أي كود ظاهر أو نص تحضير */
   private gqCard(kind: string, deployerId?: string): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
@@ -3669,6 +3792,28 @@ export class TelegramBotManager {
       await this.answerInlineQuery(iq.id, [this.gqCard('history', deployerId)]);
       return;
     }
+    if (q === 'chess' || q.includes('شطرنج')) {
+      await this.answerInlineQuery(iq.id, [this.inlineLobbyCard('ch', '♟️ شطرنج 1 ضد 1', 'انشر لوحة الشطرنج في المجموعة وابدأوا مباراة تفاعلية.', 'ch:join')]);
+      return;
+    }
+    if (q.startsWith('st')) {
+      const mode = /group|جماعي|جماعية/.test(q) ? 'group' : 'duo';
+      const title = mode === 'duo' ? '🤥 حقيقة وكذبة' : '🕵️ كذبة وحقائق';
+      const help = mode === 'duo'
+        ? 'للاعبين اثنين: يكتب كل لاعب موقفاً حقيقياً وآخر مفبركاً سراً، ثم يخمّن كذبة خصمه.'
+        : 'لـ3 إلى 10 لاعبين: شخص واحد يختلق موقفاً، والبقية يكتبون مواقف حقيقية، ثم يصوّت الجميع.';
+      await this.answerInlineQuery(iq.id, [this.inlineLobbyCard(`st:${mode}`, title, help, 'st:join')]);
+      return;
+    }
+    if (q.startsWith('ge') || q.includes('خمن واستبعد') || q.includes('خمّن واستبعد')) {
+      const categoryRaw = q.split(/\\s+/)[1] || 'mixed';
+      const category: GE.GuessCategory = (['football', 'animals', 'fruits', 'mixed', 'mashup'] as string[]).includes(categoryRaw)
+        ? categoryRaw as GE.GuessCategory
+        : 'mixed';
+      const meta = GE.GUESS_CATEGORY_INFO[category];
+      await this.answerInlineQuery(iq.id, [this.inlineLobbyCard(`ge:${category}`, `🔎 خمن واستبعد — ${meta.emoji} ${meta.label}`, 'لاعبان يختاران سراً، ويسألان أسئلة صفات غير مكررة حتى يكشف كل منهما اختيار خصمه.', 'ge:join')]);
+      return;
+    }
 
     const wantsCn = q === 'cn' || q === '' || q.includes('كود') || q.includes('codenames');
     const wantsRps = q.startsWith('rps') || q === '' || q.includes('حجرة');
@@ -3779,8 +3924,11 @@ export class TelegramBotManager {
     const isWkCard = !isTrnCard && (hiddenTag === 'wk' || text.includes('wk:start') || (text.includes('منو يعرف الثاني') && (text.includes('تحضير') || text.includes('بانتظار'))));
     const isCodenamesCard = !isTrnCard && (hiddenTag === 'cn' || text.includes('كود نيمز'));
     const isRpsCard = !isTrnCard && (hiddenTag.startsWith('rps:') || text.includes('حجرة ورقة مقص'));
+    const isStoryCard = hiddenTag.startsWith('st:');
+    const isGuessEliminationCard = hiddenTag.startsWith('ge:');
+    const isChessCard = hiddenTag === 'ch';
 
-    if (!isTrnCard && !gqMark && !arxMode && !isMafiaCard && !isOOLCard && !isWkCard && !isCodenamesCard && !isRpsCard) return;
+    if (!isTrnCard && !gqMark && !arxMode && !isMafiaCard && !isOOLCard && !isWkCard && !isCodenamesCard && !isRpsCard && !isStoryCard && !isGuessEliminationCard && !isChessCard) return;
 
     await this.ensureBotInfo();
     const ours =
@@ -3797,6 +3945,36 @@ export class TelegramBotManager {
     const deployerRecord = deployerUserId ? this.users.get(deployerUserId) : undefined;
     const deployerName = message.from?.first_name || deployerRecord?.name || 'الناشر';
     const deployerUsername = message.from?.username || deployerRecord?.username;
+
+    if (isStoryCard) {
+      const mode: STORY.StoryMode = hiddenTag.endsWith(':group') ? 'group' : 'duo';
+      const game = STORY.createStoryGame(chatId, message.chat.title || 'المحادثة', mode);
+      game.messageId = message.message_id;
+      if (deployerUserId) STORY.storyJoin(game, deployerUserId, deployerName);
+      this.storyGames.set(chatId, game);
+      await this.paintStoryBoard(game);
+      return;
+    }
+    if (isGuessEliminationCard) {
+      const rawCategory = hiddenTag.split(':')[1] || 'mixed';
+      const category: GE.GuessCategory = (['football', 'animals', 'fruits', 'mixed', 'mashup'] as string[]).includes(rawCategory)
+        ? rawCategory as GE.GuessCategory
+        : 'mixed';
+      const game = GE.createGuessGame(chatId, message.chat.title || 'المحادثة', category);
+      game.messageId = message.message_id;
+      if (deployerUserId) GE.guessJoin(game, deployerUserId, deployerName);
+      this.guessEliminationGames.set(chatId, game);
+      await this.paintGuessEliminationBoard(game);
+      return;
+    }
+    if (isChessCard) {
+      const game = CH.createChessLobby(chatId, message.chat.title || 'المحادثة');
+      game.messageId = message.message_id;
+      if (deployerUserId) CH.chessJoin(game, deployerUserId, deployerName);
+      this.chessGames.set(chatId, game);
+      await this.paintChessBoard(game);
+      return;
+    }
 
     // ── 🏆 البطولات والدوريات الإقصائية ──
     if (isTrnCard) {
@@ -4040,6 +4218,12 @@ export class TelegramBotManager {
         if (d < earliest) earliest = d;
       }
     }
+    for (const game of this.games.values()) {
+      if (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') continue;
+      const deadline = game.turnDeadline ?? (game.turnDeadline = now + CODENAMES_TURN_MS);
+      const nextRefresh = (game.lastCountdownAt ?? now) + 3000;
+      if (Math.min(deadline, nextRefresh) < earliest) earliest = Math.min(deadline, nextRefresh);
+    }
     for (const mf of this.mafiaGames.values()) {
       if ((mf.status === 'night' || mf.status === 'day') && mf.phaseDeadline !== undefined) {
         if (mf.phaseDeadline < earliest) earliest = mf.phaseDeadline;
@@ -4177,6 +4361,38 @@ export class TelegramBotManager {
   /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد 15 ثانية أو بعد شاشة النتيجة القصيرة) */
   public async processQuizTimers(): Promise<void> {
     const now = Date.now();
+
+    // ⏱️ كود نيمز: تحديث العدّ كل 3 ثوانٍ، وتمرير الدور تلقائياً بعد دقيقتين.
+    for (const game of Array.from(this.games.values())) {
+      if (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') continue;
+      if (game.turnDeadline === undefined) game.turnDeadline = now + CODENAMES_TURN_MS;
+
+      if (now >= game.turnDeadline) {
+        const timedOutTeam = game.currentTurn;
+        const timedOutSpy = game.players.find(p => p.team === timedOutTeam && p.role === 'spymaster');
+        if (timedOutSpy) {
+          this.awaitingClueWord.delete(String(timedOutSpy.id));
+          this.pendingClueWord.delete(String(timedOutSpy.id));
+        }
+        const timeout = CodenamesEngine.timeoutTurn(game, now);
+        if (timeout.success) {
+          this.games.set(game.id, timeout.game);
+          const nextSpy = timeout.game.players.find(p => p.team === timeout.game.currentTurn && p.role === 'spymaster');
+          const event = `${timeout.message} لدى الجاسوس الجديد دقيقتان للتلميح.`;
+          await this.updateTelegramGameBoard(game.id, timeout.game, timeout.game.messageId, event);
+          if (nextSpy) await this.promptSpymasterForClue(timeout.game);
+        }
+        continue;
+      }
+
+      const refreshAt = (game.lastCountdownAt ?? 0) + 3000;
+      if (now >= refreshAt) {
+        game.lastCountdownAt = now;
+        this.games.set(game.id, game);
+        await this.updateTelegramGameBoard(game.id, game, game.messageId);
+      }
+    }
+
     for (const g of Array.from(this.gqGames.values())) {
       const roundExpired = g.status === 'playing' && g.roundDeadline !== undefined && now >= g.roundDeadline;
       const resultExpired = g.status === 'result' && g.resultDeadline !== undefined && now >= g.resultDeadline;
@@ -5112,8 +5328,8 @@ export class TelegramBotManager {
     const n = this.gameStatsNumbers();
     const backStats = [{ text: '🔙 رجوع للإحصائيات', callback_data: 'gstat:main' }];
 
-    if (section === 'cat:group' || section === 'cat:guess') {
-      const list = BOT_GAMES.filter(g => g.category === 'group');
+    if (section === 'cat:group' || section === 'cat:guess' || section === 'cat:arabic') {
+      const list = BOT_GAMES.filter(g => g.category === (section === 'cat:arabic' ? 'arabic' : 'group'));
       const kb: any[][] = [];
       for (let i = 0; i < list.length; i += 2) {
         const row: any[] = [{ text: `${list[i].emoji} ${list[i].title}`, callback_data: `gstat:f:${list[i].id}` }];
@@ -5137,6 +5353,9 @@ export class TelegramBotManager {
       : fromHub
         ? (() => {
             const gCard = findBotGame(gameId);
+            if (gCard && gCard.category === 'arabic') {
+              return [{ text: '🔙 رجوع للألعاب العربية', callback_data: 'gstat:cat:arabic' }];
+            }
             if (gCard && gCard.category === 'group') {
               return [{ text: '🔙 رجوع للجماعية', callback_data: 'gstat:cat:group' }];
             }
@@ -6004,7 +6223,11 @@ export class TelegramBotManager {
       if (game.ready) {
         // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات 8/16/32 | إيموجي) ──
         if (game.channel) {
-          if (game.id === 'guess_song') {
+          if (game.id === 'guess_elimination') {
+            keyboard.push([{ text: '⚽ لاعبو كرة القدم', switch_inline_query: 'ge football' }, { text: '🐾 الحيوانات', switch_inline_query: 'ge animals' }]);
+            keyboard.push([{ text: '🍉 الفواكه', switch_inline_query: 'ge fruits' }, { text: '🎲 مزيج عشوائي', switch_inline_query: 'ge mixed' }]);
+            keyboard.push([{ text: '🥭 أسماء مركّبة طريفة', switch_inline_query: 'ge mashup' }]);
+          } else if (game.id === 'guess_song') {
             keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', callback_data: 'hub:songpick' }]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
@@ -6096,7 +6319,8 @@ export class TelegramBotManager {
         { text: '🔥 ألعاب ثلاثية 3v3', callback_data: 'hub:team3' },
         { text: '🏰 ألعاب رباعية 4v4', callback_data: 'hub:team4' }
       ],
-      [{ text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' }]
+      [{ text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' }],
+      [{ text: '📚 ألعاب اللغة العربية الفصحى', callback_data: 'hub:arabic' }]
     ];
     // 💵 المتصدرون + خدمات أخرى، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
     keyboard.push([
@@ -8575,6 +8799,287 @@ export class TelegramBotManager {
     }
   }
 
+  private async paintStoryBoard(game: STORY.StoryGame, notice?: string) {
+    const botUser = await this.getBotUsername();
+    const kb: any[][] = [];
+    if (game.status === 'lobby') {
+      kb.push([{ text: '🙋 انضم', callback_data: `st:join:${game.chatId}` }]);
+      kb.push([{ text: '🚀 ابدأ', callback_data: `st:start:${game.chatId}` }]);
+      if (botUser) kb.push([{ text: '💬 افتح الخاص مع البوت', url: `https://t.me/${botUser}?start=st_${encodeURIComponent(game.chatId)}` }]);
+    } else if (game.status === 'voting') {
+      game.players.forEach((p, i) => kb.push([{ text: `🗳️ الموقف ${i + 1}`, callback_data: `st:vote:${game.chatId}:${i}` }]));
+    } else if (game.status === 'finished') {
+      kb.push([{ text: '🔄 جولة جديدة', callback_data: `st:new:${game.chatId}` }]);
+    }
+    let text = STORY.storyRender(game);
+    if (notice) text = `${notice}\n\n${text}`;
+    const rendered = await this.withBotFooter(text, true);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, rendered, kb, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, rendered, kb, 'MarkdownV2');
+    if (sent?.result?.message_id) game.messageId = sent.result.message_id;
+  }
+
+  private async handleStoryPrivateReady(dmChatId: string, sender: TelegramUser | undefined, originChatId: string) {
+    if (!sender) return;
+    const game = this.storyGames.get(originChatId);
+    const player = game?.players.find(p => p.id === String(sender.id));
+    if (!game || !player) {
+      await this.sendMessage(dmChatId, 'ما لكيت لعبة نشطة إنت مشارك بيها. ارجع للمجموعة وانضم أولاً.');
+      return;
+    }
+    player.dmReady = true;
+    player.dmChatId = dmChatId;
+    if (game.status === 'writing') {
+      const prompt = STORY.storyNextPrompt(game, player.id);
+      await this.sendMessage(dmChatId, prompt?.text || '✅ وصلني الخاص. انتظر اكتمال المرحلة الحالية.');
+    } else if (game.status === 'guessing') {
+      await this.sendDuoGuessPrompt(game, player);
+    } else if (game.status === 'voting') {
+      await this.sendMessage(dmChatId, '✅ تم فتح الخاص. صوّت في لوحة المجموعة على الموقف الذي تظنه كاذباً.');
+    } else {
+      await this.sendMessage(dmChatId, '✅ تم فتح الخاص. انتظر بدء الجولة من لوحة المجموعة.');
+    }
+    await this.paintStoryBoard(game);
+  }
+
+  private async sendDuoGuessPrompt(game: STORY.StoryGame, player: STORY.StoryPlayer) {
+    const other = game.players.find(p => p.id !== player.id);
+    if (!other || !player.dmChatId || game.status !== 'guessing') return;
+    const kb = other.statements.map((_, i) => [{ text: `الموقف ${i + 1} هو الكذبة؟`, callback_data: `st:guess:${game.chatId}:${i}` }]);
+    await this.sendMessage(player.dmChatId, '🔎 اختار أي موقف من موقفي خصمك مفبرك:', kb);
+  }
+
+  private async tryHandleStoryText(sender: TelegramUser, text: string): Promise<boolean> {
+    const uid = String(sender.id);
+    const game = Array.from(this.storyGames.values()).find(g => g.status === 'writing' && g.players.some(p => p.id === uid && (g.mode === 'group' ? p.statements.length < 1 : p.statements.length < 2)));
+    if (!game) return false;
+    const result = STORY.storySubmitStatement(game, uid, text);
+    const player = game.players.find(p => p.id === uid)!;
+    await this.sendMessage(player.dmChatId || uid, result.msg);
+    if (!result.ok) {
+      const prompt = STORY.storyNextPrompt(game, uid);
+      if (prompt) await this.sendMessage(player.dmChatId || uid, prompt.text);
+      return true;
+    }
+    if (result.phaseChanged && game.mode === 'duo') {
+      for (const p of game.players) await this.sendDuoGuessPrompt(game, p);
+      await this.paintStoryBoard(game);
+    } else if (result.phaseChanged) {
+      await this.paintStoryBoard(game);
+      for (const p of game.players) if (p.dmChatId) await this.sendMessage(p.dmChatId, '✅ اكتملت المواقف. ارجعوا للوحة المجموعة وصوّتوا لكشف الكاذب.');
+    } else {
+      const prompt = STORY.storyNextPrompt(game, uid);
+      if (prompt) await this.sendMessage(player.dmChatId || uid, prompt.text);
+      await this.paintStoryBoard(game);
+    }
+    return true;
+  }
+
+  private async handleStoryCallback(cb: TelegramCallbackQuery, data: string) {
+    const p = data.split(':');
+    const op = p[1];
+    const chatId = p[2] && p[2] !== 'auto' ? p[2] : String(cb.message?.chat.id || '');
+    const game = this.storyGames.get(chatId);
+    const uid = String(cb.from.id);
+    if (!game) { await this.answerCallbackQuery(cb.id, 'انتهت الجولة أو اللوحة قديمة.', true); return; }
+    if (cb.message?.message_id && !game.messageId) game.messageId = cb.message.message_id;
+    let response = 'تم';
+    let alert = false;
+    if (op === 'join') {
+      const r = STORY.storyJoin(game, uid, cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : ''));
+      response = r.msg; alert = !r.ok;
+    } else if (op === 'start') {
+      const ready = STORY.storyCanStart(game);
+      if (!ready.ok) { response = ready.msg; alert = true; }
+      else {
+        const missing = game.players.filter(x => !x.dmReady).map(x => x.name);
+        if (missing.length) { response = `افتحوا الخاص مع البوت أولاً: ${missing.join('، ')}`; alert = true; }
+        else {
+          const r = STORY.storyStart(game); response = r.msg; alert = !r.ok;
+          if (r.ok) {
+            for (const player of game.players) {
+              const prompt = STORY.storyNextPrompt(game, player.id);
+              if (prompt && player.dmChatId) await this.sendMessage(player.dmChatId, prompt.text);
+            }
+          }
+        }
+      }
+    } else if (op === 'vote') {
+      const index = parseInt(p[3] || '-1', 10);
+      const target = game.players[index];
+      const r = target ? STORY.storyVoteLiar(game, uid, target.id) : { ok: false, msg: 'اختيار غير صالح.', finished: false };
+      response = r.msg; alert = !r.ok;
+    } else if (op === 'guess') {
+      const index = parseInt(p[3] || '-1', 10);
+      const r = STORY.storyGuessDuo(game, uid, index);
+      response = r.msg; alert = !r.ok;
+    } else if (op === 'new') {
+      const fresh = STORY.createStoryGame(game.chatId, game.chatTitle, game.mode);
+      STORY.storyJoin(fresh, uid, cb.from.first_name);
+      if (game.messageId) fresh.messageId = game.messageId;
+      this.storyGames.set(chatId, fresh);
+      response = 'بدأت لوحة جديدة.';
+    }
+    await this.answerCallbackQuery(cb.id, response, alert);
+    await this.paintStoryBoard(this.storyGames.get(chatId) || game);
+    if (game.status === 'finished' && game.mode === 'duo') {
+      for (const player of game.players) if (player.dmChatId) await this.sendMessage(player.dmChatId, '🏁 اكتمل التخمينان؛ النتيجة نُشرت في لوحة المجموعة.');
+    }
+  }
+
+  private async paintGuessEliminationBoard(game: GE.GuessGame, notice?: string) {
+    const meta = GE.GUESS_CATEGORY_INFO[game.category];
+    const kb: any[][] = [];
+    if (game.status === 'lobby') {
+      kb.push([{ text: '🙋 انضم', callback_data: `ge:join:${game.chatId}` }, { text: '🚀 ابدأ', callback_data: `ge:start:${game.chatId}` }]);
+      const botUser = await this.getBotUsername();
+      if (botUser) kb.push([{ text: '💬 افتح الخاص مع البوت', url: `https://t.me/${botUser}?start=ge_${encodeURIComponent(game.chatId)}` }]);
+    }
+    const players = game.players.map(p => `• ${escapeMarkdownV2Text(p.name)}${p.dmReady ? ' ✅' : ' ⏳'}`).join('\n') || 'بانتظار اللاعبين';
+    let text = `🔎 *خمن واستبعد — ${meta.emoji} ${meta.label}*\n━━━━━━━━━━━━━━━━━━━\n👥 اللاعبون: ${game.players.length} من 2\n${players}`;
+    if (game.status === 'lobby') text += '\n\nينضم لاعبان، يفتحان الخاص ويختاران اسمين سريين مختلفين. بعدها تتناوبون بأسئلة نعم/لا واستبعادات.';
+    if (game.status === 'selecting') text += '\n\n🎭 اختاروا الاسم السري من الخاص؛ ما راح يظهر اختياركم للمنافس.';
+    if (game.status === 'playing') {
+      const active = game.players.find(p => p.id === game.activePlayerId);
+      text += `\n\n🎯 الدور: ${escapeMarkdownV2Text(active?.name || '—')}\n❓ الأسئلة المستعملة: ${game.usedQuestions.length}\nاستعمل زر «افتح الخاص» لإدارة الأسئلة والاستبعاد بسرية.`;
+    }
+    if (game.status === 'finished') text += `\n\n🏆 الفائز: ${escapeMarkdownV2Text(game.players.find(p => p.id === game.winnerId)?.name || '—')}`;
+    if (notice) text = `${notice}\n\n${text}`;
+    const sentText = await this.withBotFooter(text, true);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, sentText, kb, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, sentText, kb, 'MarkdownV2');
+    if (sent?.result?.message_id) game.messageId = sent.result.message_id;
+  }
+
+  private async handleGuessPrivateReady(dmChatId: string, sender: TelegramUser | undefined, originChatId: string) {
+    if (!sender) return;
+    const game = this.guessEliminationGames.get(originChatId);
+    const player = game?.players.find(p => p.id === String(sender.id));
+    if (!game || !player) { await this.sendMessage(dmChatId, 'انضم إلى تحدي خمن واستبعد في المجموعة أولاً.'); return; }
+    player.dmReady = true; player.dmChatId = dmChatId;
+    if (game.status === 'selecting' && !player.secretId) await this.sendGuessSecretPicker(game, player);
+    else if (game.status === 'playing') await this.sendGuessTurn(game, player);
+    else await this.sendMessage(dmChatId, '✅ تم فتح الخاص. انتظر بدء التحدي من لوحة المجموعة.');
+    await this.paintGuessEliminationBoard(game);
+  }
+
+  private async sendGuessSecretPicker(game: GE.GuessGame, player: GE.GuessPlayer) {
+    const items = GE.guessGameItems(game);
+    const kb: any[][] = [];
+    for (let i = 0; i < items.length; i += 2) {
+      const row = [{ text: items[i].name, callback_data: `ge:secret:${game.chatId}:${items[i].id}` }];
+      if (items[i + 1]) row.push({ text: items[i + 1].name, callback_data: `ge:secret:${game.chatId}:${items[i + 1].id}` });
+      kb.push(row);
+    }
+    await this.sendMessage(player.dmChatId || player.id, '🎭 اختار اسماً سرياً. لا تختار نفس اسم خصمك؛ الاختيار يبقى مخفياً عنه.', kb);
+  }
+
+  private async sendGuessTurn(game: GE.GuessGame, player: GE.GuessPlayer, notice?: string) {
+    const active = game.activePlayerId === player.id;
+    const opponent = game.players.find(p => p.id !== player.id);
+    if (game.status === 'finished') {
+      await this.sendMessage(player.dmChatId || player.id, `🏁 انتهى التحدي. الشخصية التي اخترتها: ${GE.guessGameItems(game).find(x => x.id === player.secretId)?.name || '—'}\nالفائز: ${game.players.find(p => p.id === game.winnerId)?.name || '—'}`);
+      return;
+    }
+    if (!active) {
+      await this.sendMessage(player.dmChatId || player.id, `⏳ دور ${opponent?.name || 'خصمك'} الآن. انتظر نتيجته.`);
+      return;
+    }
+    const remaining = GE.guessRemainingItems(game, player.id);
+    const kb: any[][] = [];
+    for (const q of GE.guessQuestions(game)) kb.push([{ text: `❓ ${q.label}`, callback_data: `ge:q:${game.chatId}:${q.id}` }]);
+    if (player.canGuess) {
+      for (let i = 0; i < remaining.length; i += 2) {
+        const row = [{ text: `🎯 ${remaining[i].name}`, callback_data: `ge:pick:${game.chatId}:${remaining[i].id}` }];
+        if (remaining[i + 1]) row.push({ text: `🎯 ${remaining[i + 1].name}`, callback_data: `ge:pick:${game.chatId}:${remaining[i + 1].id}` });
+        kb.push(row);
+      }
+      kb.push([{ text: '⏭️ مرر الدور', callback_data: `ge:pass:${game.chatId}` }]);
+    }
+    const msg = `${notice ? `${escapeMarkdownV2Text(notice)}\n\n` : ''}🔎 *دورك! السؤال غير المكرر التالي أو خمن من المرشحين*\nباقي ${remaining.length} مرشحاً${player.canGuess ? '' : ' — اسأل أولاً'}\nاختيارك السري: ${GE.guessGameItems(game).find(x => x.id === player.secretId)?.name || '—'}`;
+    await this.sendMessage(player.dmChatId || player.id, msg, kb, 'MarkdownV2');
+  }
+
+  private async handleGuessEliminationCallback(cb: TelegramCallbackQuery, data: string) {
+    const p = data.split(':'); const op = p[1]; const chatId = p[2] && p[2] !== 'auto' ? p[2] : String(cb.message?.chat.id || '');
+    const game = this.guessEliminationGames.get(chatId); const uid = String(cb.from.id);
+    if (!game) { await this.answerCallbackQuery(cb.id, 'انتهى التحدي أو اللوحة قديمة.', true); return; }
+    if (cb.message?.message_id && cb.message.chat.type !== 'private' && !game.messageId) game.messageId = cb.message.message_id;
+    let r: { ok: boolean; msg: string; finished?: boolean; started?: boolean; remaining?: number } = { ok: true, msg: 'تم' };
+    if (op === 'join') r = GE.guessJoin(game, uid, cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : ''));
+    else if (op === 'start') {
+      const missing = game.players.filter(x => !x.dmReady).map(x => x.name);
+      if (missing.length) r = { ok: false, msg: `افتحوا الخاص أولاً: ${missing.join('، ')}` };
+      else r = GE.guessStart(game);
+      if (r.ok) for (const player of game.players) await this.sendGuessSecretPicker(game, player);
+    } else {
+      const player = game.players.find(x => x.id === uid);
+      if (!player) r = { ok: false, msg: 'أنت مو مشارك بهالتحدي.' };
+      else if (op === 'secret') {
+        r = GE.guessSelectSecret(game, uid, p[3] || '');
+        if (r.ok && r.started) for (const pl of game.players) await this.sendGuessTurn(game, pl);
+      } else if (op === 'q') {
+        r = GE.guessAsk(game, uid, p[3] || '');
+        if (r.ok && r.finished) {
+          for (const pl of game.players) await this.sendGuessTurn(game, pl, r.msg);
+        } else if (r.ok) {
+          await this.sendMessage(player.dmChatId || uid, `${r.msg}\nباقي ${r.remaining} مرشحاً.`);
+          await this.sendGuessTurn(game, player);
+        }
+      } else if (op === 'pick') {
+        r = GE.guessMakeGuess(game, uid, p[3] || '');
+        if (r.ok) for (const pl of game.players) await this.sendGuessTurn(game, pl, r.msg);
+      } else if (op === 'pass') {
+        r = GE.guessPass(game, uid);
+        if (r.ok) for (const pl of game.players) await this.sendGuessTurn(game, pl, pl.id === uid ? r.msg : undefined);
+      }
+    }
+    await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+    await this.paintGuessEliminationBoard(game);
+  }
+
+  private async paintChessBoard(game: CH.ChessGame, notice?: string) {
+    let kb: any[][];
+    if (game.status === 'lobby') kb = [
+      [{ text: '🙋 انضم للأبيض/الأسود', callback_data: `ch:join:${game.chatId}` }],
+      [{ text: '🚀 ابدأ المباراة', callback_data: `ch:start:${game.chatId}` }]
+    ];
+    else kb = CH.chessBoardKeyboard(game);
+    const text = await this.withBotFooter(`${notice ? `${notice}\n\n` : ''}${CH.renderChess(game)}`, true);
+    if (game.messageId) {
+      const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
+      if (res?.ok || String(res?.description || '').includes('not modified')) return;
+    }
+    const sent = await this.sendMessage(game.chatId, text, kb, 'MarkdownV2');
+    if (sent?.result?.message_id) game.messageId = sent.result.message_id;
+  }
+
+  private async handleChessCallback(cb: TelegramCallbackQuery, data: string) {
+    const p = data.split(':'); const op = p[1]; const chatId = p[2] && p[2] !== 'auto' ? p[2] : String(cb.message?.chat.id || '');
+    let game = this.chessGames.get(chatId); const uid = String(cb.from.id);
+    if (op === 'new') {
+      const fresh = CH.createChessLobby(chatId, cb.message?.chat.title || 'المحادثة');
+      CH.chessJoin(fresh, uid, cb.from.first_name); if (game?.messageId) fresh.messageId = game.messageId;
+      this.chessGames.set(chatId, fresh); await this.answerCallbackQuery(cb.id, 'بدأت لوحة جديدة.'); await this.paintChessBoard(fresh); return;
+    }
+    if (!game) { await this.answerCallbackQuery(cb.id, 'انتهت المباراة أو اللوحة قديمة.', true); return; }
+    if (cb.message?.message_id && !game.messageId) game.messageId = cb.message.message_id;
+    let r: { ok: boolean; msg: string; moved?: boolean };
+    if (op === 'join') r = CH.chessJoin(game, uid, cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : ''));
+    else if (op === 'start') r = CH.chessStart(game);
+    else if (op === 'sq') r = CH.chessSelect(game, uid, p[3] || '');
+    else if (op === 'resign') r = CH.chessResign(game, uid);
+    else r = { ok: false, msg: 'زر غير معروف.' };
+    await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+    if (r.ok) await this.paintChessBoard(game);
+  }
+
   private findActiveWKForUser(userId: string): WK.WKGame | undefined {
     for (const g of this.wkGames.values()) {
       if ((g.status === 'answering' || g.status === 'guessing') && g.players.some(p => p.id === userId)) {
@@ -9420,7 +9925,10 @@ export class TelegramBotManager {
    */
   private async updateTelegramGameBoard(chatId: string, game: CodenamesGame, messageId?: number, lastEvent?: string) {
     const msgId = messageId || game.messageId;
-    const text = GG.toV2(await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game, lastEvent), true));
+    if (lastEvent) game.lastEvent = lastEvent;
+    this.games.set(chatId, game);
+    this.scheduleLocalQuizTimer();
+    const text = GG.toV2(await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game, game.lastEvent), true));
     const keyboard = await this.buildKeyboard(game);
 
     // لوحة أصلها إنلاين وما عدنا رقم الرسالة بالمحادثة؟ نعدّلها بمعرّف الإنلاين
