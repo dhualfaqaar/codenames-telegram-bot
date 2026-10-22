@@ -35,8 +35,6 @@ import {
 import { ODD_WORD_PUZZLES } from './oddWordEngine';
 import {
   ISLAMIC_QUESTIONS,
-  IRAQI_HERITAGE,
-  FOOTBALL_DEEP,
   SCIENCE_SPACE,
   ANIMALS_NATURE,
   DIALECTS_MEANINGS,
@@ -53,7 +51,6 @@ import {
   SERIES_EMOJI,
   COUNTRY_EMOJI,
   FOOD_EMOJI,
-  PLAYER_EMOJI,
   SONG_EMOJI,
   NOVEL_EMOJI,
   LANDMARK_EMOJI,
@@ -84,12 +81,10 @@ export type QuizKind =
   | 'song_ar'
   | 'song_en'
   | 'islamic'
-  | 'heritage'
   | 'science'
   | 'animals'
   | 'dialects'
   | 'cars'
-  | 'fbquiz'
   | 'arabic_vocab'
   | 'arabic_synonyms'
   | 'arabic_antonyms'
@@ -104,7 +99,6 @@ export type QuizKind =
   | 'series_emoji'
   | 'country_emoji'
   | 'food_emoji'
-  | 'player_emoji'
   | 'song_emoji'
   | 'novel_emoji'
   | 'landmark_emoji'
@@ -117,7 +111,6 @@ export const EMOJI_VARIANT_OF: Partial<Record<QuizKind, QuizKind>> = {
   series: 'series_emoji',
   country: 'country_emoji',
   food: 'food_emoji',
-  player: 'player_emoji',
   song_ar: 'song_emoji',
   song_en: 'song_emoji',
   novel: 'novel_emoji',
@@ -222,11 +215,7 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     title: 'أسئلة دينية',
     intro: 'أسئلة دينية عن القرآن والأنبياء والصحابة والسيرة النبوية 🕌'
   },
-  heritage: {
-    emoji: '🏺',
-    title: 'التراث العراقي والعربي',
-    intro: 'أمثال ومعالم وأسواق وأكلات ومهن من التراث العراقي والعربي 🏺'
-  },
+
   science: {
     emoji: '🔬',
     title: 'علوم',
@@ -247,11 +236,7 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     title: 'السيارات',
     intro: 'شاهد صورة السيارة واختر طرازها الصحيح من أربعة خيارات 🚘'
   },
-  fbquiz: {
-    emoji: '🏆',
-    title: 'كرة قدم عالمية وعراقية',
-    intro: 'أسود الرافدين وكأس العالم ودوري الأبطال وأساطير الكرة 🏆'
-  },
+
   arabic_vocab: {
     emoji: '📖',
     title: 'مفردات عربية فصيحة',
@@ -322,11 +307,7 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     title: 'الأكلات — نظام الإيموجي 😀',
     intro: 'شوف الإيموجيات المعبّرة واعرف الأكلة المقصودة بسرعة 🍲😀'
   },
-  player_emoji: {
-    emoji: '⚽',
-    title: 'احزر اللاعب — نظام الإيموجي 😀',
-    intro: 'شوف الإيموجيات المعبّرة واعرف اللاعب المقصود بسرعة ⚽😀'
-  },
+
   song_emoji: {
     emoji: '🎵',
     title: 'احزر الأغنية — نظام الإيموجي 😀',
@@ -354,9 +335,9 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   }
 };
 
-/** كل مسابقات الاختيارات تستخدم نظام السرعة: أول إجابة صحيحة وحدها تكسب نقطة الجولة. */
-export function isSpeedQuiz(_game: QuizGame | { kind: QuizKind }): boolean {
-  return true;
+/** يحدد ما إذا كانت الجولة تستخدم نظام السرعة: أول إجابة صحيحة وحدها تكسب نقطة الجولة. */
+export function isSpeedQuiz(game: QuizGame | { kind: QuizKind; speedMode?: boolean }): boolean {
+  return Boolean(game.speedMode);
 }
 
 /** يولّد مسائل حسابية عشوائية متنوّعة (جمع، طرح، ضرب، قسمة صحيحة، وتربيع) مع 3 إجابات غلط قريبة */
@@ -509,6 +490,8 @@ export interface QuizGame {
   /** معرّف رسالة الإنلاين (تيليجرام يلقّص الأزرار منها بدون محادثة — نحتاجه للتعديل) */
   inlineMessageId?: string;
   kind: QuizKind;
+  /** نظام السرعة: نقطة واحدة لأول إجابة صحيحة في كل جولة. */
+  speedMode?: boolean;
   status: 'lobby' | 'playing' | 'result' | 'game_over';
   players: QuizPlayer[];
   round: number;
@@ -573,12 +556,10 @@ function packFor(kind: QuizKind): string[][] {
     case 'song_ar': return SONGS_AR;
     case 'song_en': return SONGS_EN;
     case 'islamic': return ISLAMIC_QUESTIONS;
-    case 'heritage': return IRAQI_HERITAGE;
     case 'science': return SCIENCE_SPACE;
     case 'animals': return ANIMALS_NATURE;
     case 'dialects': return DIALECTS_MEANINGS;
     case 'cars': return CAR_PHOTO_QUIZ;
-    case 'fbquiz': return FOOTBALL_DEEP;
     case 'arabic_vocab': return ARABIC_VOCABULARY;
     case 'arabic_synonyms': return ARABIC_SYNONYMS;
     case 'arabic_antonyms': return ARABIC_ANTONYMS;
@@ -593,7 +574,6 @@ function packFor(kind: QuizKind): string[][] {
     case 'series_emoji': return SERIES_EMOJI;
     case 'country_emoji': return COUNTRY_EMOJI;
     case 'food_emoji': return FOOD_EMOJI;
-    case 'player_emoji': return PLAYER_EMOJI;
     case 'song_emoji': return SONG_EMOJI;
     case 'novel_emoji': return NOVEL_EMOJI;
     case 'landmark_emoji': return LANDMARK_EMOJI;
@@ -676,12 +656,13 @@ function pickFreshDeck(chatId: string, kind: QuizKind): string[][] {
   return picked;
 }
 
-export function createQuiz(chatId: string, chatName: string, kind: QuizKind): QuizGame {
+export function createQuiz(chatId: string, chatName: string, kind: QuizKind, speedMode = false): QuizGame {
   const deck = pickFreshDeck(chatId, kind);
   return {
     chatId,
     chatName,
     kind,
+    speedMode,
     status: 'lobby',
     players: [],
     round: 1,
@@ -848,9 +829,10 @@ export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
 export function renderQuiz(game: QuizGame): string {
   const meta = QUIZ_KINDS[game.kind];
   const SEP = '━━━━━━━━━━━━━━━━━━━';
+  const modeLabel = game.speedMode ? ' ⚡ السرعة' : '';
 
   if (game.status === 'lobby') {
-    const lines = [`${meta.emoji} *${meta.title}*`, ''];
+    const lines = [`${meta.emoji} *${meta.title}${modeLabel}*`, ''];
     lines.push(`👥 *اللاعبين \\(${game.players.length}/${MAX_PLAYERS}\\):*`);
     if (!game.players.length) {
       lines.push(`_ماكو أحد بعد_`);
@@ -863,7 +845,7 @@ export function renderQuiz(game: QuizGame): string {
   if (game.status === 'game_over') {
     const sorted = game.players.slice().sort((a, b) => b.score - a.score);
     const winner = sorted[0];
-    const lines = [`${meta.emoji} *${meta.title}*`, `🏁 *خلصت اللعبة\\!*`];
+    const lines = [`${meta.emoji} *${meta.title}${modeLabel}*`, `🏁 *خلصت اللعبة\\!*`];
     if (winner && winner.score > 0) {
       lines.push('');
       lines.push(`🏆 *الفائز:*`);
@@ -876,7 +858,7 @@ export function renderQuiz(game: QuizGame): string {
   }
 
   // playing / result
-  const lines = [`${meta.emoji} *${meta.title}* • الجولة *${game.round}* من *${game.totalRounds}*`];
+  const lines = [`${meta.emoji} *${meta.title}${modeLabel}* • الجولة *${game.round}* من *${game.totalRounds}*`];
 
   if (game.status === 'result' && game.lastLine) {
     lines.push(game.lastLine);
@@ -885,7 +867,9 @@ export function renderQuiz(game: QuizGame): string {
   if (game.status === 'playing') {
     lines.push('');
     lines.push(`❓ *${md(game.deck[game.qIndex][0])}*`);
-    lines.push(`⚡ _أول إجابة صحيحة فقط تكسب نقطة الجولة\\!_`);
+    lines.push(isSpeedQuiz(game)
+      ? `⚡ _أول إجابة صحيحة فقط تكسب نقطة الجولة\\!_`
+      : `✅ كل لاعب يجيب إجابة صحيحة يحصل على نقطة`);
   }
 
   lines.push(SEP);
@@ -903,11 +887,12 @@ export function renderQuiz(game: QuizGame): string {
 /** لوحة الأزرار أثناء اللعب — 4 خيارات (2×2) */
 export function quizKeyboard(game: QuizGame): any[][] {
   const chatId = game.chatId;
+  const mode = game.speedMode ? 'speed' : 'normal';
 
   if (game.status === 'lobby') {
     return [
-      [{ text: 'انضم', callback_data: `gqj:${game.kind}:${chatId}` }],
-      [{ text: '🎮 ابدأ اللعبة', callback_data: `gqs:${game.kind}:${chatId}` }]
+      [{ text: 'انضم', callback_data: `gqj:${game.kind}:${mode}:${chatId}` }],
+      [{ text: '🎮 ابدأ اللعبة', callback_data: `gqs:${game.kind}:${mode}:${chatId}` }]
     ];
   }
 
@@ -915,18 +900,18 @@ export function quizKeyboard(game: QuizGame): any[][] {
     const kb: any[][] = [];
     const opts = game.options;
     for (let i = 0; i < opts.length; i += 2) {
-      const row: any[] = [{ text: cut(opts[i], 30), callback_data: `gqa:${i}:${game.kind}:${chatId}` }];
-      if (opts[i + 1] !== undefined) row.push({ text: cut(opts[i + 1], 30), callback_data: `gqa:${i + 1}:${game.kind}:${chatId}` });
+      const row: any[] = [{ text: cut(opts[i], 30), callback_data: `gqa:${i}:${game.kind}:${mode}:${chatId}` }];
+      if (opts[i + 1] !== undefined) row.push({ text: cut(opts[i + 1], 30), callback_data: `gqa:${i + 1}:${game.kind}:${mode}:${chatId}` });
       kb.push(row);
     }
     return kb;
   }
 
   if (game.status === 'result') {
-    return [[{ text: '⏳ الجولة الجاية…', callback_data: `gqv:${game.kind}:${chatId}` }]];
+    return [[{ text: '⏳ الجولة الجاية…', callback_data: `gqv:${game.kind}:${mode}:${chatId}` }]];
   }
 
-  return [[{ text: '🔄 لعبة جديدة', callback_data: `gqn:${game.kind}:${chatId}` }]];
+  return [[{ text: '🔄 لعبة جديدة', callback_data: `gqn:${game.kind}:${mode}:${chatId}` }]];
 }
 
 function cut(s: string, n: number): string {

@@ -158,7 +158,7 @@ interface BotGameCard {
   id: string;
   emoji: string;
   title: string;
-  category: 'duo' | 'team' | 'team3' | 'team4' | 'group' | 'arabic';
+  category: 'duo' | 'team' | 'team3' | 'team4' | 'group';
   /** كم لاعب */
   players: string;
   /** وين تنلعب */
@@ -250,8 +250,8 @@ const BOT_GAMES: BotGameCard[] = [
   // ─────────────── ⚔️ ألعاب الفرق (2 ضد 2) ───────────────
   {
     id: 'codenames',
-    emoji: '🎮',
-    title: 'كود نيمز (Codenames)',
+    emoji: '🕵️',
+    title: 'كود نيمز',
     category: 'team',
     players: '4 لاعبين — فريقان (جاسوس 🕵️ + عميل 👤 لكل فريق)',
     where: 'في القناة أو المجموعة',
@@ -293,20 +293,6 @@ const BOT_GAMES: BotGameCard[] = [
       'تُعرض معلومات وتلميحات عن نجم كرة قدم عربي أو عالمي مع أربعة أسماء، وعليك معرفة اللاعب المقصود.',
     channel: true,
     inline: 'gq player',
-    ready: true
-  },
-  {
-    id: 'football_emoji_group',
-    emoji: '⚽',
-    title: 'احزر اللاعب بالإيموجي',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'معرفة نجم كرة القدم من الإيموجيات قبل بقية اللاعبين',
-    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
-    about: 'تتحول التلميحات عن لاعب كرة القدم إلى إيموجيات، وأسرع لاعب يعرف النجم الصحيح يحصد النقطة.',
-    channel: true,
-    inline: 'gq player_emoji',
     ready: true
   },
   {
@@ -578,20 +564,6 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
-    id: 'fast_heritage',
-    emoji: '🏺',
-    title: 'التراث العراقي والعربي',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'معرفة الأمثال والأسواق والأكلات والحرف التراثية',
-    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
-    about: 'أسئلة مستقلة عن التراث العراقي والعربي: أمثال شعبية وأسواق وأكلات ومراكب وعمارة قديمة.',
-    channel: true,
-    inline: 'gq heritage',
-    ready: true
-  },
-  {
     id: 'fast_science',
     emoji: '🔬',
     title: 'علوم',
@@ -645,20 +617,6 @@ const BOT_GAMES: BotGameCard[] = [
     about: 'يعرض البوت صورة سيارة حقيقية وأربعة طرازات للاختيار؛ أول إجابة صحيحة تحصد نقطة الجولة.',
     channel: true,
     inline: 'gq cars',
-    ready: true
-  },
-  {
-    id: 'fast_football_quiz',
-    emoji: '🏆',
-    title: 'كرة قدم عالمية وعراقية',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'اختبار المعرفة الكروية العراقية والعالمية',
-    reward: 'نقطة لأول إجابة صحيحة في كل جولة',
-    about: 'أسئلة كروية تشمل أسود الرافدين وكأس العالم ودوري الأبطال وأساطير الكرة؛ أول إجابة صحيحة تحسم نقطة الجولة.',
-    channel: true,
-    inline: 'gq fbquiz',
     ready: true
   },
   {
@@ -733,7 +691,7 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
-    id: 'arabic_vocab', emoji: '📖', title: 'مفردات عربية فصيحة', category: 'arabic',
+    id: 'arabic_vocab', emoji: '📖', title: 'مفردات عربية فصيحة', category: 'group',
     players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
     goal: 'اكتشاف معنى المفردة الفصيحة من أربعة خيارات',
     reward: 'نقطة لأول إجابة صحيحة في كل جولة',
@@ -741,28 +699,28 @@ const BOT_GAMES: BotGameCard[] = [
     channel: true, inline: 'gq arabic_vocab', ready: true
   },
   {
-    id: 'arabic_synonyms', emoji: '🪶', title: 'مرادفات عربية', category: 'arabic',
+    id: 'arabic_synonyms', emoji: '🪶', title: 'مرادفات عربية', category: 'group',
     players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
     goal: 'اختيار مرادف الكلمة الفصيحة', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about: 'تحدي مرادفات فصيحة بأربعة خيارات عربية خالصة.',
     channel: true, inline: 'gq arabic_synonyms', ready: true
   },
   {
-    id: 'arabic_antonyms', emoji: '↔️', title: 'أضداد عربية', category: 'arabic',
+    id: 'arabic_antonyms', emoji: '↔️', title: 'أضداد عربية', category: 'group',
     players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
     goal: 'اختيار ضدّ المفردة الفصيحة', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about: 'جولات لاختيار الأضداد الصحيحة باللغة العربية الفصحى.',
     channel: true, inline: 'gq arabic_antonyms', ready: true
   },
   {
-    id: 'arabic_plurals', emoji: '🔤', title: 'مفرد وجمع', category: 'arabic',
+    id: 'arabic_plurals', emoji: '🔤', title: 'مفرد وجمع', category: 'group',
     players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
     goal: 'اختيار الجمع الفصيح الصحيح', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about: 'اختبر معرفتك بجمع التكسير وجموع العربية الفصيحة.',
     channel: true, inline: 'gq arabic_plurals', ready: true
   },
   {
-    id: 'arabic_grammar', emoji: '✍️', title: 'قواعد ونحو', category: 'arabic',
+    id: 'arabic_grammar', emoji: '✍️', title: 'قواعد ونحو', category: 'group',
     players: 'من لاعبين إلى 10 لاعبين', where: 'في القناة أو المجموعة',
     goal: 'الإجابة عن أسئلة النحو والصرف والإعراب', reward: 'نقطة لأول إجابة صحيحة في كل جولة',
     about: 'أسئلة عربية فصيحة في قواعد اللغة والنحو والصرف والإعراب.',
@@ -824,13 +782,20 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
     emoji: '🎉',
     title: 'الألعاب الجماعية',
     intro: 'ألعاب جماعية في القناة أو المجموعة، وعدد اللاعبين يختلف حسب اللعبة.'
-  },
-  arabic: {
-    emoji: '📚',
-    title: 'ألعاب اللغة العربية',
-    intro: 'تحديات باللغة العربية الفصحى فقط: مفردات ومرادفات وأضداد ونحو.'
   }
 };
+
+/** ترتيب ألعاب الجماعية حسب تقارب طريقة اللعب والموضوع. */
+const GROUP_GAME_ORDER = [
+  'mafia', 'out_of_loop', 'truth_lies_group',
+  'geography_quiz', 'gq_country', 'gq_flags', 'gq_capitals', 'gq_continents',
+  'history_quiz', 'fast_islamic', 'poet',
+  'guess_player', 'guess_song', 'gq_movie', 'gq_series', 'guess_novel', 'guess_landmark',
+  'math', 'gq_number', 'trivia_battle', 'general_quiz', 'odd_word',
+  'fast_science', 'fast_animals', 'guess_creature',
+  'fast_dialects', 'arabic_vocab', 'arabic_synonyms', 'arabic_antonyms', 'arabic_plurals', 'arabic_grammar',
+  'gq_food', 'fast_brands', 'fast_tf', 'fast_emoji_math'
+];
 
 /** رقم اللعبة بمعرّفها */
 function findBotGame(id: string): BotGameCard | undefined {
@@ -1198,17 +1163,20 @@ export class TelegramBotManager {
     poet: 'poet',
     guess_player: 'player',
     fast_islamic: 'islamic',
-    fast_heritage: 'heritage',
     fast_science: 'science',
     fast_animals: 'animals',
     fast_dialects: 'dialects',
     fast_brands: 'cars',
-    fast_football_quiz: 'fbquiz',
     fast_tf: 'tf',
     fast_emoji_math: 'emath',
     guess_novel: 'novel',
     guess_landmark: 'landmark',
-    guess_creature: 'creature'
+    guess_creature: 'creature',
+    arabic_vocab: 'arabic_vocab',
+    arabic_synonyms: 'arabic_synonyms',
+    arabic_antonyms: 'arabic_antonyms',
+    arabic_plurals: 'arabic_plurals',
+    arabic_grammar: 'arabic_grammar'
   };
 
   private userGqStat(u: BotUserRecord, kind: GG.QuizKind): { games: number; wins: number; points: number } {
@@ -3405,9 +3373,9 @@ export class TelegramBotManager {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🎯 اختار كم راوند تلعبون بالقناة:`,
       keyboard: [
-        [{ text: '🎮 بالقناة — 5 راوندات', switch_inline_query: 'rps 5' }],
-        [{ text: '🎮 بالقناة — 10 راوندات', switch_inline_query: 'rps 10' }],
-        [{ text: '🎮 بالقناة — 15 راوندات', switch_inline_query: 'rps 15' }],
+        [{ text: 'العب — 5 جولات', switch_inline_query: 'rps 5' }],
+        [{ text: 'العب — 10 جولات', switch_inline_query: 'rps 10' }],
+        [{ text: 'العب — 15 جولة', switch_inline_query: 'rps 15' }],
         [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
       ]
     });
@@ -3500,10 +3468,10 @@ export class TelegramBotManager {
     }
     const hidden = encodeHiddenTag(`cn${uid}`);
     return {
-      title: '🎮 كود نيمز (2 ضد 2)',
+      title: '🕵️ كود نيمز',
       desc: 'اضغط لإرسال اللعبة مباشرة للقناة',
       text:
-        `🕵️‍♂️ *لعبة كود نيمز (Codenames)* 🕵️‍♀️${hidden}\n` +
+        `🕵️‍♂️ *كود نيمز* 🕵️‍♀️${hidden}\n` +
         `${SEP}\n` +
         `👥 *المنضمون:* بانتظار اختيار الفرق`,
       keyboard: [
@@ -3565,22 +3533,23 @@ export class TelegramBotManager {
   }
 
   /** بطاقة لعبة جماعية نظيفة 100٪ بدون أي كود ظاهر أو نص تحضير */
-  private gqCard(kind: string, deployerId?: string): any {
+  private gqCard(kind: string, deployerId?: string, speedMode = false): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     const uid = deployerId ? `|${deployerId}` : '';
     const k: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
       ? (kind as GG.QuizKind)
       : 'general';
     const meta = GG.QUIZ_KINDS[k];
-    const title = `${meta.emoji} ${meta.title}`;
-    const hidden = encodeHiddenTag(`gq:${k}${uid}`);
+    const modeTitle = speedMode ? ' ⚡ السرعة' : '';
+    const title = `${meta.emoji} ${meta.title}${modeTitle}`;
+    const hidden = encodeHiddenTag(`gq:${k}${speedMode ? ':speed' : ''}${uid}`);
     return {
       type: 'article',
-      id: `gq:${k}`,
+      id: `gq:${k}:${speedMode ? 'speed' : 'normal'}`,
       title,
-      description: 'اضغط لإرسال اللعبة مباشرة للقناة',
+      description: speedMode ? 'نقطة الجولة لأول إجابة صحيحة' : 'كل إجابة صحيحة تمنح صاحبها نقطة',
       input_message_content: {
-        message_text: `${meta.emoji} *${meta.title}*${hidden}\n${SEP}\n👥 *المنضمون:* بانتظار اللاعبين`,
+        message_text: `${meta.emoji} *${meta.title}*${hidden}\n${SEP}\n${speedMode ? '⚡ *نظام السرعة:* نقطة واحدة لأول إجابة صحيحة.' : '🎯 *النظام العادي:* نقطة لكل لاعب يجيب إجابة صحيحة.'}\n👥 *المنضمون:* بانتظار اللاعبين`,
         parse_mode: 'Markdown'
       },
       reply_markup: {
@@ -3775,8 +3744,10 @@ export class TelegramBotManager {
 
     // ── 🎉 الألعاب الجماعية وألعاب خمّن ──
     if (q.startsWith('gq')) {
-      const kind = q.replace(/^gq\s*/, '').trim() || 'general';
-      const card = this.gqCard(kind, deployerId);
+      const parts = q.replace(/^gq\s*/, '').trim().split(/\s+/).filter(Boolean);
+      const speedMode = parts[0] === 'speed';
+      const kind = (speedMode ? parts.slice(1) : parts).join(' ') || 'general';
+      const card = this.gqCard(kind, deployerId, speedMode);
       await this.answerInlineQuery(iq.id, [card]);
       return;
     }
@@ -3895,11 +3866,13 @@ export class TelegramBotManager {
 
     const isTrnCard = hiddenTag.startsWith('trn:');
 
-    let gqMark: string[] | null = !isTrnCard && hiddenTag.startsWith('gq:')
-      ? [hiddenTag, hiddenTag.slice(3)]
-      : !isTrnCard
-        ? text.match(/gq:(\w+)/)
-        : null;
+    let gqMark: string[] | null = null;
+    if (!isTrnCard && hiddenTag.startsWith('gq:')) {
+      const [kind, mode] = hiddenTag.slice(3).split(':');
+      gqMark = [hiddenTag, kind, mode || 'normal'];
+    } else if (!isTrnCard) {
+      gqMark = text.match(/gq:(\w+)(?::(speed|normal))?/);
+    }
     if (!isTrnCard && !gqMark) {
       for (const k of Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]) {
         if (text.includes(GG.QUIZ_KINDS[k].title)) {
@@ -4106,7 +4079,8 @@ export class TelegramBotManager {
       const kind2: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
         ? (kind as GG.QuizKind)
         : 'general';
-      const game = GG.createQuiz(chatId, message.chat.title || 'المحادثة', kind2);
+      const speedMode = gqMark[2] === 'speed';
+      const game = GG.createQuiz(chatId, message.chat.title || 'المحادثة', kind2, speedMode);
       game.messageId = message.message_id;
       if (deployerUserId) {
         GG.quizJoin(game, deployerUserId, deployerName);
@@ -4877,9 +4851,12 @@ export class TelegramBotManager {
     const photoUrl = GG.quizPhotoUrl(game);
     if (!photoUrl) return false;
 
-    let caption = `🚘 *السيارات* — الجولة *${game.round}* من *${game.totalRounds}*`;
+    let caption = `🚘 *السيارات${game.speedMode ? ' — ⚡ السرعة' : ''}* — الجولة *${game.round}* من *${game.totalRounds}*`;
     if (game.status === 'playing') {
       caption += `\n\n❓ *${GG.toV2(game.deck[game.qIndex][0])}*`;
+      caption += game.speedMode
+        ? '\n\n⚡ أول إجابة صحيحة فقط تكسب نقطة الجولة'
+        : '\n\n✅ كل لاعب يجيب إجابة صحيحة يحصل على نقطة';
     } else if (game.status === 'result') {
       caption += game.lastLine ? `\n\n${GG.toV2(game.lastLine)}` : '\n\n⏳ انتهى وقت الجولة.';
     } else if (game.status === 'game_over') {
@@ -4947,7 +4924,7 @@ export class TelegramBotManager {
   }
 
   /**
-   * 🛡️ اللوحة الخالدة: اسم اللعبة منحوت بكل زر (gqj:<kind>:<chatId> …)
+   * 🛡️ اللوحة الخالدة: نوع اللعبة ووضعها ومعرّف المحادثة داخل كل زر
    * فلو اللعبة ضاعت من الذاكرة (نظام نام أو لوحة قديمة) — نبنيها من الزر نفسه
    * بلكرفة بدل ما يطلع للاعب «انتهت». عمراً ما تموت لوحة.
    */
@@ -4963,6 +4940,8 @@ export class TelegramBotManager {
 
     // النوع داخل الزر — اللوحات القديمة (بدون نوع) ما نكدر نبنيها، ندكنعهم بذوق
     const kindRaw = op === 'gqa' ? parts[2] : parts[1];
+    const modeRaw = op === 'gqa' ? parts[3] : parts[2];
+    const speedMode = modeRaw === 'speed';
     const kinds = Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[];
     const kind: GG.QuizKind = kinds.includes(kindRaw as GG.QuizKind) ? (kindRaw as GG.QuizKind) : 'general';
 
@@ -4974,7 +4953,7 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
         return;
       }
-      const rebuilt = GG.createQuiz(cbChatId, cb.message?.chat.title || 'المحادثة', kind);
+      const rebuilt = GG.createQuiz(cbChatId, cb.message?.chat.title || 'المحادثة', kind, speedMode);
       if (cb.message?.message_id) rebuilt.messageId = cb.message.message_id;
       if (cb.inline_message_id) rebuilt.inlineMessageId = cb.inline_message_id;
       this.gqGames.set(cbChatId, rebuilt);
@@ -5020,7 +4999,7 @@ export class TelegramBotManager {
 
     // 🔄 لعبة جديدة — نبقي نتيجة اللعبة السابقة محفوظة فوق ونرسل لوحة جديدة بأسفلها
     if (op === 'gqn') {
-      const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind);
+      const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind, Boolean(game.speedMode));
       GG.quizJoin(fresh, playerId, playerName);
       this.gqGames.set(game.chatId, fresh);
       const sent = game.chatId
@@ -5328,8 +5307,8 @@ export class TelegramBotManager {
     const n = this.gameStatsNumbers();
     const backStats = [{ text: '🔙 رجوع للإحصائيات', callback_data: 'gstat:main' }];
 
-    if (section === 'cat:group' || section === 'cat:guess' || section === 'cat:arabic') {
-      const list = BOT_GAMES.filter(g => g.category === (section === 'cat:arabic' ? 'arabic' : 'group'));
+    if (section === 'cat:group' || section === 'cat:guess') {
+      const list = BOT_GAMES.filter(g => g.category === 'group');
       const kb: any[][] = [];
       for (let i = 0; i < list.length; i += 2) {
         const row: any[] = [{ text: `${list[i].emoji} ${list[i].title}`, callback_data: `gstat:f:${list[i].id}` }];
@@ -5353,9 +5332,6 @@ export class TelegramBotManager {
       : fromHub
         ? (() => {
             const gCard = findBotGame(gameId);
-            if (gCard && gCard.category === 'arabic') {
-              return [{ text: '🔙 رجوع للألعاب العربية', callback_data: 'gstat:cat:arabic' }];
-            }
             if (gCard && gCard.category === 'group') {
               return [{ text: '🔙 رجوع للجماعية', callback_data: 'gstat:cat:group' }];
             }
@@ -5365,7 +5341,7 @@ export class TelegramBotManager {
 
     const myRec = viewerId ? this.users.get(String(viewerId)) : undefined;
 
-    // 🎉 1) الألعاب الجماعية الـ 11
+    // 🎉 1) الألعاب الجماعية
     const gqKind = gameId ? TelegramBotManager.GQ_GAME_KIND[gameId] : undefined;
     if (gqKind) {
       const meta = GG.QUIZ_KINDS[gqKind];
@@ -6057,8 +6033,8 @@ export class TelegramBotManager {
           `━━━━━━━━━━━━━━━━━━━\n` +
           `👇 اختار نوع الأغاني لتحويل اللعبة للقناة:`,
         keyboard: [
-          [{ text: '🎤 أغاني عربية', switch_inline_query: 'gq song_ar' }],
-          [{ text: '🎸 أغاني إنجليزية', switch_inline_query: 'gq song_en' }],
+          [{ text: '🎤 العب — أغاني عربية', switch_inline_query: 'gq song_ar' }, { text: '⚡ السرعة — أغاني عربية', switch_inline_query: 'gq speed song_ar' }],
+          [{ text: '🎸 العب — أغاني إنجليزية', switch_inline_query: 'gq song_en' }, { text: '⚡ السرعة — أغاني إنجليزية', switch_inline_query: 'gq speed song_en' }],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:guess_song' }]
         ]
       };
@@ -6072,9 +6048,9 @@ export class TelegramBotManager {
           `━━━━━━━━━━━━━━━━━━━\n` +
           `🎯 اختار عدد الراوندات لتحويل اللعبة للقناة أو المجموعة:`,
         keyboard: [
-          [{ text: '🎮 5 راوندات', switch_inline_query: 'rps 5' }],
-          [{ text: '🎮 10 راوندات', switch_inline_query: 'rps 10' }],
-          [{ text: '🎮 15 راوند', switch_inline_query: 'rps 15' }],
+          [{ text: 'العب — 5 جولات', switch_inline_query: 'rps 5' }],
+          [{ text: 'العب — 10 جولات', switch_inline_query: 'rps 10' }],
+          [{ text: 'العب — 15 جولة', switch_inline_query: 'rps 15' }],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
         ]
       };
@@ -6084,6 +6060,10 @@ export class TelegramBotManager {
     if (GAME_CATEGORIES[normalizedSection]) {
       const cat = GAME_CATEGORIES[normalizedSection];
       const list = BOT_GAMES.filter(g => g.category === normalizedSection);
+      if (normalizedSection === 'group') {
+        const order = new Map(GROUP_GAME_ORDER.map((id, index) => [id, index]));
+        list.sort((a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+      }
 
       // أزرار صغيرة مرتبة: مربعان بكل سطر بدلاً من الأزرار العريضة الطويلة
       const keyboard: any[][] = [];
@@ -6228,30 +6208,33 @@ export class TelegramBotManager {
             keyboard.push([{ text: '🍉 الفواكه', switch_inline_query: 'ge fruits' }, { text: '🎲 مزيج عشوائي', switch_inline_query: 'ge mixed' }]);
             keyboard.push([{ text: '🥭 أسماء مركّبة طريفة', switch_inline_query: 'ge mashup' }]);
           } else if (game.id === 'guess_song') {
-            keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', callback_data: 'hub:songpick' }]);
+            keyboard.push([{ text: '🎮 العب', callback_data: 'hub:songpick' }]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
-              keyboard.push([{ text: '😀 نظام الإيموجي (العب بالقناة)', switch_inline_query: `gq ${emojiKind}` }]);
+              keyboard.push([{ text: '😀 العب بالإيموجي', switch_inline_query: `gq ${emojiKind}` }]);
+              keyboard.push([{ text: '⚡ السرعة بالإيموجي', switch_inline_query: `gq speed ${emojiKind}` }]);
             }
           } else if (gqKind && game.inline) {
-            keyboard.push([{ text: '🎮 النظام العادي (العب بالقناة)', switch_inline_query: game.inline }]);
+            keyboard.push([{ text: '🎮 العب', switch_inline_query: game.inline }]);
+            keyboard.push([{ text: '⚡ العب بنظام السرعة', switch_inline_query: `gq speed ${gqKind}` }]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
-              keyboard.push([{ text: '😀 نظام الإيموجي (العب بالقناة)', switch_inline_query: `gq ${emojiKind}` }]);
+              keyboard.push([{ text: '😀 العب بالإيموجي', switch_inline_query: `gq ${emojiKind}` }]);
+              keyboard.push([{ text: '⚡ السرعة بالإيموجي', switch_inline_query: `gq speed ${emojiKind}` }]);
             }
           } else if (game.id === 'rps') {
-            keyboard.push([{ text: '🎮 النظام العادي', callback_data: 'hub:rps_normal' }]);
+            keyboard.push([{ text: '🎮 العب', callback_data: 'hub:rps_normal' }]);
             keyboard.push([{ text: '🏆 نظام البطولات', callback_data: 'hub:trn:rps' }]);
           } else if (game.inline) {
-            keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: game.inline }]);
+            keyboard.push([{ text: '🎮 العب', switch_inline_query: game.inline }]);
           } else {
-            keyboard.push([{ text: '🎮 العب بالقناة', switch_inline_query: 'cn' }]);
+            keyboard.push([{ text: '🎮 العب', switch_inline_query: 'cn' }]);
           }
           if (game.play) {
             keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
           }
         } else {
-          keyboard.push([{ text: '🎮 العب بالقناة', callback_data: `hub:chpick:${game.id}` }]);
+          keyboard.push([{ text: '🎮 العب', callback_data: `hub:chpick:${game.id}` }]);
           if (game.play) {
             keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
           }
@@ -6311,6 +6294,7 @@ export class TelegramBotManager {
       `كل الألعاب هنا — اختار الصنف وبعدها اللعبة 👇` +
       (personal ? `\n\n${personal}` : '');
     const keyboard: any[][] = [
+      [{ text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' }],
       [
         { text: '👥 ألعاب ثنائية 1v1', callback_data: 'hub:duo' },
         { text: '⚔️ ألعاب فرق 2v2', callback_data: 'hub:team' }
@@ -6318,9 +6302,7 @@ export class TelegramBotManager {
       [
         { text: '🔥 ألعاب ثلاثية 3v3', callback_data: 'hub:team3' },
         { text: '🏰 ألعاب رباعية 4v4', callback_data: 'hub:team4' }
-      ],
-      [{ text: '🎉 الألعاب الجماعية', callback_data: 'hub:group' }],
-      [{ text: '📚 ألعاب اللغة العربية الفصحى', callback_data: 'hub:arabic' }]
+      ]
     ];
     // 💵 المتصدرون + خدمات أخرى، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
     keyboard.push([
