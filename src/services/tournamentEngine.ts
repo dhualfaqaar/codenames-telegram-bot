@@ -6,7 +6,7 @@
  *
  * - يشترط عدد زوجي من اللاعبين عند الانطلاق (2، 4، 6، 8، … حتى 32).
  * - يتواجه كل لاعبين اثنين وجهاً لوجه (1 ضد 1) حتى يتأهل فائز واحد من كل مواجهة.
- * - يدعم جميع ألعاب الأسئلة والسرعة و«خمّن» (بما فيها نظام الإيموجي) + لعبة «حجرة ورقة مقص ✊».
+ * - يدعم ألعاب الأسئلة و«خمّن» + حجرة ورقة مقص + بطولة كرة قدم فردية بركلات الترجيح ⚽.
  * - ينتهي دائماً بتتويج لاعب واحد فقط بطلاً للبطولة بالكامل 👑.
  */
 
@@ -20,7 +20,7 @@ import {
 } from './groupGamesEngine';
 
 export type TournamentCapacity = 8 | 16 | 32;
-export type TournamentDiscipline = QuizKind | 'rps';
+export type TournamentDiscipline = QuizKind | 'rps' | 'football';
 export type RpsThrow = 'r' | 'p' | 's';
 
 export interface TournamentPlayer {
@@ -62,6 +62,10 @@ export interface TournamentGame {
   p2Locked?: boolean;
   p1Rps?: RpsThrow;
   p2Rps?: RpsThrow;
+  p1FootballChoice?: number;
+  p2FootballChoice?: number;
+  footballKickNumber: number;
+  footballFirstKicker: 1 | 2;
   p1ActiveMoves: number;
   p2ActiveMoves: number;
   stallCount: number;
@@ -109,12 +113,15 @@ export function getDisciplineMeta(discipline: TournamentDiscipline): { emoji: st
   if (discipline === 'rps') {
     return { emoji: '✊', title: 'حجرة ورقة مقص' };
   }
+  if (discipline === 'football') {
+    return { emoji: '⚽', title: 'بطولة كرة القدم الفردية' };
+  }
   const meta = QUIZ_KINDS[discipline] || QUIZ_KINDS.general;
   return { emoji: meta.emoji, title: meta.title };
 }
 
 export function isValidDiscipline(raw: string): raw is TournamentDiscipline {
-  return raw === 'rps' || Object.prototype.hasOwnProperty.call(QUIZ_KINDS, raw);
+  return raw === 'rps' || raw === 'football' || Object.prototype.hasOwnProperty.call(QUIZ_KINDS, raw);
 }
 
 export function parseCapacity(raw: string | number): TournamentCapacity {
@@ -157,6 +164,8 @@ export function createTournamentLobby(
     prompt: '',
     options: [],
     correctIdx: 0,
+    footballKickNumber: 1,
+    footballFirstKicker: Math.random() < 0.5 ? 1 : 2,
     p1ActiveMoves: 0,
     p2ActiveMoves: 0,
     stallCount: 0,
@@ -204,12 +213,24 @@ function prepareTurn(game: TournamentGame): void {
   game.p2Locked = false;
   game.p1Rps = undefined;
   game.p2Rps = undefined;
+  game.p1FootballChoice = undefined;
+  game.p2FootballChoice = undefined;
   game.resultDeadline = undefined;
   game.roundDeadline = Date.now() + ROUND_MS;
 
   if (game.discipline === 'rps') {
     game.prompt = 'اختَر حركتك السرية الآن قبل انتهاء الـ 15 ثانية!';
     game.options = [];
+    game.correctIdx = 0;
+    return;
+  }
+  if (game.discipline === 'football') {
+    const fx = game.fixtures[game.currentMatchIdx];
+    const kickerIsP1 = game.footballKickNumber % 2 === 1 ? game.footballFirstKicker === 1 : game.footballFirstKicker === 2;
+    const kicker = kickerIsP1 ? fx?.p1 : fx?.p2;
+    const keeper = kickerIsP1 ? fx?.p2 : fx?.p1;
+    game.prompt = `⚽ ${kicker?.name || 'المسدّد'} يسدّد، و${keeper?.name || 'الحارس'} يحرس — كل واحد يختار الزاوية بسرية.`;
+    game.options = ['⬅️ يسار', '⬆️ وسط', '➡️ يمين'];
     game.correctIdx = 0;
     return;
   }
@@ -228,6 +249,8 @@ function setupStage(game: TournamentGame, entrants: TournamentPlayer[]): void {
   game.stageName = computeStageName(entrants.length);
   game.targetScore = entrants.length <= 2 ? 3 : 2;
   game.currentMatchIdx = 0;
+  game.footballKickNumber = 1;
+  game.footballFirstKicker = Math.random() < 0.5 ? 1 : 2;
   game.byePlayer = null;
 
   const pool = entrants.slice();
@@ -262,8 +285,14 @@ export function startTournament(game: TournamentGame): { ok: boolean; reason?: s
     return { ok: false, reason: 'البطولة جارية بالفعل!' };
   }
   const n = game.players.length;
-  if (n < 2) {
-    return { ok: false, reason: 'لازم ينضم لاعبان على الأقل حتى تنطلق البطولة!' };
+  const minPlayers = game.discipline === 'football' ? 4 : 2;
+  if (n < minPlayers) {
+    return {
+      ok: false,
+      reason: game.discipline === 'football'
+        ? 'بطولة كرة القدم تحتاج 4 لاعبين على الأقل؛ كل لاعب ينافس لنفسه.'
+        : 'لازم ينضم لاعبان على الأقل حتى تنطلق البطولة!'
+    };
   }
   if (n % 2 !== 0) {
     return {
@@ -337,6 +366,8 @@ export function advanceTournamentAfterPause(game: TournamentGame): void {
   // إذا بقيت مواجهات أخرى في نفس الدور الإقصائي
   if (game.currentMatchIdx + 1 < game.fixtures.length) {
     game.currentMatchIdx += 1;
+    game.footballKickNumber = 1;
+    game.footballFirstKicker = Math.random() < 0.5 ? 1 : 2;
     game.p1ActiveMoves = 0;
     game.p2ActiveMoves = 0;
     game.stallCount = 0;
@@ -374,7 +405,7 @@ export function handleTournamentQuizAnswer(
   userId: string,
   optIdx: number
 ): { ok: boolean; alert?: string; changed: boolean } {
-  if (game.status !== 'playing' || game.discipline === 'rps') {
+  if (game.status !== 'playing' || game.discipline === 'rps' || game.discipline === 'football') {
     return { ok: false, alert: 'انتظر لحظة حتى تجهز الجولة!', changed: false };
   }
   const fx = game.fixtures[game.currentMatchIdx];
@@ -438,6 +469,108 @@ export function handleTournamentQuizAnswer(
     alert: `❌ إجابة خاطئة (${chosen})! الكرة الآن بملعب خصمك!`,
     changed: true
   };
+}
+
+/** يحسم ركلة ترجيح (الزاويتان سرّيتان حتى يختار الطرفان أو تنتهي المهلة). */
+function resolveFootballKick(game: TournamentGame, now = Date.now(), timedOut = false): void {
+  const fx = game.fixtures[game.currentMatchIdx];
+  if (!fx) return;
+  const kickNumber = game.footballKickNumber || 1;
+  const kickerIsP1 = kickNumber % 2 === 1 ? game.footballFirstKicker === 1 : game.footballFirstKicker === 2;
+  const kickerLocked = kickerIsP1 ? game.p1Locked : game.p2Locked;
+  const keeperLocked = kickerIsP1 ? game.p2Locked : game.p1Locked;
+  const shot = kickerIsP1 ? game.p1FootballChoice : game.p2FootballChoice;
+  const dive = kickerIsP1 ? game.p2FootballChoice : game.p1FootballChoice;
+  const goal = Boolean(kickerLocked && typeof shot === 'number' && (!keeperLocked || shot !== dive));
+  const scorer = kickerIsP1 ? fx.p1 : fx.p2;
+
+  if (goal) {
+    if (kickerIsP1) fx.score1 += 1;
+    else fx.score2 += 1;
+  }
+
+  const summary = timedOut
+    ? !kickerLocked
+      ? `⏰ انتهى الوقت قبل تسديدة ${scorer.name} — ضاعت الركلة.`
+      : !keeperLocked
+        ? `⚽ هدف لـ ${scorer.name} — الحارس ما اختار زاويته قبل انتهاء الوقت.`
+        : goal ? `⚽ هدف لـ ${scorer.name}!` : `🧤 تصدٍّ ناجح — لا هدف.`
+    : goal
+      ? `⚽ هدف لـ ${scorer.name}!`
+      : `🧤 تصدٍّ ناجح — لا هدف لـ ${scorer.name}.`;
+
+  const completedKick = kickNumber;
+  game.footballKickNumber = completedKick + 1;
+  game.p1Locked = false;
+  game.p2Locked = false;
+  game.p1FootballChoice = undefined;
+  game.p2FootballChoice = undefined;
+
+  // خمس ركلات لكل لاعب، ثم ركلات موت مفاجئ على أزواج كاملة حتى ينكسر التعادل.
+  const pairComplete = completedKick >= 10 && completedKick % 2 === 0;
+  if (pairComplete && fx.score1 !== fx.score2) {
+    const winner = fx.score1 > fx.score2 ? fx.p1 : fx.p2;
+    const loser = fx.score1 > fx.score2 ? fx.p2 : fx.p1;
+    fx.winnerId = winner.id;
+    const isFinal = game.fixtures.length === 1 && !game.byePlayer;
+    game.roundDeadline = undefined;
+    if (isFinal) {
+      game.champion = winner;
+      game.runnerUp = loser;
+      game.status = 'finished';
+      game.resultDeadline = undefined;
+      game.lastSummary = `${summary} النتيجة ${fx.score1}–${fx.score2}؛ ${winner.name} حسم المواجهة وتأهل بطلاً!`;
+      return;
+    }
+    game.status = 'between';
+    game.resultDeadline = now + RESULT_MS;
+    game.lastSummary = `${summary} النتيجة ${fx.score1}–${fx.score2}؛ ${winner.name} تأهل للدور القادم!`;
+    return;
+  }
+
+  game.status = 'between';
+  game.roundDeadline = undefined;
+  game.resultDeadline = now + RESULT_MS;
+  const nextHint = completedKick >= 10 && fx.score1 === fx.score2
+    ? ' تعادل — تبدأ ركلات الموت المفاجئ.'
+    : '';
+  game.lastSummary = `${summary} النتيجة ${fx.score1}–${fx.score2}.${nextHint}`;
+}
+
+/** يستقبل اختياراً سرياً للمسدّد أو الحارس في بطولة كرة القدم الفردية. */
+export function handleTournamentFootballChoice(
+  game: TournamentGame,
+  userId: string,
+  direction: number
+): { ok: boolean; alert?: string; changed: boolean } {
+  if (game.status !== 'playing' || game.discipline !== 'football') {
+    return { ok: false, alert: 'انتظر حتى تبدأ ركلات المواجهة!', changed: false };
+  }
+  if (!Number.isInteger(direction) || direction < 0 || direction > 2) {
+    return { ok: false, alert: 'اختار زاوية صحيحة.', changed: false };
+  }
+  const fx = game.fixtures[game.currentMatchIdx];
+  if (!fx) return { ok: false, changed: false };
+  const isP1 = userId === fx.p1.id;
+  const isP2 = userId === fx.p2.id;
+  if (!isP1 && !isP2) {
+    return { ok: false, alert: 'هذه الركلة للمتنافسَين الحاليَّين فقط — انتظر دورك!', changed: false };
+  }
+  if ((isP1 && game.p1Locked) || (isP2 && game.p2Locked)) {
+    return { ok: false, alert: 'ثبّتت زاويتك بالفعل — ننتظر منافسك.', changed: false };
+  }
+  if (isP1) {
+    game.p1Locked = true;
+    game.p1FootballChoice = direction;
+  } else {
+    game.p2Locked = true;
+    game.p2FootballChoice = direction;
+  }
+  if (game.p1Locked && game.p2Locked) {
+    resolveFootballKick(game);
+    return { ok: true, changed: true };
+  }
+  return { ok: true, alert: '🔒 ثبتّت زاويتك بالسر — ننتظر منافسك.', changed: true };
 }
 
 /** يستقبل حركة «حجرة / ورقة / مقص» السرية في البطولة الإقصائية */
@@ -525,6 +658,11 @@ export function handleTournamentTimeout(game: TournamentGame): boolean {
     const fx = game.fixtures[game.currentMatchIdx];
     if (!fx) return false;
 
+    if (game.discipline === 'football') {
+      resolveFootballKick(game, now, true);
+      return true;
+    }
+
     // في حجرة ورقة مقص: إذا ثبت لاعب واحد فقط حركته وتأخر الآخر 15 ثانية يفوز الملتزم بالنقطة فوراً
     if (game.discipline === 'rps') {
       if (game.p1Locked && !game.p2Locked) {
@@ -593,10 +731,11 @@ export function renderTournamentView(game: TournamentGame): TrnView {
   // 1) شاشة اللوبي قبل بدء القرعة
   if (game.status === 'lobby') {
     const count = game.players.length;
-    const isEvenReady = count >= 2 && count % 2 === 0;
+    const minPlayers = game.discipline === 'football' ? 4 : 2;
+    const isEvenReady = count >= minPlayers && count % 2 === 0;
     const statusHint =
-      count < 2
-        ? '⏳ بانتظار انضمام اللاعبين (الحد الأقصى ' + arNum(game.capacity) + ' لاعباً)'
+      count < minPlayers
+        ? `⏳ بانتظار ${arNum(minPlayers)} لاعبين على الأقل (الحد الأقصى ${arNum(game.capacity)})`
         : isEvenReady
           ? `✅ العدد زوجي وجاهز للقرعة (${arNum(count)} متنافسين — ${arNum(count / 2)} مواجهة إقصائية)`
           : `⚠️ العدد الحالي فردي (${arNum(count)}) — ينقص لاعب واحد فقط ليصبح العدد زوجياً!`;
@@ -615,7 +754,9 @@ export function renderTournamentView(game: TournamentGame): TrnView {
       `${statusHint}\n\n` +
       `📋 *قائمة المتنافسين:*\n` +
       `${rosterBlock}\n\n` +
-      `⚡ _كل اثنين يتواجهون وجهاً لوجه بالأدوار الإقصائية حتى يتوَّج بطل واحد فقط باللقب!_`;
+      (game.discipline === 'football'
+        ? `⚽ _كل لاعب ينافس لنفسه؛ المواجهات ركلات ترجيح 1 ضد 1، والفائز يتأهل حتى النهائي._`
+        : `⚡ _كل اثنين يتواجهون وجهاً لوجه بالأدوار الإقصائية حتى يتوَّج بطل واحد فقط باللقب!_`);
 
     const buttons: TrnButton[][] = [
       [
@@ -666,25 +807,27 @@ export function renderTournamentView(game: TournamentGame): TrnView {
   const p1Status =
     game.status === 'playing'
       ? game.p1Locked
-        ? game.discipline === 'rps'
-          ? ' 🔒 جاهز'
+        ? game.discipline === 'rps' || game.discipline === 'football'
+          ? ' 🔒 ثبّت اختياره'
           : ' ❌ أخطأ'
         : ' ⏳ يفكّر'
       : '';
   const p2Status =
     game.status === 'playing'
       ? game.p2Locked
-        ? game.discipline === 'rps'
-          ? ' 🔒 جاهز'
+        ? game.discipline === 'rps' || game.discipline === 'football'
+          ? ' 🔒 ثبّت اختياره'
           : ' ❌ أخطأ'
         : ' ⏳ يفكّر'
       : '';
 
-  const duelSides =
-    `🔴 *الطرف الأول:*\n` +
-    `> | *${fx.p1.name}* | — النقاط: *${arNum(fx.score1)} / ${arNum(game.targetScore)}*${p1Status}\n` +
-    `🔵 *الطرف الثاني:*\n` +
-    `> | *${fx.p2.name}* | — النقاط: *${arNum(fx.score2)} / ${arNum(game.targetScore)}*${p2Status}`;
+  const duelSides = game.discipline === 'football'
+    ? `⚽ *اللاعب الأول:*\n> | *${fx.p1.name}* | — الأهداف: *${arNum(fx.score1)}*${p1Status}\n` +
+      `⚽ *اللاعب الثاني:*\n> | *${fx.p2.name}* | — الأهداف: *${arNum(fx.score2)}*${p2Status}`
+    : `🔴 *الطرف الأول:*\n` +
+      `> | *${fx.p1.name}* | — النقاط: *${arNum(fx.score1)} / ${arNum(game.targetScore)}*${p1Status}\n` +
+      `🔵 *الطرف الثاني:*\n` +
+      `> | *${fx.p2.name}* | — النقاط: *${arNum(fx.score2)} / ${arNum(game.targetScore)}*${p2Status}`;
 
   if (game.status === 'between') {
     const raw =
@@ -700,11 +843,17 @@ export function renderTournamentView(game: TournamentGame): TrnView {
     `📊 *جدول الدور الحالي:*\n${bracketLines}${byeSection}\n\n` +
     `⚔️ *المواجهة الجارية الآن (المباراة ${arNum(game.currentMatchIdx + 1)} من ${arNum(game.fixtures.length)}):*\n` +
     `${duelSides}\n\n` +
-    `❓ *${game.prompt}*\n` +
+    `${game.discipline === 'football' ? `🥅 *الركلة ${arNum(game.footballKickNumber)}:* ` : '❓ *'}${game.prompt}${game.discipline === 'football' ? '' : '*'}\n` +
     `⏱️ _المهلة: 15 ثانية فقط!_`;
 
   const buttons: TrnButton[][] = [];
-  if (game.discipline === 'rps') {
+  if (game.discipline === 'football') {
+    buttons.push([
+      { text: '⬅️ يسار', callback_data: `trn:f:${id}:0` },
+      { text: '⬆️ وسط', callback_data: `trn:f:${id}:1` },
+      { text: '➡️ يمين', callback_data: `trn:f:${id}:2` }
+    ]);
+  } else if (game.discipline === 'rps') {
     buttons.push([
       { text: '🪨 حجرة', callback_data: `trn:r:${id}:r` },
       { text: '📄 ورقة', callback_data: `trn:r:${id}:p` },
