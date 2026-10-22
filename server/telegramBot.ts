@@ -311,6 +311,19 @@ const BOT_GAMES: BotGameCard[] = [
     ready: true
   },
   {
+    id: 'football_tournament',
+    emoji: '⚽',
+    title: 'بطولة كرة القدم الفردية',
+    category: 'group',
+    players: 'بطولات فردية من 8 أو 16 أو 32 لاعباً',
+    where: 'في القناة أو المجموعة',
+    goal: 'الفوز بمواجهات ركلات الترجيح 1 ضد 1 والتأهل حتى النهائي',
+    reward: 'جوائز وخبرة لبطل البطولة الفردية',
+    about: 'كل لاعب ينافس لنفسه، بلا فرق أو زملاء. تُسحب قرعة خروج المغلوب، ويتواجه كل لاعبين بركلات ترجيح فردية؛ الفائز يتأهل للدور التالي حتى يتوّج بطل واحد. هذه البطولة الجماعية هي النظام المخصص لكرة القدم، أما مباراة 1 ضد 1 العادية فموجودة في قسم الألعاب الثنائية.',
+    channel: true,
+    ready: true
+  },
+  {
     id: 'guess_song',
     emoji: '🎵',
     title: 'احزر الأغنية',
@@ -595,13 +608,13 @@ const BOT_GAMES: BotGameCard[] = [
   {
     id: 'fast_animals',
     emoji: '🐾',
-    title: 'الحيوانات',
+    title: 'الحيوانات والكائنات الحية',
     category: 'group',
     players: 'من لاعبين إلى 10 لاعبين',
     where: 'في القناة أو المجموعة',
-    goal: 'معرفة أسرار الحيوانات والطيور والكائنات البحرية',
+    goal: 'معرفة الحيوانات والكائنات الحية من المعلومات والصفات',
     reward: 'نقطة لأول إجابة صحيحة في كل جولة',
-    about: 'أسئلة عن الحيوانات البرية والطيور والكائنات البحرية وصفاتها وسلوكها.',
+    about: 'لعبة موحّدة تجمع أسئلة معلومات الحيوانات والطيور والكائنات البحرية مع تخمين الكائن من صفاته وحقائقه.',
     channel: true,
     inline: 'gq animals',
     ready: true
@@ -689,20 +702,6 @@ const BOT_GAMES: BotGameCard[] = [
     about: 'وصف معماري وتاريخي لأشهر المعالم العراقية والعربية والعالمية وعليك معرفة المعلم المقصود.',
     channel: true,
     inline: 'gq landmark',
-    ready: true
-  },
-  {
-    id: 'guess_creature',
-    emoji: '🐾',
-    title: 'الكائنات الحية',
-    category: 'group',
-    players: 'من لاعبين إلى 10 لاعبين',
-    where: 'في القناة أو المجموعة',
-    goal: 'معرفة الكائن الحي من صفاته وحقائقه الفريدة',
-    reward: 'نقطة لأول إجابة صحيحة في كل جولة وجوائز للمتصدر',
-    about: 'ثلاث صفات وحقائق مدهشة عن كائن برّي أو بحري أو طائر وعليك معرفة الكائن المقصود.',
-    channel: true,
-    inline: 'gq creature',
     ready: true
   },
   {
@@ -805,9 +804,9 @@ const GROUP_GAME_ORDER = [
   'mafia', 'out_of_loop', 'among_us', 'truth_lies_group',
   'geography_quiz', 'gq_country', 'gq_flags', 'gq_capitals', 'gq_continents',
   'history_quiz', 'fast_islamic', 'poet',
-  'guess_player', 'guess_song', 'gq_movie', 'gq_series', 'guess_novel', 'guess_landmark',
+  'guess_player', 'football_tournament', 'guess_song', 'gq_movie', 'gq_series', 'guess_novel', 'guess_landmark',
   'math', 'gq_number', 'trivia_battle', 'general_quiz', 'odd_word',
-  'fast_science', 'fast_animals', 'guess_creature',
+  'fast_science', 'fast_animals',
   'fast_dialects', 'arabic_vocab', 'arabic_synonyms', 'arabic_antonyms', 'arabic_plurals', 'arabic_grammar',
   'gq_food', 'fast_brands', 'fast_tf', 'fast_emoji_math'
 ];
@@ -2762,7 +2761,6 @@ export class TelegramBotManager {
         return;
       }
 
-      const wasFull = this.lobbyIsFull(game);
       const result = CodenamesEngine.joinGame(game, {
         id: userId,
         name: userName,
@@ -2783,11 +2781,6 @@ export class TelegramBotManager {
       this.games.set(chatId, result.game);
       await this.updateTelegramGameBoard(chatId, result.game, cb.message?.message_id);
 
-      // كمل العدد؟ ننبّه المشرف اللي رسل اللعبة بالخاص — هو وحده اللي يبدأ.
-      if (!wasFull && this.lobbyIsFull(result.game)) {
-        await this.notifySupervisorLobbyFull(result.game);
-      }
-
       let alertText = result.message;
       let showAlert = false;
 
@@ -2801,17 +2794,8 @@ export class TelegramBotManager {
         showAlert = true;
       }
       if (role === 'spymaster') {
-        // Spymasters must be reachable in private chat for the no-command clue input
-        const dm = await this.sendMessage(
-          String(userId),
-          `🕵️ سُجّلت *جاسوساً* في لعبة «${this.mdSafe(result.game.chatTitle || 'المجموعة')}»!\n\n` +
-            CodenamesEngine.getSpymasterGuide(team as Team)
-        );
-        if (!dm?.ok) {
-          showAlert = true;
-          alertText +=
-            `\n⚠️ فتح الخاص مع البوت واضغط Start (زر «🕵️ الجواسيس» بالرسالة) حتى توصلك خريطتك.`;
-        }
+        // No private messages on seat selection: request the clue/map explicitly from the game board.
+        alertText += `\nالخريطة والتلميح متاحان من أزرار لوحة اللعبة عند طلبك.`;
       }
       await this.answerCallbackQuery(cb.id, alertText, showAlert);
       return;
@@ -3496,8 +3480,9 @@ export class TelegramBotManager {
   private trnCard(rawDiscipline: string, rawCap: string | number, deployerId?: string): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     const uid = deployerId ? `|${deployerId}` : '';
-    const discipline: TRN.TournamentDiscipline = TRN.isValidDiscipline(rawDiscipline)
-      ? rawDiscipline
+    const canonicalDiscipline = rawDiscipline === 'creature' ? 'animals' : rawDiscipline;
+    const discipline: TRN.TournamentDiscipline = TRN.isValidDiscipline(canonicalDiscipline)
+      ? canonicalDiscipline
       : 'general';
     const capacity = TRN.parseCapacity(rawCap);
     const meta = TRN.getDisciplineMeta(discipline);
@@ -3540,8 +3525,9 @@ export class TelegramBotManager {
   private gqCard(kind: string, deployerId?: string, speedMode = false): any {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     const uid = deployerId ? `|${deployerId}` : '';
-    const k: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(kind as GG.QuizKind)
-      ? (kind as GG.QuizKind)
+    const canonicalKind = kind === 'creature' ? 'animals' : kind;
+    const k: GG.QuizKind = (Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(canonicalKind as GG.QuizKind)
+      ? (canonicalKind as GG.QuizKind)
       : 'general';
     const meta = GG.QUIZ_KINDS[k];
     const modeTitle = speedMode ? ' ⚡ السرعة' : '';
@@ -4500,11 +4486,12 @@ export class TelegramBotManager {
         if (won) rec.rpsWins = (rec.rpsWins || 0) + 1;
       } else {
         if (!rec.gqStats) rec.gqStats = {};
-        const st = rec.gqStats[game.discipline] || { games: 0, wins: 0, points: 0 };
+        const statKey = game.discipline === 'football' ? 'football_tournament' : game.discipline;
+        const st = rec.gqStats[statKey] || { games: 0, wins: 0, points: 0 };
         st.games += 1;
         if (won) st.wins += 1;
         st.points += won ? 5 : 1;
-        rec.gqStats[game.discipline] = st;
+        rec.gqStats[statKey] = st;
       }
       if (won) {
         rec.onlineWins = (rec.onlineWins || 0) + 1;
@@ -4647,6 +4634,19 @@ export class TelegramBotManager {
       if (ans.changed) {
         await this.paintTournament(game);
       }
+      return;
+    }
+
+    if (action === 'f') {
+      const direction = parseInt(parts[3] || '-1', 10);
+      const res = TRN.handleTournamentFootballChoice(game, userId, direction);
+      if (!res.ok) {
+        await this.answerCallbackQuery(cb.id, res.alert || '', Boolean(res.alert));
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, res.alert || '');
+      if (game.status === 'finished') this.recordTournamentFinish(game);
+      if (res.changed) await this.paintTournament(game);
       return;
     }
 
@@ -5381,6 +5381,43 @@ export class TelegramBotManager {
         : backStats;
 
     const myRec = viewerId ? this.users.get(String(viewerId)) : undefined;
+
+    // ⚽ إحصائيات بطولة كرة القدم الفردية (مواجهات خروج المغلوب)
+    if (gameId === 'football_tournament') {
+      const rows = n.users
+        .map(u => ({ u, st: u.gqStats?.football_tournament || { games: 0, wins: 0, points: 0 } }))
+        .filter(x => x.st.games > 0)
+        .sort((a, b) => b.st.wins - a.st.wins || b.st.points - a.st.points);
+      const totalGames = rows.reduce((sum, row) => sum + row.st.games, 0);
+      const totalWins = rows.reduce((sum, row) => sum + row.st.wins, 0);
+      const top = rows.slice(0, 10);
+      const leaders = top.length
+        ? top.map((row, i) => this.quoteRow(i + 1, row.u.name, `(🏆 ${row.st.wins} لقب • 🎮 ${row.st.games} بطولة)`)).join('\n')
+        : '_لا توجد نتائج مكتملة بعد_';
+      const mine = myRec?.gqStats?.football_tournament || { games: 0, wins: 0, points: 0 };
+      const bottom = this.buildPersonalComparison({
+        viewerId,
+        myScore: mine.wins,
+        myGames: mine.games,
+        unitLabel: 'لقب',
+        statLines: [
+          `🎮 بطولاتك المكتملة: *${mine.games}*`,
+          `🏆 ألقابك: *${mine.wins}*`,
+          `🎯 نسبة التتويج: *${this.statPct(mine.wins, mine.games)}*`
+        ],
+        board: rows.map(row => ({ id: row.u.id, score: row.st.wins }))
+      });
+      return {
+        text:
+          `⚽ *إحصائيات بطولة كرة القدم الفردية*\n` +
+          `👥 اللاعبون المشاركون: *${rows.length}*\n` +
+          `🎮 إجمالي المشاركات المكتملة: *${totalGames}*\n` +
+          `🏆 إجمالي ألقاب الأفراد: *${totalWins}*\n\n` +
+          `🥇 *أكثر اللاعبين تتويجاً:*\n${leaders}` +
+          (bottom ? `\n${bottom}` : ''),
+        keyboard: [backRow]
+      };
+    }
 
     // 🎉 1) الألعاب الجماعية
     const gqKind = gameId ? TelegramBotManager.GQ_GAME_KIND[gameId] : undefined;
@@ -6221,9 +6258,11 @@ export class TelegramBotManager {
       const disc: TRN.TournamentDiscipline =
         game.id === 'rps'
           ? 'rps'
-          : useEmoji && emojiVariant
-            ? emojiVariant
-            : baseKind || 'general';
+          : game.id === 'football_tournament'
+            ? 'football'
+            : useEmoji && emojiVariant
+              ? emojiVariant
+              : baseKind || 'general';
 
       const kb: any[][] = [
         [{ text: '🥇 دوري الـ 8 لاعبين', switch_inline_query: `trn ${disc} 8` }],
@@ -6285,7 +6324,11 @@ export class TelegramBotManager {
       if (game.ready) {
         // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات 8/16/32 | إيموجي) ──
         if (game.channel) {
-          if (game.id === 'guess_elimination') {
+          if (game.id === 'football_tournament') {
+            keyboard.push([{ text: '🥇 بطولة 8 لاعبين', switch_inline_query: 'trn football 8' }]);
+            keyboard.push([{ text: '🥈 بطولة 16 لاعباً', switch_inline_query: 'trn football 16' }]);
+            keyboard.push([{ text: '👑 بطولة 32 لاعباً', switch_inline_query: 'trn football 32' }]);
+          } else if (game.id === 'guess_elimination') {
             keyboard.push([{ text: '⚽ لاعبو كرة القدم', switch_inline_query: 'ge football' }, { text: '🐾 الحيوانات', switch_inline_query: 'ge animals' }]);
             keyboard.push([{ text: '🍉 الفواكه', switch_inline_query: 'ge fruits' }, { text: '🎲 مزيج عشوائي', switch_inline_query: 'ge mixed' }]);
             keyboard.push([{ text: '🥭 أسماء مركّبة طريفة', switch_inline_query: 'ge mashup' }]);
@@ -10460,25 +10503,6 @@ export class TelegramBotManager {
         game.players.some(p => p.team === team && p.role === 'spymaster') &&
         game.players.some(p => p.team === team && p.role === 'operative')
     );
-  }
-
-  /**
-   * لمّا يكمل عدد اللاعبين، ننبّه المشرف اللي رسل اللعبة بالخاص — هو وحده يبدأ.
-   */
-  private async notifySupervisorLobbyFull(game: CodenamesGame) {
-    if (!game.createdBy) return;
-    const title = this.mdSafe(game.chatTitle || 'المجموعة');
-    const text =
-      `✅ *العدد كمل — ${game.players.length} من 4!*\n\n` +
-      `🎮 *اللعبة:* «${title}»\n` +
-      `👥 الجواسيس والعملاء كلهن حاضرين:\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
-      `${CodenamesEngine.teamRoster(game, 'blue')}\n\n` +
-      `${CodenamesEngine.teamRoster(game, 'red')}\n` +
-      `━━━━━━━━━━━━━━━━━━━\n` +
-      `👇 ارجع للمحادثة واضغط *(ابدأ اللعبة 🚀)*\n` +
-      `_إنت وحدك المشرف اللي يكدر يبدأ الجولة._`;
-    await this.sendMessage(String(game.createdBy), GG.toV2(text), undefined, 'MarkdownV2');
   }
 
   /** Remember/refresh a group or channel the bot lives in. */

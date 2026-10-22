@@ -115,6 +115,7 @@ export const EMOJI_VARIANT_OF: Partial<Record<QuizKind, QuizKind>> = {
   song_en: 'song_emoji',
   novel: 'novel_emoji',
   landmark: 'landmark_emoji',
+  animals: 'creature_emoji',
   creature: 'creature_emoji',
   capitals: 'capitals_emoji'
 };
@@ -223,8 +224,8 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   animals: {
     emoji: '🐾',
-    title: 'الحيوانات',
-    intro: 'معلومات وحقائق ممتعة عن الحيوانات والطيور والكائنات البحرية 🐾'
+    title: 'الحيوانات والكائنات الحية',
+    intro: 'تحدي واحد يجمع معلومات الحيوانات وأسئلة تخمين الكائنات من صفاتها 🐾'
   },
   dialects: {
     emoji: '🗣️',
@@ -284,8 +285,8 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   creature: {
     emoji: '🐾',
-    title: 'الكائنات الحية',
-    intro: 'اعرف الكائن الحي من صفاته وحقائقه المدهشة 🐾'
+    title: 'الحيوانات والكائنات الحية',
+    intro: 'تحدي موحّد لمعلومات الحيوانات وتخمين الكائنات من صفاتها 🐾'
   },
   movie_emoji: {
     emoji: '🎬',
@@ -325,8 +326,8 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
   },
   creature_emoji: {
     emoji: '🐾',
-    title: 'الكائنات الحية — نظام الإيموجي 😀',
-    intro: 'شوف الإيموجيات المعبّرة واعرف الكائن الحي المقصود 🐾😀'
+    title: 'الحيوانات والكائنات الحية — نظام الإيموجي 😀',
+    intro: 'شوف الإيموجيات المعبّرة وخمّن الحيوان أو الكائن الحي المقصود 🐾😀'
   },
   capitals_emoji: {
     emoji: '🏛️',
@@ -557,7 +558,7 @@ function packFor(kind: QuizKind): string[][] {
     case 'song_en': return SONGS_EN;
     case 'islamic': return ISLAMIC_QUESTIONS;
     case 'science': return SCIENCE_SPACE;
-    case 'animals': return ANIMALS_NATURE;
+    case 'animals': return [...ANIMALS_NATURE, ...GUESS_CREATURES];
     case 'dialects': return DIALECTS_MEANINGS;
     case 'cars': return CAR_PHOTO_QUIZ;
     case 'arabic_vocab': return ARABIC_VOCABULARY;
@@ -569,7 +570,7 @@ function packFor(kind: QuizKind): string[][] {
     case 'emath': return EMOJI_MATH;
     case 'novel': return GUESS_NOVELS;
     case 'landmark': return GUESS_LANDMARKS;
-    case 'creature': return GUESS_CREATURES;
+    case 'creature': return [...ANIMALS_NATURE, ...GUESS_CREATURES];
     case 'movie_emoji': return MOVIE_EMOJI;
     case 'series_emoji': return SERIES_EMOJI;
     case 'country_emoji': return COUNTRY_EMOJI;
