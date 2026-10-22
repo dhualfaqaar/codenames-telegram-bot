@@ -54,6 +54,12 @@ export interface CodenamesGame {
   cards: Card[]; // 25 cards
   players: Player[];
   currentClue?: Clue;
+  /** نهاية مهلة الدور الحالية (دقيقتان للجاسوس أو العملاء). */
+  turnDeadline?: number;
+  /** آخر وقت حدّثنا به العدّ التنازلي في لوحة تيليغرام. */
+  lastCountdownAt?: number;
+  /** آخر نشاط يُبقى ظاهراً أثناء تحديث العدّ التنازلي. */
+  lastEvent?: string;
   clueHistory: Clue[];
   winner?: Team;
   winReason?: 'all_cards_found' | 'assassin_triggered';

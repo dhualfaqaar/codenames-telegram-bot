@@ -25,6 +25,13 @@ import {
   SONGS_AR,
   SONGS_EN
 } from './groupQuizData';
+import {
+  ARABIC_VOCABULARY,
+  ARABIC_SYNONYMS,
+  ARABIC_ANTONYMS,
+  ARABIC_PLURALS,
+  ARABIC_GRAMMAR
+} from './arabicLanguageBank';
 import { ODD_WORD_PUZZLES } from './oddWordEngine';
 import {
   ISLAMIC_QUESTIONS,
@@ -83,6 +90,11 @@ export type QuizKind =
   | 'dialects'
   | 'cars'
   | 'fbquiz'
+  | 'arabic_vocab'
+  | 'arabic_synonyms'
+  | 'arabic_antonyms'
+  | 'arabic_plurals'
+  | 'arabic_grammar'
   | 'tf'
   | 'emath'
   | 'novel'
@@ -239,6 +251,31 @@ export const QUIZ_KINDS: Record<QuizKind, { emoji: string; title: string; intro:
     emoji: '🏆',
     title: 'كرة قدم عالمية وعراقية',
     intro: 'أسود الرافدين وكأس العالم ودوري الأبطال وأساطير الكرة 🏆'
+  },
+  arabic_vocab: {
+    emoji: '📖',
+    title: 'مفردات عربية فصيحة',
+    intro: 'اختر معنى الكلمة العربية الفصيحة من أربعة خيارات.'
+  },
+  arabic_synonyms: {
+    emoji: '🪶',
+    title: 'مرادفات عربية',
+    intro: 'اختبر حصيلتك اللغوية باختيار مرادف الكلمة.'
+  },
+  arabic_antonyms: {
+    emoji: '↔️',
+    title: 'أضداد عربية',
+    intro: 'اختر ضد الكلمة الفصيحة من بين الخيارات.'
+  },
+  arabic_plurals: {
+    emoji: '🔤',
+    title: 'مفرد وجمع',
+    intro: 'اختر الجمع الفصيح الصحيح للمفردة.'
+  },
+  arabic_grammar: {
+    emoji: '✍️',
+    title: 'قواعد ونحو',
+    intro: 'أسئلة فصيحة في النحو والصرف والإعراب.'
   },
   tf: {
     emoji: '✅',
@@ -542,6 +579,11 @@ function packFor(kind: QuizKind): string[][] {
     case 'dialects': return DIALECTS_MEANINGS;
     case 'cars': return CAR_PHOTO_QUIZ;
     case 'fbquiz': return FOOTBALL_DEEP;
+    case 'arabic_vocab': return ARABIC_VOCABULARY;
+    case 'arabic_synonyms': return ARABIC_SYNONYMS;
+    case 'arabic_antonyms': return ARABIC_ANTONYMS;
+    case 'arabic_plurals': return ARABIC_PLURALS;
+    case 'arabic_grammar': return ARABIC_GRAMMAR;
     case 'tf': return TRUE_FALSE_FAST;
     case 'emath': return EMOJI_MATH;
     case 'novel': return GUESS_NOVELS;
