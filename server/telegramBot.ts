@@ -257,8 +257,9 @@ const BOT_GAMES: BotGameCard[] = [
     reward: '0.011 💵 للفائز',
     about:
       'مواجهة ثنائية كلاسيكية: الحجرة تكسر المقص، والمقص يقص الورقة، والورقة تغطي الحجرة.\n' +
-      'التعادل يعيد الجولة، وصاحب أعلى نقاط في النهاية يحسم الفوز.',
+      'التعادل يعيد الجولة، وصاحب أعلى نقاط في النهاية يحسم الفوز. وتكدر تلعبها بالخاص ضد البوت.',
     channel: true,
+    play: { label: '🤖 العب ضد البوت', data: 'hub:bot:rps' },
     ready: true
   },
 
@@ -765,8 +766,8 @@ const BOT_GAMES: BotGameCard[] = [
     id: 'chess', emoji: '♟️', title: 'شطرنج 1 ضد 1', category: 'duo',
     players: 'لاعبان فقط', where: 'في المجموعة',
     goal: 'كش مات لملك الخصم', reward: 'فوز بالكش مات أو التعادل بالقواعد الرسمية',
-    about: 'مباراة شطرنج كاملة بحركات قانونية، مع اختيار قطعة ومربع وجهة من لوحة تفاعلية. الأبيض يبدأ، والترقية تتم تلقائياً إلى وزير.',
-    channel: true, inline: 'chess', ready: true
+    about: 'مباراة شطرنج كاملة بحركات قانونية، مع اختيار قطعة ومربع وجهة من لوحة تفاعلية. الأبيض يبدأ، والترقية تتم تلقائياً إلى وزير. تگدر تلعب أيضاً بالخاص ضد البوت.',
+    channel: true, inline: 'chess', play: { label: '🤖 العب ضد البوت', data: 'hub:bot:chess' }, ready: true
   }
 ];
 
@@ -3257,6 +3258,36 @@ export class TelegramBotManager {
       return;
     }
 
+    if (section === 'bot:rps' || section === 'bot:chess') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'اللعب ضد البوت متاح بالخاص فقط 🤖', true);
+        return;
+      }
+      if (section === 'bot:rps') {
+        const active = this.rpsGames.get(chatId);
+        if (active && active.status !== 'game_over') {
+          await this.answerCallbackQuery(cb.id, 'عندك مباراة حجرة ورقة مقص جارية؛ خلصها أولاً.', true);
+          return;
+        }
+        const game = RPS.createBotGame(chatId, 'مباراة خاصة', 5, String(cb.from.id), cb.from.first_name || 'لاعب');
+        this.rpsGames.set(chatId, game);
+        await this.answerCallbackQuery(cb.id, 'بدأت مباراة من 5 جولات ضد البوت 🤖');
+        await this.paintRPSBoard(game);
+        return;
+      }
+
+      const active = this.chessGames.get(chatId);
+      if (active && active.status === 'playing') {
+        await this.answerCallbackQuery(cb.id, 'عندك مباراة شطرنج جارية؛ خلصها أولاً.', true);
+        return;
+      }
+      const game = CH.createChessBotGame(chatId, String(cb.from.id), cb.from.first_name || 'لاعب');
+      this.chessGames.set(chatId, game);
+      await this.answerCallbackQuery(cb.id, 'بدأت مباراة الشطرنج ضد البوت؛ أنت الأبيض وتبدأ أولاً 🤖');
+      await this.paintChessBoard(game);
+      return;
+    }
+
     // لا نفتح منتقي القنوات بدون اختيار لعبة؛ وإلا قد تُفهم القناة على أنها طلب Codenames.
     if (section === 'channel') {
       await this.answerCallbackQuery(cb.id, 'اختار لعبة أولاً من القائمة حتى ما تننشر لعبة بالغلط.', true);
@@ -3668,7 +3699,7 @@ export class TelegramBotManager {
 
     // ── 🤝 منو يعرف الثاني أكثر؟ ──
     if (q === 'wk' || q.includes('يعرف')) {
-      const hidden = encodeHiddenTag(`wk${uid}`);
+      const hidden = encodeHiddenTag(`wk|${uid}`);
       await this.answerInlineQuery(iq.id, [
         {
           type: 'article',
@@ -9389,9 +9420,15 @@ export class TelegramBotManager {
     const p = data.split(':'); const op = p[1]; const chatId = p[2] && p[2] !== 'auto' ? p[2] : String(cb.message?.chat.id || '');
     let game = this.chessGames.get(chatId); const uid = String(cb.from.id);
     if (op === 'new') {
-      const fresh = CH.createChessLobby(chatId, cb.message?.chat.title || 'المحادثة');
-      CH.chessJoin(fresh, uid, cb.from.first_name); if (game?.messageId) fresh.messageId = game.messageId;
-      this.chessGames.set(chatId, fresh); await this.answerCallbackQuery(cb.id, 'بدأت لوحة جديدة.'); await this.paintChessBoard(fresh); return;
+      const fresh = game?.botOpponent
+        ? CH.createChessBotGame(chatId, uid, cb.from.first_name || 'لاعب')
+        : CH.createChessLobby(chatId, cb.message?.chat.title || 'المحادثة');
+      if (!game?.botOpponent) CH.chessJoin(fresh, uid, cb.from.first_name);
+      if (game?.messageId) fresh.messageId = game.messageId;
+      this.chessGames.set(chatId, fresh);
+      await this.answerCallbackQuery(cb.id, game?.botOpponent ? 'بدأت مباراة جديدة ضد البوت.' : 'بدأت لوحة جديدة.');
+      await this.paintChessBoard(fresh);
+      return;
     }
     if (!game) { await this.answerCallbackQuery(cb.id, 'انتهت المباراة أو اللوحة قديمة.', true); return; }
     if (cb.message?.message_id && !game.messageId) game.messageId = cb.message.message_id;
@@ -9401,8 +9438,16 @@ export class TelegramBotManager {
     else if (op === 'sq') r = CH.chessSelect(game, uid, p[3] || '');
     else if (op === 'resign') r = CH.chessResign(game, uid);
     else r = { ok: false, msg: 'زر غير معروف.' };
+    let notice = r.msg;
+    if (r.ok && r.moved && game.botOpponent && game.status === 'playing') {
+      const current = CH.chessCurrentPlayer(game);
+      if (current?.isBot) {
+        const botMove = CH.chessBotMove(game);
+        if (botMove.ok) notice = botMove.msg;
+      }
+    }
     await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
-    if (r.ok) await this.paintChessBoard(game);
+    if (r.ok) await this.paintChessBoard(game, notice);
   }
 
   private findActiveWKForUser(userId: string): WK.WKGame | undefined {
@@ -9654,6 +9699,15 @@ export class TelegramBotManager {
     return true;
   }
 
+  private inlineWKChatId(inlineMessageId: string): string {
+    let hash = 14695981039346656037n;
+    for (let i = 0; i < inlineMessageId.length; i++) {
+      hash ^= BigInt(inlineMessageId.charCodeAt(i));
+      hash = BigInt.asUintN(64, hash * 1099511628211n);
+    }
+    return `wk_i_${hash.toString(36)}`;
+  }
+
   private async handleWhoKnowsCb(cb: TelegramCallbackQuery, data: string) {
     const uid = String(cb.from.id);
     const uname = cb.from.first_name || 'لاعب';
@@ -9696,14 +9750,21 @@ export class TelegramBotManager {
       return;
     }
 
-    // أزرار لوحة القناة: wkj:<chatId> / wks:<chatId> / wkn:<chatId>
-    const tailId = data.split(':').slice(-1)[0] || '';
-    const gChatId = /^-?\d{4,}$/.test(tailId) ? tailId : String(cb.message?.chat.id || '');
+    // أزرار اللوحة: استخدم chat_id من الزر أو الرسالة. زر inline القديم (wkj:auto)
+    // لا يحمل chat_id؛ نربطه بمعرّف ثابت للرسالة حتى لا تظهر «لوحة قديمة» عند أول انضمام.
+    const target = data.slice(data.indexOf(':') + 1);
+    const storedInlineGame = cb.inline_message_id
+      ? Array.from(this.wkGames.values()).find(g => g.inlineMessageId === cb.inline_message_id)
+      : undefined;
+    const payloadChatId = /^-?\d{4,}$/.test(target) ? target : '';
+    const gChatId = payloadChatId || String(cb.message?.chat.id || '') || storedInlineGame?.chatId ||
+      (target.startsWith('wk_i_') ? target : '') ||
+      (cb.inline_message_id && target === 'auto' ? this.inlineWKChatId(cb.inline_message_id) : '');
     let game = this.wkGames.get(gChatId);
 
     if (!game) {
-      if (!gChatId) {
-        await this.answerCallbackQuery(cb.id, 'لوحة قديمة — انشر اللعبة مجدداً', true);
+      if (!gChatId || (!data.startsWith('wkj:') && !payloadChatId)) {
+        await this.answerCallbackQuery(cb.id, 'ما لگيت جلسة اللعبة؛ اضغط «انضم» من لوحة اللعبة حتى نفتح جلسة جديدة.', true);
         return;
       }
       game = WK.createWKGame(gChatId, cb.message?.chat.title || 'المحادثة');
@@ -9753,24 +9814,28 @@ export class TelegramBotManager {
     if (data.startsWith('wkn:')) {
       const fresh = WK.createWKGame(game.chatId, game.chatTitle || 'المحادثة');
       WK.wkJoin(fresh, uid, uname);
+      fresh.inlineMessageId = game.inlineMessageId;
       this.wkGames.set(game.chatId, fresh);
-      const botUser = await this.getBotUsername();
-      const sent = game.chatId
-        ? await this.sendMessage(
-            game.chatId,
-            await this.withBotFooter(WK.renderWKBoard(fresh), true),
-            WK.wkBoardKeyboard(fresh, botUser),
-            'MarkdownV2'
-          )
-        : null;
-      if (sent?.ok && sent.result?.message_id) {
-        fresh.messageId = sent.result.message_id;
-        this.wkGames.set(game.chatId, fresh);
-      } else {
-        fresh.messageId = game.messageId;
-        fresh.inlineMessageId = game.inlineMessageId;
-        this.wkGames.set(game.chatId, fresh);
+      if (game.inlineMessageId && !game.messageId && game.chatId.startsWith('wk_i_')) {
         await this.paintWKBoard(fresh);
+      } else {
+        const botUser = await this.getBotUsername();
+        const sent = game.chatId
+          ? await this.sendMessage(
+              game.chatId,
+              await this.withBotFooter(WK.renderWKBoard(fresh), true),
+              WK.wkBoardKeyboard(fresh, botUser),
+              'MarkdownV2'
+            )
+          : null;
+        if (sent?.ok && sent.result?.message_id) {
+          fresh.messageId = sent.result.message_id;
+          this.wkGames.set(game.chatId, fresh);
+        } else {
+          fresh.messageId = game.messageId;
+          this.wkGames.set(game.chatId, fresh);
+          await this.paintWKBoard(fresh);
+        }
       }
       await this.answerCallbackQuery(cb.id, '🔄 تحدٍّ جديد — بانتظار اللاعب الثاني!');
       return;
@@ -9851,7 +9916,10 @@ export class TelegramBotManager {
     }
 
     if (action === 'again') {
-      const fresh = RPS.createGame(chatId, game.chatTitle, game.totalRounds);
+      const human = game.players.find(p => !p.isBot);
+      const fresh = game.botOpponent && human
+        ? RPS.createBotGame(chatId, game.chatTitle, game.totalRounds, human.id, human.name)
+        : RPS.createGame(chatId, game.chatTitle, game.totalRounds);
       this.rpsGames.set(chatId, fresh);
       await this.answerCallbackQuery(cb.id, '🔄 مباراة جديدة');
       await this.paintRPSBoard(fresh);
@@ -9888,6 +9956,10 @@ export class TelegramBotManager {
 
     let next = RPS.setMove(game, userId, move);
     let reveal = false;
+    if (game.botOpponent) {
+      const bot = next.players.find(p => p.isBot);
+      if (bot) next = RPS.setMove(next, bot.id, RPS.randomMove());
+    }
     if (RPS.allMoved(next)) {
       next = RPS.resolveRound(next);
       reveal = true;
@@ -9907,8 +9979,9 @@ export class TelegramBotManager {
 
   /** توزيع الفلوس/XP والإحصائيات على لاعبي حجرة ورقة مقص */
   private async awardRPS(game: RPS.RPSGame) {
-    const winner = game.players.find(p => p.id === game.winnerId);
+    const winner = game.players.find(p => p.id === game.winnerId && !p.isBot);
     for (const p of game.players) {
+      if (p.isBot) continue;
       const rec = this.ensureUser(p.id, p.name);
       const won = p.id === game.winnerId;
       rec.rpsGames = (rec.rpsGames || 0) + 1;
@@ -9943,7 +10016,7 @@ export class TelegramBotManager {
         `🏆 *فزت بمباراة حجرة ورقة مقص!*\n${moneyLine}\n+${Economy.xpForResult('rps', true, 1)} XP`
       );
     }
-    const loser = game.players.find(p => p.id !== game.winnerId);
+    const loser = game.players.find(p => !p.isBot && p.id !== game.winnerId);
     if (loser) {
       await this.sendMessage(
         loser.id,
