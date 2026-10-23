@@ -30,6 +30,7 @@ export interface RPSGame {
   /** فائز المباراة */
   winnerId?: string;
   messageId?: number;
+  inlineMessageId?: string;
   channel?: boolean;
   botOpponent?: boolean;
   createdAt: number;
@@ -242,15 +243,15 @@ export function boardKeyboard(game: RPSGame): any[][] {
 
   if (game.status === 'lobby') {
     if (game.players.length < 2) {
-      rows.push([{ text: 'انضم', callback_data: `rpsb:join:${game.chatId}` }]);
+      rows.push([{ text: 'انضم', callback_data: `rpsb:join:${game.totalRounds}:${game.chatId}` }]);
     } else {
-      rows.push([{ text: '🚀 ابدأ', callback_data: `rpsb:start:${game.chatId}` }]);
+      rows.push([{ text: '🚀 ابدأ', callback_data: `rpsb:start:${game.totalRounds}:${game.chatId}` }]);
     }
     return rows;
   }
 
   if (game.status === 'game_over') {
-    rows.push([{ text: '🔄 مباراة جديدة', callback_data: `rpsb:again:${game.chatId}` }]);
+    rows.push([{ text: '🔄 مباراة جديدة', callback_data: `rpsb:again:${game.totalRounds}:${game.chatId}` }]);
     return rows;
   }
 
