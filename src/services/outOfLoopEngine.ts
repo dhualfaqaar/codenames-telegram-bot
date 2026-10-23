@@ -119,6 +119,7 @@ export interface OOLGame {
   chatId: string;
   chatName: string;
   messageId?: number;
+  inlineMessageId?: string;
   createdBy?: string;
   status: OOLStatus;
   players: OOLPlayer[];
