@@ -10,6 +10,7 @@ export interface RPSPlayer {
   id: string;
   name: string;
   score: number;
+  isBot?: boolean;
   /** اختيار الجولة الحالية (سري) */
   move?: RPSMove;
 }
@@ -30,6 +31,7 @@ export interface RPSGame {
   winnerId?: string;
   messageId?: number;
   channel?: boolean;
+  botOpponent?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -85,6 +87,30 @@ export function createGame(
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
+}
+
+/** يبدأ مباراة خاصة مباشرة بين لاعب واحد والبوت. */
+export function createBotGame(
+  chatId: string,
+  chatTitle: string,
+  totalRounds: number,
+  playerId: string,
+  playerName: string
+): RPSGame {
+  const game = createGame(chatId, chatTitle, totalRounds, playerId);
+  game.channel = false;
+  game.botOpponent = true;
+  game.players = [
+    { id: playerId, name: playerName || 'لاعب', score: 0 },
+    { id: `rps_bot:${chatId}`, name: 'البوت 🤖', score: 0, isBot: true }
+  ];
+  game.status = 'playing';
+  return game;
+}
+
+export function randomMove(): RPSMove {
+  const moves: RPSMove[] = ['rock', 'paper', 'scissors'];
+  return moves[Math.floor(Math.random() * moves.length)];
 }
 
 /** ينضم لاعب (أقصى 2 لاعبين) */
@@ -172,7 +198,7 @@ export function resolveRound(game: RPSGame): RPSGame {
 /** نص رسالة المباراة بلوحة (للقناة) */
 export function renderGame(game: RPSGame): string {
   const SEP = '━━━━━━━━━━━━━━━━━━━';
-  const lines = [`✊ *حجرة ورقة مقص*`];
+  const lines = [`✊ *حجرة ورقة مقص${game.botOpponent ? ' — ضد البوت 🤖' : ''}*`];
 
   if (game.status === 'lobby') {
     lines.push('');
@@ -205,6 +231,8 @@ export function renderGame(game: RPSGame): string {
   lines.push(SEP);
   lines.push(`🏆 *النقاط:*`);
   lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score, p.move ? ' ✅' : ' ⏳')).join('\n'));
+  const lastRound = game.history[game.history.length - 1];
+  if (lastRound) lines.push('', lastRound);
   return lines.join('\n');
 }
 

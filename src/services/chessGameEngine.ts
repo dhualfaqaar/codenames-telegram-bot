@@ -4,6 +4,7 @@ export interface ChessPlayer {
   id: string;
   name: string;
   color: 'w' | 'b';
+  isBot?: boolean;
 }
 export interface ChessGame {
   chatId: string;
@@ -18,11 +19,27 @@ export interface ChessGame {
   winnerId?: string;
   finishReason?: 'checkmate' | 'draw' | 'resignation';
   lastMoveSan?: string;
+  botOpponent?: boolean;
 }
 
 const INITIAL_FEN = new Chess().fen();
 export function createChessLobby(chatId: string, chatTitle: string): ChessGame {
   return { chatId, chatTitle, status: 'lobby', players: [], fen: INITIAL_FEN, moves: [] };
+}
+
+export function createChessBotGame(chatId: string, playerId: string, playerName: string): ChessGame {
+  return {
+    chatId,
+    chatTitle: 'مباراة خاصة ضد البوت',
+    status: 'playing',
+    players: [
+      { id: playerId, name: playerName || 'لاعب', color: 'w' },
+      { id: 'chess_bot', name: 'البوت 🤖', color: 'b', isBot: true }
+    ],
+    fen: INITIAL_FEN,
+    moves: [],
+    botOpponent: true
+  };
 }
 
 export function chessJoin(game: ChessGame, id: string, name: string): { ok: boolean; msg: string } {
@@ -94,6 +111,62 @@ export function chessSelect(game: ChessGame, playerId: string, square: string): 
   return { ok: true, msg: `اختيرت ${piece.type.toUpperCase()} في ${square}. اختار مربع الوصول.` };
 }
 
+/** حركة بوت بسيطة وآمنة: تكتيك مادي، كش/كش مات، وتمركز مركزي، وكل الحركات من chess.js القانونية. */
+export function chessBotMove(game: ChessGame): { ok: boolean; msg: string; moved?: boolean } {
+  if (!game.botOpponent || game.status !== 'playing') return { ok: false, msg: 'ماكو دور بوت هسه.' };
+  const bot = game.players.find(p => p.isBot);
+  const chess = loadPosition(game);
+  if (!bot || chess.turn() !== bot.color) return { ok: false, msg: 'مو دور البوت.' };
+
+  const pieceValue: Record<string, number> = { p: 1, n: 3.2, b: 3.3, r: 5, q: 9, k: 0 };
+  const material = (position: Chess) => {
+    let score = 0;
+    for (const row of position.board()) {
+      for (const piece of row) {
+        if (piece) score += (piece.color === 'b' ? 1 : -1) * pieceValue[piece.type];
+      }
+    }
+    return score;
+  };
+
+  const candidates = chess.moves({ verbose: true }) as Move[];
+  if (!candidates.length) return { ok: false, msg: 'ما لكيت حركة قانونية للبوت.' };
+  let bestMove = candidates[0];
+  let bestScore = -Infinity;
+  for (const candidate of candidates) {
+    chess.move({ from: candidate.from, to: candidate.to, promotion: candidate.promotion });
+    const centerBonus = ['d4', 'e4', 'd5', 'e5'].includes(candidate.to) ? 0.12 : 0;
+    const score =
+      (chess.isCheckmate() ? 10000 : material(chess) + (chess.isCheck() ? 0.35 : 0) + centerBonus) +
+      Math.random() * 0.02;
+    chess.undo();
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = candidate;
+    }
+  }
+
+  const moved = chess.move({ from: bestMove.from, to: bestMove.to, promotion: bestMove.promotion });
+  if (!moved) return { ok: false, msg: 'تعذر تنفيذ حركة البوت.' };
+  game.moves.push({ from: moved.from, to: moved.to, promotion: moved.promotion });
+  game.fen = chess.fen();
+  game.lastMoveSan = moved.san;
+  game.selectedFrom = undefined;
+
+  if (chess.isCheckmate()) {
+    game.status = 'finished';
+    game.finishReason = 'checkmate';
+    game.winnerId = bot.id;
+    return { ok: true, msg: `كش مات! ${bot.name} فاز.`, moved: true };
+  }
+  if (chess.isDraw() || chess.isStalemate() || chess.isThreefoldRepetition() || chess.isInsufficientMaterial()) {
+    game.status = 'finished';
+    game.finishReason = 'draw';
+    return { ok: true, msg: 'انتهت المباراة بالتعادل.', moved: true };
+  }
+  return { ok: true, msg: `حركة البوت: ${moved.san}`, moved: true };
+}
+
 export function chessResign(game: ChessGame, playerId: string): { ok: boolean; msg: string } {
   if (game.status !== 'playing') return { ok: false, msg: 'ماكو مباراة جارية.' };
   const player = game.players.find(p => p.id === playerId);
@@ -137,7 +210,7 @@ export function chessBoardKeyboard(game: ChessGame): any[][] {
 }
 
 export function renderChess(game: ChessGame): string {
-  const lines = ['♟️ *شطرنج 1 ضد 1*', '━━━━━━━━━━━━━━━━━━━'];
+  const lines = [`♟️ *شطرنج${game.botOpponent ? ' ضد البوت 🤖' : ' 1 ضد 1'}*`, '━━━━━━━━━━━━━━━━━━━'];
   if (game.status === 'lobby') {
     lines.push(`👥 اللاعبون: ${game.players.length}/2`);
     game.players.forEach((p, i) => lines.push(`${p.color === 'w' ? '⚪' : '⚫'} ${i + 1}\. ${escapeV2(p.name)}`));
