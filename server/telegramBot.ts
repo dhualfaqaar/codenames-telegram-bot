@@ -2014,6 +2014,8 @@ export class TelegramBotManager {
           if (oldest !== undefined) this.seenUpdateIds.delete(oldest);
         }
       }
+      // منشورات القناة العادية ليست أوامر للبوت؛ نتعامل فقط مع بطاقات الإنلاين المنشورة عبره.
+      if (update.channel_post && !update.channel_post.via_bot) return;
       await this.ensureCommandsSynced();
       const incoming = update.message || update.channel_post;
 
@@ -2040,8 +2042,6 @@ export class TelegramBotManager {
         await this.handleCallbackQuery(update.callback_query);
       } else if (update.inline_query) {
         await this.handleInlineQuery(update.inline_query);
-      } else if (update.my_chat_member) {
-        await this.handleMyChatMember(update.my_chat_member);
       }
     } catch (e: any) {
       console.error('Error handling Telegram update:', e);
@@ -3257,10 +3257,9 @@ export class TelegramBotManager {
       return;
     }
 
-    // «🎮 العب بالقناة» → يرسل مباشرة اختيار القناة
+    // لا نفتح منتقي القنوات بدون اختيار لعبة؛ وإلا قد تُفهم القناة على أنها طلب Codenames.
     if (section === 'channel') {
-      await this.answerCallbackQuery(cb.id);
-      await this.sendChannelKeyboard(chatId);
+      await this.answerCallbackQuery(cb.id, 'اختار لعبة أولاً من القائمة حتى ما تننشر لعبة بالغلط.', true);
       return;
     }
 
@@ -3302,7 +3301,8 @@ export class TelegramBotManager {
         return;
       }
 
-      // الألعاب الثانية: نفتح منتقي تليجرام الرسمي (شكل «تحويل رسالة») مباشرة
+      // اختار اللعبة قبل فتح منتقي القنوات حتى ما ينزل البوت كود نيمز كخيار افتراضي.
+      this.pendingChannelGame.set(String(cb.from.id), { gameId, at: Date.now() });
       await this.answerCallbackQuery(cb.id);
       await this.sendChannelKeyboard(chatId);
       return;
@@ -3397,6 +3397,13 @@ export class TelegramBotManager {
     gameId?: string,
     rounds?: number
   ): Promise<{ ok: boolean; text: string }> {
+    if (gameId !== 'rps' && gameId !== 'codenames') {
+      return {
+        ok: false,
+        text: '⚠️ ما اخترت لعبة صالحة للنشر؛ ما نزلت أي لعبة. ارجع للقائمة واختار اللعبة المطلوبة أولاً.'
+      };
+    }
+
     // نبقي اللوحات السابقة موجودة بالقناة وما نحذفها أبداً — نبدأ لعبة جديدة بأسفلها فقط
     if (gameId === 'rps') {
       this.rpsGames.delete(channelId);
@@ -3407,11 +3414,8 @@ export class TelegramBotManager {
       }
     }
 
-    let result = await this.startNewGameLobby(channelId, title, byUser, gameId, rounds);
-    // تليجرام أحياناً يحتاج محاولة ثانية مباشرة بعد ما ينضاف البوت للقناة
-    if (!result.messageId) {
-      result = await this.startNewGameLobby(channelId, title, byUser, gameId, rounds);
-    }
+    // لا نعيد إرسال الرسالة تلقائياً عند نتيجة غامضة من Telegram؛ قد يكون الإرسال الأول وصل فعلاً.
+    const result = await this.startNewGameLobby(channelId, title, byUser, gameId, rounds);
 
     if (result.messageId) {
       const text =
@@ -3903,7 +3907,8 @@ export class TelegramBotManager {
     const isMafiaCard = !isTrnCard && (hiddenTag === 'mf' || (text.includes('لعبة المافيا') && text.includes('المنضمون')));
     const isOOLCard = !isTrnCard && (hiddenTag === 'ool' || (text.includes('منو برا السالفة') && text.includes('المنضمون')));
     const isWkCard = !isTrnCard && (hiddenTag === 'wk' || text.includes('wk:start') || (text.includes('منو يعرف الثاني') && (text.includes('تحضير') || text.includes('بانتظار'))));
-    const isCodenamesCard = !isTrnCard && (hiddenTag === 'cn' || text.includes('كود نيمز'));
+    // بطاقات كود نيمز الحالية تحمل علامة مخفية ثابتة؛ لا نحوّل نصاً عادياً يذكر اللعبة إلى لوبي.
+    const isCodenamesCard = !isTrnCard && hiddenTag === 'cn';
     const isRpsCard = !isTrnCard && (hiddenTag.startsWith('rps:') || text.includes('حجرة ورقة مقص'));
     const isStoryCard = hiddenTag.startsWith('st:');
     const isGuessEliminationCard = hiddenTag.startsWith('ge:');
@@ -4211,6 +4216,9 @@ export class TelegramBotManager {
       }
     }
     for (const game of this.games.values()) {
+      const createdAt = Number(game.createdAt || game.updatedAt || now);
+      const expiryAt = createdAt + 24 * 60 * 60 * 1000;
+      if (expiryAt < earliest) earliest = expiryAt;
       if (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') continue;
       const deadline = game.turnDeadline ?? (game.turnDeadline = now + CODENAMES_TURN_MS);
       const nextRefresh = (game.lastCountdownAt ?? now) + 15000;
@@ -4361,6 +4369,16 @@ export class TelegramBotManager {
 
     // ⏱️ كود نيمز: تحديث لوحة العدّ كل 15 ثانية، وتمرير الدور بعد دقيقتين دون رسائل خاصة تلقائية.
     for (const game of Array.from(this.games.values())) {
+      // لا نُحيي لوبي/مباراة قديمة: بعد 24 ساعة نوقفها بصمت.
+      const createdAt = Number(game.createdAt || game.updatedAt || now);
+      if (now - createdAt >= 24 * 60 * 60 * 1000) {
+        this.games.delete(game.id);
+        for (const player of game.players) {
+          this.awaitingClueWord.delete(String(player.id));
+          this.pendingClueWord.delete(String(player.id));
+        }
+        continue;
+      }
       if (game.status !== 'spymaster_turn' && game.status !== 'operative_turn') continue;
       if (game.turnDeadline === undefined) game.turnDeadline = now + CODENAMES_TURN_MS;
 
@@ -9974,43 +9992,24 @@ export class TelegramBotManager {
     // شنو اللعبة اللي اختارها المستخدم؟
     const pending = byUser ? this.pendingChannelGame.get(byUser) : undefined;
     if (byUser) this.pendingChannelGame.delete(byUser);
-    // نتجاهل الاختيار القديم (أكثر من 15 دقيقة) حتى ما ينشر لعبة غلط
+    // نتجاهل الاختيار القديم (أكثر من 15 دقيقة) ولا نحوّل غيابه إلى Codenames افتراضياً.
     const fresh = pending && Date.now() - pending.at < 15 * 60 * 1000 ? pending : undefined;
 
-    const res = await this.deployGameToChannel(channelId, title, message.from?.id, fresh?.gameId, fresh?.rounds);
-
     if (!byUser) return;
+    if (!fresh || (fresh.gameId !== 'rps' && fresh.gameId !== 'codenames')) {
+      await this.sendMessage(
+        byUser,
+        '⚠️ ماكو اختيار لعبة صالح مرتبط بهالطلب، لذلك ما نشرت أي لعبة. ارجع اختار اللعبة المطلوبة من القائمة وحاول من جديد.'
+      );
+      await this.clearReplyKeyboard(byUser);
+      return;
+    }
+
+    const res = await this.deployGameToChannel(channelId, title, message.from?.id, fresh.gameId, fresh.rounds);
     await this.sendMessage(byUser, res.text);
 
     // خلص اختيار القناة → نشيل الكيبورد السفلي (يرجع من مربع «📣 نزّل لعبة بقناتك»)
     await this.clearReplyKeyboard(byUser);
-  }
-
-  /**
-   * Bot was added to a channel — offer a one-tap start button.
-   */
-  private async handleMyChatMember(update: TelegramChatMemberUpdated) {
-    const status = update.new_chat_member?.status;
-    if (status !== 'administrator' && status !== 'member') return;
-    if (update.chat.type !== 'channel') return;
-
-    const chatId = String(update.chat.id);
-    const existing = this.games.get(chatId);
-    // Never reset a lobby/match that is already open.
-    if (existing && existing.status !== 'game_over') return;
-    // لا ننشئ لوحة كودنيمز إذا أكو مباراة حجرة ورقة مقص شغّالة بهذي القناة
-    const rps = this.rpsGames.get(chatId);
-    if (rps && rps.status !== 'game_over') return;
-
-    // In channels the update carries the admin who added the bot.
-    const admins = update.from?.id ? [] : await this.getChatAdministrators(chatId);
-    const creatorId = update.from?.id || admins.find((a: any) => a?.user?.id)?.user?.id;
-
-    try {
-      await this.startNewGameLobby(chatId, update.chat.title || 'القناة', creatorId);
-    } catch (e) {
-      console.error('failed to open channel lobby:', e);
-    }
   }
 
   /**
@@ -10195,33 +10194,36 @@ export class TelegramBotManager {
     const text = GG.toV2(await this.withBotFooter(CodenamesEngine.getTelegramMessageText(game, game.lastEvent), true));
     const keyboard = await this.buildKeyboard(game);
 
-    // لوحة أصلها إنلاين وما عدنا رقم الرسالة بالمحادثة؟ نعدّلها بمعرّف الإنلاين
+    // لوحة أصلها إنلاين وما عدنا رقم الرسالة بالمحادثة؟ نعدّلها بمعرّف الإنلاين.
+    // إذا تعذر تعديلها نوقف اللعبة ولا ننشئ منشوراً جديداً يعيد إحياء لوحة قديمة.
     if (!msgId && (game as any).inlineMessageId) {
       const res = await this.editInlineMessageText((game as any).inlineMessageId, text, keyboard, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
+      this.games.delete(chatId);
+      this.scheduleLocalQuizTimer();
+      return;
     }
 
-    if (msgId) {
-      const res = await this.editMessageText(chatId, msgId, text, keyboard, 'MarkdownV2');
-
-      // Remember the message id on success (or when nothing actually changed)
-      if (res?.ok || res?.description === 'Bad Request: message is not modified') {
-        game.messageId = msgId;
-        this.games.set(chatId, game);
-        return;
-      }
-
-      // Only fall back to a new message if the old one was deleted / can't be edited
-      const desc = String(res?.description || '');
-      const gone = desc.includes('message to edit not found') || desc.includes("message can't be edited");
-      if (!gone) return;
+    if (!msgId) {
+      this.games.delete(chatId);
+      this.scheduleLocalQuizTimer();
+      return;
     }
 
-    const sent = await this.sendMessage(chatId, text, keyboard, 'MarkdownV2');
-    if (sent?.result?.message_id) {
-      game.messageId = sent.result.message_id;
+    const res = await this.editMessageText(chatId, msgId, text, keyboard, 'MarkdownV2');
+    if (res?.ok || res?.description === 'Bad Request: message is not modified') {
+      game.messageId = msgId;
       this.games.set(chatId, game);
+      return;
     }
+
+    // لا نرسل لوحة بديلة تلقائياً؛ فشل التعديل يجب ألا يتحول إلى منشورات مكررة.
+    this.games.delete(chatId);
+    for (const player of game.players) {
+      this.awaitingClueWord.delete(String(player.id));
+      this.pendingClueWord.delete(String(player.id));
+    }
+    this.scheduleLocalQuizTimer();
   }
 
   private codenamesCardTypeLabel(type: string, team: Team): string {
