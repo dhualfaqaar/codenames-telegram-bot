@@ -2123,9 +2123,26 @@ export class TelegramBotManager {
       ? '🤫 اختار عدد القرّاء، ومن القائمة اختار نفس القناة. بعدها تفتح خانة البوت داخل القناة؛ اكتب نص الهمسة، اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً.'
       : '🤫 اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح داخل نفس المحادثة، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
     const botMention = isChannel ? `\nالبوت: @${((await this.getBotUsername()) || 'codenames1bot').replace(/^@/, '')}` : '';
-    const sent = await this.sendMessage(chatId, `${instruction}${botMention}`, keyboard);
+    let sent = await this.sendMessage(chatId, `${instruction}${botMention}`, keyboard);
+    let reason = String(sent?.description || 'Telegram returned no message id');
+    if ((!sent?.ok || !sent?.result?.message_id) && isChannel) {
+      // بعض نسخ تيليجرام ترفض الزر المقيّد بنوع محادثة؛ جرّب الزر العام الذي يفتح اختيار المحادثة.
+      const chooserKeyboard = modes.map(mode => [{
+        text: mode.label,
+        switch_inline_query: `wh:new:${mode.mode}:`
+      }]);
+      sent = await this.sendMessage(chatId, `${instruction}${botMention}`, chooserKeyboard);
+      if (!sent?.ok || !sent?.result?.message_id) {
+        reason = `${reason}; fallback: ${sent?.description || 'Telegram returned no message id'}`;
+        const manualUsername = ((await this.getBotUsername()) || 'codenames1bot').replace(/^@/, '');
+        const manualText =
+          `${instruction}${botMention}\n` +
+          `إذا ما فتح الزر، اكتب بالقناة: @${this.mdSafe(manualUsername)} wh:new:first: ثم أضف نص الهمسة واختار النتيجة.`;
+        sent = await this.sendMessage(chatId, manualText);
+      }
+    }
     if (!sent?.ok || !sent?.result?.message_id) {
-      const reason = String(sent?.description || 'Telegram returned no message id');
+      reason = String(sent?.description || reason);
       console.error(`Failed to send whisper launcher to chat ${chatId}: ${reason}`);
       if (this.ownerId && this.ownerId !== chatId) {
         await this.sendMessage(this.ownerId, `⚠️ تعذّر إرسال قائمة الهمسة إلى القناة ${chatId}. سبب Telegram: ${this.mdSafe(reason)}\nتأكد أن البوت مشرف ولديه صلاحية نشر الرسائل.`);
