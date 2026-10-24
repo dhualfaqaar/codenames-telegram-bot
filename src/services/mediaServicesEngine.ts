@@ -36,6 +36,11 @@ export interface PendingWhisperDraft {
   step: 'awaiting_text' | 'awaiting_targets';
   mode: WhisperMode;
   text?: string;
+  /** Optional destination metadata when a channel admin composes a whisper in private chat. */
+  channelId?: string;
+  channelTitle?: string;
+  triggerMessageId?: number;
+  launcherMessageId?: number;
 }
 
 export function whisperModeLabel(mode: WhisperMode): string {

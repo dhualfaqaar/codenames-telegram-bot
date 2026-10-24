@@ -2111,7 +2111,7 @@ export class TelegramBotManager {
     const makeButton = (mode: MS.WhisperMode, label: string) => ({
       text: label,
       ...(isChannel
-        ? { switch_inline_query_chosen_chat: { query: `wh:new:${mode}:`, allow_channel_chats: true } }
+        ? { callback_data: `wh:channel_mode:${mode}` }
         : { switch_inline_query_current_chat: `wh:new:${mode}:` })
     });
     const keyboard = [
@@ -2120,29 +2120,11 @@ export class TelegramBotManager {
       [makeButton(modes[4].mode, modes[4].label), makeButton(modes[5].mode, modes[5].label), makeButton(modes[6].mode, modes[6].label)]
     ];
     const instruction = isChannel
-      ? '🤫 اختار عدد القرّاء، ومن القائمة اختار نفس القناة. بعدها تفتح خانة البوت داخل القناة؛ اكتب نص الهمسة، اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً.'
+      ? '🤫 اختار نوع الهمسة؛ راح يوصلك البوت بالخاص حتى تكتب نصها، وبعدها ينشرها تلقائياً بهذه القناة.'
       : '🤫 اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح داخل نفس المحادثة، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
-    const botMention = isChannel ? `\nالبوت: @${((await this.getBotUsername()) || 'codenames1bot').replace(/^@/, '')}` : '';
-    let sent = await this.sendMessage(chatId, `${instruction}${botMention}`, keyboard);
-    let reason = String(sent?.description || 'Telegram returned no message id');
-    if ((!sent?.ok || !sent?.result?.message_id) && isChannel) {
-      // بعض نسخ تيليجرام ترفض الزر المقيّد بنوع محادثة؛ جرّب الزر العام الذي يفتح اختيار المحادثة.
-      const chooserKeyboard = modes.map(mode => [{
-        text: mode.label,
-        switch_inline_query: `wh:new:${mode.mode}:`
-      }]);
-      sent = await this.sendMessage(chatId, `${instruction}${botMention}`, chooserKeyboard);
-      if (!sent?.ok || !sent?.result?.message_id) {
-        reason = `${reason}; fallback: ${sent?.description || 'Telegram returned no message id'}`;
-        const manualUsername = ((await this.getBotUsername()) || 'codenames1bot').replace(/^@/, '');
-        const manualText =
-          `${instruction}${botMention}\n` +
-          `إذا ما فتح الزر، اكتب بالقناة: @${this.mdSafe(manualUsername)} wh:new:first: ثم أضف نص الهمسة واختار النتيجة.`;
-        sent = await this.sendMessage(chatId, manualText);
-      }
-    }
+    const sent = await this.sendMessage(chatId, instruction, keyboard);
+    const reason = String(sent?.description || 'Telegram returned no message id');
     if (!sent?.ok || !sent?.result?.message_id) {
-      reason = String(sent?.description || reason);
       console.error(`Failed to send whisper launcher to chat ${chatId}: ${reason}`);
       if (this.ownerId && this.ownerId !== chatId) {
         await this.sendMessage(this.ownerId, `⚠️ تعذّر إرسال قائمة الهمسة إلى القناة ${chatId}. سبب Telegram: ${this.mdSafe(reason)}\nتأكد أن البوت مشرف ولديه صلاحية نشر الرسائل.`);
@@ -2189,6 +2171,19 @@ export class TelegramBotManager {
     if (!launch) return;
     await this.deleteMessage(chatId, launch.triggerMessageId);
     await this.deleteMessage(chatId, launch.launcherMessageId);
+  }
+
+  private async cleanupWhisperLauncherByIds(chatId: string, triggerMessageId?: number, launcherMessageId?: number) {
+    if (triggerMessageId === undefined && launcherMessageId === undefined) return;
+    const launches = this.pendingWhisperLaunches.get(chatId) || [];
+    const remaining = launches.filter(entry => !(
+      (triggerMessageId === undefined || entry.triggerMessageId === triggerMessageId) &&
+      (launcherMessageId === undefined || entry.launcherMessageId === launcherMessageId)
+    ));
+    if (remaining.length) this.pendingWhisperLaunches.set(chatId, remaining);
+    else this.pendingWhisperLaunches.delete(chatId);
+    if (triggerMessageId) await this.deleteMessage(chatId, triggerMessageId);
+    if (launcherMessageId) await this.deleteMessage(chatId, launcherMessageId);
   }
 
   /**
@@ -7204,6 +7199,50 @@ export class TelegramBotManager {
     const messageId = cb.message?.message_id;
     const SEP = '━━━━━━━━━━━━━━━━━━━';
 
+    const channelWhisperMode = data.match(/^wh:channel_mode:(all|first|[1-5])$/);
+    if (channelWhisperMode) {
+      const channel = cb.message?.chat;
+      if (!channel || channel.type !== 'channel') {
+        await this.answerCallbackQuery(cb.id, 'هذا الخيار مخصص للقنوات.', true);
+        return;
+      }
+      const channelId = String(channel.id);
+      const launches = (this.pendingWhisperLaunches.get(channelId) || []).filter(entry => Date.now() - entry.createdAt < 15 * 60 * 1000);
+      const selectedLaunch = launches.find(entry => entry.launcherMessageId === messageId);
+      if (selectedLaunch) selectedLaunch.creatorId = userId;
+      if (launches.length) this.pendingWhisperLaunches.set(channelId, launches);
+      else this.pendingWhisperLaunches.delete(channelId);
+      const mode = channelWhisperMode[1] as MS.WhisperMode;
+      this.pendingWhispers.set(userId, {
+        step: 'awaiting_text',
+        mode,
+        channelId,
+        channelTitle: channel.title,
+        triggerMessageId: selectedLaunch?.triggerMessageId,
+        launcherMessageId: selectedLaunch?.launcherMessageId || messageId
+      });
+      const dm = await this.sendMessage(
+        userId,
+        `🤫 اكتب نص الهمسة لـ «${this.mdSafe(channel.title || 'القناة')}» برسالة هنا، والبوت ينشرها تلقائياً بالقناة.`,
+        [[{ text: '❌ إلغاء الهمسة', callback_data: 'wh:channel_cancel' }]]
+      );
+      if (!dm?.ok) {
+        this.pendingWhispers.delete(userId);
+        await this.answerCallbackQuery(cb.id, 'افتح محادثة البوت واضغط Start أولاً، بعدها أعد ضغط زر الهمسة بالقناة.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '📩 اكتب الهمسة برسالة خاصة للبوت؛ راح تننشر بالقناة تلقائياً.');
+      return;
+    }
+
+    if (data === 'wh:channel_cancel') {
+      const draft = this.pendingWhispers.get(userId);
+      if (draft?.channelId) this.pendingWhispers.delete(userId);
+      await this.answerCallbackQuery(cb.id, 'تم إلغاء كتابة الهمسة.');
+      if (draft?.channelId) await this.sendMessage(userId, 'تم الإلغاء؛ تگدر تبدأ من جديد بإرسال كلمة همسة بالقناة.');
+      return;
+    }
+
     // ── 1) فتح همسة منشورة بالكروب أو القناة (تعمل للرسائل العادية ورسائل الإنلاين!) ──
     if (data.startsWith('wh:open:')) {
       const whId = data.slice(8).trim();
@@ -8597,6 +8636,46 @@ export class TelegramBotManager {
     const creatorName = sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '');
 
     if (draft.step === 'awaiting_text') {
+      if (draft.channelId) {
+        const channelText = rawText.trim();
+        if (!channelText) {
+          await this.sendMessage(userId, '⚠️ اكتب نص الهمسة برسالة حتى أنشرها بالقناة.');
+          return;
+        }
+        if (channelText.length > 195) {
+          await this.sendMessage(userId, '⚠️ نص الهمسة طويل؛ اختصره إلى 195 حرفاً أو أقل.');
+          return;
+        }
+        const wh = MS.createWhisperRecord({
+          creatorId: userId,
+          creatorName,
+          creatorUsername: sender.username,
+          mode: draft.mode,
+          text: channelText,
+          allowedTargets: []
+        });
+        this.whispers.set(wh.id, wh);
+        while (this.whispers.size > 300) {
+          const oldestId = this.whispers.keys().next().value;
+          if (oldestId === undefined) break;
+          this.whispers.delete(oldestId);
+        }
+        const published = await this.sendMessage(
+          draft.channelId,
+          MS.renderWhisperCardText(wh),
+          MS.whisperCardKeyboard(wh),
+          'MarkdownV2'
+        );
+        if (!published?.ok || !published?.result?.message_id) {
+          this.whispers.delete(wh.id);
+          await this.sendMessage(userId, `⚠️ ما كدرت أنشر الهمسة بالقناة. سبب تيليجرام: ${this.mdSafe(String(published?.description || 'تعذّر إرسال الرسالة'))}`);
+          return;
+        }
+        this.pendingWhispers.delete(userId);
+        await this.cleanupWhisperLauncherByIds(draft.channelId, draft.triggerMessageId, draft.launcherMessageId);
+        await this.sendMessage(userId, `✅ نُشرت همستك بالقناة «${this.mdSafe(draft.channelTitle || 'القناة')}» بنجاح.`);
+        return;
+      }
       const clean = rawText.trim().slice(0, 190);
       if (draft.mode === 'all' || draft.mode === 'first') {
         this.pendingWhispers.delete(userId);
