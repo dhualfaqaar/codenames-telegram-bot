@@ -204,7 +204,7 @@ export function chessBoardKeyboard(game: ChessGame): any[][] {
   if (game.status === 'playing') {
     rows.push([{ text: '🏳️ استسلام', callback_data: `ch:resign:${game.chatId}` }]);
   } else if (game.status === 'finished') {
-    rows.push([{ text: '🔄 مباراة جديدة', callback_data: `ch:new:${game.chatId}` }]);
+    rows.push([{ text: '🔄 مباراة جديدة', callback_data: `ch:new:${game.chatId}:${game.botOpponent ? 'bot' : 'human'}` }]);
   }
   return rows;
 }

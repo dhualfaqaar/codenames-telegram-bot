@@ -3297,8 +3297,14 @@ export class TelegramBotManager {
 
       const active = this.chessGames.get(chatId);
       if (active && active.status === 'playing') {
-        await this.answerCallbackQuery(cb.id, 'عندك مباراة شطرنج جارية؛ خلصها أولاً.', true);
-        return;
+        const human = active.players.find(p => !p.isBot);
+        if (active.botOpponent && human?.id === String(cb.from.id)) {
+          await this.answerCallbackQuery(cb.id, 'رجعتلك لوحة مباراتك المحفوظة—كمل من هنا 🤖');
+          await this.paintChessBoard(active);
+          return;
+        }
+        // لا نخلي حالة قديمة/من نوع آخر تمنع إنشاء مباراة بوت جديدة بهذا الخاص.
+        this.chessGames.delete(chatId);
       }
       const game = CH.createChessBotGame(chatId, String(cb.from.id), cb.from.first_name || 'لاعب');
       this.chessGames.set(chatId, game);
@@ -9530,14 +9536,15 @@ export class TelegramBotManager {
     let game = this.chessGames.get(chatId);
     const uid = String(cb.from.id);
     if (op === 'new') {
-      const fresh = game?.botOpponent
+      const botRematch = Boolean(game?.botOpponent || p[3] === 'bot');
+      const fresh = botRematch
         ? CH.createChessBotGame(chatId, uid, cb.from.first_name || 'لاعب')
         : CH.createChessLobby(chatId, cb.message?.chat.title || 'المحادثة');
-      if (!game?.botOpponent) CH.chessJoin(fresh, uid, cb.from.first_name);
+      if (!botRematch) CH.chessJoin(fresh, uid, cb.from.first_name);
       if (game?.messageId) fresh.messageId = game.messageId;
       if (game?.inlineMessageId || cb.inline_message_id) fresh.inlineMessageId = game?.inlineMessageId || cb.inline_message_id;
       this.chessGames.set(chatId, fresh);
-      await this.answerCallbackQuery(cb.id, game?.botOpponent ? 'بدأت مباراة جديدة ضد البوت.' : 'بدأت لوحة جديدة.');
+      await this.answerCallbackQuery(cb.id, botRematch ? 'بدأت مباراة جديدة ضد البوت.' : 'بدأت لوحة جديدة.');
       await this.paintChessBoard(fresh);
       return;
     }
@@ -9566,7 +9573,8 @@ export class TelegramBotManager {
       }
     }
     await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
-    if (r.ok) await this.paintChessBoard(game, notice);
+    // إذا كانت لوحة قديمة أو حالتها محفوظة، أعد عرض الحالة الحالية حتى لا يبقى المستخدم على زر «ابدأ» المضلل.
+    if (r.ok || op === 'start') await this.paintChessBoard(game, notice);
   }
 
   private findActiveWKForUser(userId: string): WK.WKGame | undefined {
@@ -10122,6 +10130,8 @@ export class TelegramBotManager {
 
   /** توزيع الفلوس/XP والإحصائيات على لاعبي حجرة ورقة مقص */
   private async awardRPS(game: RPS.RPSGame) {
+    // مباريات البوت للتسلية فقط؛ لا تمنح XP أو نقاطاً أو أموالاً ولا تغيّر سجل اللاعب.
+    if (game.botOpponent) return;
     const winner = game.players.find(p => p.id === game.winnerId && !p.isBot);
     for (const p of game.players) {
       if (p.isBot) continue;
