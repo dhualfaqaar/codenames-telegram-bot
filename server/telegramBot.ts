@@ -2109,14 +2109,18 @@ export class TelegramBotManager {
     ];
     const makeButton = (mode: MS.WhisperMode, label: string) => ({
       text: label,
-      switch_inline_query_current_chat: `wh:new:${mode}:`
+      ...(isChannel
+        ? { switch_inline_query_chosen_chat: { query: `wh:new:${mode}:`, allow_channel_chats: true } }
+        : { switch_inline_query_current_chat: `wh:new:${mode}:` })
     });
     const keyboard = [
       [makeButton(modes[0].mode, modes[0].label), makeButton(modes[1].mode, modes[1].label)],
       [makeButton(modes[2].mode, modes[2].label), makeButton(modes[3].mode, modes[3].label)],
       [makeButton(modes[4].mode, modes[4].label), makeButton(modes[5].mode, modes[5].label), makeButton(modes[6].mode, modes[6].label)]
     ];
-    const instruction = '🤫 اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح داخل نفس المحادثة، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
+    const instruction = isChannel
+      ? '🤫 اختار عدد القرّاء، ومن القائمة اختار نفس القناة. بعدها تفتح خانة البوت داخل القناة؛ اكتب نص الهمسة، اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً.'
+      : '🤫 اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح داخل نفس المحادثة، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
     const botMention = isChannel ? `\nالبوت: @${((await this.getBotUsername()) || 'codenames1bot').replace(/^@/, '')}` : '';
     const sent = await this.sendMessage(chatId, `${instruction}${botMention}`, keyboard);
     if (!sent?.ok || !sent?.result?.message_id) {
