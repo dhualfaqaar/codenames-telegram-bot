@@ -345,15 +345,15 @@ export function renderChess(game: ChessGame): string {
     const current = game.status === 'playing' ? chessCurrentPlayer(game) : undefined;
     const check = game.status === 'playing' && loadPosition(game).isCheck() ? ' — ♟️ كش' : '';
     if (game.status === 'playing') {
-      if (game.botOpponent) lines.push('أنت الأبيض ⚪ والبوت الأسود ⚫.');
-      lines.push(`🎯 الدور: ${current?.name || '—'} ${current?.color === 'w' ? '⚪' : '⚫'}${check}`);
+      if (game.botOpponent) lines.push('أنت الأبيض ⚪ والبوت الأسود ⚫\\.');
+      lines.push(`🎯 الدور: ${escapeV2(current?.name || '—')} ${current?.color === 'w' ? '⚪' : '⚫'}${check}`);
     }
     if (game.lastMoveSan) lines.push(`آخر حركة: ${escapeV2(game.lastMoveSan)}`);
     if (game.status === 'finished') {
       const winner = game.players.find(p => p.id === game.winnerId);
       lines.push(game.finishReason === 'draw' ? '🤝 انتهت المباراة بالتعادل' : winner ? `🏆 الفائز: ${escapeV2(winner.name)}` : 'انتهت المباراة');
     }
-    lines.push('', '🟡 القطع القابلة للحركة مميزة بالأصفر. اضغط واحدة منها، ثم اختار مربع الوصول المميز بالأخضر 🟢. الترقية تتم تلقائياً إلى وزير.');
+    lines.push('', '🟡 القطع القابلة للحركة مميزة بالأصفر\\. اضغط واحدة منها، ثم اختار مربع الوصول المميز بالأخضر 🟢\\. الترقية تتم تلقائياً إلى وزير\\.');
   }
   return lines.join('\n');
 }
