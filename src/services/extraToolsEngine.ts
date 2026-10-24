@@ -576,7 +576,15 @@ export interface AudioMetadataDraft {
   artist: string;
   fileName: string;
   coverFileId?: string;
-  waitingField?: 'title' | 'artist' | 'fileName' | 'cover';
+  waitingField?: 'title' | 'artist' | 'fileName' | 'cover' | 'presetName';
+}
+
+export interface AudioMetadataPreset {
+  id: string;
+  name: string;
+  title: string;
+  artist: string;
+  coverFileId?: string;
 }
 
 function encodeUtf16LeFrameText(text: string): Uint8Array {
