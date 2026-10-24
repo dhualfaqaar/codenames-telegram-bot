@@ -1,6 +1,6 @@
 /**
  * ✨ محرك الخدمات الإضافية المتكامل (متوافق 100% مع Cloudflare Workers بدون حظر IP):
- *   1) 🤫 الهمسات السرية (1..5 أشخاص، للجميع، لأول شخص فقط + عرض القارئين داخل البطاقة وعلى الزر + إشعار فوري لصاحب الهمسة)
+ *   1) 🤫 الهمسات السرية (1..5 أشخاص، للجميع، لأول شخص فقط + إظهار العدد فقط للعامة وإرسال بيانات القارئ لصاحب الهمسة بالخاص)
  *   2) 🎵 البحث وتحميل الأغاني الكاملة («يوت») عبر SoundCloud AWS CloudFront المباشر + YouTube Innertube المحدّث
  *   3) 📥 التحميل المباشر من السوشيال ميديا (تيك توك، إنستغرام، بنترست، يوتيوب) بدون وسطاء محجوبين
  */
@@ -103,36 +103,17 @@ function mdV2Escape(s: string): string {
   return String(s || '').replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
 
-function shortBtnName(raw: string, maxLen = 18): string {
-  const clean = String(raw || 'مستخدم').replace(/\s+/g, ' ').trim();
-  return clean.length > maxLen ? `${clean.slice(0, maxLen)}…` : clean;
-}
-
 /**
- * تنسيق بطاقة الهمسة داخل القناة/المجموعة (MarkdownV2):
- * يعرض اسم المرسل داخل اقتباس، وبمجرد قراءة الهمسة يعرض أسماء القارئين داخل اقتباس أنيق ومرتّب.
+ * بطاقة همسة عامة بلا أسماء؛ بيانات القارئ تُرسل لصاحب الهمسة بالخاص فقط.
  */
 export function renderWhisperCardText(wh: WhisperRecord): string {
   const SEP = '━━━━━━━━━━━━━━━━━━━';
-  const senderBlockquote = `> \\| *${mdV2Escape(wh.creatorName || 'مستخدم')}* \\|`;
-  const readersBlock =
-    wh.openedBy.length > 0
-      ? `\n👀 *قرأها:*\n` +
-        wh.openedBy
-          .slice(0, 10)
-          .map(r => `> \\| *${mdV2Escape(r.name || 'مستخدم')}* \\|`)
-          .join('\n') +
-        (wh.openedBy.length > 10
-          ? `\n> \\+ ${mdV2Escape(String(wh.openedBy.length - 10))} آخرين`
-          : '')
-      : '';
+  const readersBlock = wh.openedBy.length > 0 ? `\n👀 *عدد القارئين:* ${wh.openedBy.length}` : '';
 
   if (wh.locked) {
     return (
       `🔒 *همسة مغلقة*\n` +
       `${SEP}\n` +
-      `✍️ *المرسل:*\n` +
-      `${senderBlockquote}` +
       `${readersBlock}\n` +
       `🔐 *النوع:* ${mdV2Escape(whisperModeLabel(wh.mode))}\n` +
       `⛔ اكتملت قراءة الهمسة وانقفلت\\.`
@@ -147,33 +128,19 @@ export function renderWhisperCardText(wh: WhisperRecord): string {
   return (
     `🤫 *همسة سرية*\n` +
     `${SEP}\n` +
-    `✍️ *المرسل:*\n` +
-    `${senderBlockquote}` +
     `${readersBlock}\n` +
     `🔐 *النوع:* ${mdV2Escape(whisperModeLabel(wh.mode))}${targetLine}\n` +
     `👇 اضغط الزر بالأسفل لقراءة الهمسة سرّاً`
   );
 }
 
-/** زر الهمسة القابل للضغط — يعرض حالة القراءة واسم القارئ بوضوح وأناقة */
+/** زر الهمسة لا يكشف أسماء المرسل أو القارئ داخل المجموعة/القناة. */
 export function whisperCardKeyboard(wh: WhisperRecord): any[][] {
   if (wh.locked) {
-    if (wh.openedBy.length === 1) {
-      return [[{ text: `🔒 قرأها: ${shortBtnName(wh.openedBy[0].name, 22)}`, callback_data: `wh:open:${wh.id}` }]];
-    }
-    if (wh.openedBy.length > 1) {
-      const names = wh.openedBy.slice(0, 2).map(r => shortBtnName(r.name, 11)).join(' ، ');
-      const extra = wh.openedBy.length > 2 ? ` +${wh.openedBy.length - 2}` : '';
-      return [[{ text: `🔒 قرأها: ${names}${extra}`, callback_data: `wh:open:${wh.id}` }]];
-    }
-    return [[{ text: '🔒 همسة مغلقة', callback_data: `wh:open:${wh.id}` }]];
+    return [[{ text: `🔒 همسة مغلقة • 👀 ${wh.openedBy.length}`, callback_data: `wh:open:${wh.id}` }]];
   }
-
-  if (wh.openedBy.length === 1) {
-    return [[{ text: `🤫 فتح الهمسة • 👀 ${shortBtnName(wh.openedBy[0].name, 16)}`, callback_data: `wh:open:${wh.id}` }]];
-  }
-  if (wh.openedBy.length > 1) {
-    return [[{ text: `🤫 فتح الهمسة • 👀 قرأها (${wh.openedBy.length})`, callback_data: `wh:open:${wh.id}` }]];
+  if (wh.openedBy.length > 0) {
+    return [[{ text: `🤫 فتح الهمسة • 👀 ${wh.openedBy.length}`, callback_data: `wh:open:${wh.id}` }]];
   }
   return [[{ text: '🤫 فتح الهمسة', callback_data: `wh:open:${wh.id}` }]];
 }

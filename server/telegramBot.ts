@@ -95,8 +95,9 @@ interface TelegramMessage {
   date: number;
   text?: string;
   chat_shared?: TelegramChatShared;
-  /** الرسالة نُشرت عبر بوت إنلاين (بطاقات «العب بالقناة») */
+  /** الرسالة نُشرت عبر بوت إنلاين */
   via_bot?: TelegramUser;
+  reply_markup?: { inline_keyboard?: Array<Array<{ callback_data?: string }>> };
   /** the message this one replies to (used by the owner's «حظر» replies) */
   reply_to_message?: TelegramMessage;
   // media people may send to the bot (delivered to the owner in his inbox)
@@ -1012,6 +1013,7 @@ export class TelegramBotManager {
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
+  private pendingWhisperLaunches: Map<string, Array<{ triggerMessageId: number; launcherMessageId: number; creatorId?: string; createdAt: number }>> = new Map();
   private pendingWhispers: Map<string, MS.PendingWhisperDraft> = new Map();
   private pendingSocialDl: Map<string, MS.SocialPlatform> = new Map();
   private seenUpdateIds: Set<number> = new Set();
@@ -1662,6 +1664,7 @@ export class TelegramBotManager {
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
+      pendingWhisperLaunches: Array.from(this.pendingWhisperLaunches.entries()),
       pendingWhispers: Array.from(this.pendingWhispers.entries()),
       pendingSocialDl: Array.from(this.pendingSocialDl.entries()),
       rouletteSessions: Array.from(this.rouletteSessions.entries()).slice(-200),
@@ -1717,6 +1720,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
+    if (Array.isArray(state.pendingWhisperLaunches)) this.pendingWhisperLaunches = new Map(state.pendingWhisperLaunches);
     if (Array.isArray(state.pendingWhispers)) this.pendingWhispers = new Map(state.pendingWhispers);
     if (Array.isArray(state.pendingSocialDl)) this.pendingSocialDl = new Map(state.pendingSocialDl);
     if (Array.isArray(state.rouletteSessions)) this.rouletteSessions = new Map(state.rouletteSessions);
@@ -2089,7 +2093,7 @@ export class TelegramBotManager {
     return command === 'همسه' || command === 'اهمس';
   }
 
-  private async sendWhisperInlineLauncher(chatId: string) {
+  private async sendWhisperInlineLauncher(chatId: string, triggerMessageId: number, creatorId?: string) {
     const modes: Array<{ mode: MS.WhisperMode; label: string }> = [
       { mode: 'all', label: '🌍 للجميع' },
       { mode: 'first', label: '⚡ لأول شخص' },
@@ -2114,11 +2118,51 @@ export class TelegramBotManager {
         { text: modes[6].label, switch_inline_query_current_chat: `wh:new:${modes[6].mode}:` }
       ]
     ];
-    await this.sendMessage(
+    const sent = await this.sendMessage(
       chatId,
       '🤫 لإنشاء همسة هنا: اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.',
       keyboard
     );
+    const launcherMessageId = Number(sent?.result?.message_id);
+    if (launcherMessageId) {
+      const recent = (this.pendingWhisperLaunches.get(chatId) || []).filter(entry => Date.now() - entry.createdAt < 15 * 60 * 1000);
+      recent.push({ triggerMessageId, launcherMessageId, creatorId, createdAt: Date.now() });
+      this.pendingWhisperLaunches.set(chatId, recent.slice(-10));
+    }
+  }
+
+  private isPublishedWhisperCard(message: TelegramMessage): boolean {
+    return Boolean(
+      message.reply_markup?.inline_keyboard?.some(row => row.some(button => button.callback_data?.startsWith('wh:open:'))) ||
+      /^(?:🤫|🔒)\s*همسة/.test(message.text || '')
+    );
+  }
+
+  private async cleanupWhisperLauncher(chatId: string, message: TelegramMessage) {
+    const now = Date.now();
+    const launches = (this.pendingWhisperLaunches.get(chatId) || []).filter(entry => now - entry.createdAt < 15 * 60 * 1000);
+    const creatorId = message.from ? String(message.from.id) : '';
+    let index = -1;
+    for (let i = launches.length - 1; i >= 0; i--) {
+      if (creatorId ? launches[i].creatorId === creatorId : true) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0 && creatorId) {
+      for (let i = launches.length - 1; i >= 0; i--) {
+        if (!launches[i].creatorId) {
+          index = i;
+          break;
+        }
+      }
+    }
+    const [launch] = index >= 0 ? launches.splice(index, 1) : [];
+    if (launches.length) this.pendingWhisperLaunches.set(chatId, launches);
+    else this.pendingWhisperLaunches.delete(chatId);
+    if (!launch) return;
+    await this.deleteMessage(chatId, launch.triggerMessageId);
+    await this.deleteMessage(chatId, launch.launcherMessageId);
   }
 
   /**
@@ -2146,6 +2190,12 @@ export class TelegramBotManager {
     // Result of "share the game to a channel" (chat_shared service message)
     if (message.chat_shared) {
       await this.handleChatShared(message);
+      return;
+    }
+
+    // بعد نشر بطاقة الهمسة عبر الإنلاين، احذف رسالة المشغّل وأزراره حتى تبقى بطاقة الهمسة فقط.
+    if (message.via_bot && message.chat.type !== 'private' && this.isPublishedWhisperCard(message)) {
+      await this.cleanupWhisperLauncher(chatId, message);
       return;
     }
 
@@ -2205,7 +2255,7 @@ export class TelegramBotManager {
       ['group', 'supergroup', 'channel'].includes(message.chat.type) &&
       this.isWhisperLauncherTrigger(text)
     ) {
-      await this.sendWhisperInlineLauncher(chatId);
+      await this.sendWhisperInlineLauncher(chatId, message.message_id, sender ? String(sender.id) : undefined);
       return;
     }
 
@@ -7556,10 +7606,11 @@ export class TelegramBotManager {
         `• 🎬 فيديو ⬅️ صوت / بصمة / GIF\n` +
         `• 🖼️ صورة ⇄ ✨ ملصق / 📑 PDF\n` +
         `• 🎞️ متحركة GIF ⬅️ 🎬 فيديو`;
-      const keyboard = [
-        [{ text: '🎛️ تخصيص إعدادات', callback_data: 'conv:preset:setup' }],
-        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
-      ];
+      const keyboard: any[][] = [[{ text: '🎛️ تخصيص إعدادات', callback_data: 'conv:preset:setup' }]];
+      if ((this.audioMetadataPresets.get(userId)?.length || 0) > 0) {
+        keyboard.push([{ text: '🗑️ حذف إعداد مخصص', callback_data: 'conv:preset:delete_list' }]);
+      }
+      keyboard.push([{ text: '🔙 رجوع', callback_data: 'svc:main' }]);
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
       await this.answerCallbackQuery(cb.id, '');
@@ -7821,7 +7872,8 @@ export class TelegramBotManager {
         sourceKind: kind,
         title: initialTitle,
         artist: initialArtist,
-        fileName: rawName || 'audio'
+        fileName: rawName || 'audio',
+        coverFileId: String(msg.audio?.thumbnail?.file_id || msg.audio?.thumb?.file_id || '') || undefined
       });
     }
 
@@ -7881,9 +7933,9 @@ export class TelegramBotManager {
       [
         { text: '📁 اسم الملف', callback_data: 'conv:ef:fileName' },
         { text: '🖼️ الصورة', callback_data: 'conv:ef:cover' }
-      ],
-      [{ text: draft.fileId ? '💾 حفظ كإعداد' : '✅ حفظ وتسمية الإعداد', callback_data: 'conv:preset:save' }]
+      ]
     ];
+    if (!draft.fileId) kb.push([{ text: '✅ حفظ وتسمية الإعداد', callback_data: 'conv:preset:save' }]);
     if (draft.fileId && (this.audioMetadataPresets.get(uid)?.length || 0) > 0) {
       kb.push([{ text: '🎚️ تطبيق إعداد محفوظ', callback_data: 'conv:preset:list' }]);
     }
@@ -7952,10 +8004,98 @@ export class TelegramBotManager {
       await this.answerCallbackQuery(cb.id, 'اختار الإعداد اللي تريد تطبّقه 👇');
       const keyboard = presets.map(p => [{
         text: `🎚️ ${p.name}`.slice(0, 64),
-        callback_data: `conv:preset:apply:${p.id}`
+        callback_data: `conv:preset:preview:${p.id}`
       }]);
       keyboard.push([{ text: '🔙 رجوع للمحرر', callback_data: 'conv:edit_open' }]);
       await this.sendMessage(chatId, '🎚️ اختار الإعداد لتطبيق اسم الأغنية والفنان واسم الملف والصورة:', keyboard);
+      return;
+    }
+
+    if (targetAction === 'preset:delete_list') {
+      const presets = this.audioMetadataPresets.get(uid) || [];
+      if (!presets.length) {
+        await this.answerCallbackQuery(cb.id, 'ماكو إعدادات محفوظة حتى تحذفها.', true);
+        return;
+      }
+      const keyboard = presets.map(p => [{
+        text: `🗑️ ${p.name}`.slice(0, 64),
+        callback_data: `conv:preset:delete:${p.id}`
+      }]);
+      keyboard.push([{ text: '🔙 رجوع', callback_data: 'svc:convert' }]);
+      await this.answerCallbackQuery(cb.id, 'اختار الإعداد اللي تريد حذفه.');
+      await this.sendMessage(chatId, '🗑️ اختار إعداداً محفوظاً للحذف:', keyboard);
+      return;
+    }
+
+    const presetDelete = targetAction.match(/^preset:delete:([^:]+)$/);
+    if (presetDelete) {
+      const preset = (this.audioMetadataPresets.get(uid) || []).find(p => p.id === presetDelete[1]);
+      if (!preset) {
+        await this.answerCallbackQuery(cb.id, 'هذا الإعداد مو موجود.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, 'تأكيد حذف الإعداد؟');
+      await this.sendMessage(chatId, `تريد تحذف الإعداد «${this.mdSafe(preset.name)}»؟`, [
+        [{ text: '🗑️ نعم، احذف', callback_data: `conv:preset:delete_confirm:${preset.id}` }],
+        [{ text: 'إلغاء', callback_data: 'conv:preset:delete_list' }]
+      ]);
+      return;
+    }
+
+    const presetDeleteConfirm = targetAction.match(/^preset:delete_confirm:([^:]+)$/);
+    if (presetDeleteConfirm) {
+      const presets = this.audioMetadataPresets.get(uid) || [];
+      const preset = presets.find(p => p.id === presetDeleteConfirm[1]);
+      if (!preset) {
+        await this.answerCallbackQuery(cb.id, 'هذا الإعداد مو موجود.', true);
+        return;
+      }
+      const remaining = presets.filter(p => p.id !== preset.id);
+      if (remaining.length) this.audioMetadataPresets.set(uid, remaining);
+      else this.audioMetadataPresets.delete(uid);
+      await this.answerCallbackQuery(cb.id, `✅ انحذف «${preset.name}»`);
+      const keyboard: any[][] = [];
+      if (remaining.length) keyboard.push([{ text: '🗑️ حذف إعداد آخر', callback_data: 'conv:preset:delete_list' }]);
+      keyboard.push([{ text: '🎛️ رجوع لتحويل الصيغ', callback_data: 'svc:convert' }]);
+      await this.sendMessage(chatId, `✅ انحذف الإعداد «${this.mdSafe(preset.name)}».`, keyboard);
+      return;
+    }
+
+    const presetPreview = targetAction.match(/^preset:preview:(.+)$/);
+    if (presetPreview) {
+      const draft = this.audioEditDrafts.get(uid);
+      const preset = (this.audioMetadataPresets.get(uid) || []).find(p => p.id === presetPreview[1]);
+      if (!draft?.fileId || !preset) {
+        await this.answerCallbackQuery(cb.id, 'الأغنية أو الإعداد مو موجود.', true);
+        return;
+      }
+      const nextFileName = preset.fileName || draft.fileName;
+      const currentCover = draft.coverFileId ? 'صورة موجودة' : 'بدون صورة';
+      const nextCover = preset.coverFileId ? 'الصورة المحفوظة' : 'بدون صورة';
+      const changes: string[] = [];
+      if (preset.title !== draft.title) changes.push(`• اسم الأغنية راح يتغير إلى: «${this.mdSafe(preset.title || 'غير محدد')}»`);
+      if (preset.artist !== draft.artist) changes.push(`• اسم الفنان راح يتغير إلى: «${this.mdSafe(preset.artist || 'غير محدد')}»`);
+      if (nextFileName !== draft.fileName) changes.push(`• اسم الملف راح يتغير إلى: «${this.mdSafe(nextFileName || 'غير محدد')}»`);
+      if (preset.coverFileId !== draft.coverFileId) changes.push(`• صورة الغلاف: ${preset.coverFileId ? 'راح تُطبّق الصورة المحفوظة' : 'راح تنحذف الصورة الحالية'}`);
+      const preview =
+        `🎚️ *مراجعة إعداد: ${this.mdSafe(preset.name)}*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `*قبل التغيير*\n` +
+        `🎵 الأغنية: ${this.mdSafe(draft.title || 'غير محدد')}\n` +
+        `🎤 الفنان: ${this.mdSafe(draft.artist || 'غير محدد')}\n` +
+        `📁 الملف: ${this.mdSafe(draft.fileName || 'غير محدد')}\n` +
+        `🖼️ الغلاف: ${currentCover}\n\n` +
+        `*بعد التطبيق*\n` +
+        `🎵 الأغنية: ${this.mdSafe(preset.title || 'غير محدد')}\n` +
+        `🎤 الفنان: ${this.mdSafe(preset.artist || 'غير محدد')}\n` +
+        `📁 الملف: ${this.mdSafe(nextFileName || 'غير محدد')}\n` +
+        `🖼️ الغلاف: ${nextCover}\n\n` +
+        `*التغييرات:*\n${changes.length ? changes.join('\n') : 'ماكو تغييرات؛ بيانات الأغنية مطابقة للإعداد.'}`;
+      await this.answerCallbackQuery(cb.id, 'راجع البيانات قبل التطبيق.');
+      await this.sendMessage(chatId, preview, [
+        [{ text: '✅ تطبيق الإعداد', callback_data: `conv:preset:apply:${preset.id}` }],
+        [{ text: '🔙 إلغاء ورجوع للأغنية', callback_data: 'conv:edit_open' }]
+      ]);
       return;
     }
 
