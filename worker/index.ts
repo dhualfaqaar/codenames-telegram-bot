@@ -13,6 +13,8 @@ interface Env {
   WEBHOOK_SECRET: string;
   /** Where Telegram must deliver updates (defaults to this Worker's URL). */
   WEBHOOK_URL?: string;
+  /** True only for isolated Worker Previews; external Telegram integrations stay disabled. */
+  PREVIEW_MODE?: string;
   /** Optional: Telegram id of the bot owner (otherwise it is auto-detected). */
   OWNER_ID?: string;
   BOT_STATE: any;
@@ -34,6 +36,9 @@ const OWNER_ONLY_ID = '8885518661';
  * تشتغل من: أول طلب للحالة، ومن المؤقت (Cron) كل 5 دقائق.
  */
 async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; repaired: boolean; error?: string }> {
+  if (env.PREVIEW_MODE === 'true') {
+    return { url: env.WEBHOOK_URL || '', repaired: false, error: 'Telegram webhook management is disabled in Worker Previews' };
+  }
   const token = env.TELEGRAM_BOT_TOKEN;
   const expected = env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
   if (!token) return { url: '', repaired: false, error: 'no token' };
@@ -230,6 +235,11 @@ export class BotState {
  */
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
+    // Preview deployments are isolated diagnostics only: never touch Telegram or production Durable Objects.
+    if (env.PREVIEW_MODE === 'true') {
+      return Response.json({ ok: true, info: 'Worker Preview; Telegram integration is disabled.' });
+    }
+
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
 
@@ -272,6 +282,7 @@ export default {
    * هكذا البوت ما يسكت حتى لو صار شي بالليل.
    */
   async scheduled(_event: ScheduledEvent, env: any, ctx: ExecutionContext): Promise<void> {
+    if (env.PREVIEW_MODE === 'true') return;
     ctx.waitUntil(
       (async () => {
         const r = await ensureWebhook(env, true);

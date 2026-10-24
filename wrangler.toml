@@ -7,6 +7,11 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 WEBHOOK_URL = "https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev"
 
+# Worker Preview builds must never register or replace the production Telegram webhook.
+[previews.vars]
+WEBHOOK_URL = "https://preview-codenames-telegram-bot.invalid"
+PREVIEW_MODE = "true"
+
 [triggers]
 crons = ["*/5 * * * *"]
 
