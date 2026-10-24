@@ -584,6 +584,7 @@ export interface AudioMetadataPreset {
   name: string;
   title: string;
   artist: string;
+  fileName: string;
   coverFileId?: string;
 }
 

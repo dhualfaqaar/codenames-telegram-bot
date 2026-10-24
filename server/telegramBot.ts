@@ -2226,10 +2226,10 @@ export class TelegramBotManager {
           await this.sendMessage(uid, '⚠️ اكتب اسماً للإعداد المحفوظ (مثلاً: اسم الفرقة).');
           return;
         }
-        if (!activeAudioDraft.title.trim() && !activeAudioDraft.artist.trim() && !activeAudioDraft.coverFileId) {
+        if (!activeAudioDraft.title.trim() && !activeAudioDraft.artist.trim() && !activeAudioDraft.fileName.trim() && !activeAudioDraft.coverFileId) {
           activeAudioDraft.waitingField = undefined;
           this.audioEditDrafts.set(uid, activeAudioDraft);
-          await this.sendMessage(uid, '⚠️ عدّل اسم الأغنية أو الفنان أو أضف صورة قبل حفظ الإعداد.');
+          await this.sendMessage(uid, '⚠️ خصّص اسم الأغنية أو الفنان أو اسم الملف أو أضف صورة قبل الحفظ.');
           await this.sendAudioMetadataEditorCard(uid);
           return;
         }
@@ -2240,14 +2240,20 @@ export class TelegramBotManager {
           name: presetName,
           title: activeAudioDraft.title.trim(),
           artist: activeAudioDraft.artist.trim(),
+          fileName: activeAudioDraft.fileName.trim(),
           coverFileId: activeAudioDraft.coverFileId
         };
         this.audioMetadataPresets.set(uid, [preset, ...presets.filter(p => p.id !== existing?.id && p.name.toLowerCase() !== presetName.toLowerCase())].slice(0, 20));
         activeAudioDraft.waitingField = undefined;
-        this.audioEditDrafts.set(uid, activeAudioDraft);
         this.trackMediaMsg(uid, message.message_id);
-        await this.sendMessage(uid, `✅ حفظت الإعداد «${presetName}». تگدر تطبّقه على أي أغنية ثانية.`);
-        await this.sendAudioMetadataEditorCard(uid);
+        if (activeAudioDraft.fileId) {
+          this.audioEditDrafts.set(uid, activeAudioDraft);
+          await this.sendMessage(uid, `✅ حفظت الإعداد «${presetName}». تگدر تطبّقه على هاي الأغنية أو أي أغنية ثانية.`);
+          await this.sendAudioMetadataEditorCard(uid);
+        } else {
+          this.audioEditDrafts.delete(uid);
+          await this.sendMessage(uid, `✅ حفظت الإعداد «${presetName}». هسه من ترسل أغنية اختاره حتى يطبّق اسم الأغنية والفنان والملف والصورة.`);
+        }
         return;
       }
       if (activeAudioDraft?.waitingField && activeAudioDraft.waitingField !== 'cover') {
@@ -7545,13 +7551,15 @@ export class TelegramBotManager {
       const text =
         `🔄 *تحويل الصيغ وتعديل الصوتيات*\n` +
         `${SEP}\n` +
-        `أرسل الآن الملف هنا بالمحادثة:\n` +
-        `• 🎵 أغنية أو 🎙️ بصمة ⬅️ تحويل الصيغة أو *تعديل الاسم والفنان والملف والصورة*\n` +
-        `• 💾 احفظ إعداد الفنان والأغنية والصورة باسم تختاره وطبّقه على أغانيك القادمة.\n` +
+        `أرسل الآن الملف هنا بالمحادثة، أو اضغط «تخصيص إعدادات» حتى تحفظ إعداداً للأغاني القادمة:\n` +
+        `• 🎵 أغنية أو 🎙️ بصمة ⬅️ تحويل الصيغة أو *تعديل الاسم والفنان واسم الملف والصورة*\n` +
         `• 🎬 فيديو ⬅️ صوت / بصمة / GIF\n` +
         `• 🖼️ صورة ⇄ ✨ ملصق / 📑 PDF\n` +
         `• 🎞️ متحركة GIF ⬅️ 🎬 فيديو`;
-      const keyboard = [[{ text: '🔙 رجوع', callback_data: 'svc:main' }]];
+      const keyboard = [
+        [{ text: '🎛️ تخصيص إعدادات', callback_data: 'conv:preset:setup' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
       await this.answerCallbackQuery(cb.id, '');
@@ -7857,11 +7865,12 @@ export class TelegramBotManager {
     const draft = this.audioEditDrafts.get(uid);
     if (!draft) return;
     const text =
-      `🎛️ *تعديل معلومات وصورة المقطع الصوتي*\n` +
+      `${draft.fileId ? '🎛️ *تعديل معلومات وصورة المقطع الصوتي*' : '🎛️ *تخصيص إعدادات الأغاني*'}\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
+      `${draft.fileId ? '' : 'عدّل الحقول المطلوبة، ثم احفظ الإعداد باسم تختاره.\n'}` +
       `🎵 *اسم الأغنية:* ${this.mdSafe(draft.title || 'غير محدد')}\n` +
       `🎤 *اسم الفنان:* ${this.mdSafe(draft.artist || 'غير محدد')}\n` +
-      `📁 *اسم الملف:* \`${this.mdSafe(draft.fileName || 'audio')}.mp3\`\n` +
+      `📁 *اسم الملف:* ${draft.fileName ? `\`${this.mdSafe(draft.fileName)}.mp3\`` : 'غير محدد'}\n` +
       `🖼️ *صورة الغلاف:* ${draft.coverFileId ? 'تمت إضافتها ✅' : 'بدون صورة'}`;
 
     const kb: any[][] = [
@@ -7873,13 +7882,13 @@ export class TelegramBotManager {
         { text: '📁 اسم الملف', callback_data: 'conv:ef:fileName' },
         { text: '🖼️ الصورة', callback_data: 'conv:ef:cover' }
       ],
-      [
-        { text: '💾 حفظ كإعداد', callback_data: 'conv:preset:save' },
-        { text: '🎚️ تطبيق إعداد', callback_data: 'conv:preset:list' }
-      ],
-      [{ text: '✅ حفظ وإرسال المقطع بالتعديلات', callback_data: 'conv:edit_send' }],
-      [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]
+      [{ text: draft.fileId ? '💾 حفظ كإعداد' : '✅ حفظ وتسمية الإعداد', callback_data: 'conv:preset:save' }]
     ];
+    if (draft.fileId && (this.audioMetadataPresets.get(uid)?.length || 0) > 0) {
+      kb.push([{ text: '🎚️ تطبيق إعداد محفوظ', callback_data: 'conv:preset:list' }]);
+    }
+    if (draft.fileId) kb.push([{ text: '📤 إرسال المقطع بهذه التعديلات', callback_data: 'conv:edit_send' }]);
+    kb.push([{ text: '🔙 إلغاء', callback_data: 'svc:main' }]);
 
     if (editMsgId) {
       const ed = await this.editMessageText(uid, editMsgId, text, kb);
@@ -7892,6 +7901,19 @@ export class TelegramBotManager {
   private async executeFormatConversion(cb: TelegramCallbackQuery, targetAction: string) {
     const uid = String(cb.from.id);
     const chatId = String(cb.message?.chat.id || uid);
+
+    if (targetAction === 'preset:setup') {
+      this.audioEditDrafts.set(uid, {
+        fileId: '',
+        sourceKind: 'audio',
+        title: '',
+        artist: '',
+        fileName: ''
+      });
+      await this.answerCallbackQuery(cb.id, '');
+      await this.sendAudioMetadataEditorCard(uid, cb.message?.message_id);
+      return;
+    }
 
     if (targetAction === 'edit_open') {
       const draft = this.audioEditDrafts.get(uid);
@@ -7924,7 +7946,7 @@ export class TelegramBotManager {
     if (targetAction === 'preset:list') {
       const presets = this.audioMetadataPresets.get(uid) || [];
       if (!presets.length) {
-        await this.answerCallbackQuery(cb.id, 'ما عندك إعدادات محفوظة بعد؛ عدّل الأغنية ثم اضغط «حفظ كإعداد».', true);
+        await this.answerCallbackQuery(cb.id, 'ما عندك إعدادات محفوظة بعد؛ اضغط «تخصيص إعدادات» واحفظ أول إعداد باسم تختاره.', true);
         return;
       }
       await this.answerCallbackQuery(cb.id, 'اختار الإعداد اللي تريد تطبّقه 👇');
@@ -7933,7 +7955,7 @@ export class TelegramBotManager {
         callback_data: `conv:preset:apply:${p.id}`
       }]);
       keyboard.push([{ text: '🔙 رجوع للمحرر', callback_data: 'conv:edit_open' }]);
-      await this.sendMessage(chatId, '🎚️ اختار إعداداً محفوظاً لتطبيق اسم الأغنية والفنان والصورة:', keyboard);
+      await this.sendMessage(chatId, '🎚️ اختار الإعداد لتطبيق اسم الأغنية والفنان واسم الملف والصورة:', keyboard);
       return;
     }
 
@@ -7947,6 +7969,7 @@ export class TelegramBotManager {
       }
       draft.title = preset.title;
       draft.artist = preset.artist;
+      draft.fileName = preset.fileName || draft.fileName;
       draft.coverFileId = preset.coverFileId;
       draft.waitingField = undefined;
       this.audioEditDrafts.set(uid, draft);
