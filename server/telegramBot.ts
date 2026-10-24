@@ -2097,7 +2097,7 @@ export class TelegramBotManager {
     return ['همسه', 'الهمسه', 'اهمس', 'امر همسه', 'امر اهمس', 'امر الهمسه', 'الامر همسه', 'الامر الهمسه', 'whisper'].includes(command);
   }
 
-  private async sendWhisperInlineLauncher(chatId: string, triggerMessageId: number, creatorId?: string) {
+  private async sendWhisperInlineLauncher(chatId: string, triggerMessageId: number, creatorId?: string, isChannel = false) {
     const modes: Array<{ mode: MS.WhisperMode; label: string }> = [
       { mode: 'all', label: '🌍 للجميع' },
       { mode: 'first', label: '⚡ لأول شخص' },
@@ -2107,26 +2107,21 @@ export class TelegramBotManager {
       { mode: '4', label: '👥 لأول 4' },
       { mode: '5', label: '👥 لأول 5' }
     ];
+    const makeButton = (mode: MS.WhisperMode, label: string) => ({
+      text: label,
+      ...(isChannel
+        ? { switch_inline_query_chosen_chat: { query: `wh:new:${mode}:`, allow_channel_chats: true } }
+        : { switch_inline_query_current_chat: `wh:new:${mode}:` })
+    });
     const keyboard = [
-      [
-        { text: modes[0].label, switch_inline_query_current_chat: `wh:new:${modes[0].mode}:` },
-        { text: modes[1].label, switch_inline_query_current_chat: `wh:new:${modes[1].mode}:` }
-      ],
-      [
-        { text: modes[2].label, switch_inline_query_current_chat: `wh:new:${modes[2].mode}:` },
-        { text: modes[3].label, switch_inline_query_current_chat: `wh:new:${modes[3].mode}:` }
-      ],
-      [
-        { text: modes[4].label, switch_inline_query_current_chat: `wh:new:${modes[4].mode}:` },
-        { text: modes[5].label, switch_inline_query_current_chat: `wh:new:${modes[5].mode}:` },
-        { text: modes[6].label, switch_inline_query_current_chat: `wh:new:${modes[6].mode}:` }
-      ]
+      [makeButton(modes[0].mode, modes[0].label), makeButton(modes[1].mode, modes[1].label)],
+      [makeButton(modes[2].mode, modes[2].label), makeButton(modes[3].mode, modes[3].label)],
+      [makeButton(modes[4].mode, modes[4].label), makeButton(modes[5].mode, modes[5].label), makeButton(modes[6].mode, modes[6].label)]
     ];
-    const sent = await this.sendMessage(
-      chatId,
-      '🤫 لإنشاء همسة هنا: اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.',
-      keyboard
-    );
+    const instruction = isChannel
+      ? '🤫 لإنشاء همسة بهذه القناة: اختار النوع، ومن القائمة اختار نفس القناة، اكتب نص الهمسة في خانة البوت، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً.'
+      : '🤫 لإنشاء همسة هنا: اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
+    const sent = await this.sendMessage(chatId, instruction, keyboard);
     if (!sent?.ok || !sent?.result?.message_id) {
       console.error(`Failed to send whisper launcher to chat ${chatId}: ${sent?.description || 'Telegram returned no message id'}`);
       return;
@@ -2263,7 +2258,7 @@ export class TelegramBotManager {
       ['group', 'supergroup', 'channel'].includes(message.chat.type) &&
       this.isWhisperLauncherTrigger(text)
     ) {
-      await this.sendWhisperInlineLauncher(chatId, message.message_id, sender ? String(sender.id) : undefined);
+      await this.sendWhisperInlineLauncher(chatId, message.message_id, sender ? String(sender.id) : undefined, message.chat.type === 'channel');
       return;
     }
 
