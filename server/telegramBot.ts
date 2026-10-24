@@ -2048,7 +2048,8 @@ export class TelegramBotManager {
       }
       // نتجاهل منشورات القناة العادية، باستثناء كلمات تشغيل الهمسة المباشرة.
       if (update.channel_post && !update.channel_post.via_bot &&
-          !this.isWhisperLauncherTrigger(update.channel_post.text || '')) return;
+          !this.isWhisperLauncherTrigger(update.channel_post.text || '') &&
+          !this.isPublishedWhisperCard(update.channel_post)) return;
       await this.ensureCommandsSynced();
       const incoming = update.message || update.channel_post;
 
@@ -2189,12 +2190,6 @@ export class TelegramBotManager {
         return;
       }
     }
-    if (sender && !this.isOwner(sender.id) && message.chat.type !== 'private' && isStartCommand &&
-        !(await this.hasRequiredChannelMembership(String(sender.id), true))) {
-      await this.sendSubscriptionPrompt(chatId);
-      return;
-    }
-
     // Result of "share the game to a channel" (chat_shared service message)
     if (message.chat_shared) {
       await this.handleChatShared(message);
@@ -2202,7 +2197,7 @@ export class TelegramBotManager {
     }
 
     // بعد نشر بطاقة الهمسة عبر الإنلاين، احذف رسالة المشغّل وأزراره حتى تبقى بطاقة الهمسة فقط.
-    if (message.via_bot && message.chat.type !== 'private' && this.isPublishedWhisperCard(message)) {
+    if (message.chat.type !== 'private' && this.isPublishedWhisperCard(message)) {
       await this.cleanupWhisperLauncher(chatId, message);
       return;
     }
@@ -2614,10 +2609,16 @@ export class TelegramBotManager {
     const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
 
     if (data === 'sub:check') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'تحقّق الاشتراك متاح بمحادثة البوت الخاصة فقط.');
+        return;
+      }
       await this.handleSubscriptionCheck(cb);
       return;
     }
-    if (!this.isOwner(userId) && !(await this.hasRequiredChannelMembership(String(userId)))) {
+    // الاشتراك الإجباري يخص استخدام البوت بالخاص فقط؛ لا يمنع ضغط أزرار الألعاب بالكروبات أو القنوات.
+    if (cb.message?.chat.type === 'private' && !this.isOwner(userId) &&
+        !(await this.hasRequiredChannelMembership(String(userId)))) {
       await this.answerCallbackQuery(cb.id, 'اشترك بقناة @pleasegodimtired حتى تستخدم البوت.', true);
       await this.sendSubscriptionPrompt(String(userId));
       return;
@@ -3836,11 +3837,6 @@ export class TelegramBotManager {
     const rawQ = (iq.query || '').trim();
     const q = rawQ.toLowerCase();
     const SEP = '━━━━━━━━━━━━━━━━━━━';
-    if (iq.from && !iq.from.is_bot && !this.isOwner(iq.from.id) &&
-        !(await this.hasRequiredChannelMembership(String(iq.from.id)))) {
-      await this.answerInlineQuery(iq.id, [this.subscriptionInlineResult()]);
-      return;
-    }
     if (iq.from && !iq.from.is_bot) {
       this.trackUser(iq.from, false);
       this.lastInlineDeployer = { id: String(iq.from.id), at: Date.now() };
@@ -10633,25 +10629,6 @@ export class TelegramBotManager {
       [{ text: '📣 اشترك بالقناة', url: REQUIRED_SUBSCRIPTION_URL }],
       [{ text: '✅ تحقّق وابدأ', callback_data: 'sub:check' }]
     ]);
-  }
-
-  private subscriptionInlineResult(): any {
-    return {
-      type: 'article',
-      id: 'required-channel-subscription',
-      title: '🔒 اشترك بالقناة أولاً',
-      description: 'اشترك بـ @pleasegodimtired ثم تحقّق لتشغيل ألعاب البوت',
-      input_message_content: {
-        message_text: '🔒 اشترك بقناة @pleasegodimtired حتى تستخدم ألعاب البوت.',
-        parse_mode: 'Markdown'
-      },
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📣 اشترك بالقناة', url: REQUIRED_SUBSCRIPTION_URL }],
-          [{ text: '✅ تحقّق', callback_data: 'sub:check' }]
-        ]
-      }
-    };
   }
 
   private async handleSubscriptionCheck(cb: TelegramCallbackQuery) {
