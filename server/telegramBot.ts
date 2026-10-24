@@ -2097,7 +2097,7 @@ export class TelegramBotManager {
     return ['همسه', 'الهمسه', 'اهمس', 'امر همسه', 'امر اهمس', 'امر الهمسه', 'الامر همسه', 'الامر الهمسه', 'whisper'].includes(command);
   }
 
-  private async sendWhisperInlineLauncher(chatId: string, triggerMessageId: number, creatorId?: string) {
+  private async sendWhisperInlineLauncher(chatId: string, triggerMessageId: number, creatorId?: string, isChannel = false) {
     const modes: Array<{ mode: MS.WhisperMode; label: string }> = [
       { mode: 'all', label: '🌍 للجميع' },
       { mode: 'first', label: '⚡ لأول شخص' },
@@ -2117,7 +2117,8 @@ export class TelegramBotManager {
       [makeButton(modes[4].mode, modes[4].label), makeButton(modes[5].mode, modes[5].label), makeButton(modes[6].mode, modes[6].label)]
     ];
     const instruction = '🤫 اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح داخل نفس المحادثة، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
-    const sent = await this.sendMessage(chatId, instruction, keyboard);
+    const botMention = isChannel ? `\nالبوت: @${((await this.getBotUsername()) || 'codenames1bot').replace(/^@/, '')}` : '';
+    const sent = await this.sendMessage(chatId, `${instruction}${botMention}`, keyboard);
     if (!sent?.ok || !sent?.result?.message_id) {
       const reason = String(sent?.description || 'Telegram returned no message id');
       console.error(`Failed to send whisper launcher to chat ${chatId}: ${reason}`);
@@ -2258,7 +2259,7 @@ export class TelegramBotManager {
       ['group', 'supergroup', 'channel'].includes(message.chat.type) &&
       this.isWhisperLauncherTrigger(text)
     ) {
-      await this.sendWhisperInlineLauncher(chatId, message.message_id, sender ? String(sender.id) : undefined);
+      await this.sendWhisperInlineLauncher(chatId, message.message_id, sender ? String(sender.id) : undefined, message.chat.type === 'channel');
       return;
     }
 
