@@ -9515,7 +9515,9 @@ export class TelegramBotManager {
     if (game.messageId) {
       const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
-    } else if (game.inlineMessageId) {
+    }
+    // رسائل الإنلاين قد تحمل messageId من تحديث المجموعة، لكن تحريرها يجب أن يرجع إلى inline_message_id.
+    if (game.inlineMessageId) {
       const res = await this.editInlineMessageText(game.inlineMessageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
       if (game.chatId.startsWith('ch_i_')) return;
