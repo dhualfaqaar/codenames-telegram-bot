@@ -9569,7 +9569,7 @@ export class TelegramBotManager {
       [{ text: '🚀 ابدأ المباراة', callback_data: `ch:start:${game.chatId}` }]
     ];
     else kb = CH.chessBoardKeyboard(game);
-    const text = await this.withBotFooter(`${notice ? `${notice}\n\n` : ''}${CH.renderChess(game)}`, true);
+    const text = await this.withBotFooter(`${notice ? `${escapeMarkdownV2Text(notice)}\n\n` : ''}${CH.renderChess(game)}`, true);
     if (game.messageId) {
       const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
