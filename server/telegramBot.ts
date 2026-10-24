@@ -17,6 +17,7 @@ import * as STORY from '../src/services/truthLieEngine';
 import * as GE from '../src/services/guessEliminationEngine';
 import * as CH from '../src/services/chessGameEngine';
 import * as EXT from '../src/services/extraToolsEngine';
+import * as Sudoku from '../src/services/sudokuEngine';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
@@ -764,6 +765,20 @@ const BOT_GAMES: BotGameCard[] = [
     channel: true, inline: 'ge mixed', ready: true
   },
   {
+    id: 'sudoku',
+    emoji: '🧩',
+    title: 'سودوكو',
+    category: 'duo',
+    players: 'فردي أو منافسة 1 ضد 1',
+    where: 'الخاص مع البوت',
+    goal: 'أكمل شبكة 9×9 بالأرقام من 1 إلى 9 دون تكرار في الصف أو العمود أو المربع',
+    reward: 'حل اللغز بأقل وقت وأخطاء وتلميحات',
+    about: 'اختار مستوى سهل أو متوسط أو صعب والعب وحدك، أو ادخل طابوراً لمواجهة لاعب عشوائي على اللغز نفسه. تختار الخانة والرقم من أزرار تلگرام، وتگدر تستخدم الملاحظات أو تلميحاً عند الحاجة.',
+    channel: false,
+    play: { label: '🧩 ابدأ سودوكو', data: 'hub:sudoku:menu' },
+    ready: true
+  },
+  {
     id: 'chess', emoji: '♟️', title: 'شطرنج 1 ضد 1', category: 'duo',
     players: 'لاعبان فقط', where: 'في المجموعة',
     goal: 'كش مات لملك الخصم', reward: 'فوز بالكش مات أو التعادل بالقواعد الرسمية',
@@ -1010,6 +1025,8 @@ export class TelegramBotManager {
   private amongUsCompletedMatches = 0;
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
+  private sudokuGames: Map<string, Sudoku.SudokuGame> = new Map();
+  private sudokuQueue: Array<{ userId: string; name: string; queuedAt: number; messageId?: number }> = [];
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
@@ -1661,6 +1678,8 @@ export class TelegramBotManager {
       amongUsCompletedMatches: this.amongUsCompletedMatches,
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
+      sudokuGames: Array.from(this.sudokuGames.entries()).slice(-200),
+      sudokuQueue: this.sudokuQueue.slice(-500),
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
@@ -1717,6 +1736,8 @@ export class TelegramBotManager {
     if (Number.isFinite(state.amongUsCompletedMatches)) this.amongUsCompletedMatches = Number(state.amongUsCompletedMatches);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
+    if (Array.isArray(state.sudokuGames)) this.sudokuGames = new Map(state.sudokuGames);
+    if (Array.isArray(state.sudokuQueue)) this.sudokuQueue = state.sudokuQueue;
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
@@ -2755,6 +2776,12 @@ export class TelegramBotManager {
       return;
     }
 
+    // ---- 🧩 سودوكو: جولات فردية ومطابقة عشوائية بالخاص ----
+    if (data.startsWith('sdk:')) {
+      await this.handleSudokuCallback(cb, data);
+      return;
+    }
+
     // ---- 🎮 قائمة الألعاب ----
     if (data.startsWith('hub:')) {
       await this.handleGamesMenu(cb, data.slice(4));
@@ -3458,10 +3485,467 @@ export class TelegramBotManager {
     );
   }
 
+  private findActiveSudokuGame(userId: string): Sudoku.SudokuGame | undefined {
+    const now = Date.now();
+    for (const game of this.sudokuGames.values()) {
+      if (game.status === 'playing' && now - game.createdAt > 90 * 60 * 1000) {
+        game.status = 'finished';
+        continue;
+      }
+      if (game.status === 'playing' && game.players.some(player => player.userId === userId)) return game;
+    }
+    return undefined;
+  }
+
+  private createSudokuPlayer(userId: string, name: string, puzzle: number[]): Sudoku.SudokuPlayerState {
+    return {
+      userId,
+      name: name || 'لاعب',
+      board: puzzle.slice(),
+      notes: Array.from({ length: 81 }, () => []),
+      noteMode: false,
+      mistakes: 0,
+      hintsUsed: 0,
+      startedAt: Date.now()
+    };
+  }
+
+  private createSudokuGame(
+    mode: Sudoku.SudokuGame['mode'],
+    difficulty: Sudoku.SudokuDifficulty,
+    players: Array<{ userId: string; name: string }>
+  ): Sudoku.SudokuGame {
+    const puzzle = Sudoku.generateSudoku(difficulty);
+    const game: Sudoku.SudokuGame = {
+      id: `${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 6)}`,
+      mode,
+      status: 'playing',
+      difficulty: puzzle.difficulty,
+      puzzle: puzzle.puzzle,
+      solution: puzzle.solution,
+      players: players.map(player => this.createSudokuPlayer(player.userId, player.name, puzzle.puzzle)),
+      createdAt: Date.now()
+    };
+    this.sudokuGames.set(game.id, game);
+    while (this.sudokuGames.size > 200) {
+      const finished = Array.from(this.sudokuGames.entries()).find(([, existing]) => existing.status === 'finished');
+      if (!finished) break;
+      this.sudokuGames.delete(finished[0]);
+    }
+    return game;
+  }
+
+  private sudokuBoardText(game: Sudoku.SudokuGame, player: Sudoku.SudokuPlayerState): string {
+    const rows: string[] = ['  123 456 789'];
+    const circled = ['', '❶', '❷', '❸', '❹', '❺', '❻', '❼', '❽', '❾'];
+    for (let r = 0; r < 9; r++) {
+      const cells: string[] = [];
+      for (let c = 0; c < 9; c++) {
+        const index = r * 9 + c;
+        const rawValue = player.board[index];
+        const value = rawValue ? (game.puzzle[index] ? String(rawValue) : circled[rawValue]) : '·';
+        cells.push(index === player.selectedCell ? `[${value}]` : value);
+      }
+      rows.push(`${'ABCDEFGHI'[r]} ${cells.slice(0, 3).join('')}│${cells.slice(3, 6).join('')}│${cells.slice(6).join('')}`);
+      if (r === 2 || r === 5) rows.push('  ├───┼───┼───');
+    }
+
+    const elapsed = Math.max(0, Math.floor((Date.now() - player.startedAt) / 1000));
+    const time = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+    const opponent = game.mode === 'random' ? game.players.find(other => other.userId !== player.userId) : undefined;
+    const totalBlanks = game.puzzle.filter(value => value === 0).length;
+    const opponentProgress = opponent
+      ? opponent.board.filter((value, index) => game.puzzle[index] === 0 && value !== 0).length
+      : 0;
+    const modeText = game.mode === 'random'
+      ? `سباق مع ${this.mdSafe(opponent?.name || 'لاعب')} — تقدمه ${opponentProgress}/${totalBlanks}`
+      : 'لعب فردي';
+    const status = game.status === 'playing'
+      ? `⏱ الوقت ${time}  •  ❌ أخطاء ${player.mistakes}  •  💡 تلميحات ${player.hintsUsed}`
+      : game.mode === 'solo'
+        ? (game.winnerId === player.userId ? '🏆 أحسنت! حلّيت اللغز.' : 'انتهت الجولة.')
+        : game.winnerId === player.userId
+          ? '🏆 فزت بالسباق!'
+          : game.winnerId
+            ? `🏁 ${this.mdSafe(game.players.find(other => other.userId === game.winnerId)?.name || 'خصمك')} حلّ اللغز قبلك.`
+            : 'انتهت المباراة.';
+    const selection = player.selectedCell === undefined
+      ? player.selectingRow === undefined
+        ? 'اختار صفاً من الأزرار، ثم العمود لتحديد خانة.'
+        : `اختار عموداً للصف ${'ABCDEFGHI'[player.selectingRow]}.`
+      : `الخانة المحددة: ${'ABCDEFGHI'[Math.floor(player.selectedCell / 9)]}${(player.selectedCell % 9) + 1}${game.puzzle[player.selectedCell] ? ' (ثابتة)' : ''}` +
+        (player.notes[player.selectedCell].length
+          ? ` — ملاحظاتك: ${player.notes[player.selectedCell].join('، ')}`
+          : '');
+    return `🧩 *سودوكو — ${Sudoku.sudokuDifficultyLabel(game.difficulty)}*\n` +
+      `🎮 ${modeText}\n` +
+      `${status}\n` +
+      `الأرقام الدائرية إدخالاتك، والعادية من اللغز.\n` +
+      `${selection}\n` +
+      '```\n' + rows.join('\n') + '\n```';
+  }
+
+  private sudokuKeyboard(game: Sudoku.SudokuGame, player: Sudoku.SudokuPlayerState): any[][] {
+    if (game.status === 'finished') {
+      return [
+        [{ text: '🧩 لعبة جديدة', callback_data: 'hub:sudoku:menu' }],
+        [{ text: '🔙 الألعاب', callback_data: 'hub:main' }]
+      ];
+    }
+    const keyboard: any[][] = [];
+    if (player.selectedCell === undefined) {
+      if (player.selectingRow === undefined) {
+        for (let r = 0; r < 9; r += 3) {
+          keyboard.push([0, 1, 2].map(offset => ({
+            text: `صف ${'ABCDEFGHI'[r + offset]}`,
+            callback_data: `sdk:row:${game.id}:${r + offset}`
+          })));
+        }
+      } else {
+        for (let c = 0; c < 9; c += 3) {
+          keyboard.push([0, 1, 2].map(offset => ({
+            text: `عمود ${c + offset + 1}`,
+            callback_data: `sdk:col:${game.id}:${c + offset}`
+          })));
+        }
+        keyboard.push([{ text: '↩️ تغيير الصف', callback_data: `sdk:rowback:${game.id}` }]);
+      }
+    } else {
+      for (let n = 1; n <= 9; n += 3) {
+        keyboard.push([0, 1, 2].map(offset => ({
+          text: `${n + offset}`,
+          callback_data: `sdk:num:${game.id}:${n + offset}`
+        })));
+      }
+      keyboard.push([
+        { text: player.noteMode ? '✏️ الملاحظات: شغالة' : '✏️ الملاحظات: مطفية', callback_data: `sdk:notes:${game.id}` },
+        { text: '🧹 مسح الخانة', callback_data: `sdk:erase:${game.id}` }
+      ]);
+      keyboard.push(game.mode === 'solo'
+        ? [
+            { text: '💡 تلميح', callback_data: `sdk:hint:${game.id}` },
+            { text: '📍 خانة أخرى', callback_data: `sdk:choose:${game.id}` }
+          ]
+        : [{ text: '📍 خانة أخرى', callback_data: `sdk:choose:${game.id}` }]);
+    }
+    keyboard.push([{ text: '🏳️ إنهاء الجولة', callback_data: `sdk:quit:${game.id}` }]);
+    return keyboard;
+  }
+
+  private async paintSudokuPlayer(game: Sudoku.SudokuGame, userId: string, fallbackMessageId?: number): Promise<boolean> {
+    const player = game.players.find(entry => entry.userId === userId);
+    if (!player) return false;
+    const text = this.sudokuBoardText(game, player);
+    const keyboard = this.sudokuKeyboard(game, player);
+    const messageId = player.messageId || fallbackMessageId;
+    if (messageId) {
+      const edited = await this.editMessageText(userId, messageId, text, keyboard);
+      if (edited?.ok || String(edited?.description || '').includes('not modified')) {
+        player.messageId = messageId;
+        return true;
+      }
+    }
+    const sent = await this.sendMessage(userId, text, keyboard);
+    if (sent?.ok && sent?.result?.message_id) {
+      player.messageId = Number(sent.result.message_id);
+      return true;
+    }
+    return false;
+  }
+
+  private async pruneSudokuQueue(): Promise<void> {
+    const now = Date.now();
+    const fresh = this.sudokuQueue.filter(entry => now - entry.queuedAt < 5 * 60 * 1000);
+    const expired = this.sudokuQueue.filter(entry => now - entry.queuedAt >= 5 * 60 * 1000);
+    this.sudokuQueue = fresh;
+    for (const entry of expired) {
+      if (entry.messageId) await this.deleteMessage(entry.userId, entry.messageId);
+      await this.sendMessage(entry.userId, '⌛ انتهت مدة انتظار السودوكو. إذا بعدك تريد تلعب، ارجع واضغط «أونلاين مع لاعب عشوائي».');
+    }
+  }
+
+  private async handleSudokuQueue(cb: TelegramCallbackQuery, userId: string, playerName: string): Promise<void> {
+    await this.pruneSudokuQueue();
+    const active = this.findActiveSudokuGame(userId);
+    if (active) {
+      await this.answerCallbackQuery(cb.id, 'عندك جولة سودوكو شغالة؛ رجعتلك اللوحة.');
+      await this.paintSudokuPlayer(active, userId);
+      return;
+    }
+
+    const currentIndex = this.sudokuQueue.findIndex(entry => entry.userId === userId);
+    if (currentIndex >= 0) {
+      await this.answerCallbackQuery(cb.id, 'إنت بالطابور؛ انتظر لاعباً ثانياً.');
+      const entry = this.sudokuQueue[currentIndex];
+      const waitingText = '🎲 *انتظار لاعب سودوكو*\n━━━━━━━━━━━━━━━━━━━\nراح نطابقك تلقائياً مع أول لاعب يدخل خلال 5 دقائق.';
+      const waitingKeyboard = [[{ text: '❌ إلغاء الانتظار', callback_data: 'sdk:cancel' }]];
+      const edited = entry.messageId ? await this.editMessageText(userId, entry.messageId, waitingText, waitingKeyboard) : null;
+      if (!edited?.ok) {
+        const sent = await this.sendMessage(userId, waitingText, waitingKeyboard);
+        if (sent?.ok && sent?.result?.message_id) entry.messageId = Number(sent.result.message_id);
+      }
+      return;
+    }
+
+    const opponentIndex = this.sudokuQueue.findIndex(entry => entry.userId !== userId && !this.findActiveSudokuGame(entry.userId));
+    if (opponentIndex < 0) {
+      const entry: (typeof this.sudokuQueue)[number] = { userId, name: playerName, queuedAt: Date.now() };
+      this.sudokuQueue.push(entry);
+      await this.answerCallbackQuery(cb.id, 'دخلت طابور الانتظار 🎲');
+      const sent = await this.sendMessage(userId,
+        '🎲 *انتظار لاعب سودوكو*\n━━━━━━━━━━━━━━━━━━━\nراح نطابقك تلقائياً مع أول لاعب يدخل خلال 5 دقائق.',
+        [[{ text: '❌ إلغاء الانتظار', callback_data: 'sdk:cancel' }]]
+      );
+      if (sent?.ok && sent?.result?.message_id) entry.messageId = Number(sent.result.message_id);
+      else {
+        this.sudokuQueue = this.sudokuQueue.filter(queued => queued.userId !== userId);
+        await this.sendMessage(userId, '⚠️ ما كدرت أدخلك طابور الانتظار؛ جرّب الزر مرة ثانية.');
+      }
+      this.scheduleLocalQuizTimer();
+      return;
+    }
+
+    const opponent = this.sudokuQueue.splice(opponentIndex, 1)[0];
+    const game = this.createSudokuGame('random', 'medium', [
+      { userId: opponent.userId, name: opponent.name },
+      { userId, name: playerName }
+    ]);
+    await this.answerCallbackQuery(cb.id, '🎉 لقيتلك لاعباً! جاري تجهيز نفس اللغز إلكم اثنين.');
+    if (opponent.messageId) await this.deleteMessage(opponent.userId, opponent.messageId);
+    const sentFirst = await this.paintSudokuPlayer(game, opponent.userId);
+    const sentSecond = await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
+    if (!sentFirst || !sentSecond) {
+      game.status = 'finished';
+      for (const player of game.players) {
+        await this.sendMessage(player.userId, '⚠️ تعذّر إيصال لوحة المباراة للطرفين، فما بدأت الجولة. جرّب البحث عن لاعب مرة ثانية.');
+      }
+    }
+    this.scheduleLocalQuizTimer();
+  }
+
+  private async handleSudokuCallback(cb: TelegramCallbackQuery, data: string): Promise<void> {
+    const userId = String(cb.from.id);
+    const chatId = String(cb.message?.chat.id || '');
+    if (cb.message?.chat.type !== 'private' || chatId !== userId) {
+      await this.answerCallbackQuery(cb.id, 'السودوكو والمطابقة العشوائية متاحتان بالخاص فقط.', true);
+      return;
+    }
+
+    const parts = data.split(':');
+    const action = parts[1] || '';
+    const playerName = [cb.from.first_name, cb.from.last_name].filter(Boolean).join(' ') || 'لاعب';
+
+    if (action === 'queue') {
+      await this.handleSudokuQueue(cb, userId, playerName);
+      return;
+    }
+    if (action === 'cancel') {
+      const index = this.sudokuQueue.findIndex(entry => entry.userId === userId);
+      if (index >= 0) {
+        this.sudokuQueue.splice(index, 1);
+        this.scheduleLocalQuizTimer();
+        await this.answerCallbackQuery(cb.id, 'ألغيت الانتظار.');
+        if (cb.message?.message_id) {
+          await this.editMessageText(chatId, cb.message.message_id, '❌ ألغيت انتظار لاعب السودوكو.', [[{ text: '🔙 رجوع للسودوكو', callback_data: 'hub:sudoku:menu' }]]);
+        }
+      } else {
+        await this.answerCallbackQuery(cb.id, 'ماكو انتظار فعّال حتى ألغيه.', true);
+      }
+      return;
+    }
+    if (action === 'solo') {
+      const difficulty = parts[2] as Sudoku.SudokuDifficulty;
+      if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+        await this.answerCallbackQuery(cb.id, 'المستوى غير صالح.', true);
+        return;
+      }
+      const active = this.findActiveSudokuGame(userId);
+      if (active) {
+        await this.answerCallbackQuery(cb.id, 'عندك جولة شغالة؛ رجعتلك اللوحة.');
+        await this.paintSudokuPlayer(active, userId);
+        return;
+      }
+      const waiting = this.sudokuQueue.findIndex(entry => entry.userId === userId);
+      if (waiting >= 0) {
+        const [entry] = this.sudokuQueue.splice(waiting, 1);
+        if (entry.messageId) await this.deleteMessage(userId, entry.messageId);
+        this.scheduleLocalQuizTimer();
+      }
+      const game = this.createSudokuGame('solo', difficulty, [{ userId, name: playerName }]);
+      await this.answerCallbackQuery(cb.id, `بدأت جولة سودوكو ${Sudoku.sudokuDifficultyLabel(difficulty)} 🧩`);
+      await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
+      return;
+    }
+
+    const gameId = parts[2] || '';
+    const game = this.sudokuGames.get(gameId);
+    const player = game?.players.find(entry => entry.userId === userId);
+    if (!game || !player) {
+      await this.answerCallbackQuery(cb.id, 'هاي الجولة مو موجودة؛ ابدأ جولة جديدة.', true);
+      return;
+    }
+    if (game.status === 'playing' && Date.now() - game.createdAt > 90 * 60 * 1000) game.status = 'finished';
+    if (game.status !== 'playing') {
+      await this.answerCallbackQuery(cb.id, 'انتهت هاي الجولة.');
+      await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
+      return;
+    }
+
+    if (action === 'row') {
+      const row = Number(parts[3]);
+      if (!Number.isInteger(row) || row < 0 || row > 8) {
+        await this.answerCallbackQuery(cb.id, 'اختيار الصف غير صالح.', true);
+        return;
+      }
+      player.selectedCell = undefined;
+      player.selectingRow = row;
+      await this.answerCallbackQuery(cb.id, `اختار عموداً بالصف ${'ABCDEFGHI'[row]}.`);
+    } else if (action === 'rowback') {
+      player.selectingRow = undefined;
+      player.selectedCell = undefined;
+      await this.answerCallbackQuery(cb.id, 'اختار الصف من جديد.');
+    } else if (action === 'col') {
+      const col = Number(parts[3]);
+      if (player.selectingRow === undefined || !Number.isInteger(col) || col < 0 || col > 8) {
+        await this.answerCallbackQuery(cb.id, 'اختيار العمود غير صالح.', true);
+        return;
+      }
+      player.selectedCell = player.selectingRow * 9 + col;
+      player.selectingRow = undefined;
+      await this.answerCallbackQuery(cb.id, 'اختار رقماً للخانة.');
+    } else if (action === 'choose') {
+      player.selectedCell = undefined;
+      player.selectingRow = undefined;
+      await this.answerCallbackQuery(cb.id, 'اختار الصف ثم العمود.');
+    } else if (action === 'notes') {
+      player.noteMode = !player.noteMode;
+      await this.answerCallbackQuery(cb.id, player.noteMode ? 'وضع الملاحظات شغّال؛ اختار الأرقام المحتملة.' : 'رجعنا لوضع إدخال الأرقام.');
+    } else if (action === 'erase') {
+      const cell = player.selectedCell;
+      if (cell === undefined || game.puzzle[cell] !== 0) {
+        await this.answerCallbackQuery(cb.id, 'اختار خانة مو ثابتة حتى تمسحها.', true);
+        return;
+      }
+      player.board[cell] = 0;
+      player.notes[cell] = [];
+      await this.answerCallbackQuery(cb.id, 'تم مسح الخانة.');
+      if (game.mode === 'random') {
+        await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
+        return;
+      }
+    } else if (action === 'hint') {
+      if (game.mode !== 'solo') {
+        await this.answerCallbackQuery(cb.id, 'التلميحات متاحة باللعب الفردي فقط حتى تبقى المنافسة عادلة.', true);
+        return;
+      }
+      const cell = player.selectedCell;
+      if (cell === undefined || game.puzzle[cell] !== 0) {
+        await this.answerCallbackQuery(cb.id, 'اختار خانة فارغة حتى أعطيك تلميحاً.', true);
+        return;
+      }
+      if (!Sudoku.isLegalSudokuMove(player.board, cell, game.solution[cell])) {
+        await this.answerCallbackQuery(cb.id, 'عندك رقم متعارض بالصف أو العمود؛ امسحه قبل استخدام التلميح.', true);
+        return;
+      }
+      player.board[cell] = game.solution[cell];
+      player.notes[cell] = [];
+      player.hintsUsed++;
+      if (Sudoku.isSudokuSolved(player.board, game.solution)) {
+        game.status = 'finished';
+        game.winnerId = userId;
+        await this.answerCallbackQuery(cb.id, game.mode === 'solo' ? '🏆 أحسنت! حلّيت السودوكو.' : '🏆 فزت بالسباق!');
+        await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, `💡 الرقم الصحيح ${game.solution[cell]}.`);
+    } else if (action === 'num') {
+      const cell = player.selectedCell;
+      const value = Number(parts[3]);
+      if (cell === undefined || !Number.isInteger(value) || value < 1 || value > 9) {
+        await this.answerCallbackQuery(cb.id, 'اختار خانة ورقماً صالحاً.', true);
+        return;
+      }
+      if (game.puzzle[cell] !== 0) {
+        await this.answerCallbackQuery(cb.id, 'هاي خانة ثابتة من بداية اللغز.', true);
+        return;
+      }
+      if (player.noteMode) {
+        if (player.board[cell] !== 0) {
+          await this.answerCallbackQuery(cb.id, 'امسح رقم الخانة أولاً حتى تضيف ملاحظات.', true);
+          return;
+        }
+        const notes = player.notes[cell];
+        const noteIndex = notes.indexOf(value);
+        if (noteIndex >= 0) notes.splice(noteIndex, 1);
+        else notes.push(value);
+        notes.sort((a, b) => a - b);
+        await this.answerCallbackQuery(cb.id, `تم تحديث ملاحظات الخانة.`);
+      } else if (!Sudoku.isLegalSudokuMove(player.board, cell, value)) {
+        player.mistakes++;
+        await this.answerCallbackQuery(cb.id, 'هذا الرقم مكرر بنفس الصف أو العمود أو المربع.', true);
+      } else {
+        player.board[cell] = value;
+        player.notes[cell] = [];
+        for (let i = 0; i < 81; i++) {
+          const sameRow = Math.floor(i / 9) === Math.floor(cell / 9);
+          const sameCol = i % 9 === cell % 9;
+          const sameBox = Math.floor(Math.floor(i / 9) / 3) === Math.floor(Math.floor(cell / 9) / 3) && Math.floor((i % 9) / 3) === Math.floor((cell % 9) / 3);
+          if (sameRow || sameCol || sameBox) player.notes[i] = player.notes[i].filter(note => note !== value);
+        }
+        if (Sudoku.isSudokuSolved(player.board, game.solution)) {
+          game.status = 'finished';
+          game.winnerId = userId;
+          await this.answerCallbackQuery(cb.id, game.mode === 'solo' ? '🏆 أحسنت! حلّيت السودوكو.' : '🏆 فزت بالسباق!');
+          await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
+          return;
+        }
+        await this.answerCallbackQuery(cb.id, 'تم إدخال الرقم.');
+        if (game.mode === 'random') {
+          await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
+          return;
+        }
+      }
+    } else if (action === 'quit') {
+      game.status = 'finished';
+      if (game.mode === 'random') game.winnerId = game.players.find(entry => entry.userId !== userId)?.userId;
+      await this.answerCallbackQuery(cb.id, game.mode === 'random' ? 'انسحبت؛ الفوز للخصم.' : 'أنهيت الجولة.');
+      await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
+      return;
+    } else {
+      await this.answerCallbackQuery(cb.id, 'هذا الخيار غير معروف.', true);
+      return;
+    }
+
+    await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
+  }
+
   /** عرض قسم من قائمة الألعاب (أزرار فقط) */
   private async handleGamesMenu(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
+
+    if (section === 'sudoku:menu') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'السودوكو تنلعب بالخاص مع البوت فقط.', true);
+        return;
+      }
+      await this.paintMenuView(cb, {
+        text:
+          `🧩 *سودوكو*\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `اختار مستوى للعب الفردي، أو العب أونلاين ضد شخص عشوائي على مستوى متوسط.`,
+        keyboard: [
+          [
+            { text: '🟢 فردي — سهل', callback_data: 'sdk:solo:easy' },
+            { text: '🟡 فردي — متوسط', callback_data: 'sdk:solo:medium' }
+          ],
+          [{ text: '🔴 فردي — صعب', callback_data: 'sdk:solo:hard' }],
+          [{ text: '🎲 أونلاين مع لاعب عشوائي', callback_data: 'sdk:queue' }],
+          [{ text: '🔙 رجوع للعبة', callback_data: 'hub:g:sudoku' }]
+        ]
+      });
+      return;
+    }
 
     if (section === 'soon') {
       await this.answerCallbackQuery(cb.id, '🔜 هاي اللعبة جاية قريب!');
@@ -4516,6 +5000,10 @@ export class TelegramBotManager {
   public getNextQuizDeadline(): number | null {
     let earliest = Infinity;
     const now = Date.now();
+    for (const entry of this.sudokuQueue) {
+      const expiryAt = entry.queuedAt + 5 * 60 * 1000;
+      if (expiryAt < earliest) earliest = expiryAt;
+    }
     for (const g of this.gqGames.values()) {
       if (g.status === 'playing') {
         const d = g.roundDeadline ?? (g.roundDeadline = now + GG.ROUND_MS);
@@ -4676,6 +5164,7 @@ export class TelegramBotManager {
   /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد 15 ثانية أو بعد شاشة النتيجة القصيرة) */
   public async processQuizTimers(): Promise<void> {
     const now = Date.now();
+    await this.pruneSudokuQueue();
 
     // ⏱️ كود نيمز: تحديث لوحة العدّ كل 15 ثانية، وتمرير الدور بعد دقيقتين دون رسائل خاصة تلقائية.
     for (const game of Array.from(this.games.values())) {
@@ -6701,11 +7190,10 @@ export class TelegramBotManager {
           if (game.play) {
             keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
           }
+        } else if (game.play) {
+          keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
         } else {
           keyboard.push([{ text: '🎮 العب', callback_data: `hub:chpick:${game.id}` }]);
-          if (game.play) {
-            keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
-          }
         }
 
         // ── المربعين جنب بعض: شرح + إحصائيات ──
