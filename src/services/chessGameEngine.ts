@@ -76,10 +76,17 @@ export function chessSelect(game: ChessGame, playerId: string, square: string): 
   if (chess.turn() !== player.color) return { ok: false, msg: 'مو دورك هسه.' };
   if (!/^[a-h][1-8]$/.test(square)) return { ok: false, msg: 'المربع غير صالح.' };
 
-  const from = game.selectedFrom;
+  let from = game.selectedFrom;
   if (from) {
-    const legal = chess.moves({ square: from as Square, verbose: true }) as Move[];
-    if (legal.some(m => m.to === square)) {
+    const selectedPiece = chess.get(from as Square);
+    const legal = selectedPiece?.color === player.color
+      ? chess.moves({ square: from as Square, verbose: true }) as Move[]
+      : [];
+    // أصلح أي تحديد قديم/غير صالح، ولا نتركه يسبب رسالة مربكة عند الضغط التالي.
+    if (!selectedPiece || selectedPiece.color !== player.color || !legal.length) {
+      game.selectedFrom = undefined;
+      from = undefined;
+    } else if (legal.some(m => m.to === square)) {
       const move = chess.move({ from: from as Square, to: square as Square, promotion: 'q' });
       if (!move) return { ok: false, msg: 'حركة غير قانونية.' };
       game.moves.push({ from: move.from, to: move.to, promotion: move.promotion });
@@ -103,10 +110,18 @@ export function chessSelect(game: ChessGame, playerId: string, square: string): 
 
   const piece = chess.get(square as Square);
   if (!piece || piece.color !== player.color) {
-    return { ok: false, msg: from ? 'هذا المربع مو وجهة قانونية؛ اختار مربعاً مميزاً أو قطعة من قطعك.' : 'اختار قطعة من قطعك أولاً.' };
+    return {
+      ok: false,
+      msg: from
+        ? 'هذا مو مربع وصول قانوني. اختار مربعاً أخضر أو قطعة من قطعك.'
+        : 'ما مختار قطعة بعد؛ اختار قطعة عليها 🟡 أولاً، وبعدها مربعاً أخضر 🟢.'
+    };
   }
   const destinations = chess.moves({ square: square as Square, verbose: true }) as Move[];
-  if (!destinations.length) return { ok: false, msg: 'هاي القطعة ما عدها حركة قانونية.' };
+  if (!destinations.length) {
+    if (from) game.selectedFrom = undefined;
+    return { ok: false, msg: 'هاي القطعة محاصرة هسه وما عدها حركة قانونية؛ اختار قطعة عليها 🟡.' };
+  }
   game.selectedFrom = square;
   return { ok: true, msg: `اختيرت ${piece.type.toUpperCase()} في ${square}. اختار مربع الوصول.` };
 }
@@ -185,8 +200,18 @@ const PIECES: Record<string, string> = {
 export function chessBoardKeyboard(game: ChessGame): any[][] {
   const chess = loadPosition(game);
   const legalTargets = new Set<string>();
+  const movableSquares = new Set<string>();
   if (game.status === 'playing' && game.selectedFrom) {
     for (const move of chess.moves({ square: game.selectedFrom as Square, verbose: true }) as Move[]) legalTargets.add(move.to);
+  } else if (game.status === 'playing') {
+    const turn = chess.turn();
+    for (let rank = 1; rank <= 8; rank++) {
+      for (const file of 'abcdefgh') {
+        const square = `${file}${rank}` as Square;
+        const piece = chess.get(square);
+        if (piece?.color === turn && chess.moves({ square, verbose: true }).length > 0) movableSquares.add(square);
+      }
+    }
   }
   const rows: any[][] = [];
   for (let rank = 8; rank >= 1; rank--) {
@@ -197,6 +222,7 @@ export function chessBoardKeyboard(game: ChessGame): any[][] {
       let text = piece ? PIECES[`${piece.color}${piece.type}`] : '·';
       if (game.selectedFrom === square) text = `🔸${text}`;
       else if (legalTargets.has(square)) text = `🟢${text}`;
+      else if (movableSquares.has(square)) text = `🟡${text}`;
       row.push({ text, callback_data: `ch:sq:${game.chatId}:${square}` });
     }
     rows.push(row);
@@ -218,13 +244,16 @@ export function renderChess(game: ChessGame): string {
   } else {
     const current = game.status === 'playing' ? chessCurrentPlayer(game) : undefined;
     const check = game.status === 'playing' && loadPosition(game).isCheck() ? ' — ♟️ كش' : '';
-    if (game.status === 'playing') lines.push(`🎯 الدور: ${current?.name || '—'} ${current?.color === 'w' ? '⚪' : '⚫'}${check}`);
+    if (game.status === 'playing') {
+      if (game.botOpponent) lines.push('أنت الأبيض ⚪ والبوت الأسود ⚫.');
+      lines.push(`🎯 الدور: ${current?.name || '—'} ${current?.color === 'w' ? '⚪' : '⚫'}${check}`);
+    }
     if (game.lastMoveSan) lines.push(`آخر حركة: ${escapeV2(game.lastMoveSan)}`);
     if (game.status === 'finished') {
       const winner = game.players.find(p => p.id === game.winnerId);
       lines.push(game.finishReason === 'draw' ? '🤝 انتهت المباراة بالتعادل' : winner ? `🏆 الفائز: ${escapeV2(winner.name)}` : 'انتهت المباراة');
     }
-    lines.push('', 'اضغط قطعة من قطعك، ثم اضغط المربع المميز للحركة؛ الترقية تتم تلقائياً إلى وزير');
+    lines.push('', '🟡 القطع القابلة للحركة مميزة بالأصفر. اضغط واحدة منها، ثم اختار مربع الوصول المميز بالأخضر 🟢. الترقية تتم تلقائياً إلى وزير.');
   }
   return lines.join('\n');
 }

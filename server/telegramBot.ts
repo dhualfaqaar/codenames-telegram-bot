@@ -9575,8 +9575,8 @@ export class TelegramBotManager {
       }
     }
     await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
-    // إذا كانت لوحة قديمة أو حالتها محفوظة، أعد عرض الحالة الحالية حتى لا يبقى المستخدم على زر «ابدأ» المضلل.
-    if (r.ok || op === 'start') await this.paintChessBoard(game, notice);
+    // أعد رسم اللوحة بعد كل ضغطة مربع أيضاً: الاختيار الخاطئ قد يزيل تحديداً قديماً أو يوضح القطع القانونية.
+    if (r.ok || op === 'start' || op === 'sq') await this.paintChessBoard(game, notice);
   }
 
   private findActiveWKForUser(userId: string): WK.WKGame | undefined {
