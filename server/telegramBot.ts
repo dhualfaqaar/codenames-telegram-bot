@@ -2083,14 +2083,18 @@ export class TelegramBotManager {
 
   private isWhisperLauncherTrigger(rawText: string): boolean {
     const command = String(rawText || '')
+      .normalize('NFKC')
       .trim()
       .replace(/^\/+/, '')
-      .replace(/@\w+$/, '')
-      .replace(/[\u064b-\u0652\u0640]/g, '')
+      .replace(/@\w+(?=$|[^\w])/g, '')
+      .replace(/[\u064b-\u0652\u0640\u200b-\u200d\ufeff]/g, '')
       .replace(/[إأآٱ]/g, 'ا')
       .replace(/ة/g, 'ه')
-      .toLowerCase();
-    return command === 'همسه' || command === 'اهمس';
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s_]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return ['همسه', 'الهمسه', 'اهمس', 'امر همسه', 'امر اهمس', 'امر الهمسه', 'الامر همسه', 'الامر الهمسه', 'whisper'].includes(command);
   }
 
   private async sendWhisperInlineLauncher(chatId: string, triggerMessageId: number, creatorId?: string) {
@@ -2123,7 +2127,11 @@ export class TelegramBotManager {
       '🤫 لإنشاء همسة هنا: اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.',
       keyboard
     );
-    const launcherMessageId = Number(sent?.result?.message_id);
+    if (!sent?.ok || !sent?.result?.message_id) {
+      console.error(`Failed to send whisper launcher to chat ${chatId}: ${sent?.description || 'Telegram returned no message id'}`);
+      return;
+    }
+    const launcherMessageId = Number(sent.result.message_id);
     if (launcherMessageId) {
       const recent = (this.pendingWhisperLaunches.get(chatId) || []).filter(entry => Date.now() - entry.createdAt < 15 * 60 * 1000);
       recent.push({ triggerMessageId, launcherMessageId, creatorId, createdAt: Date.now() });
