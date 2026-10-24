@@ -3338,8 +3338,10 @@ export class TelegramBotManager {
           keyboard.push(row);
         }
         keyboard.push([{ text: '🔙 رجوع للشطرنج', callback_data: 'hub:g:chess' }]);
-        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard, 'MarkdownV2');
-        else await this.sendMessage(chatId, text, keyboard, 'MarkdownV2');
+        // النص يستخدم Markdown التقليدي؛ MarkdownV2 كان يرفض النقطة غير المهربة
+        // في الوصف، فيفشل تحديث الرسالة قبل عرض أزرار مستويات Elo.
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard, 'Markdown');
+        else await this.sendMessage(chatId, text, keyboard, 'Markdown');
         await this.answerCallbackQuery(cb.id, 'اختار المستوى اللي يناسبك 👇');
         return;
       }
