@@ -300,18 +300,8 @@ const PIECES: Record<string, string> = {
 export function chessBoardKeyboard(game: ChessGame): any[][] {
   const chess = loadPosition(game);
   const legalTargets = new Set<string>();
-  const movableSquares = new Set<string>();
-  if (game.status === 'playing' && game.selectedFrom) {
+  if (game.botOpponent && game.status === 'playing' && game.selectedFrom) {
     for (const move of chess.moves({ square: game.selectedFrom as Square, verbose: true }) as Move[]) legalTargets.add(move.to);
-  } else if (game.status === 'playing') {
-    const turn = chess.turn();
-    for (let rank = 1; rank <= 8; rank++) {
-      for (const file of 'abcdefgh') {
-        const square = `${file}${rank}` as Square;
-        const piece = chess.get(square);
-        if (piece?.color === turn && chess.moves({ square, verbose: true }).length > 0) movableSquares.add(square);
-      }
-    }
   }
   const rows: any[][] = [];
   for (let rank = 8; rank >= 1; rank--) {
@@ -320,9 +310,7 @@ export function chessBoardKeyboard(game: ChessGame): any[][] {
       const square = `${file}${rank}`;
       const piece = chess.get(square as Square);
       let text = piece ? PIECES[`${piece.color}${piece.type}`] : '·';
-      if (game.selectedFrom === square) text = `🔸${text}`;
-      else if (legalTargets.has(square)) text = `🟢${text}`;
-      else if (movableSquares.has(square)) text = `🟡${text}`;
+      if (legalTargets.has(square)) text = `🟢${text}`;
       row.push({ text, callback_data: `ch:sq:${game.chatId}:${square}` });
     }
     rows.push(row);
@@ -353,7 +341,12 @@ export function renderChess(game: ChessGame): string {
       const winner = game.players.find(p => p.id === game.winnerId);
       lines.push(game.finishReason === 'draw' ? '🤝 انتهت المباراة بالتعادل' : winner ? `🏆 الفائز: ${escapeV2(winner.name)}` : 'انتهت المباراة');
     }
-    lines.push('', '🟡 القطع القابلة للحركة مميزة بالأصفر\\. اضغط واحدة منها، ثم اختار مربع الوصول المميز بالأخضر 🟢\\. الترقية تتم تلقائياً إلى وزير\\.');
+    lines.push(
+      '',
+      escapeV2(game.botOpponent
+        ? 'اضغط قطعة أولاً؛ بعدها تظهر الدوائر الخضراء على مربعات الحركة القانونية فقط. الترقية إلى وزير تلقائية.'
+        : 'اضغط قطعة، ثم اضغط مربع الوصول القانوني لإتمام الحركة.')
+    );
   }
   return lines.join('\n');
 }
