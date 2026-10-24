@@ -1025,6 +1025,7 @@ export class TelegramBotManager {
   private pendingAgeCalc: Set<string> = new Set();
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
+  private audioMetadataPresets: Map<string, EXT.AudioMetadataPreset[]> = new Map();
   private avatarDeliveredV2: boolean = false;
   private pendingVocalSep: Set<string> = new Set();
   private songSearches: Map<string, MS.SongSearchHit[]> = new Map();
@@ -1669,6 +1670,7 @@ export class TelegramBotManager {
       pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
       pendingConvert: Array.from(this.pendingConvert.entries()),
       audioEditDrafts: Array.from(this.audioEditDrafts.entries()),
+      audioMetadataPresets: Array.from(this.audioMetadataPresets.entries()),
       avatarDeliveredV2: this.avatarDeliveredV2,
       pendingVocalSep: Array.from(this.pendingVocalSep.values()),
       songSearches: Array.from(this.songSearches.entries()).slice(-200),
@@ -1723,6 +1725,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
     if (Array.isArray(state.audioEditDrafts)) this.audioEditDrafts = new Map(state.audioEditDrafts);
+    if (Array.isArray(state.audioMetadataPresets)) this.audioMetadataPresets = new Map(state.audioMetadataPresets);
     if (typeof state.avatarDeliveredV2 === 'boolean') this.avatarDeliveredV2 = state.avatarDeliveredV2;
     if (Array.isArray(state.pendingVocalSep)) this.pendingVocalSep = new Set(state.pendingVocalSep);
     if (Array.isArray(state.songSearches)) this.songSearches = new Map(state.songSearches);
@@ -2039,8 +2042,9 @@ export class TelegramBotManager {
           if (oldest !== undefined) this.seenUpdateIds.delete(oldest);
         }
       }
-      // منشورات القناة العادية ليست أوامر للبوت؛ نتعامل فقط مع بطاقات الإنلاين المنشورة عبره.
-      if (update.channel_post && !update.channel_post.via_bot) return;
+      // نتجاهل منشورات القناة العادية، باستثناء كلمات تشغيل الهمسة المباشرة.
+      if (update.channel_post && !update.channel_post.via_bot &&
+          !this.isWhisperLauncherTrigger(update.channel_post.text || '')) return;
       await this.ensureCommandsSynced();
       const incoming = update.message || update.channel_post;
 
@@ -2071,6 +2075,50 @@ export class TelegramBotManager {
     } catch (e: any) {
       console.error('Error handling Telegram update:', e);
     }
+  }
+
+  private isWhisperLauncherTrigger(rawText: string): boolean {
+    const command = String(rawText || '')
+      .trim()
+      .replace(/^\/+/, '')
+      .replace(/@\w+$/, '')
+      .replace(/[\u064b-\u0652\u0640]/g, '')
+      .replace(/[إأآٱ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .toLowerCase();
+    return command === 'همسه' || command === 'اهمس';
+  }
+
+  private async sendWhisperInlineLauncher(chatId: string) {
+    const modes: Array<{ mode: MS.WhisperMode; label: string }> = [
+      { mode: 'all', label: '🌍 للجميع' },
+      { mode: 'first', label: '⚡ لأول شخص' },
+      { mode: '1', label: '👤 لأول شخص' },
+      { mode: '2', label: '👥 لأول شخصين' },
+      { mode: '3', label: '👥 لأول 3' },
+      { mode: '4', label: '👥 لأول 4' },
+      { mode: '5', label: '👥 لأول 5' }
+    ];
+    const keyboard = [
+      [
+        { text: modes[0].label, switch_inline_query_current_chat: `wh:new:${modes[0].mode}:` },
+        { text: modes[1].label, switch_inline_query_current_chat: `wh:new:${modes[1].mode}:` }
+      ],
+      [
+        { text: modes[2].label, switch_inline_query_current_chat: `wh:new:${modes[2].mode}:` },
+        { text: modes[3].label, switch_inline_query_current_chat: `wh:new:${modes[3].mode}:` }
+      ],
+      [
+        { text: modes[4].label, switch_inline_query_current_chat: `wh:new:${modes[4].mode}:` },
+        { text: modes[5].label, switch_inline_query_current_chat: `wh:new:${modes[5].mode}:` },
+        { text: modes[6].label, switch_inline_query_current_chat: `wh:new:${modes[6].mode}:` }
+      ]
+    ];
+    await this.sendMessage(
+      chatId,
+      '🤫 لإنشاء همسة هنا: اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.',
+      keyboard
+    );
   }
 
   /**
@@ -2153,6 +2201,14 @@ export class TelegramBotManager {
       return;
     }
 
+    if (
+      ['group', 'supergroup', 'channel'].includes(message.chat.type) &&
+      this.isWhisperLauncherTrigger(text)
+    ) {
+      await this.sendWhisperInlineLauncher(chatId);
+      return;
+    }
+
     // 🎵 أمر البحث عن الأغاني «يوت <اسم الأغنية>» (يشتغل بالخاص والكروبات والقنوات!)
     const youtMatch = text.match(/^(?:\/?(?:يوت|yout))(?:\s+|:)(.+)$/i);
     if (youtMatch && youtMatch[1].trim()) {
@@ -2164,6 +2220,36 @@ export class TelegramBotManager {
     if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
       const uid = String(sender.id);
       const activeAudioDraft = this.audioEditDrafts.get(uid);
+      if (activeAudioDraft?.waitingField === 'presetName') {
+        const presetName = text.trim().slice(0, 32);
+        if (!presetName) {
+          await this.sendMessage(uid, '⚠️ اكتب اسماً للإعداد المحفوظ (مثلاً: اسم الفرقة).');
+          return;
+        }
+        if (!activeAudioDraft.title.trim() && !activeAudioDraft.artist.trim() && !activeAudioDraft.coverFileId) {
+          activeAudioDraft.waitingField = undefined;
+          this.audioEditDrafts.set(uid, activeAudioDraft);
+          await this.sendMessage(uid, '⚠️ عدّل اسم الأغنية أو الفنان أو أضف صورة قبل حفظ الإعداد.');
+          await this.sendAudioMetadataEditorCard(uid);
+          return;
+        }
+        const presets = this.audioMetadataPresets.get(uid) || [];
+        const existing = presets.find(p => p.name.toLowerCase() === presetName.toLowerCase());
+        const preset: EXT.AudioMetadataPreset = {
+          id: existing?.id || `${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 5)}`,
+          name: presetName,
+          title: activeAudioDraft.title.trim(),
+          artist: activeAudioDraft.artist.trim(),
+          coverFileId: activeAudioDraft.coverFileId
+        };
+        this.audioMetadataPresets.set(uid, [preset, ...presets.filter(p => p.id !== existing?.id && p.name.toLowerCase() !== presetName.toLowerCase())].slice(0, 20));
+        activeAudioDraft.waitingField = undefined;
+        this.audioEditDrafts.set(uid, activeAudioDraft);
+        this.trackMediaMsg(uid, message.message_id);
+        await this.sendMessage(uid, `✅ حفظت الإعداد «${presetName}». تگدر تطبّقه على أي أغنية ثانية.`);
+        await this.sendAudioMetadataEditorCard(uid);
+        return;
+      }
       if (activeAudioDraft?.waitingField && activeAudioDraft.waitingField !== 'cover') {
         const cleanedVal = text.trim();
         if (activeAudioDraft.waitingField === 'title') activeAudioDraft.title = cleanedVal;
@@ -3683,7 +3769,8 @@ export class TelegramBotManager {
 
   /** المستخدم اختار لعبة لتحويلها للقناة — البطاقة تنزل نظيفة وجاهزة من أول لحظة بدون أي كود ظاهر */
   private async handleInlineQuery(iq: TelegramInlineQuery) {
-    const q = (iq.query || '').trim().toLowerCase();
+    const rawQ = (iq.query || '').trim();
+    const q = rawQ.toLowerCase();
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     if (iq.from && !iq.from.is_bot && !this.isOwner(iq.from.id) &&
         !(await this.hasRequiredChannelMembership(String(iq.from.id)))) {
@@ -3696,6 +3783,43 @@ export class TelegramBotManager {
     }
     const deployerId = iq.from?.id ? String(iq.from.id) : '';
     const uid = deployerId ? `|${deployerId}` : '';
+
+    // ── إنشاء همسة آمنة مباشرة من المجموعة/القناة عبر الإنلاين ──
+    const whisperCompose = rawQ.match(/^wh:new:(all|first|[1-5]):([\s\S]*)$/i);
+    if (whisperCompose) {
+      const secretText = whisperCompose[2].trim();
+      if (!secretText || secretText.length > 195) {
+        await this.answerInlineQuery(iq.id, []);
+        return;
+      }
+      const mode = whisperCompose[1].toLowerCase() as MS.WhisperMode;
+      const wh = MS.createWhisperRecord({
+        creatorId: String(iq.from.id),
+        creatorName: iq.from.first_name + (iq.from.last_name ? ` ${iq.from.last_name}` : ''),
+        creatorUsername: iq.from.username,
+        mode,
+        text: secretText,
+        allowedTargets: []
+      });
+      this.whispers.set(wh.id, wh);
+      while (this.whispers.size > 300) {
+        const oldestId = this.whispers.keys().next().value;
+        if (oldestId === undefined) break;
+        this.whispers.delete(oldestId);
+      }
+      await this.answerInlineQuery(iq.id, [{
+        type: 'article',
+        id: `wh-compose-${wh.id}`,
+        title: `🤫 همسة ${MS.whisperModeLabel(mode)} — جاهزة للإرسال`,
+        description: 'اضغط لإدراج بطاقة الهمسة في هذه المحادثة؛ محتواها يبقى سرياً حتى يفتحوها.',
+        input_message_content: {
+          message_text: MS.renderWhisperCardText(wh),
+          parse_mode: 'MarkdownV2'
+        },
+        reply_markup: { inline_keyboard: MS.whisperCardKeyboard(wh) }
+      }]);
+      return;
+    }
 
     // ── 🤫 همسة سرية ──
     if (q.startsWith('wh:')) {
@@ -7423,6 +7547,7 @@ export class TelegramBotManager {
         `${SEP}\n` +
         `أرسل الآن الملف هنا بالمحادثة:\n` +
         `• 🎵 أغنية أو 🎙️ بصمة ⬅️ تحويل الصيغة أو *تعديل الاسم والفنان والملف والصورة*\n` +
+        `• 💾 احفظ إعداد الفنان والأغنية والصورة باسم تختاره وطبّقه على أغانيك القادمة.\n` +
         `• 🎬 فيديو ⬅️ صوت / بصمة / GIF\n` +
         `• 🖼️ صورة ⇄ ✨ ملصق / 📑 PDF\n` +
         `• 🎞️ متحركة GIF ⬅️ 🎬 فيديو`;
@@ -7720,6 +7845,9 @@ export class TelegramBotManager {
       ]
     };
 
+    if (kind === 'audio' && (this.audioMetadataPresets.get(uid)?.length || 0) > 0) {
+      optionsByKind.audio.unshift([{ text: '🎚️ تطبيق إعداد محفوظ على هذه الأغنية', callback_data: 'conv:preset:list' }]);
+    }
     const kb = [...(optionsByKind[kind] || []), [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]];
     const promptMsg = await this.sendMessage(uid, '🔄 *اختر الإجراء أو الصيغة المطلوبة:* 👇', kb);
     if (promptMsg?.result?.message_id) this.trackMediaMsg(uid, promptMsg.result.message_id);
@@ -7745,6 +7873,10 @@ export class TelegramBotManager {
         { text: '📁 اسم الملف', callback_data: 'conv:ef:fileName' },
         { text: '🖼️ الصورة', callback_data: 'conv:ef:cover' }
       ],
+      [
+        { text: '💾 حفظ كإعداد', callback_data: 'conv:preset:save' },
+        { text: '🎚️ تطبيق إعداد', callback_data: 'conv:preset:list' }
+      ],
       [{ text: '✅ حفظ وإرسال المقطع بالتعديلات', callback_data: 'conv:edit_send' }],
       [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]
     ];
@@ -7767,7 +7899,58 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(cb.id, '⚠️ أرسل الأغنية أو البصمة أولاً.', true);
         return;
       }
+      draft.waitingField = undefined;
+      this.audioEditDrafts.set(uid, draft);
       await this.answerCallbackQuery(cb.id, '');
+      await this.sendAudioMetadataEditorCard(uid, cb.message?.message_id);
+      return;
+    }
+
+    if (targetAction === 'preset:save') {
+      const draft = this.audioEditDrafts.get(uid);
+      if (!draft) {
+        await this.answerCallbackQuery(cb.id, '⚠️ أرسل الأغنية أولاً.', true);
+        return;
+      }
+      draft.waitingField = 'presetName';
+      this.audioEditDrafts.set(uid, draft);
+      await this.answerCallbackQuery(cb.id, '');
+      await this.sendMessage(chatId, '💾 شنو تسمّي هذا الإعداد؟ (مثلاً: اسم الفرقة)', [
+        [{ text: '🔙 رجوع للمحرر', callback_data: 'conv:edit_open' }]
+      ]);
+      return;
+    }
+
+    if (targetAction === 'preset:list') {
+      const presets = this.audioMetadataPresets.get(uid) || [];
+      if (!presets.length) {
+        await this.answerCallbackQuery(cb.id, 'ما عندك إعدادات محفوظة بعد؛ عدّل الأغنية ثم اضغط «حفظ كإعداد».', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, 'اختار الإعداد اللي تريد تطبّقه 👇');
+      const keyboard = presets.map(p => [{
+        text: `🎚️ ${p.name}`.slice(0, 64),
+        callback_data: `conv:preset:apply:${p.id}`
+      }]);
+      keyboard.push([{ text: '🔙 رجوع للمحرر', callback_data: 'conv:edit_open' }]);
+      await this.sendMessage(chatId, '🎚️ اختار إعداداً محفوظاً لتطبيق اسم الأغنية والفنان والصورة:', keyboard);
+      return;
+    }
+
+    const presetApply = targetAction.match(/^preset:apply:(.+)$/);
+    if (presetApply) {
+      const draft = this.audioEditDrafts.get(uid);
+      const preset = (this.audioMetadataPresets.get(uid) || []).find(p => p.id === presetApply[1]);
+      if (!draft || !preset) {
+        await this.answerCallbackQuery(cb.id, '⚠️ الإعداد أو الأغنية غير موجودة؛ أرسل الأغنية من جديد.', true);
+        return;
+      }
+      draft.title = preset.title;
+      draft.artist = preset.artist;
+      draft.coverFileId = preset.coverFileId;
+      draft.waitingField = undefined;
+      this.audioEditDrafts.set(uid, draft);
+      await this.answerCallbackQuery(cb.id, `✅ تم تطبيق «${preset.name}»`);
       await this.sendAudioMetadataEditorCard(uid, cb.message?.message_id);
       return;
     }
