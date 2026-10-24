@@ -2107,23 +2107,24 @@ export class TelegramBotManager {
       { mode: '4', label: '👥 لأول 4' },
       { mode: '5', label: '👥 لأول 5' }
     ];
-    const makeButton = (mode: MS.WhisperMode, label: string) => ({
-      text: label,
-      ...(isChannel
-        ? { switch_inline_query_chosen_chat: { query: `wh:new:${mode}:`, allow_channel_chats: true } }
-        : { switch_inline_query_current_chat: `wh:new:${mode}:` })
-    });
+    const makeButton = (mode: MS.WhisperMode, label: string) => isChannel
+      ? { text: label, callback_data: `wh:channel:${mode}` }
+      : { text: label, switch_inline_query_current_chat: `wh:new:${mode}:` };
     const keyboard = [
       [makeButton(modes[0].mode, modes[0].label), makeButton(modes[1].mode, modes[1].label)],
       [makeButton(modes[2].mode, modes[2].label), makeButton(modes[3].mode, modes[3].label)],
       [makeButton(modes[4].mode, modes[4].label), makeButton(modes[5].mode, modes[5].label), makeButton(modes[6].mode, modes[6].label)]
     ];
     const instruction = isChannel
-      ? '🤫 لإنشاء همسة بهذه القناة: اختار النوع، ومن القائمة اختار نفس القناة، اكتب نص الهمسة في خانة البوت، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً.'
+      ? '🤫 لإنشاء همسة بهذه القناة: اختار النوع، وراح توصلك رسالة خاصة تكمل بيها الإنشاء وتنشرها بالقناة. نص الهمسة يبقى مخفياً.'
       : '🤫 لإنشاء همسة هنا: اختار عدد القرّاء، اكتب نص الهمسة في خانة البوت التي تفتح، ثم اختار النتيجة واضغط إرسال. نص الهمسة يبقى مخفياً ولا ينرسل كرسالة عادية.';
     const sent = await this.sendMessage(chatId, instruction, keyboard);
     if (!sent?.ok || !sent?.result?.message_id) {
-      console.error(`Failed to send whisper launcher to chat ${chatId}: ${sent?.description || 'Telegram returned no message id'}`);
+      const reason = String(sent?.description || 'Telegram returned no message id');
+      console.error(`Failed to send whisper launcher to chat ${chatId}: ${reason}`);
+      if (this.ownerId && this.ownerId !== chatId) {
+        await this.sendMessage(this.ownerId, `⚠️ تعذّر إرسال قائمة الهمسة إلى القناة ${chatId}. سبب Telegram: ${this.mdSafe(reason)}\nتأكد أن البوت مشرف ولديه صلاحية نشر الرسائل.`);
+      }
       return;
     }
     const launcherMessageId = Number(sent.result.message_id);
@@ -7185,6 +7186,41 @@ export class TelegramBotManager {
     const chatId = String(cb.message?.chat.id || userId);
     const messageId = cb.message?.message_id;
     const SEP = '━━━━━━━━━━━━━━━━━━━';
+
+    // ── إطلاق إنشاء همسة من القناة عبر أزرار callback (أزرار inline-query لا تعمل بثبات داخل القنوات) ──
+    const channelWhisperMode = data.match(/^wh:channel:(all|first|[1-5])$/);
+    if (channelWhisperMode) {
+      const channel = cb.message?.chat;
+      if (!channel || channel.type !== 'channel') {
+        await this.answerCallbackQuery(cb.id, 'هذا الخيار مخصص للقنوات.', true);
+        return;
+      }
+      const channelId = String(channel.id);
+      const launches = (this.pendingWhisperLaunches.get(channelId) || []).filter(entry => Date.now() - entry.createdAt < 15 * 60 * 1000);
+      for (let i = launches.length - 1; i >= 0; i--) {
+        launches[i].creatorId = userId;
+        break;
+      }
+      if (launches.length) this.pendingWhisperLaunches.set(channelId, launches);
+      const mode = channelWhisperMode[1] as MS.WhisperMode;
+      const privateMessage = await this.sendMessage(
+        userId,
+        `🤫 اختار «كتابة الهمسة»، ومن القائمة اختار قناة ${this.mdSafe(channel.title || 'القناة')}، بعدها اكتب نص الهمسة في خانة البوت واختار النتيجة لإرسالها.`,
+        [[{
+          text: '📝 كتابة الهمسة واختيار القناة',
+          switch_inline_query_chosen_chat: {
+            query: `wh:new:${mode}:`,
+            allow_channel_chats: true
+          }
+        }]]
+      );
+      if (!privateMessage?.ok) {
+        await this.answerCallbackQuery(cb.id, 'ما كدرت أراسلك بالخاص. افتح البوت واضغط Start، وبعدها اضغط زر النوع بالقناة مرة ثانية.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '📩 أرسلت لك خطوات إنشاء الهمسة بالخاص.');
+      return;
+    }
 
     // ── 1) فتح همسة منشورة بالكروب أو القناة (تعمل للرسائل العادية ورسائل الإنلاين!) ──
     if (data.startsWith('wh:open:')) {
