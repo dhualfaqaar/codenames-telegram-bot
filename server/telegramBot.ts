@@ -812,6 +812,9 @@ const GROUP_GAME_ORDER = [
   'gq_food', 'fast_brands', 'fast_tf', 'fast_emoji_math'
 ];
 
+const REQUIRED_SUBSCRIPTION_CHANNEL = '@pleasegodimtired';
+const REQUIRED_SUBSCRIPTION_URL = 'https://t.me/pleasegodimtired';
+
 /** رقم اللعبة بمعرّفها */
 function findBotGame(id: string): BotGameCard | undefined {
   return BOT_GAMES.find(g => g.id === id);
@@ -961,6 +964,8 @@ export class TelegramBotManager {
   // ---------------------------------------------------------------------
   private users: Map<string, BotUserRecord> = new Map();
   private chats: Map<string, BotChatRecord> = new Map();
+  /** Cached subscription checks to avoid asking Telegram for every button tap. */
+  private channelSubscriptionCache: Map<string, { isMember: boolean; checkedAt: number }> = new Map();
   /** Telegram id of the bot owner (who gets the dashboard + alerts) */
   private ownerId: string | null = null;
   /** Should the owner receive alerts (new users, blocks, ...)? */
@@ -2077,6 +2082,19 @@ export class TelegramBotManager {
     const sender = message.from;
     const senderName = sender ? (sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '')) : 'مجهول';
 
+    const isStartCommand = /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
+    if (sender && !this.isOwner(sender.id) && message.chat.type === 'private') {
+      if (!(await this.hasRequiredChannelMembership(String(sender.id), isStartCommand))) {
+        await this.sendSubscriptionPrompt(chatId);
+        return;
+      }
+    }
+    if (sender && !this.isOwner(sender.id) && message.chat.type !== 'private' && isStartCommand &&
+        !(await this.hasRequiredChannelMembership(String(sender.id), true))) {
+      await this.sendSubscriptionPrompt(chatId);
+      return;
+    }
+
     // Result of "share the game to a channel" (chat_shared service message)
     if (message.chat_shared) {
       await this.handleChatShared(message);
@@ -2444,6 +2462,16 @@ export class TelegramBotManager {
     if (!chatId) chatId = String(cb.from.id);
     const userId = cb.from.id;
     const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
+
+    if (data === 'sub:check') {
+      await this.handleSubscriptionCheck(cb);
+      return;
+    }
+    if (!this.isOwner(userId) && !(await this.hasRequiredChannelMembership(String(userId)))) {
+      await this.answerCallbackQuery(cb.id, 'اشترك بقناة @pleasegodimtired حتى تستخدم البوت.', true);
+      await this.sendSubscriptionPrompt(String(userId));
+      return;
+    }
 
     // ---- owner dashboard buttons (only the owner may use them) ----
     if (data.startsWith('admin:')) {
@@ -3277,7 +3305,8 @@ export class TelegramBotManager {
       return;
     }
 
-    if (section === 'bot:rps' || section === 'bot:chess') {
+    const chessBotEloMatch = section.match(/^bot:chess:(\d+)$/);
+    if (section === 'bot:rps' || section === 'bot:chess' || chessBotEloMatch) {
       if (cb.message?.chat.type !== 'private') {
         await this.answerCallbackQuery(cb.id, 'اللعب ضد البوت متاح بالخاص فقط 🤖', true);
         return;
@@ -3295,20 +3324,42 @@ export class TelegramBotManager {
         return;
       }
 
-      const active = this.chessGames.get(chatId);
-      if (active && active.status === 'playing') {
-        const human = active.players.find(p => !p.isBot);
-        if (active.botOpponent && human?.id === String(cb.from.id)) {
-          await this.answerCallbackQuery(cb.id, 'رجعتلك لوحة مباراتك المحفوظة—كمل من هنا 🤖');
-          await this.paintChessBoard(active);
-          return;
+      if (section === 'bot:chess') {
+        const text =
+          '♟️ *اختار قوة البوت بالشطرنج*\n' +
+          '━━━━━━━━━━━━━━━━━━━\n' +
+          'اختار تصنيف Elo تقريبي من السهل إلى القوي جداً. كلما ارتفع التصنيف صار البوت يبحث عن حركات أقوى.';
+        const keyboard: any[][] = [];
+        for (let i = 0; i < CH.CHESS_BOT_ELO_LEVELS.length; i += 2) {
+          const first = CH.CHESS_BOT_ELO_LEVELS[i];
+          const second = CH.CHESS_BOT_ELO_LEVELS[i + 1];
+          const row: any[] = [{ text: `${first.elo} Elo · ${first.label}`, callback_data: `hub:bot:chess:${first.elo}` }];
+          if (second) row.push({ text: `${second.elo} Elo · ${second.label}`, callback_data: `hub:bot:chess:${second.elo}` });
+          keyboard.push(row);
         }
-        // لا نخلي حالة قديمة/من نوع آخر تمنع إنشاء مباراة بوت جديدة بهذا الخاص.
-        this.chessGames.delete(chatId);
+        keyboard.push([{ text: '🔙 رجوع للشطرنج', callback_data: 'hub:g:chess' }]);
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard, 'MarkdownV2');
+        else await this.sendMessage(chatId, text, keyboard, 'MarkdownV2');
+        await this.answerCallbackQuery(cb.id, 'اختار المستوى اللي يناسبك 👇');
+        return;
       }
-      const game = CH.createChessBotGame(chatId, String(cb.from.id), cb.from.first_name || 'لاعب');
+
+      const selectedElo = CH.normalizeChessBotElo(Number(chessBotEloMatch?.[1]));
+      if (String(selectedElo) !== chessBotEloMatch?.[1]) {
+        await this.answerCallbackQuery(cb.id, 'المستوى غير صالح؛ اختار واحداً من القائمة.', true);
+        return;
+      }
+      const active = this.chessGames.get(chatId);
+      if (active?.status === 'playing' && active.botOpponent && active.botElo === selectedElo &&
+          active.players.some(p => !p.isBot && p.id === String(cb.from.id))) {
+        await this.answerCallbackQuery(cb.id, `رجعتلك مباراة Elo ${selectedElo} المحفوظة 🤖`);
+        await this.paintChessBoard(active);
+        return;
+      }
+      if (active) this.chessGames.delete(chatId);
+      const game = CH.createChessBotGame(chatId, String(cb.from.id), cb.from.first_name || 'لاعب', selectedElo);
       this.chessGames.set(chatId, game);
-      await this.answerCallbackQuery(cb.id, 'بدأت مباراة الشطرنج ضد البوت؛ أنت الأبيض وتبدأ أولاً 🤖');
+      await this.answerCallbackQuery(cb.id, `بدأت مباراة ضد البوت — Elo ${selectedElo}. أنت الأبيض وتبدأ أولاً 🤖`);
       await this.paintChessBoard(game);
       return;
     }
@@ -3632,6 +3683,11 @@ export class TelegramBotManager {
   private async handleInlineQuery(iq: TelegramInlineQuery) {
     const q = (iq.query || '').trim().toLowerCase();
     const SEP = '━━━━━━━━━━━━━━━━━━━';
+    if (iq.from && !iq.from.is_bot && !this.isOwner(iq.from.id) &&
+        !(await this.hasRequiredChannelMembership(String(iq.from.id)))) {
+      await this.answerInlineQuery(iq.id, [this.subscriptionInlineResult()]);
+      return;
+    }
     if (iq.from && !iq.from.is_bot) {
       this.trackUser(iq.from, false);
       this.lastInlineDeployer = { id: String(iq.from.id), at: Date.now() };
@@ -9539,8 +9595,9 @@ export class TelegramBotManager {
     const uid = String(cb.from.id);
     if (op === 'new') {
       const botRematch = Boolean(game?.botOpponent || p[3] === 'bot');
+      const botElo = CH.normalizeChessBotElo(Number(p[4]) || game?.botElo);
       const fresh = botRematch
-        ? CH.createChessBotGame(chatId, uid, cb.from.first_name || 'لاعب')
+        ? CH.createChessBotGame(chatId, uid, cb.from.first_name || 'لاعب', botElo)
         : CH.createChessLobby(chatId, cb.message?.chat.title || 'المحادثة');
       if (!botRematch) CH.chessJoin(fresh, uid, cb.from.first_name);
       if (game?.messageId) fresh.messageId = game.messageId;
@@ -10178,6 +10235,86 @@ export class TelegramBotManager {
         `😅 *خسرت مباراة حجرة ورقة مقص.*\n+${Economy.xpForResult('rps', false, 1)} XP\nجرّب مرة ثانية!`
       );
     }
+  }
+
+  private async hasRequiredChannelMembership(userId: string, forceRefresh = false): Promise<boolean> {
+    const cached = this.channelSubscriptionCache.get(userId);
+    const cacheTtl = cached?.isMember ? 15_000 : 5_000;
+    if (!forceRefresh && cached && Date.now() - cached.checkedAt < cacheTtl) return cached.isMember;
+    if (!this.token) return false;
+    const numericUserId = Number(userId);
+    if (!Number.isSafeInteger(numericUserId) || numericUserId <= 0) return false;
+
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/getChatMember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: REQUIRED_SUBSCRIPTION_CHANNEL, user_id: numericUserId })
+      });
+      const data: any = await response.json();
+      if (!data?.ok) {
+        console.warn('Required-channel membership check failed:', data?.description || 'Telegram API error');
+        this.channelSubscriptionCache.set(userId, { isMember: false, checkedAt: Date.now() });
+        return false;
+      }
+      const member = ['creator', 'administrator', 'member'].includes(data.result?.status) ||
+        (data.result?.status === 'restricted' && Boolean(data.result?.is_member));
+      this.channelSubscriptionCache.set(userId, { isMember: member, checkedAt: Date.now() });
+      return member;
+    } catch (error) {
+      console.warn('Required-channel membership check failed:', error);
+      this.channelSubscriptionCache.set(userId, { isMember: false, checkedAt: Date.now() });
+      return false;
+    }
+  }
+
+  private async sendSubscriptionPrompt(chatId: string) {
+    const text =
+      '🔒 *الاشتراك مطلوب لتشغيل البوت*\n' +
+      'اشترك بقناة @pleasegodimtired، وبعدها اضغط «تحقّق وابدأ».\n\n' +
+      'إذا أنت مشترك وما تم التحقق، لازم يكون البوت مشرفاً بالقناة حتى يگدر يتأكد من الاشتراك.';
+    await this.sendMessage(chatId, text, [
+      [{ text: '📣 اشترك بالقناة', url: REQUIRED_SUBSCRIPTION_URL }],
+      [{ text: '✅ تحقّق وابدأ', callback_data: 'sub:check' }]
+    ]);
+  }
+
+  private subscriptionInlineResult(): any {
+    return {
+      type: 'article',
+      id: 'required-channel-subscription',
+      title: '🔒 اشترك بالقناة أولاً',
+      description: 'اشترك بـ @pleasegodimtired ثم تحقّق لتشغيل ألعاب البوت',
+      input_message_content: {
+        message_text: '🔒 اشترك بقناة @pleasegodimtired حتى تستخدم ألعاب البوت.',
+        parse_mode: 'Markdown'
+      },
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📣 اشترك بالقناة', url: REQUIRED_SUBSCRIPTION_URL }],
+          [{ text: '✅ تحقّق', callback_data: 'sub:check' }]
+        ]
+      }
+    };
+  }
+
+  private async handleSubscriptionCheck(cb: TelegramCallbackQuery) {
+    const userId = String(cb.from.id);
+    if (!this.isOwner(cb.from.id) && !(await this.hasRequiredChannelMembership(userId, true))) {
+      await this.answerCallbackQuery(cb.id, 'ما ظهرلي اشتراكك بعد؛ اشترك بالقناة وبعدين أعد التحقق.', true);
+      return;
+    }
+
+    await this.answerCallbackQuery(cb.id, '✅ تم التحقق من اشتراكك.');
+    const privateChatId = cb.message?.chat.type === 'private' ? String(cb.message.chat.id) : '';
+    if (!privateChatId) {
+      await this.sendMessage(userId, '✅ اشتراكك مؤكد. افتح محادثة البوت واضغط /start حتى تبدأ.');
+      return;
+    }
+
+    this.trackUser(cb.from, true);
+    await this.sendPrivateWelcome(privateChatId, cb.from.first_name || 'لاعب');
+    if (this.isOwner(cb.from.id)) await this.sendAdminPanel(privateChatId);
   }
 
   /**
