@@ -7661,16 +7661,15 @@ export class TelegramBotManager {
       const text =
         `🔄 *تحويل الصيغ وتعديل الصوتيات*\n` +
         `${SEP}\n` +
-        `أرسل الآن الملف هنا بالمحادثة، أو اضغط «تخصيص إعدادات» حتى تحفظ إعداداً للأغاني القادمة:\n` +
+        `أرسل الآن الملف هنا بالمحادثة، أو افتح «الإعدادات المخصصة» ثم «تخصيص إعدادات» لحفظ إعداد للأغاني القادمة:\n` +
         `• 🎵 أغنية أو 🎙️ بصمة ⬅️ تحويل الصيغة أو *تعديل الاسم والفنان واسم الملف والصورة*\n` +
         `• 🎬 فيديو ⬅️ صوت / بصمة / GIF\n` +
         `• 🖼️ صورة ⇄ ✨ ملصق / 📑 PDF\n` +
         `• 🎞️ متحركة GIF ⬅️ 🎬 فيديو`;
-      const keyboard: any[][] = [[{ text: '🎛️ تخصيص إعدادات', callback_data: 'conv:preset:setup' }]];
-      if ((this.audioMetadataPresets.get(userId)?.length || 0) > 0) {
-        keyboard.push([{ text: '🗑️ حذف إعداد مخصص', callback_data: 'conv:preset:delete_list' }]);
-      }
-      keyboard.push([{ text: '🔙 رجوع', callback_data: 'svc:main' }]);
+      const keyboard: any[][] = [
+        [{ text: '⚙️ الإعدادات المخصصة', callback_data: 'conv:preset:menu' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
       await this.answerCallbackQuery(cb.id, '');
@@ -8014,6 +8013,25 @@ export class TelegramBotManager {
     const uid = String(cb.from.id);
     const chatId = String(cb.message?.chat.id || uid);
 
+    if (targetAction === 'preset:menu') {
+      const text =
+        `⚙️ *الإعدادات المخصصة*\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `احفظ إعدادات أسماء الأغاني والفنان والملفات والأغلفة، أو احذف إعداداً محفوظاً.`;
+      const keyboard: any[][] = [
+        [{ text: '🎛️ تخصيص إعدادات', callback_data: 'conv:preset:setup' }],
+        [{ text: '🗑️ حذف إعداد مخصص', callback_data: 'conv:preset:delete_list' }],
+        [{ text: '🔙 رجوع لتحويل الصيغ', callback_data: 'svc:convert' }]
+      ];
+      await this.answerCallbackQuery(cb.id, '');
+      if (cb.message?.message_id) {
+        const edited = await this.editMessageText(chatId, cb.message.message_id, text, keyboard);
+        if (edited?.ok) return;
+      }
+      await this.sendMessage(chatId, text, keyboard);
+      return;
+    }
+
     if (targetAction === 'preset:setup') {
       this.audioEditDrafts.set(uid, {
         fileId: '',
@@ -8153,7 +8171,7 @@ export class TelegramBotManager {
         `*التغييرات:*\n${changes.length ? changes.join('\n') : 'ماكو تغييرات؛ بيانات الأغنية مطابقة للإعداد.'}`;
       await this.answerCallbackQuery(cb.id, 'راجع البيانات قبل التطبيق.');
       await this.sendMessage(chatId, preview, [
-        [{ text: '✅ تطبيق الإعداد', callback_data: `conv:preset:apply:${preset.id}` }],
+        [{ text: '✅ تطبيق الإعداد وإرسال الأغنية', callback_data: `conv:preset:apply:${preset.id}` }],
         [{ text: '🔙 إلغاء ورجوع للأغنية', callback_data: 'conv:edit_open' }]
       ]);
       return;
@@ -8173,8 +8191,8 @@ export class TelegramBotManager {
       draft.coverFileId = preset.coverFileId;
       draft.waitingField = undefined;
       this.audioEditDrafts.set(uid, draft);
-      await this.answerCallbackQuery(cb.id, `✅ تم تطبيق «${preset.name}»`);
-      await this.sendAudioMetadataEditorCard(uid, cb.message?.message_id);
+      // تطبيق الإعداد يعني تجهيز وإرسال نسخة جديدة فعلياً، مو بس تحديث المعاينة.
+      await this.executeFormatConversion(cb, 'edit_send');
       return;
     }
 
@@ -8274,10 +8292,13 @@ export class TelegramBotManager {
           ]);
           if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
         } else {
-          await this.sendMessage(chatId, '⚠️ تعذّر إرسال الملف المعدّل — حاول مجدداً.');
+          const reason = String(upJson?.description || 'رفض تيليجرام الملف المعدّل');
+          await this.sendMessage(chatId, `⚠️ ما انرسل الملف المعدّل، لذلك ما انطبقت الإعدادات. السبب: ${this.mdSafe(reason)}`);
         }
-      } catch {
+      } catch (error) {
         if (waitId) await this.deleteMessage(chatId, waitId);
+        console.error('Audio metadata apply/send failed:', error);
+        await this.sendMessage(chatId, '⚠️ صار خطأ أثناء تجهيز الأغنية؛ ما انطبقت الإعدادات. جرّب مرة ثانية.');
       }
       return;
     }
