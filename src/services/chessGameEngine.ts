@@ -20,6 +20,34 @@ export interface ChessGame {
   finishReason?: 'checkmate' | 'draw' | 'resignation';
   lastMoveSan?: string;
   botOpponent?: boolean;
+  /** Chosen approximate rating for bot-opponent matches. */
+  botElo?: number;
+}
+
+export const CHESS_BOT_ELO_LEVELS = [
+  { elo: 250, label: 'مبتدئ جداً' },
+  { elo: 400, label: 'مبتدئ' },
+  { elo: 600, label: 'سهل جداً' },
+  { elo: 800, label: 'سهل' },
+  { elo: 1000, label: 'متوسط' },
+  { elo: 1200, label: 'متوسط+' },
+  { elo: 1400, label: 'جيد' },
+  { elo: 1600, label: 'متقدم' },
+  { elo: 1800, label: 'قوي' },
+  { elo: 2000, label: 'خبير' },
+  { elo: 2200, label: 'خبير+' },
+  { elo: 2400, label: 'محترف' },
+  { elo: 2600, label: 'ماستر' },
+  { elo: 2800, label: 'أستاذ' },
+  { elo: 3000, label: 'عالمي' },
+  { elo: 3200, label: 'نخبوي' }
+] as const;
+export const DEFAULT_CHESS_BOT_ELO = 1200;
+
+export function normalizeChessBotElo(elo?: number): number {
+  return CHESS_BOT_ELO_LEVELS.some(level => level.elo === elo)
+    ? Number(elo)
+    : DEFAULT_CHESS_BOT_ELO;
 }
 
 const INITIAL_FEN = new Chess().fen();
@@ -27,18 +55,20 @@ export function createChessLobby(chatId: string, chatTitle: string): ChessGame {
   return { chatId, chatTitle, status: 'lobby', players: [], fen: INITIAL_FEN, moves: [] };
 }
 
-export function createChessBotGame(chatId: string, playerId: string, playerName: string): ChessGame {
+export function createChessBotGame(chatId: string, playerId: string, playerName: string, requestedElo = DEFAULT_CHESS_BOT_ELO): ChessGame {
+  const botElo = normalizeChessBotElo(requestedElo);
   return {
     chatId,
     chatTitle: 'مباراة خاصة ضد البوت',
     status: 'playing',
     players: [
       { id: playerId, name: playerName || 'لاعب', color: 'w' },
-      { id: 'chess_bot', name: 'البوت 🤖', color: 'b', isBot: true }
+      { id: 'chess_bot', name: `البوت Elo ${botElo} 🤖`, color: 'b', isBot: true }
     ],
     fen: INITIAL_FEN,
     moves: [],
-    botOpponent: true
+    botOpponent: true,
+    botElo
   };
 }
 
@@ -126,38 +156,108 @@ export function chessSelect(game: ChessGame, playerId: string, square: string): 
   return { ok: true, msg: `اختيرت ${piece.type.toUpperCase()} في ${square}. اختار مربع الوصول.` };
 }
 
-/** حركة بوت بسيطة وآمنة: تكتيك مادي، كش/كش مات، وتمركز مركزي، وكل الحركات من chess.js القانونية. */
+/** Search configuration makes the selected Elo tier change the bot's playing strength. */
+function botSearchSettings(elo: number): { depth: number; randomMoveChance: number } {
+  const normalized = normalizeChessBotElo(elo);
+  const depth = normalized < 900 ? 1 : normalized < 1900 ? 2 : 3;
+  const progress = (3200 - normalized) / (3200 - 250);
+  return {
+    depth,
+    randomMoveChance: Math.max(0.005, 0.78 * progress * progress * progress)
+  };
+}
+
+function chessTerminalScore(position: Chess, botColor: 'w' | 'b'): number | undefined {
+  if (position.isCheckmate()) return position.turn() === botColor ? -100_000 : 100_000;
+  if (position.isDraw() || position.isStalemate() || position.isThreefoldRepetition() || position.isInsufficientMaterial()) return 0;
+  return undefined;
+}
+
+function evaluateChessPosition(position: Chess, botColor: 'w' | 'b'): number {
+  const terminal = chessTerminalScore(position, botColor);
+  if (terminal !== undefined) return terminal;
+
+  const value: Record<string, number> = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 0 };
+  let score = 0;
+  const board = position.board();
+  for (let rank = 0; rank < 8; rank++) {
+    for (let file = 0; file < 8; file++) {
+      const piece = board[rank][file];
+      if (!piece) continue;
+      const sign = piece.color === botColor ? 1 : -1;
+      score += sign * value[piece.type];
+      const center = 3.5 - (Math.abs(file - 3.5) + Math.abs(rank - 3.5)) / 2;
+      if (piece.type === 'n' || piece.type === 'b') score += sign * center * 7;
+      if (piece.type === 'p') {
+        const advance = piece.color === 'w' ? 6 - rank : rank - 1;
+        score += sign * (Math.max(0, advance) * 4 + center * 2);
+      }
+    }
+  }
+  if (position.isCheck()) score += position.turn() === botColor ? -25 : 25;
+  return score;
+}
+
+function minimaxChess(
+  position: Chess,
+  depth: number,
+  alpha: number,
+  beta: number,
+  botColor: 'w' | 'b'
+): number {
+  const terminal = chessTerminalScore(position, botColor);
+  if (terminal !== undefined) return terminal;
+  if (depth <= 0) return evaluateChessPosition(position, botColor);
+
+  const moves = position.moves({ verbose: true }) as Move[];
+  if (!moves.length) return evaluateChessPosition(position, botColor);
+  // Capture/check moves first improves alpha-beta pruning while preserving legality.
+  moves.sort((a, b) => Number(Boolean(b.captured)) - Number(Boolean(a.captured)));
+  const maximizing = position.turn() === botColor;
+  let best = maximizing ? -Infinity : Infinity;
+  for (const move of moves) {
+    position.move({ from: move.from, to: move.to, promotion: move.promotion });
+    const score = minimaxChess(position, depth - 1, alpha, beta, botColor);
+    position.undo();
+    if (maximizing) {
+      best = Math.max(best, score);
+      alpha = Math.max(alpha, best);
+    } else {
+      best = Math.min(best, score);
+      beta = Math.min(beta, best);
+    }
+    if (beta <= alpha) break;
+  }
+  return best;
+}
+
+/** Elo-tiered legal chess bot: weaker tiers blunder more often and search less deeply. */
 export function chessBotMove(game: ChessGame): { ok: boolean; msg: string; moved?: boolean } {
   if (!game.botOpponent || game.status !== 'playing') return { ok: false, msg: 'ماكو دور بوت هسه.' };
   const bot = game.players.find(p => p.isBot);
   const chess = loadPosition(game);
   if (!bot || chess.turn() !== bot.color) return { ok: false, msg: 'مو دور البوت.' };
 
-  const pieceValue: Record<string, number> = { p: 1, n: 3.2, b: 3.3, r: 5, q: 9, k: 0 };
-  const material = (position: Chess) => {
-    let score = 0;
-    for (const row of position.board()) {
-      for (const piece of row) {
-        if (piece) score += (piece.color === 'b' ? 1 : -1) * pieceValue[piece.type];
-      }
-    }
-    return score;
-  };
-
+  const botColor = bot.color;
+  const elo = normalizeChessBotElo(game.botElo);
+  game.botElo = elo;
+  const settings = botSearchSettings(elo);
   const candidates = chess.moves({ verbose: true }) as Move[];
   if (!candidates.length) return { ok: false, msg: 'ما لكيت حركة قانونية للبوت.' };
-  let bestMove = candidates[0];
-  let bestScore = -Infinity;
-  for (const candidate of candidates) {
-    chess.move({ from: candidate.from, to: candidate.to, promotion: candidate.promotion });
-    const centerBonus = ['d4', 'e4', 'd5', 'e5'].includes(candidate.to) ? 0.12 : 0;
-    const score =
-      (chess.isCheckmate() ? 10000 : material(chess) + (chess.isCheck() ? 0.35 : 0) + centerBonus) +
-      Math.random() * 0.02;
-    chess.undo();
-    if (score > bestScore) {
-      bestScore = score;
-      bestMove = candidate;
+
+  let bestMove = candidates[Math.floor(Math.random() * candidates.length)];
+  if (Math.random() >= settings.randomMoveChance) {
+    let bestScore = -Infinity;
+    for (const candidate of candidates) {
+      chess.move({ from: candidate.from, to: candidate.to, promotion: candidate.promotion });
+      const score = minimaxChess(chess, settings.depth - 1, -Infinity, Infinity, botColor);
+      chess.undo();
+      // Tiny rating-dependent noise makes equal moves less predictable.
+      const noise = Math.random() * ((3200 - elo) / 120);
+      if (score + noise > bestScore) {
+        bestScore = score + noise;
+        bestMove = candidate;
+      }
     }
   }
 
@@ -179,7 +279,7 @@ export function chessBotMove(game: ChessGame): { ok: boolean; msg: string; moved
     game.finishReason = 'draw';
     return { ok: true, msg: 'انتهت المباراة بالتعادل.', moved: true };
   }
-  return { ok: true, msg: `حركة البوت: ${moved.san}`, moved: true };
+  return { ok: true, msg: `حركة البوت Elo ${elo}: ${moved.san}`, moved: true };
 }
 
 export function chessResign(game: ChessGame, playerId: string): { ok: boolean; msg: string } {
@@ -230,13 +330,13 @@ export function chessBoardKeyboard(game: ChessGame): any[][] {
   if (game.status === 'playing') {
     rows.push([{ text: '🏳️ استسلام', callback_data: `ch:resign:${game.chatId}` }]);
   } else if (game.status === 'finished') {
-    rows.push([{ text: '🔄 مباراة جديدة', callback_data: `ch:new:${game.chatId}:${game.botOpponent ? 'bot' : 'human'}` }]);
+    rows.push([{ text: '🔄 مباراة جديدة', callback_data: `ch:new:${game.chatId}:${game.botOpponent ? `bot:${normalizeChessBotElo(game.botElo)}` : 'human'}` }]);
   }
   return rows;
 }
 
 export function renderChess(game: ChessGame): string {
-  const lines = [`♟️ *شطرنج${game.botOpponent ? ' ضد البوت 🤖' : ' 1 ضد 1'}*`, '━━━━━━━━━━━━━━━━━━━'];
+  const lines = [`♟️ *شطرنج${game.botOpponent ? ` ضد البوت 🤖 — Elo ${normalizeChessBotElo(game.botElo)}` : ' 1 ضد 1'}*`, '━━━━━━━━━━━━━━━━━━━'];
   if (game.status === 'lobby') {
     lines.push(`👥 اللاعبون: ${game.players.length}/2`);
     game.players.forEach((p, i) => lines.push(`${p.color === 'w' ? '⚪' : '⚫'} ${i + 1}\. ${escapeV2(p.name)}`));
