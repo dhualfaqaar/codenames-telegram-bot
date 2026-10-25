@@ -8,6 +8,7 @@
  */
 import { TelegramBotManager } from '../server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
+import { INTERACTIVE_GAMES_MINI_APP_HTML } from '../src/services/interactiveGamesMiniApp';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -25,6 +26,38 @@ interface Env {
 }
 
 const DEFAULT_WEBHOOK_URL = 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev';
+
+async function verifyTelegramWebAppInitData(initData: string, botToken: string): Promise<{ id: string } | null> {
+  if (!initData || initData.length > 8192 || !botToken) return null;
+  try {
+    const params = new URLSearchParams(initData);
+    const suppliedHash = (params.get('hash') || '').toLowerCase();
+    const authDate = Number(params.get('auth_date'));
+    if (!/^[a-f0-9]{64}$/.test(suppliedHash) || !Number.isFinite(authDate) || Math.abs(Date.now() / 1000 - authDate) > 86400) return null;
+    const userJson = params.get('user');
+    if (!userJson) return null;
+    const telegramUser = JSON.parse(userJson);
+    if (!telegramUser?.id || !/^\d{5,}$/.test(String(telegramUser.id))) return null;
+
+    const checkString = Array.from(params.entries())
+      .filter(([key]) => key !== 'hash')
+      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    const encoder = new TextEncoder();
+    const algorithm = { name: 'HMAC', hash: 'SHA-256' };
+    const secretBase = await crypto.subtle.importKey('raw', encoder.encode('WebAppData'), algorithm, false, ['sign']);
+    const secret = await crypto.subtle.sign('HMAC', secretBase, encoder.encode(botToken));
+    const dataKey = await crypto.subtle.importKey('raw', secret, algorithm, false, ['sign']);
+    const digest = new Uint8Array(await crypto.subtle.sign('HMAC', dataKey, encoder.encode(checkString)));
+    const calculatedHash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+    let mismatch = 0;
+    for (let i = 0; i < 64; i++) mismatch |= calculatedHash.charCodeAt(i) ^ suppliedHash.charCodeAt(i);
+    return mismatch === 0 ? { id: String(telegramUser.id) } : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * المالك الوحيد (أحمد) — التنبيهات تروح له بس.
@@ -140,7 +173,7 @@ export class BotState {
       geminiApiKey: this.env.GEMINI_API_KEY,
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
-      sudokuWebAppUrl: new URL('/sudoku', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL).toString()
+      interactiveGamesUrl: new URL('/interactive', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL).toString()
     });
     try {
       const saved = await this.state.storage.get('state');
@@ -203,6 +236,16 @@ export class BotState {
       });
     }
 
+    if (new URL(request.url).pathname === '/interactive-profile') {
+      try {
+        const body = await request.json() as { userId?: string };
+        if (!body.userId || !/^\d{5,}$/.test(String(body.userId))) return Response.json({ error: 'invalid user' }, { status: 400 });
+        return Response.json({ profile: bot.getInteractiveProfile(body.userId) });
+      } catch {
+        return Response.json({ error: 'invalid profile request' }, { status: 400 });
+      }
+    }
+
     if (new URL(request.url).pathname === '/football-alerts') {
       try {
         await bot.processFootballAlerts();
@@ -256,6 +299,16 @@ export class BotState {
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const requestUrl = new URL(request.url);
+    if (request.method === 'GET' && (requestUrl.pathname === '/interactive' || requestUrl.pathname === '/interactive/')) {
+      return new Response(INTERACTIVE_GAMES_MINI_APP_HTML, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin'
+        }
+      });
+    }
     if (request.method === 'GET' && (requestUrl.pathname === '/sudoku' || requestUrl.pathname === '/sudoku/')) {
       return new Response(SUDOKU_MINI_APP_HTML, {
         headers: {
@@ -274,6 +327,25 @@ export default {
 
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
+
+    if (request.method === 'POST' && requestUrl.pathname === '/api/interactive/profile') {
+      let body: any;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json({ error: 'invalid request' }, { status: 400 });
+      }
+      const authenticatedUser = await verifyTelegramWebAppInitData(String(body?.initData || ''), String(env.TELEGRAM_BOT_TOKEN || ''));
+      if (!authenticatedUser) return Response.json({ error: 'unauthorized' }, { status: 401 });
+      const response = await stub.fetch('https://bot.internal/interactive-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: authenticatedUser.id })
+      });
+      const profilePayload = await response.json().catch(() => null);
+      if (!response.ok || !profilePayload?.profile) return Response.json({ error: 'profile unavailable' }, { status: 503 });
+      return Response.json({ profile: profilePayload.profile }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     if (request.method !== 'POST') {
       // فحص + إصلاح ذاتي: لو الوصلة مسحت، ترجع تلقائياً بأول فحص
