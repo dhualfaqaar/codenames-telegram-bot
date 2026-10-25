@@ -14,6 +14,7 @@ type Room = {
   updatedAt: number;
   host: string;
   players: RoomPlayer[];
+  capacity?: number;
   gameState: any;
 };
 
@@ -101,15 +102,21 @@ export class InteractiveGameRooms {
       const game = String(body?.game || '') as InteractiveGameId;
       if (!Object.hasOwn(GAME_NAMES, game)) return Response.json({ error: 'اللعبة غير معروفة' }, { status: 400 });
       const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
+      const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' ? 4 : game === 'gartic' ? 8 : 6;
+      const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
+      const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
+      const roundDurationMs = game === 'gartic' ? Math.max(45, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
       const botElo = game === 'chess' && body?.mode === 'bot' ? Math.max(400, Math.min(2000, Math.round(Number(body?.botElo) || 800))) : 0;
       const players = [player];
       if (botElo) players.push({ token: randomString(30), name: 'بوت', elo: botElo, bot: true, joinedAt: Date.now() });
       const room: Room = {
         id: randomString(12), game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: player.token,
-        players, gameState: this.initialState(game)
+        players, capacity, gameState: this.initialState(game)
       };
       if (game === 'sudoku') room.gameState.difficulty = this.cleanDifficulty(body?.difficulty);
+      if (game === 'poker') room.gameState.startingChips = startingChips;
+      if (game === 'gartic') room.gameState.roundDurationMs = roundDurationMs;
       if (botElo) { room.gameState.botElo = botElo; room.gameState.mode = 'bot'; this.startGame(room); }
       await this.save(room);
       return this.jsonFor(room, player.token, 201);
@@ -133,9 +140,9 @@ export class InteractiveGameRooms {
       const prior = typeof body.token === 'string' ? room.players.find(player => player.token === body.token) : undefined;
       if (prior) return this.jsonFor(room, prior.token);
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
-      const max = room.game === 'chess' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 8 : 6;
+      const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 8 : 6);
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}) };
       room.players.push(player);
       room.updatedAt = Date.now();
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
@@ -157,7 +164,7 @@ export class InteractiveGameRooms {
       case 'chess': return { fen: new Chess().fen(), turn: 'w', lastMove: '', result: '' };
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
       case 'gartic': return { round: 0, drawer: 0, word: '', strokes: [], guesses: [], scores: {}, roundStartedAt: 0, deadline: 0, roundResult: '' };
-      case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0 };
+      case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0, startingChips: 1000 };
       case 'sudoku': return { difficulty: 'easy', puzzle: [], solution: [], boards: {}, startedAt: 0, winner: '', result: '' };
     }
   }
@@ -334,7 +341,7 @@ export class InteractiveGameRooms {
     s.currentColor = card.color || body.color;
     if (hand.length === 1) { s.saidUno[player.token] = Boolean(body.sayUno); s.pendingUno = s.saidUno[player.token] ? '' : player.token; }
     else { s.pendingUno = ''; s.saidUno[player.token] = false; }
-    if (!hand.length) { room.status = 'finished'; s.result = `${player.name} فاز بأونو!`; return null; }
+    if (!hand.length) { room.status = 'finished'; s.winnerSeat = room.players.findIndex(item => item.token === player.token); s.result = `${player.name} فاز بأونو!`; return null; }
     let skip = 1;
     if (card.value === 'تخطي') skip = 2;
     if (card.value === 'عكس') { s.direction *= -1; if (room.players.length === 2) skip = 2; }
@@ -357,7 +364,7 @@ export class InteractiveGameRooms {
   private advanceUno(room: Room, steps: number): void { room.gameState.turn = nextIndex(room.gameState.turn, room.players.length, room.gameState.direction * steps); }
 
   private startDrawRound(room: Room, index: number): void {
-    const s = room.gameState; s.round = index + 1; s.drawer = index % room.players.length; s.word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)]; s.strokes = []; s.guesses = []; s.roundStartedAt = Date.now(); s.deadline = Date.now() + 75_000; s.roundResult = ''; room.status = 'playing';
+    const s = room.gameState; s.round = index + 1; s.drawer = index % room.players.length; s.word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)]; s.strokes = []; s.guesses = []; s.roundStartedAt = Date.now(); s.deadline = Date.now() + (Number(s.roundDurationMs) || 75_000); s.roundResult = ''; room.status = 'playing';
   }
   private drawAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
     const s = room.gameState; const seat = room.players.findIndex(item => item.token === player.token);
@@ -482,7 +489,7 @@ export class InteractiveGameRooms {
         name: cleanName(body?.name), elo, difficulty, createdAt: Date.now()
       };
       const player: RoomPlayer = { token: playerToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
-      const room: Room = { id: ticket.roomId, game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: playerToken, players: [player], gameState: this.initialState(game) };
+      const room: Room = { id: ticket.roomId, game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: playerToken, players: [player], capacity: 2, gameState: this.initialState(game) };
       if (game === 'sudoku') room.gameState.difficulty = difficulty; else room.gameState.mode = 'random';
       const queue = (await this.storage.get<string[]>(QUEUE_KEY(game))) || [];
       const fresh: string[] = [];
@@ -571,7 +578,7 @@ export class InteractiveGameRooms {
       state.winners = (s.winners || []).map((token:string)=>room.players.findIndex(p=>p.token===token)).filter((i:number)=>i>=0);
       state.betAmounts = room.players.map(p=>s.bets[p.token]||0);
     }
-    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
+    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
   }
 }
 

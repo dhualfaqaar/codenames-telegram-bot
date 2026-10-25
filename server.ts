@@ -26,6 +26,10 @@ const interactiveRooms = new InteractiveGameRooms(new MemoryRoomStorage());
 app.get('/code-games-avatar.jpg', (_req, res) => {
   res.type('image/jpeg').set('Cache-Control', 'public, max-age=86400').send(Buffer.from(BOT_AVATAR_JPG_BASE64, 'base64'));
 });
+app.get('/api/interactive/config', async (_req, res) => {
+  try { res.set('Cache-Control', 'public, max-age=300').json({ botUsername: await telegramBot.getBotUsername() }); }
+  catch { res.status(503).json({ error: 'تعذر جلب معلومات البوت' }); }
+});
 app.all(['/api/interactive/rooms*', '/api/interactive/matchmaking*'], async (req, res) => {
   try {
     const method = req.method.toUpperCase();
