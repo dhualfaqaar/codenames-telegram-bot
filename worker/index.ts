@@ -190,15 +190,15 @@ export class BotState {
     return bot;
   }
 
-  /** يضبط منبّه الـ Durable Object على أقرب موعد جولة شغّالة (15 ثانية للسؤال / 2 ثانية للنتيجة) */
+  /** يضبط منبّه الـ Durable Object لأقرب مؤقت لعبة أو فحص متابعة الفرق كل 10 ثوانٍ. */
   private async syncAlarm(bot: TelegramBotManager): Promise<void> {
     try {
-      const nextAt = bot.getNextQuizDeadline();
-      if (nextAt !== null) {
-        await this.state.storage.setAlarm(nextAt);
-      } else {
-        await this.state.storage.deleteAlarm();
-      }
+      const deadlines: number[] = [];
+      const nextQuizAt = bot.getNextQuizDeadline();
+      if (nextQuizAt !== null) deadlines.push(nextQuizAt);
+      if (bot.hasActiveFootballAlerts()) deadlines.push(Date.now() + 10_000);
+      if (deadlines.length) await this.state.storage.setAlarm(Math.min(...deadlines));
+      else await this.state.storage.deleteAlarm();
     } catch (e) {
       console.error('Failed to sync alarm:', e);
     }
@@ -210,6 +210,11 @@ export class BotState {
       await bot.processQuizTimers();
     } catch (e) {
       console.error('Quiz alarm error:', e);
+    }
+    try {
+      await bot.processFootballAlerts();
+    } catch (e) {
+      console.error('Football alert alarm error:', e);
     }
     try {
       await this.state.storage.put('state', bot.exportState());
@@ -255,6 +260,7 @@ export class BotState {
       try {
         await bot.processFootballAlerts();
         await this.state.storage.put('state', bot.exportState());
+        await this.syncAlarm(bot);
         return Response.json({ ok: true });
       } catch (error) {
         console.error('Football alert polling failed:', error);
