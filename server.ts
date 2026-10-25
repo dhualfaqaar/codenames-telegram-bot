@@ -7,7 +7,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import { telegramBot } from './server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from './src/services/sudokuMiniApp';
-import { INTERACTIVE_GAMES_MINI_APP_HTML } from './src/services/interactiveGamesMiniApp';
+import { interactiveGamesMiniAppHtml } from './src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from './src/assets/botAvatarBase64';
 import { InteractiveGameRooms, MemoryRoomStorage } from './src/services/interactiveGameRooms';
 import { ARABIC_STANDARD_WORDS, ARABIC_IRAQI_WORDS, POP_CULTURE_WORDS, ENGLISH_WORDS } from './src/data/words';
@@ -26,7 +26,7 @@ const interactiveRooms = new InteractiveGameRooms(new MemoryRoomStorage());
 app.get('/code-games-avatar.jpg', (_req, res) => {
   res.type('image/jpeg').set('Cache-Control', 'public, max-age=86400').send(Buffer.from(BOT_AVATAR_JPG_BASE64, 'base64'));
 });
-app.all('/api/interactive/rooms*', async (req, res) => {
+app.all(['/api/interactive/rooms*', '/api/interactive/matchmaking*'], async (req, res) => {
   try {
     const method = req.method.toUpperCase();
     const headers = new Headers();
@@ -47,8 +47,8 @@ app.all('/api/interactive/rooms*', async (req, res) => {
 });
 
 // Interactive game launcher and first standalone puzzle game.
-app.get('/interactive', (_req, res) => {
-  res.type('html').set('Cache-Control', 'no-cache').send(INTERACTIVE_GAMES_MINI_APP_HTML);
+app.get('/interactive', (req, res) => {
+  res.type('html').set('Cache-Control', 'no-cache').send(interactiveGamesMiniAppHtml(String(req.query.game || '')));
 });
 app.get('/sudoku', (_req, res) => {
   res.type('html').set('Cache-Control', 'no-cache').send(SUDOKU_MINI_APP_HTML);

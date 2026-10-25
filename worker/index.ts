@@ -8,7 +8,7 @@
  */
 import { TelegramBotManager } from '../server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
-import { INTERACTIVE_GAMES_MINI_APP_HTML } from '../src/services/interactiveGamesMiniApp';
+import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
@@ -220,7 +220,7 @@ export class BotState {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname.startsWith('/api/interactive/rooms')) return this.interactiveRooms.handle(request);
+    if (new URL(request.url).pathname.startsWith('/api/interactive/rooms') || new URL(request.url).pathname.startsWith('/api/interactive/matchmaking')) return this.interactiveRooms.handle(request);
     const bot = await this.getBot();
 
     if (request.method !== 'POST') {
@@ -305,7 +305,7 @@ export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const requestUrl = new URL(request.url);
     if (request.method === 'GET' && (requestUrl.pathname === '/interactive' || requestUrl.pathname === '/interactive/')) {
-      return new Response(INTERACTIVE_GAMES_MINI_APP_HTML, {
+      return new Response(interactiveGamesMiniAppHtml(requestUrl.searchParams.get('game') || ''), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache',
@@ -332,7 +332,7 @@ export default {
 
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
-    if (requestUrl.pathname.startsWith('/api/interactive/rooms')) {
+    if (requestUrl.pathname.startsWith('/api/interactive/rooms') || requestUrl.pathname.startsWith('/api/interactive/matchmaking')) {
       const init: RequestInit = { method: request.method, headers: request.headers };
       if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.text();
       return stub.fetch(`https://bot.internal${requestUrl.pathname}${requestUrl.search}`, init);

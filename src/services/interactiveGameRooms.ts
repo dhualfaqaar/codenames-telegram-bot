@@ -1,8 +1,9 @@
 import { Chess } from 'chess.js';
 
-export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker';
+export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
 
-type RoomPlayer = { token: string; name: string; chips?: number; joinedAt: number };
+type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; bot?: boolean; joinedAt: number };
+type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; difficulty: 'easy' | 'medium' | 'hard'; createdAt: number; opponentName?: string; opponentElo?: number };
 type Card = { id: string; color: string | null; value: string };
 type PlayingCard = { rank: number; suit: string };
 type Room = {
@@ -22,7 +23,9 @@ export interface RoomStorage {
 }
 
 const ROOM_KEY = (id: string) => `interactive-room:${id}`;
-const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'ارسم وخمّن', poker: 'بوكر تكساس' };
+const TICKET_KEY = (id: string) => `interactive-match:${id}`;
+const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
+const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'ارسم وخمّن', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
 const UNO_COLORS = ['أحمر','أصفر','أخضر','أزرق'];
 const COLOR_KEYS: Record<string, string> = { 'أحمر':'red', 'أصفر':'yellow', 'أخضر':'green', 'أزرق':'blue' };
@@ -51,6 +54,32 @@ function nextIndex(index: number, count: number, direction = 1): number {
 }
 function cardCode(card: PlayingCard): string { return `${RANK_LABELS[card.rank] || card.rank}${card.suit}`; }
 function shuffledDeck(): PlayingCard[] { return shuffle(SUITS.flatMap(suit => Array.from({ length: 13 }, (_, i) => ({ rank: i + 2, suit })))); }
+function countSudokuSolutions(source: number[], limit: number): number {
+  const grid = source.slice(), rows = Array(9).fill(0), cols = Array(9).fill(0), boxes = Array(9).fill(0);
+  for (let i = 0; i < 81; i++) { const v = grid[i]; if (!v) continue; const r = Math.floor(i / 9), c = i % 9, b = Math.floor(r / 3) * 3 + Math.floor(c / 3), bit = 1 << (v - 1); if ((rows[r] & bit) || (cols[c] & bit) || (boxes[b] & bit)) return 0; rows[r] |= bit; cols[c] |= bit; boxes[b] |= bit; }
+  let total = 0;
+  const visit = (): void => {
+    if (total >= limit) return;
+    let best = -1, maskBest = 0, lenBest = 10;
+    for (let q = 0; q < 81; q++) { if (grid[q]) continue; const r = Math.floor(q / 9), c = q % 9, b = Math.floor(r / 3) * 3 + Math.floor(c / 3), mask = 511 & ~(rows[r] | cols[c] | boxes[b]); let len = 0; for (let m = mask; m; m &= m - 1) len++; if (!len) return; if (len < lenBest) { best = q; maskBest = mask; lenBest = len; if (len === 1) break; } }
+    if (best < 0) { total++; return; }
+    const r = Math.floor(best / 9), c = best % 9, b = Math.floor(r / 3) * 3 + Math.floor(c / 3);
+    for (let n = 1; n <= 9; n++) { const bit = 1 << (n - 1); if (!(maskBest & bit)) continue; grid[best] = n; rows[r] |= bit; cols[c] |= bit; boxes[b] |= bit; visit(); grid[best] = 0; rows[r] ^= bit; cols[c] ^= bit; boxes[b] ^= bit; if (total >= limit) return; }
+  };
+  visit(); return total;
+}
+function generateSudoku(level: 'easy' | 'medium' | 'hard'): { puzzle: number[]; solution: number[] } {
+  const solution = Array(81).fill(0), rows = Array(9).fill(0), cols = Array(9).fill(0), boxes = Array(9).fill(0);
+  const fill = (): boolean => {
+    let best = -1, choices: number[] = [], bestLen = 10;
+    for (let q = 0; q < 81; q++) { if (solution[q]) continue; const r = Math.floor(q / 9), c = q % 9, b = Math.floor(r / 3) * 3 + Math.floor(c / 3), mask = 511 & ~(rows[r] | cols[c] | boxes[b]), options: number[] = []; for (let n = 1; n <= 9; n++) if (mask & (1 << (n - 1))) options.push(n); if (options.length < bestLen) { best = q; choices = options; bestLen = options.length; if (bestLen <= 1) break; } }
+    if (best < 0) return true; if (!bestLen) return false; shuffle(choices); const r = Math.floor(best / 9), c = best % 9, b = Math.floor(r / 3) * 3 + Math.floor(c / 3);
+    for (const n of choices) { const bit = 1 << (n - 1); solution[best] = n; rows[r] |= bit; cols[c] |= bit; boxes[b] |= bit; if (fill()) return true; solution[best] = 0; rows[r] ^= bit; cols[c] ^= bit; boxes[b] ^= bit; } return false;
+  };
+  fill(); const puzzle = solution.slice(), target = 81 - ({ easy: 39, medium: 33, hard: 28 }[level]);
+  for (const pos of shuffle(Array.from({ length: 81 }, (_, i) => i))) { if (puzzle.filter(Boolean).length <= 81 - target) break; const value = puzzle[pos]; puzzle[pos] = 0; if (countSudokuSolutions(puzzle, 2) !== 1) puzzle[pos] = value; }
+  return { puzzle, solution };
+}
 
 export class InteractiveGameRooms {
   private tail: Promise<void> = Promise.resolve();
@@ -64,17 +93,24 @@ export class InteractiveGameRooms {
 
   private async handleSerial(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/interactive/matchmaking')) return this.handleMatchmaking(request, url);
     const match = url.pathname.match(/^\/api\/interactive\/rooms(?:\/([A-Z0-9]+))?\/?$/i);
     if (!match) return Response.json({ error: 'المسار غير موجود' }, { status: 404 });
     if (request.method === 'POST' && !match[1]) {
       const body = await request.json().catch(() => null) as any;
       const game = String(body?.game || '') as InteractiveGameId;
       if (!Object.hasOwn(GAME_NAMES, game)) return Response.json({ error: 'اللعبة غير معروفة' }, { status: 400 });
-      const player = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now() };
+      const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
+      const botElo = game === 'chess' && body?.mode === 'bot' ? Math.max(400, Math.min(2000, Math.round(Number(body?.botElo) || 800))) : 0;
+      const players = [player];
+      if (botElo) players.push({ token: randomString(30), name: 'بوت', elo: botElo, bot: true, joinedAt: Date.now() });
       const room: Room = {
         id: randomString(12), game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: player.token,
-        players: [player], gameState: this.initialState(game)
+        players, gameState: this.initialState(game)
       };
+      if (game === 'sudoku') room.gameState.difficulty = this.cleanDifficulty(body?.difficulty);
+      if (botElo) { room.gameState.botElo = botElo; room.gameState.mode = 'bot'; this.startGame(room); }
       await this.save(room);
       return this.jsonFor(room, player.token, 201);
     }
@@ -99,10 +135,10 @@ export class InteractiveGameRooms {
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
       const max = room.game === 'chess' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 8 : 6;
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
-      const player = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: 1000 } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}) };
       room.players.push(player);
       room.updatedAt = Date.now();
-      if (room.game === 'chess' && room.players.length >= 2) this.startGame(room);
+      if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
       await this.save(room);
       return this.jsonFor(room, player.token);
     }
@@ -122,14 +158,23 @@ export class InteractiveGameRooms {
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
       case 'gartic': return { round: 0, drawer: 0, word: '', strokes: [], guesses: [], scores: {}, roundStartedAt: 0, deadline: 0, roundResult: '' };
       case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0 };
+      case 'sudoku': return { difficulty: 'easy', puzzle: [], solution: [], boards: {}, startedAt: 0, winner: '', result: '' };
     }
   }
 
+  private cleanDifficulty(value: unknown): 'easy' | 'medium' | 'hard' { return value === 'hard' || value === 'medium' ? value : 'easy'; }
+  private startSudokuRace(room: Room): void {
+    const s = room.gameState, generated = generateSudoku(this.cleanDifficulty(s.difficulty));
+    s.puzzle = generated.puzzle; s.solution = generated.solution; s.startedAt = Date.now(); s.winner = ''; s.result = '';
+    s.boards = Object.fromEntries(room.players.map(player => [player.token, { values: generated.puzzle.slice(), mistakes: 0, lastCorrect: null, finished: false }]));
+    room.status = 'playing';
+  }
   private startGame(room: Room): void {
     if (room.status !== 'waiting' || room.players.length < 2) return;
     room.status = 'playing';
     if (room.game === 'chess') { const chess = new Chess(); room.gameState.fen = chess.fen(); room.gameState.turn = 'w'; }
     else if (room.game === 'uno') this.dealUno(room);
+    else if (room.game === 'sudoku') this.startSudokuRace(room);
   }
 
   private act(room: Room, player: RoomPlayer, action: string, body: any): string | null {
@@ -159,6 +204,7 @@ export class InteractiveGameRooms {
     if (room.game === 'uno') return this.unoAction(room, player, action, body);
     if (room.game === 'gartic') return this.drawAction(room, player, action, body);
     if (room.game === 'poker') return this.pokerAction(room, player, action, Number(body.amount) || 0);
+    if (room.game === 'sudoku') return this.sudokuAction(room, player, action, body);
     return 'إجراء غير مدعوم';
   }
 
@@ -167,7 +213,7 @@ export class InteractiveGameRooms {
     const seat = room.players.findIndex(item => item.token === player.token);
     if (room.status !== 'playing') return 'ننتظر انضمام اللاعب الثاني';
     if (action === 'resign') {
-      room.status = 'finished'; state.result = `${room.players[1 - seat].name} فاز بالانسحاب`;
+      room.status = 'finished'; state.result = `${room.players[1 - seat].name} فاز بالانسحاب`; state.winnerSeat = 1 - seat; this.updateChessElo(room, state.winnerSeat);
       return null;
     }
     if (action !== 'move') return 'حركة غير معروفة';
@@ -178,10 +224,63 @@ export class InteractiveGameRooms {
       const move = chess.move({ from: String(body.from), to: String(body.to), promotion: body.promotion || 'q' });
       if (!move) return 'الحركة غير قانونية';
       state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = move.san;
-      if (chess.isCheckmate()) { room.status = 'finished'; state.result = `${player.name} فاز بالكش مات`; }
-      else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.result = 'تعادل'; }
+      if (chess.isCheckmate()) { room.status = 'finished'; state.winnerSeat = seat; state.result = `${player.name} فاز بالكش مات`; this.updateChessElo(room, seat); }
+      else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.winnerSeat = -1; state.result = 'تعادل'; this.updateChessElo(room, -1); }
+      else if (room.players[1]?.bot) this.makeBotMove(room);
       return null;
     } catch { return 'الحركة غير قانونية'; }
+  }
+
+  private updateChessElo(room: Room, winnerSeat: number): void {
+    const players = room.players.filter(p => !p.bot);
+    if (players.length !== 2 || room.gameState.eloUpdated) return;
+    const [a,b] = players, ratingA = a.elo || 800, ratingB = b.elo || 800;
+    const scoreA = winnerSeat < 0 ? 0.5 : room.players[winnerSeat]?.token === a.token ? 1 : 0;
+    const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400)), changeA = Math.round(24 * (scoreA - expectedA));
+    a.elo = Math.max(100, ratingA + changeA); b.elo = Math.max(100, ratingB - changeA);
+    room.gameState.eloChanges = { [a.token]: a.elo - ratingA, [b.token]: b.elo - ratingB }; room.gameState.eloUpdated = true;
+  }
+
+  private makeBotMove(room: Room): void {
+    const state = room.gameState, elo = Math.max(400, Math.min(2000, Number(state.botElo) || 800));
+    const chess = new Chess(state.fen); if (chess.turn() !== 'b') return;
+    const moves = chess.moves({ verbose: true }) as any[]; if (!moves.length) return;
+    const blunderChance = elo <= 500 ? 0.24 : elo <= 800 ? 0.12 : elo <= 1200 ? 0.06 : 0.025;
+    let chosen: any;
+    if (Math.random() < blunderChance) chosen = moves[Math.floor(Math.random() * moves.length)];
+    else {
+      const value: Record<string, number> = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+      const scored = moves.map(move => {
+        const copy = new Chess(state.fen); copy.move(move.san);
+        let score = (value[move.captured] || 0) * 1.1 + (move.promotion ? value[move.promotion] * 0.8 : 0);
+        if (copy.isCheckmate()) score += 10000; else if (copy.isCheck()) score += 12;
+        const file = 'abcdefgh'.indexOf(move.to[0]), rank = Number(move.to[1]) - 1;
+        score += (3.5 - Math.abs(3.5 - file) + 3.5 - Math.abs(3.5 - rank)) * (elo > 900 ? 1.2 : 0.3);
+        score += (Math.random() - 0.5) * (elo <= 600 ? 85 : elo <= 1000 ? 42 : 20);
+        return { move, score };
+      }).sort((x,y) => y.score - x.score);
+      chosen = scored[0].move;
+    }
+    const moved = chess.move(chosen.san); state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san;
+    if (chess.isCheckmate()) { room.status = 'finished'; state.winnerSeat = 1; state.result = `${room.players[1].name} فاز بالكش مات`; }
+    else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.winnerSeat = -1; state.result = 'تعادل'; }
+  }
+
+  private sudokuAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
+    if (room.status !== 'playing') return 'المباراة ما بدت بعد';
+    const s = room.gameState, board = s.boards[player.token];
+    if (!board || board.finished) return 'انتهت محاولتك';
+    if (action === 'place') {
+      const index = Number(body.index), value = Number(body.value);
+      if (!Number.isInteger(index) || index < 0 || index >= 81 || !Number.isInteger(value) || value < 1 || value > 9) return 'اختار خانة ورقم صحيح';
+      if (s.puzzle[index]) return 'هذا الرقم ثابت باللغز';
+      if (value !== s.solution[index]) { board.mistakes++; board.lastCorrect = false; return null; }
+      board.values[index] = value; board.lastCorrect = true;
+      if (board.values.every((v: number, i: number) => v === s.solution[i])) { board.finished = true; s.winner = player.token; s.result = `${player.name} حلّ السودوكو أولاً!`; room.status = 'finished'; }
+      return null;
+    }
+    if (action === 'clear') { const index = Number(body.index); if (Number.isInteger(index) && index >= 0 && index < 81 && !s.puzzle[index]) board.values[index] = 0; board.lastCorrect = null; return null; }
+    return 'إجراء غير معروف';
   }
 
   private dealUno(room: Room): void {
@@ -368,6 +467,73 @@ export class InteractiveGameRooms {
   private compareRank(a: number[], b: number[]): number { for(let i=0;i<Math.max(a.length,b.length);i++){const diff=(a[i]||0)-(b[i]||0);if(diff)return diff;}return 0; }
   private rankName(category: number): string { return ['كارت عالي','زوج','زوجين','ثلاثة متشابهة','ستريت','فلاش','فول هاوس','أربع متشابهة','ستريت فلاش'][category] || 'يد قوية'; }
 
+  private async handleMatchmaking(request: Request, url: URL): Promise<Response> {
+    const match = url.pathname.match(/^\/api\/interactive\/matchmaking(?:\/([A-Z0-9]+))?\/?$/i);
+    if (!match) return Response.json({ error: 'المسار غير موجود' }, { status: 404 });
+    const id = match[1]?.toUpperCase();
+    if (request.method === 'POST' && !id) {
+      const body = await request.json().catch(() => null) as any;
+      const game = body?.game === 'sudoku' ? 'sudoku' : body?.game === 'chess' ? 'chess' : null;
+      if (!game) return Response.json({ error: 'اللعبة غير مدعومة للمطابقة' }, { status: 400 });
+      const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
+      const difficulty = this.cleanDifficulty(body?.difficulty);
+      const playerToken = randomString(30), ticket: MatchTicket = {
+        id: randomString(12), secret: randomString(30), game, status: 'waiting', roomId: randomString(12), roomToken: playerToken,
+        name: cleanName(body?.name), elo, difficulty, createdAt: Date.now()
+      };
+      const player: RoomPlayer = { token: playerToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
+      const room: Room = { id: ticket.roomId, game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: playerToken, players: [player], gameState: this.initialState(game) };
+      if (game === 'sudoku') room.gameState.difficulty = difficulty; else room.gameState.mode = 'random';
+      const queue = (await this.storage.get<string[]>(QUEUE_KEY(game))) || [];
+      const fresh: string[] = [];
+      let opponent: MatchTicket | undefined;
+      for (const ticketId of queue) {
+        const waiting = await this.storage.get<MatchTicket>(TICKET_KEY(ticketId));
+        if (!waiting || waiting.status !== 'waiting' || Date.now() - waiting.createdAt > 120_000) continue;
+        fresh.push(ticketId);
+        if (!opponent && waiting.id !== ticket.id && (game === 'chess' ? Math.abs(waiting.elo - elo) <= 350 : waiting.difficulty === difficulty)) opponent = waiting;
+      }
+      if (opponent) {
+        const opponentRoom = await this.load(opponent.roomId);
+        if (opponentRoom?.status === 'waiting' && opponentRoom.players.length === 1) {
+          const rival: RoomPlayer = { token: ticket.roomToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
+          opponentRoom.players.push(rival); opponentRoom.updatedAt = Date.now();
+          this.startGame(opponentRoom); await this.save(opponentRoom);
+          opponent.status = 'matched'; opponent.opponentName = ticket.name; opponent.opponentElo = elo;
+          ticket.status = 'matched'; ticket.roomId = opponentRoom.id; ticket.opponentName = opponent.name; ticket.opponentElo = opponent.elo;
+          await this.storage.put(TICKET_KEY(opponent.id), opponent);
+          await this.storage.put(TICKET_KEY(ticket.id), ticket);
+          await this.storage.put(QUEUE_KEY(game), fresh.filter(q => q !== opponent!.id));
+          return this.ticketJson(ticket, 201);
+        }
+      }
+      await this.save(room); await this.storage.put(TICKET_KEY(ticket.id), ticket);
+      fresh.push(ticket.id); await this.storage.put(QUEUE_KEY(game), fresh);
+      return this.ticketJson(ticket, 201);
+    }
+    if (!id) return Response.json({ error: 'معرّف المطابقة مطلوب' }, { status: 400 });
+    const ticket = await this.storage.get<MatchTicket>(TICKET_KEY(id));
+    if (!ticket) return Response.json({ error: 'طلب المطابقة غير موجود' }, { status: 404 });
+    const secret = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    if (!secret || secret !== ticket.secret) return Response.json({ error: 'رمز المطابقة غير صالح' }, { status: 403 });
+    if (request.method === 'GET') return this.ticketJson(ticket);
+    if (request.method === 'POST') {
+      const body = await request.json().catch(() => null) as any;
+      if (body?.action === 'cancel' && ticket.status === 'waiting') {
+        ticket.status = 'cancelled'; await this.storage.put(TICKET_KEY(id), ticket);
+        const queue = (await this.storage.get<string[]>(QUEUE_KEY(ticket.game))) || [];
+        await this.storage.put(QUEUE_KEY(ticket.game), queue.filter(q => q !== id));
+        const room = await this.load(ticket.roomId); if (room) { room.status = 'finished'; room.updatedAt = Date.now(); await this.save(room); }
+      }
+      return this.ticketJson(ticket);
+    }
+    return new Response('method not allowed', { status: 405 });
+  }
+
+  private ticketJson(ticket: MatchTicket, status = 200): Response {
+    return Response.json({ ticket: { id: ticket.id, game: ticket.game, status: ticket.status, roomId: ticket.roomId, roomToken: ticket.status === 'matched' ? ticket.roomToken : '', name: ticket.name, elo: ticket.elo, difficulty: ticket.difficulty, opponentName: ticket.opponentName || '', opponentElo: ticket.opponentElo || 0, createdAt: ticket.createdAt }, secret: status === 201 ? ticket.secret : undefined }, { status, headers: { 'Cache-Control': 'no-store' } });
+  }
+
   private async load(id: string): Promise<Room | undefined> { return await this.storage.get<Room>(ROOM_KEY(id)); }
   private async save(room: Room): Promise<void> { await this.storage.put(ROOM_KEY(room.id), room); }
   private jsonFor(room: Room, token: string, status = 200): Response {
@@ -375,10 +541,14 @@ export class InteractiveGameRooms {
     const state: any = { ...s };
     delete state.deck; delete state.word; delete state.hands; delete state.holes;
     delete state.host; delete state.drawn; delete state.saidUno; delete state.pendingUno; delete state.pending; delete state.turnToken;
-    delete state.bets; delete state.folded;
+    delete state.bets; delete state.folded; delete state.solution; delete state.boards; delete state.eloChanges; delete state.eloUpdated;
     if (room.game === 'chess') {
       state.turnName = room.players[s.turn === 'w' ? 0 : 1]?.name || '';
       state.seat = seat; state.side = seat === 0 ? 'w' : seat === 1 ? 'b' : '';
+      state.botElo = Number(s.botElo) || 0;
+    } else if (room.game === 'sudoku') {
+      const ownBoard = s.boards?.[token]; state.values = ownBoard?.values || []; state.mistakes = ownBoard?.mistakes || 0; state.lastCorrect = ownBoard?.lastCorrect ?? null; state.winner = s.winner === token;
+      state.opponentProgress = room.players.filter(p => p.token !== token).map(p => ({ name: p.name, progress: (s.boards?.[p.token]?.values || []).filter((v: number, i: number) => !s.puzzle[i] && v === s.solution[i]).length, bot: p.bot || false }));
     } else if (room.game === 'uno') {
       state.hand = own ? s.hands[token] || [] : [];
       state.handsCount = room.players.map((player,i) => ({ seat:i, name:player.name, count:(s.hands[player.token]||[]).length, isTurn:i===s.turn }));
@@ -401,7 +571,7 @@ export class InteractiveGameRooms {
       state.winners = (s.winners || []).map((token:string)=>room.players.findIndex(p=>p.token===token)).filter((i:number)=>i>=0);
       state.betAmounts = room.players.map(p=>s.bets[p.token]||0);
     }
-    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips})),createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
+    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
   }
 }
 
