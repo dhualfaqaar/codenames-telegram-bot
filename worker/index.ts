@@ -7,6 +7,7 @@
  * so the bot stays online 24/7 with no server that can sleep.
  */
 import { TelegramBotManager } from '../server/telegramBot';
+import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -138,7 +139,8 @@ export class BotState {
     const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, true, {
       geminiApiKey: this.env.GEMINI_API_KEY,
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
-      openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT
+      openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
+      sudokuWebAppUrl: new URL('/sudoku', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL).toString()
     });
     try {
       const saved = await this.state.storage.get('state');
@@ -253,6 +255,18 @@ export class BotState {
  */
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
+    const requestUrl = new URL(request.url);
+    if (request.method === 'GET' && (requestUrl.pathname === '/sudoku' || requestUrl.pathname === '/sudoku/')) {
+      return new Response(SUDOKU_MINI_APP_HTML, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin'
+        }
+      });
+    }
+
     // Preview deployments are isolated diagnostics only: never touch Telegram or production Durable Objects.
     if (env.PREVIEW_MODE === 'true') {
       return Response.json({ ok: true, info: 'Worker Preview; Telegram integration is disabled.' });

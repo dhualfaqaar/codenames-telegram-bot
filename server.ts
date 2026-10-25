@@ -6,6 +6,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { telegramBot } from './server/telegramBot';
+import { SUDOKU_MINI_APP_HTML } from './src/services/sudokuMiniApp';
 import { ARABIC_STANDARD_WORDS, ARABIC_IRAQI_WORDS, POP_CULTURE_WORDS, ENGLISH_WORDS } from './src/data/words';
 
 dotenv.config();
@@ -17,6 +18,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
+
+// Standalone Telegram Mini App for the first interactive puzzle game.
+app.get('/sudoku', (_req, res) => {
+  res.type('html').set('Cache-Control', 'no-cache').send(SUDOKU_MINI_APP_HTML);
+});
 
 // Auto-start polling if TELEGRAM_BOT_TOKEN is set in environment
 if (process.env.TELEGRAM_BOT_TOKEN) {
@@ -161,7 +167,7 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, allowedHosts: ['.e2b.app'] },
       appType: 'spa',
     });
     app.use(vite.middlewares);
