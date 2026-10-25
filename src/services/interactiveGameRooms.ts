@@ -3,7 +3,7 @@ import { Chess } from 'chess.js';
 export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
 
 type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; bot?: boolean; joinedAt: number };
-type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; difficulty: 'easy' | 'medium' | 'hard'; createdAt: number; opponentName?: string; opponentElo?: number };
+type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number };
 type Card = { id: string; color: string | null; value: string };
 type PlayingCard = { rank: number; suit: string };
 type Room = {
@@ -116,6 +116,12 @@ export class InteractiveGameRooms {
         players, capacity, gameState: this.initialState(game)
       };
       if (game === 'sudoku') room.gameState.difficulty = this.cleanDifficulty(body?.difficulty);
+      if (game === 'chess') {
+        const clockMinutes = Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5)));
+        room.gameState.clockMinutes = clockMinutes;
+        room.gameState.clockInitialMs = clockMinutes * 60_000;
+        room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
+      }
       if (game === 'poker') room.gameState.startingChips = startingChips;
       if (game === 'gartic') room.gameState.roundDurationMs = roundDurationMs;
       if (botElo) { room.gameState.botElo = botElo; room.gameState.mode = 'bot'; this.startGame(room); }
@@ -131,6 +137,7 @@ export class InteractiveGameRooms {
     if (request.method === 'GET') {
       const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
       if (token && !room.players.some(player => player.token === token)) return Response.json({ error: 'رمز اللاعب غير صالح' }, { status: 403 });
+      if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); }
       return this.jsonFor(room, token);
     }
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
@@ -153,6 +160,7 @@ export class InteractiveGameRooms {
 
     const player = room.players.find(item => item.token === body?.token);
     if (!player) return Response.json({ error: 'انضم للغرفة أولاً' }, { status: 403 });
+    if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); return this.jsonFor(room, player.token); }
     const result = this.act(room, player, action, body || {});
     if (result) return Response.json({ error: result }, { status: 400 });
     room.updatedAt = Date.now();
@@ -162,7 +170,7 @@ export class InteractiveGameRooms {
 
   private initialState(game: InteractiveGameId): any {
     switch (game) {
-      case 'chess': return { fen: new Chess().fen(), turn: 'w', lastMove: '', result: '' };
+      case 'chess': return { fen: new Chess().fen(), turn: 'w', lastMove: '', result: '', clockMinutes: 5, clockInitialMs: 300_000, clocks: { w: 300_000, b: 300_000 }, clockStartedAt: 0, chat: [] };
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
       case 'gartic': return { round: 0, drawer: 0, word: '', strokes: [], guesses: [], scores: {}, roundStartedAt: 0, deadline: 0, roundResult: '' };
       case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0, startingChips: 1000 };
@@ -180,7 +188,7 @@ export class InteractiveGameRooms {
   private startGame(room: Room): void {
     if (room.status !== 'waiting' || room.players.length < 2) return;
     room.status = 'playing';
-    if (room.game === 'chess') { const chess = new Chess(); room.gameState.fen = chess.fen(); room.gameState.turn = 'w'; }
+    if (room.game === 'chess') { const chess = new Chess(); room.gameState.fen = chess.fen(); room.gameState.turn = 'w'; room.gameState.clocks ||= { w: room.gameState.clockInitialMs || 300_000, b: room.gameState.clockInitialMs || 300_000 }; room.gameState.clockStartedAt = Date.now(); }
     else if (room.game === 'uno') this.dealUno(room);
     else if (room.game === 'sudoku') this.startSudokuRace(room);
   }
@@ -216,11 +224,46 @@ export class InteractiveGameRooms {
     return 'إجراء غير مدعوم';
   }
 
+  private chessClockValues(room: Room, now = Date.now()): { w: number; b: number } {
+    const state = room.gameState;
+    const initial = Math.max(60_000, Number(state.clockInitialMs) || 300_000);
+    const clocks = { w: Math.max(0, Number(state.clocks?.w ?? initial)), b: Math.max(0, Number(state.clocks?.b ?? initial)) };
+    if (room.status === 'playing' && state.clockStartedAt && (state.turn === 'w' || state.turn === 'b')) {
+      const side: 'w' | 'b' = state.turn;
+      clocks[side] = Math.max(0, clocks[side] - Math.max(0, now - Number(state.clockStartedAt)));
+    }
+    return clocks;
+  }
+
+  private expireChessClock(room: Room, now = Date.now()): boolean {
+    const state = room.gameState;
+    if (room.game !== 'chess' || room.status !== 'playing' || !state.clockStartedAt || (state.turn !== 'w' && state.turn !== 'b')) return false;
+    const side: 'w' | 'b' = state.turn;
+    const clocks = this.chessClockValues(room, now);
+    if (clocks[side] > 0) return false;
+    state.clocks = clocks; state.clockStartedAt = 0; state.winnerSeat = side === 'w' ? 1 : 0;
+    state.result = `انتهى وقت ${room.players[state.turn === 'w' ? 0 : 1]?.name || 'اللاعب'} — فاز الخصم بالوقت`;
+    room.status = 'finished';
+    this.updateChessElo(room, state.winnerSeat);
+    return true;
+  }
+
   private chessAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
     const state = room.gameState;
     const seat = room.players.findIndex(item => item.token === player.token);
+    if (action === 'chat') {
+      if (room.status === 'finished') return 'انتهت المباراة';
+      const text = String(body.text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+      if (!text) return 'اكتب رسالة قبل الإرسال';
+      const messages = Array.isArray(state.chat) ? state.chat : [];
+      const last = messages.at(-1);
+      if (last?.seat === seat && Date.now() - Number(last.at) < 350) return 'تمهّل شوي قبل الرسالة التالية';
+      state.chat = [...messages, { id: randomString(8), seat, name: player.name, text, at: Date.now() }].slice(-80);
+      return null;
+    }
     if (room.status !== 'playing') return 'ننتظر انضمام اللاعب الثاني';
     if (action === 'resign') {
+      state.clocks = this.chessClockValues(room); state.clockStartedAt = 0;
       room.status = 'finished'; state.result = `${room.players[1 - seat].name} فاز بالانسحاب`; state.winnerSeat = 1 - seat; this.updateChessElo(room, state.winnerSeat);
       return null;
     }
@@ -228,12 +271,16 @@ export class InteractiveGameRooms {
     const side = seat === 0 ? 'w' : 'b';
     if (state.turn !== side) return 'مو دورك هسه';
     try {
+      const movedAt = Date.now();
+      const clocks = this.chessClockValues(room, movedAt);
+      if (clocks[side] <= 0) { this.expireChessClock(room, movedAt); return null; }
+      state.clocks = clocks;
       const chess = new Chess(state.fen);
       const move = chess.move({ from: String(body.from), to: String(body.to), promotion: body.promotion || 'q' });
       if (!move) return 'الحركة غير قانونية';
-      state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = move.san; state.lastMoveSquares = [move.from, move.to];
-      if (chess.isCheckmate()) { room.status = 'finished'; state.winnerSeat = seat; state.result = `${player.name} فاز بالكش مات`; this.updateChessElo(room, seat); }
-      else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.winnerSeat = -1; state.result = 'تعادل'; this.updateChessElo(room, -1); }
+      state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = move.san; state.lastMoveSquares = [move.from, move.to]; state.clockStartedAt = movedAt;
+      if (chess.isCheckmate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = seat; state.result = `${player.name} فاز بالكش مات`; this.updateChessElo(room, seat); }
+      else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = -1; state.result = 'تعادل'; this.updateChessElo(room, -1); }
       else if (room.players[1]?.bot) this.makeBotMove(room);
       return null;
     } catch { return 'الحركة غير قانونية'; }
@@ -269,9 +316,11 @@ export class InteractiveGameRooms {
       }).sort((x,y) => y.score - x.score);
       chosen = scored[0].move;
     }
-    const moved = chess.move(chosen.san); state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san; state.lastMoveSquares = [moved.from, moved.to];
-    if (chess.isCheckmate()) { room.status = 'finished'; state.winnerSeat = 1; state.result = `${room.players[1].name} فاز بالكش مات`; }
-    else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.winnerSeat = -1; state.result = 'تعادل'; }
+    const movedAt = Date.now(); state.clocks = this.chessClockValues(room, movedAt);
+    if (state.clocks.b <= 0) { this.expireChessClock(room, movedAt); return; }
+    const moved = chess.move(chosen.san); state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san; state.lastMoveSquares = [moved.from, moved.to]; state.clockStartedAt = movedAt;
+    if (chess.isCheckmate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = 1; state.result = `${room.players[1].name} فاز بالكش مات`; }
+    else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = -1; state.result = 'تعادل'; }
   }
 
   private sudokuAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
@@ -486,13 +535,17 @@ export class InteractiveGameRooms {
       if (!game) return Response.json({ error: 'اللعبة غير مدعومة للمطابقة' }, { status: 400 });
       const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
       const difficulty = this.cleanDifficulty(body?.difficulty);
+      const clockMinutes = game === 'chess' ? Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5))) : 5;
       const playerToken = randomString(30), ticket: MatchTicket = {
         id: randomString(12), secret: randomString(30), game, status: 'waiting', roomId: randomString(12), roomToken: playerToken,
-        name: cleanName(body?.name), elo, difficulty, createdAt: Date.now()
+        name: cleanName(body?.name), elo, difficulty, clockMinutes, createdAt: Date.now()
       };
       const player: RoomPlayer = { token: playerToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
       const room: Room = { id: ticket.roomId, game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: playerToken, players: [player], capacity: 2, gameState: this.initialState(game) };
-      if (game === 'sudoku') room.gameState.difficulty = difficulty; else room.gameState.mode = 'random';
+      if (game === 'sudoku') room.gameState.difficulty = difficulty; else {
+        room.gameState.mode = 'random'; room.gameState.clockMinutes = clockMinutes; room.gameState.clockInitialMs = clockMinutes * 60_000;
+        room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
+      }
       const queue = (await this.storage.get<string[]>(QUEUE_KEY(game))) || [];
       const fresh: string[] = [];
       let opponent: MatchTicket | undefined;
@@ -500,7 +553,7 @@ export class InteractiveGameRooms {
         const waiting = await this.storage.get<MatchTicket>(TICKET_KEY(ticketId));
         if (!waiting || waiting.status !== 'waiting' || Date.now() - waiting.createdAt > 120_000) continue;
         fresh.push(ticketId);
-        if (!opponent && waiting.id !== ticket.id && (game === 'chess' ? Math.abs(waiting.elo - elo) <= 350 : waiting.difficulty === difficulty)) opponent = waiting;
+        if (!opponent && waiting.id !== ticket.id && (game === 'chess' ? Math.abs(waiting.elo - elo) <= 350 && waiting.clockMinutes === clockMinutes : waiting.difficulty === difficulty)) opponent = waiting;
       }
       if (opponent) {
         const opponentRoom = await this.load(opponent.roomId);
@@ -554,6 +607,9 @@ export class InteractiveGameRooms {
     if (room.game === 'chess') {
       state.turnName = room.players[s.turn === 'w' ? 0 : 1]?.name || '';
       state.seat = seat; state.side = seat === 0 ? 'w' : seat === 1 ? 'b' : '';
+      state.clocks = this.chessClockValues(room); state.clockMinutes = Number(s.clockMinutes) || 5; state.clockRunning = room.status === 'playing' && Boolean(s.clockStartedAt);
+      state.chat = own ? (Array.isArray(s.chat) ? s.chat.slice(-80) : []) : [];
+      delete state.clockInitialMs; delete state.clockStartedAt;
       state.legalMoves = own && s.turn === state.side ? (new Chess(s.fen).moves({ verbose: true }) as any[]).map(move => ({ from: move.from, to: move.to })) : [];
       state.lastMoveSquares = s.lastMoveSquares || [];
       state.botElo = Number(s.botElo) || 0;
