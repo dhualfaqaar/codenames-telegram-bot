@@ -19,6 +19,7 @@ import * as CH from '../src/services/chessGameEngine';
 import * as EXT from '../src/services/extraToolsEngine';
 import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
+import * as Cinema from '../src/services/cinemaServices';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
@@ -114,6 +115,12 @@ interface TelegramMessage {
   location?: any;
   contact?: any;
 }
+
+type CinemaFlowState =
+  | { phase: 'identify' }
+  | { phase: 'subtitle_title' }
+  | { phase: 'subtitle_kind'; title: string }
+  | { phase: 'subtitle_episode'; title: string };
 
 interface TelegramCallbackQuery {
   id: string;
@@ -1036,8 +1043,15 @@ export class TelegramBotManager {
   private privateRouletteLists: Map<string, string[]> = new Map();
   private pendingRouletteText: Set<string> = new Set();
   private pendingAgeCalc: Set<string> = new Set();
+  private pendingCinemaFlows: Map<string, CinemaFlowState> = new Map();
+  private cinemaSubtitleResults: Map<string, Cinema.OpenSubtitleResult[]> = new Map();
+  private lastCinemaRecognition: Map<string, { title: string; kind: Cinema.CinemaSubtitleKind }> = new Map();
+  private readonly geminiApiKey: string;
+  private readonly openSubtitlesApiKey: string;
+  private readonly openSubtitlesUserAgent: string;
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
+  private audioOutputDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioMetadataPresets: Map<string, EXT.AudioMetadataPreset[]> = new Map();
   private avatarDeliveredV2: boolean = false;
   private pendingVocalSep: Set<string> = new Set();
@@ -1048,12 +1062,20 @@ export class TelegramBotManager {
   private externalScheduler: boolean = false;
   private localQuizTimer: any = null;
 
-  constructor(initialToken?: string, ownerId?: string, externalScheduler: boolean = false) {
+  constructor(
+    initialToken?: string,
+    ownerId?: string,
+    externalScheduler: boolean = false,
+    cinemaApiConfig: { geminiApiKey?: string; openSubtitlesApiKey?: string; openSubtitlesUserAgent?: string } = {}
+  ) {
     if (initialToken) {
       this.token = initialToken.trim();
     }
     if (ownerId) this.ownerId = String(ownerId);
     this.externalScheduler = externalScheduler;
+    this.geminiApiKey = String(cinemaApiConfig.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
+    this.openSubtitlesApiKey = String(cinemaApiConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
+    this.openSubtitlesUserAgent = String(cinemaApiConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
     this.seedInitialMatchHistory();
   }
 
@@ -1682,8 +1704,12 @@ export class TelegramBotManager {
       privateRouletteLists: Array.from(this.privateRouletteLists.entries()).slice(-200),
       pendingRouletteText: Array.from(this.pendingRouletteText.values()),
       pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
+      pendingCinemaFlows: Array.from(this.pendingCinemaFlows.entries()),
+      cinemaSubtitleResults: Array.from(this.cinemaSubtitleResults.entries()),
+      lastCinemaRecognition: Array.from(this.lastCinemaRecognition.entries()),
       pendingConvert: Array.from(this.pendingConvert.entries()),
       audioEditDrafts: Array.from(this.audioEditDrafts.entries()),
+      audioOutputDrafts: Array.from(this.audioOutputDrafts.entries()).slice(-300),
       audioMetadataPresets: Array.from(this.audioMetadataPresets.entries()),
       avatarDeliveredV2: this.avatarDeliveredV2,
       pendingVocalSep: Array.from(this.pendingVocalSep.values()),
@@ -1739,8 +1765,12 @@ export class TelegramBotManager {
     if (Array.isArray(state.privateRouletteLists)) this.privateRouletteLists = new Map(state.privateRouletteLists);
     if (Array.isArray(state.pendingRouletteText)) this.pendingRouletteText = new Set(state.pendingRouletteText);
     if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
+    if (Array.isArray(state.pendingCinemaFlows)) this.pendingCinemaFlows = new Map(state.pendingCinemaFlows);
+    if (Array.isArray(state.cinemaSubtitleResults)) this.cinemaSubtitleResults = new Map(state.cinemaSubtitleResults);
+    if (Array.isArray(state.lastCinemaRecognition)) this.lastCinemaRecognition = new Map(state.lastCinemaRecognition);
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
     if (Array.isArray(state.audioEditDrafts)) this.audioEditDrafts = new Map(state.audioEditDrafts);
+    if (Array.isArray(state.audioOutputDrafts)) this.audioOutputDrafts = new Map(state.audioOutputDrafts);
     if (Array.isArray(state.audioMetadataPresets)) this.audioMetadataPresets = new Map(state.audioMetadataPresets);
     if (typeof state.avatarDeliveredV2 === 'boolean') this.avatarDeliveredV2 = state.avatarDeliveredV2;
     if (Array.isArray(state.pendingVocalSep)) this.pendingVocalSep = new Set(state.pendingVocalSep);
@@ -2261,6 +2291,19 @@ export class TelegramBotManager {
           return;
         }
       }
+      const cinemaFlow = this.pendingCinemaFlows.get(mUid);
+      if (hasMedia && cinemaFlow?.phase === 'identify') {
+        const imageFileId = message.photo?.[message.photo.length - 1]?.file_id ||
+          (String(message.document?.mime_type || '').startsWith('image/') ? message.document.file_id : '');
+        if (!imageFileId) {
+          await this.sendMessage(mUid, '🖼️ أرسل لقطة شاشة كصورة أو كملف صورة حتى أتعرف على العمل.');
+          return;
+        }
+        this.pendingCinemaFlows.delete(mUid);
+        this.trackMediaMsg(mUid, message.message_id);
+        await this.handleCinemaScreenshot(mUid, imageFileId, String(message.document?.mime_type || 'image/jpeg'));
+        return;
+      }
       if (hasMedia && this.pendingVocalSep.has(mUid)) {
         await this.handleVocalSeparationMediaInput(mUid, message);
         return;
@@ -2345,6 +2388,35 @@ export class TelegramBotManager {
         this.audioEditDrafts.set(uid, activeAudioDraft);
         this.trackMediaMsg(uid, message.message_id);
         await this.sendAudioMetadataEditorCard(uid);
+        return;
+      }
+      const cinemaFlow = this.pendingCinemaFlows.get(uid);
+      if (cinemaFlow?.phase === 'identify') {
+        await this.sendMessage(uid, '🖼️ أرسل لقطة شاشة من الفيلم أو المسلسل أو الأنمي كصورة.');
+        return;
+      }
+      if (cinemaFlow?.phase === 'subtitle_title') {
+        const title = text.trim().slice(0, 100);
+        if (!title) {
+          await this.sendMessage(uid, 'اكتب اسم الفيلم أو المسلسل أو الأنمي.');
+          return;
+        }
+        this.pendingCinemaFlows.set(uid, { phase: 'subtitle_kind', title });
+        await this.sendMessage(uid, `🔎 *${this.mdSafe(title)}*\nاختار نوع العمل:`, [
+          [{ text: '🎬 فيلم', callback_data: 'cinema:subtitle:kind:movie' }],
+          [{ text: '📺 مسلسل أو أنمي', callback_data: 'cinema:subtitle:kind:series' }],
+          [{ text: '❌ إلغاء', callback_data: 'svc:main' }]
+        ]);
+        return;
+      }
+      if (cinemaFlow?.phase === 'subtitle_episode') {
+        const episode = Cinema.parseEpisodeInput(text);
+        if (!episode) {
+          await this.sendMessage(uid, 'اكتب الموسم والحلقة بهذا الشكل: `S01E02` أو `1x02` (مثلاً الموسم الأول، الحلقة الثانية).');
+          return;
+        }
+        this.pendingCinemaFlows.delete(uid);
+        await this.searchCinemaSubtitles(uid, cinemaFlow.title, 'series', episode.season, episode.episode);
         return;
       }
       if (this.pendingWhispers.has(uid)) {
@@ -2623,6 +2695,7 @@ export class TelegramBotManager {
    */
   private async handleCallbackQuery(cb: TelegramCallbackQuery) {
     const data = cb.data || '';
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
     // 🧭 المحادثة: من الرسالة، أو من مختوم الزر (رسائل الإنلاين ما توصل معها محادثة)
     let chatId = String(cb.message?.chat.id || '');
     if (!chatId) {
@@ -2762,7 +2835,8 @@ export class TelegramBotManager {
       data.startsWith('ytq:') ||
       data.startsWith('yts:') ||
       data.startsWith('rltl:') ||
-      data.startsWith('conv:')
+      data.startsWith('conv:') ||
+      data.startsWith('cinema:')
     ) {
       await this.handleExtraServicesCb(cb, data);
       return;
@@ -7556,6 +7630,8 @@ export class TelegramBotManager {
       this.pendingWhispers.delete(userId);
       this.pendingSocialDl.delete(userId);
       this.pendingAgeCalc.delete(userId);
+      this.pendingCinemaFlows.delete(userId);
+      this.cinemaSubtitleResults.delete(userId);
       this.pendingRouletteText.delete(userId);
       this.pendingConvert.delete(userId);
       this.audioEditDrafts.delete(userId);
@@ -7774,11 +7850,98 @@ export class TelegramBotManager {
           { text: '🎬 اقترحلي مشاهدة', callback_data: 'svc:recommend' },
           { text: '🎂 حساب العمر', callback_data: 'svc:age' }
         ],
+        [
+          { text: '🖼️ تعرّف على فيلم/أنمي', callback_data: 'svc:cinema:identify' },
+          { text: '🔤 ترجمات', callback_data: 'svc:cinema:subtitles' }
+        ],
         [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
       ];
       if (messageId) await this.editMessageText(chatId, messageId, await this.withBotFooter(text), keyboard);
       else await this.sendMessage(chatId, await this.withBotFooter(text), keyboard);
       await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data === 'svc:cinema:identify') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'خدمة التعرّف على الأفلام والأنمي تشتغل بالخاص فقط.', true);
+        return;
+      }
+      this.pendingCinemaFlows.set(userId, { phase: 'identify' });
+      const text = `🖼️ *تعرّف على فيلم أو مسلسل أو أنمي*\n${SEP}\nأرسل لقطة شاشة واضحة من العمل، وأحاول أطلع اسمه. الأفضل تكون اللقطة من داخل المشهد مو بوستر عام.\n\nملاحظة: تُرسل الصورة لخدمة خارجية حتى يتم تحليلها؛ لا ترسل صوراً خاصة.`;
+      const keyboard = [[{ text: '🔙 إلغاء', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data === 'svc:cinema:subtitles') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'خدمة الترجمات تشتغل بالخاص فقط.', true);
+        return;
+      }
+      this.pendingCinemaFlows.set(userId, { phase: 'subtitle_title' });
+      const text = `🔤 *البحث عن ترجمة*\n${SEP}\nاكتب الاسم الرسمي للفيلم أو المسلسل أو الأنمي. للأنمي والمسلسل راح أحدد الموسم والحلقة بالخطوة الجاية.`;
+      const keyboard = [[{ text: '🔙 إلغاء', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data === 'cinema:subtitle:use-last') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'خدمة الترجمات تشتغل بالخاص فقط.', true);
+        return;
+      }
+      const recognized = this.lastCinemaRecognition.get(userId);
+      if (!recognized) {
+        await this.answerCallbackQuery(cb.id, 'ما عندي نتيجة تعرّف محفوظة؛ ابدأ بالتعرّف على لقطة أولاً.', true);
+        return;
+      }
+      this.pendingCinemaFlows.set(userId, { phase: 'subtitle_kind', title: recognized.title });
+      await this.answerCallbackQuery(cb.id, '');
+      await this.sendMessage(userId, `🔤 أبحث عن ترجمة لـ *${this.mdSafe(recognized.title)}*. اختار النوع:`, [
+        [{ text: '🎬 فيلم', callback_data: 'cinema:subtitle:kind:movie' }],
+        [{ text: '📺 مسلسل أو أنمي', callback_data: 'cinema:subtitle:kind:series' }],
+        [{ text: '❌ إلغاء', callback_data: 'svc:main' }]
+      ]);
+      return;
+    }
+
+    if (data.startsWith('cinema:subtitle:kind:')) {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'خدمة الترجمات تشتغل بالخاص فقط.', true);
+        return;
+      }
+      const flow = this.pendingCinemaFlows.get(userId);
+      const kind = data.endsWith(':movie') ? 'movie' : data.endsWith(':series') ? 'series' : null;
+      if (!flow || flow.phase !== 'subtitle_kind' || !kind) {
+        await this.answerCallbackQuery(cb.id, 'انتهت خطوة اختيار النوع؛ ابدأ بحثاً جديداً.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '');
+      if (kind === 'movie') {
+        this.pendingCinemaFlows.delete(userId);
+        await this.searchCinemaSubtitles(userId, flow.title, 'movie');
+      } else {
+        this.pendingCinemaFlows.set(userId, { phase: 'subtitle_episode', title: flow.title });
+        await this.sendMessage(userId, `📺 اكتب الموسم والحلقة لـ *${this.mdSafe(flow.title)}*\nمثال: \`S01E02\` أو \`1x02\`، أو: الموسم 1 الحلقة 2.`, [
+          [{ text: '❌ إلغاء', callback_data: 'svc:main' }]
+        ]);
+      }
+      return;
+    }
+
+    const subtitleDownload = data.match(/^cinema:sub:get:([a-z0-9]+):(\d+)$/i);
+    if (subtitleDownload) {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'افتح الخاص حتى أرسل ملف الترجمة.', true);
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, '📥 جاري تجهيز ملف الترجمة...');
+      await this.sendCinemaSubtitle(userId, subtitleDownload[1], Number(subtitleDownload[2]));
       return;
     }
 
@@ -8183,6 +8346,150 @@ export class TelegramBotManager {
     }
   }
 
+  private async handleCinemaScreenshot(uid: string, fileId: string, mimeType: string) {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    const wait = await this.sendMessage(uid, '🔎 دا أتعرف على العمل من اللقطة...');
+    const waitId = Number(wait?.result?.message_id) || undefined;
+    try {
+      const file = await this.downloadTelegramFileBytes(fileId);
+      if (!file?.bytes?.length) {
+        if (waitId) await this.editMessageText(uid, waitId, '⚠️ ما كدرت أقرأ الصورة. أرسلها مرة ثانية كصورة أو ملف.');
+        else await this.sendMessage(uid, '⚠️ ما كدرت أقرأ الصورة. أرسلها مرة ثانية كصورة أو ملف.');
+        return;
+      }
+      if (file.bytes.length > 12 * 1024 * 1024) {
+        if (waitId) await this.editMessageText(uid, waitId, '⚠️ الصورة كبيرة؛ أرسل لقطة شاشة أصغر من 12 ميغابايت.');
+        return;
+      }
+      let anime: Cinema.AnimeRecognition | null = null;
+      try {
+        anime = await Cinema.identifyAnimeScreenshot(file.bytes, mimeType);
+      } catch (error) {
+        console.warn('Anime screenshot recognition failed:', error);
+      }
+      if (anime) {
+        this.lastCinemaRecognition.set(uid, { title: anime.title, kind: 'series' });
+        const confidence = Math.round(anime.similarity * 100);
+        const episode = anime.episode && anime.episode !== 'null' ? `\n📺 الحلقة: *${this.mdSafe(String(anime.episode))}*` : '';
+        const nativeTitle = anime.nativeTitle && anime.nativeTitle !== anime.title
+          ? `\n🈯 الاسم الأصلي: ${this.mdSafe(anime.nativeTitle)}`
+          : '';
+        const text = `🍥 *أقرب تطابق أنمي*\n${SEP}\n🎞️ *${this.mdSafe(anime.title)}*${nativeTitle}${episode}\n🎯 تشابه اللقطة: ${confidence}%\n\nالتعرّف تلقائي، فاعتبر النتيجة مطابقة مرجّحة مو تأكيداً نهائياً.`;
+        if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔤 أبحث عن ترجمة', callback_data: 'cinema:subtitle:use-last' }], [{ text: '🔎 لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
+        else await this.sendMessage(uid, text);
+        return;
+      }
+      if (!this.geminiApiKey) {
+        const text = 'ما ظهر تطابق أنمي واضح. التعرّف على الأفلام والمسلسلات يحتاج تفعيل خدمة الرؤية أولاً؛ جرّب لقطة أنمي أو صورة أوضح حالياً.';
+        if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔎 جرّب لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
+        else await this.sendMessage(uid, text);
+        return;
+      }
+      const visual = await Cinema.identifyVisualTitle(file.bytes, mimeType, this.geminiApiKey);
+      if (!visual) {
+        const text = 'ما كدرت أحدد العمل من هاي اللقطة. جرّب لقطة أوضح، ويفضّل تكون بيها شخصيات أو تفاصيل مميزة.';
+        if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔎 لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
+        else await this.sendMessage(uid, text);
+        return;
+      }
+      const recognizedKind: Cinema.CinemaSubtitleKind = /movie|film|فيلم/i.test(String(visual.kind || '')) ? 'movie' : 'series';
+      this.lastCinemaRecognition.set(uid, { title: visual.title, kind: recognizedKind });
+      const titleParts = [`🎞️ *${this.mdSafe(visual.title)}*`];
+      if (visual.originalTitle && visual.originalTitle.toLowerCase() !== visual.title.toLowerCase()) titleParts.push(`🈯 الاسم الأصلي: ${this.mdSafe(visual.originalTitle)}`);
+      if (visual.year) titleParts.push(`📅 ${visual.year}`);
+      if (visual.kind && visual.kind !== 'unknown') titleParts.push(`🎬 النوع: ${this.mdSafe(visual.kind)}`);
+      const certainty = visual.confidence === 'high' ? 'مرجّح بدرجة عالية' : visual.confidence === 'low' ? 'تخمين غير مؤكد' : 'مطابقة مرجّحة';
+      const text = `🎬 *نتيجة التعرّف*\n${SEP}\n${titleParts.join('\n')}\n\n⚠️ ${certainty}${visual.note ? ` — ${this.mdSafe(visual.note)}` : ''}.`;
+      const keyboard = [[{ text: '🔤 أبحث عن ترجمة هذا العمل', callback_data: 'cinema:subtitle:use-last' }], [{ text: '🔎 لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]];
+      if (waitId) await this.editMessageText(uid, waitId, text, keyboard);
+      else await this.sendMessage(uid, text, keyboard);
+    } catch (error) {
+      console.error('Cinema image recognition failed:', error);
+      const text = '⚠️ صار خلل بالتعرّف على اللقطة. جرّب من جديد بعد شوي.';
+      if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔎 إعادة المحاولة', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
+      else await this.sendMessage(uid, text);
+    }
+  }
+
+  private async searchCinemaSubtitles(uid: string, title: string, kind: Cinema.CinemaSubtitleKind, season?: number, episode?: number) {
+    const SEP = '━━━━━━━━━━━━━━━━━━━';
+    if (!this.openSubtitlesApiKey) {
+      await this.sendMessage(uid, '🔤 خدمة الترجمات مو مفعّلة حالياً.');
+      return;
+    }
+    for (const key of this.cinemaSubtitleResults.keys()) {
+      if (key.startsWith(`${uid}:`)) this.cinemaSubtitleResults.delete(key);
+    }
+    const wait = await this.sendMessage(uid, '🔎 دا أبحث بترجمات OpenSubtitles...');
+    const waitId = Number(wait?.result?.message_id) || undefined;
+    try {
+      const results = await Cinema.searchOpenSubtitles({
+        apiKey: this.openSubtitlesApiKey,
+        userAgent: this.openSubtitlesUserAgent,
+        title,
+        kind,
+        season,
+        episode
+      });
+      if (!results.length) {
+        const detail = kind === 'series' ? ` للموسم ${season}، الحلقة ${episode}` : '';
+        if (waitId) await this.editMessageText(uid, waitId, `ما لكيت ترجمة عربية أو إنجليزية مطابقة لـ *${this.mdSafe(title)}*${detail}. جرّب كتابة الاسم الأصلي أو اسم إصدار مختلف.`);
+        else await this.sendMessage(uid, `ما لكيت ترجمة مطابقة لـ *${this.mdSafe(title)}*.`);
+        return;
+      }
+      const resultToken = `${Date.now().toString(36).slice(-4)}${Math.random().toString(36).slice(2, 5)}`;
+      this.cinemaSubtitleResults.set(`${uid}:${resultToken}`, results);
+      while (this.cinemaSubtitleResults.size > 200) {
+        const oldest = this.cinemaSubtitleResults.keys().next().value;
+        if (oldest === undefined) break;
+        this.cinemaSubtitleResults.delete(oldest);
+      }
+      const keyboard: any[][] = results.map((result, index) => {
+        const language = result.language === 'ar' ? '🇮🇶 عربي' : '🇬🇧 English';
+        const episodeLabel = result.season && result.episode ? ` · S${String(result.season).padStart(2, '0')}E${String(result.episode).padStart(2, '0')}` : '';
+        const label = `${language} · ${result.fileName}${episodeLabel}`.slice(0, 60);
+        return [{ text: label, callback_data: `cinema:sub:get:${resultToken}:${index}` }];
+      });
+      keyboard.push([{ text: '🔤 بحث جديد', callback_data: 'svc:cinema:subtitles' }]);
+      keyboard.push([{ text: '🔙 الخدمات', callback_data: 'svc:main' }]);
+      const episodeText = kind === 'series' ? ` · الموسم ${season}، الحلقة ${episode}` : '';
+      const text = `🔤 *لقيت ${results.length} ملف ترجمة*\n${SEP}\n🎞️ ${this.mdSafe(title)}${episodeText}\nاختار الملف حتى أرسله إلك مباشرة:`;
+      if (waitId) await this.editMessageText(uid, waitId, text, keyboard);
+      else await this.sendMessage(uid, text, keyboard);
+    } catch (error) {
+      console.error('OpenSubtitles search failed:', error);
+      const text = '⚠️ تعذّر البحث في OpenSubtitles هسه. جرّب مرة ثانية بعد شوي.';
+      if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔤 إعادة البحث', callback_data: 'svc:cinema:subtitles' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
+      else await this.sendMessage(uid, text);
+    }
+  }
+
+  private async sendCinemaSubtitle(uid: string, resultToken: string, index: number) {
+    const result = this.cinemaSubtitleResults.get(`${uid}:${resultToken}`)?.[index];
+    if (!result) {
+      await this.sendMessage(uid, '⚠️ انتهت صلاحية نتائج الترجمة؛ ابحث عن العمل مرة ثانية.');
+      return;
+    }
+    await this.sendMessage(uid, '📥 دا أنزّل ملف الترجمة...');
+    try {
+      const subtitle = await Cinema.downloadOpenSubtitle({
+        apiKey: this.openSubtitlesApiKey,
+        userAgent: this.openSubtitlesUserAgent,
+        fileId: result.fileId
+      });
+      const form = new FormData();
+      form.append('chat_id', uid);
+      form.append('document', new Blob([subtitle.bytes as unknown as ArrayBuffer], { type: 'application/x-subrip' }), subtitle.fileName);
+      form.append('caption', `🔤 ترجمة ${result.language === 'ar' ? 'عربية' : 'إنجليزية'}\n🎞️ ${result.title}${result.year ? ` (${result.year})` : ''}\nالمصدر: OpenSubtitles`);
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/sendDocument`, { method: 'POST', body: form });
+      const payload: any = await response.json();
+      if (!payload?.ok) throw new Error(String(payload?.description || 'Telegram refused the subtitle file'));
+    } catch (error) {
+      console.error('OpenSubtitles file delivery failed:', error);
+      await this.sendMessage(uid, '⚠️ ما كدرت أرسل ملف الترجمة؛ جرّب نتيجة ثانية أو أعد البحث بعد شوي.');
+    }
+  }
+
   private async handlePrivateRouletteTextInput(uid: string, rawText: string) {
     const items = EXT.parseRouletteTextChoices(rawText);
     if (items.length < 2) {
@@ -8415,6 +8722,17 @@ export class TelegramBotManager {
   private async executeFormatConversion(cb: TelegramCallbackQuery, targetAction: string) {
     const uid = String(cb.from.id);
     const chatId = String(cb.message?.chat.id || uid);
+
+    const outputField = targetAction.match(/^out:([a-z0-9]+):(title|artist|fileName|cover|all)$/i);
+    if (outputField) {
+      const outputDraft = this.audioOutputDrafts.get(`${uid}:${outputField[1]}`);
+      if (!outputDraft) {
+        await this.answerCallbackQuery(cb.id, 'انتهت صلاحية أزرار هذا الملف؛ أرسل الأغنية من جديد.', true);
+        return;
+      }
+      this.audioEditDrafts.set(uid, { ...outputDraft });
+      targetAction = outputField[2] === 'all' ? 'edit_open' : `ef:${outputField[2]}`;
+    }
 
     if (targetAction === 'preset:menu') {
       const text =
@@ -8663,6 +8981,19 @@ export class TelegramBotManager {
         const form = new FormData();
         form.append('chat_id', chatId);
         form.append('audio', new Blob([audioBytes as unknown as ArrayBuffer], { type: outMime }), `${safeBase}.${outExt}`);
+        const outputToken = `${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 5)}`;
+        const editKeyboard = [
+          [
+            { text: '📝 الاسم', callback_data: `conv:out:${outputToken}:title` },
+            { text: '🎤 الفنان', callback_data: `conv:out:${outputToken}:artist` }
+          ],
+          [
+            { text: '📁 اسم الملف', callback_data: `conv:out:${outputToken}:fileName` },
+            { text: '🖼️ الغلاف', callback_data: `conv:out:${outputToken}:cover` }
+          ],
+          [{ text: '🎛️ كل التعديلات', callback_data: `conv:out:${outputToken}:all` }]
+        ];
+        form.append('reply_markup', JSON.stringify({ inline_keyboard: editKeyboard }));
         const quote = await this.getSongBotQuote();
         if (quote) {
           form.append('caption', quote.caption);
@@ -8684,16 +9015,22 @@ export class TelegramBotManager {
         if (upJson?.ok) {
           const sentMsgId = Number(upJson?.result?.message_id) || 1;
           this.trackMediaMsg(uid, sentMsgId);
-          this.audioEditDrafts.delete(uid);
+          const outputFileId = String(upJson?.result?.audio?.file_id || '');
+          if (outputFileId) {
+            draft.fileId = outputFileId;
+            draft.sourceKind = isM4a ? 'video' : 'audio';
+            draft.waitingField = undefined;
+            this.audioEditDrafts.set(uid, draft);
+            this.audioOutputDrafts.set(`${uid}:${outputToken}`, { ...draft });
+            while (this.audioOutputDrafts.size > 300) {
+              const oldest = this.audioOutputDrafts.keys().next().value;
+              if (oldest === undefined) break;
+              this.audioOutputDrafts.delete(oldest);
+            }
+          } else {
+            this.audioEditDrafts.delete(uid);
+          }
           this.pendingConvert.delete(uid);
-          const done = await this.sendMessage(chatId, '✅ *تم إرسال المقطع الصوتي بالتعديلات الجديدة!*', [
-            [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
-            [
-              { text: '🔄 تعديل / تحويل ملف آخر', callback_data: 'svc:convert' },
-              { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
-            ]
-          ]);
-          if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
         } else {
           const reason = String(upJson?.description || 'رفض تيليجرام الملف المعدّل');
           await this.sendMessage(chatId, `⚠️ ما انرسل الملف المعدّل، لذلك ما انطبقت الإعدادات. السبب: ${this.mdSafe(reason)}`);
