@@ -28,6 +28,7 @@ const TICKET_KEY = (id: string) => `interactive-match:${id}`;
 const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
 const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'ارسم وخمّن', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
+const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
 const UNO_COLORS = ['أحمر','أصفر','أخضر','أزرق'];
 const COLOR_KEYS: Record<string, string> = { 'أحمر':'red', 'أصفر':'yellow', 'أخضر':'green', 'أزرق':'blue' };
 const SUITS = ['♠','♥','♦','♣'];
@@ -102,10 +103,10 @@ export class InteractiveGameRooms {
       const game = String(body?.game || '') as InteractiveGameId;
       if (!Object.hasOwn(GAME_NAMES, game)) return Response.json({ error: 'اللعبة غير معروفة' }, { status: 400 });
       const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
-      const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' ? 4 : game === 'gartic' ? 8 : 6;
+      const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' ? 4 : game === 'gartic' ? 16 : 6;
       const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
       const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
-      const roundDurationMs = game === 'gartic' ? Math.max(45, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
+      const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
       const botElo = game === 'chess' && body?.mode === 'bot' ? Math.max(400, Math.min(2000, Math.round(Number(body?.botElo) || 800))) : 0;
       const players = [player];
@@ -140,7 +141,7 @@ export class InteractiveGameRooms {
       const prior = typeof body.token === 'string' ? room.players.find(player => player.token === body.token) : undefined;
       if (prior) return this.jsonFor(room, prior.token);
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
-      const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 8 : 6);
+      const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 16 : 6);
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}) };
       room.players.push(player);
@@ -230,7 +231,7 @@ export class InteractiveGameRooms {
       const chess = new Chess(state.fen);
       const move = chess.move({ from: String(body.from), to: String(body.to), promotion: body.promotion || 'q' });
       if (!move) return 'الحركة غير قانونية';
-      state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = move.san;
+      state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = move.san; state.lastMoveSquares = [move.from, move.to];
       if (chess.isCheckmate()) { room.status = 'finished'; state.winnerSeat = seat; state.result = `${player.name} فاز بالكش مات`; this.updateChessElo(room, seat); }
       else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.winnerSeat = -1; state.result = 'تعادل'; this.updateChessElo(room, -1); }
       else if (room.players[1]?.bot) this.makeBotMove(room);
@@ -268,7 +269,7 @@ export class InteractiveGameRooms {
       }).sort((x,y) => y.score - x.score);
       chosen = scored[0].move;
     }
-    const moved = chess.move(chosen.san); state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san;
+    const moved = chess.move(chosen.san); state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san; state.lastMoveSquares = [moved.from, moved.to];
     if (chess.isCheckmate()) { room.status = 'finished'; state.winnerSeat = 1; state.result = `${room.players[1].name} فاز بالكش مات`; }
     else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.winnerSeat = -1; state.result = 'تعادل'; }
   }
@@ -374,9 +375,10 @@ export class InteractiveGameRooms {
       if (seat !== s.drawer) return 'الرسم للرسام وحده'; if (Date.now() > s.deadline || s.roundResult) return 'انتهى وقت الرسم';
       const points = Array.isArray(body.points) ? body.points.slice(0, 90).map((p: any) => [Math.max(0,Math.min(1,Number(p?.[0])||0)),Math.max(0,Math.min(1,Number(p?.[1])||0))]) : [];
       if (points.length < 2) return 'الخط يحتاج نقطتين'; if (s.strokes.length >= 100) s.strokes.shift();
-      s.strokes.push({ points, color: ['#1f2937','#e34b4b','#2764d8','#27805b','#f0a000','#8a4fc1'].includes(body.color) ? body.color : '#1f2937', size: Math.max(2,Math.min(14,Number(body.size)||4)) }); return null;
+      s.strokes.push({ points, color: DRAW_COLORS.includes(body.color) ? body.color : '#202635', size: Math.max(2,Math.min(20,Number(body.size)||5)) }); return null;
     }
-    if (action === 'clear') { if (seat !== s.drawer) return 'الرسام وحده يمسح اللوحة'; s.strokes = []; return null; }
+    if (action === 'undo-stroke') { if (seat !== s.drawer) return 'الرسام وحده يرجّع آخر خط'; if (s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes.pop(); return null; }
+    if (action === 'clear') { if (seat !== s.drawer) return 'الرسام وحده يمسح اللوحة'; if (s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes = []; return null; }
     if (action === 'guess') {
       if (seat === s.drawer) return 'الرسام ما يخمّن'; if (s.roundResult || Date.now() > s.deadline) return 'انتهت الجولة';
       const guess = String(body.text || '').trim().slice(0, 60); if (!guess) return 'اكتب تخمينك';
@@ -552,6 +554,8 @@ export class InteractiveGameRooms {
     if (room.game === 'chess') {
       state.turnName = room.players[s.turn === 'w' ? 0 : 1]?.name || '';
       state.seat = seat; state.side = seat === 0 ? 'w' : seat === 1 ? 'b' : '';
+      state.legalMoves = own && s.turn === state.side ? (new Chess(s.fen).moves({ verbose: true }) as any[]).map(move => ({ from: move.from, to: move.to })) : [];
+      state.lastMoveSquares = s.lastMoveSquares || [];
       state.botElo = Number(s.botElo) || 0;
     } else if (room.game === 'sudoku') {
       const ownBoard = s.boards?.[token]; state.values = ownBoard?.values || []; state.mistakes = ownBoard?.mistakes || 0; state.lastCorrect = ownBoard?.lastCorrect ?? null; state.winner = s.winner === token;
