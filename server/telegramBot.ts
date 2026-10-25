@@ -17,7 +17,6 @@ import * as STORY from '../src/services/truthLieEngine';
 import * as GE from '../src/services/guessEliminationEngine';
 import * as CH from '../src/services/chessGameEngine';
 import * as EXT from '../src/services/extraToolsEngine';
-import * as Sudoku from '../src/services/sudokuEngine';
 import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
@@ -767,20 +766,6 @@ const BOT_GAMES: BotGameCard[] = [
     channel: true, inline: 'ge mixed', ready: true
   },
   {
-    id: 'sudoku',
-    emoji: '🧩',
-    title: 'سودوكو',
-    category: 'duo',
-    players: 'فردي أو منافسة 1 ضد 1',
-    where: 'الخاص مع البوت',
-    goal: 'أكمل شبكة 9×9 بالأرقام من 1 إلى 9 دون تكرار في الصف أو العمود أو المربع',
-    reward: 'حل اللغز بأقل وقت وأخطاء وتلميحات',
-    about: 'اختار مستوى سهل أو متوسط أو صعب والعب وحدك، أو ادخل طابوراً لمواجهة لاعب عشوائي على اللغز نفسه. أرسل الحركة مباشرة بصيغة A1 5، وللمسح أرسل A1 0؛ والتلميح متاح باللعب الفردي.',
-    channel: false,
-    play: { label: '🧩 ابدأ سودوكو', data: 'hub:sudoku:menu' },
-    ready: true
-  },
-  {
     id: 'chess', emoji: '♟️', title: 'شطرنج 1 ضد 1', category: 'duo',
     players: 'لاعبان فقط', where: 'في المجموعة',
     goal: 'كش مات لملك الخصم', reward: 'فوز بالكش مات أو التعادل بالقواعد الرسمية',
@@ -1027,8 +1012,6 @@ export class TelegramBotManager {
   private amongUsCompletedMatches = 0;
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
-  private sudokuGames: Map<string, Sudoku.SudokuGame> = new Map();
-  private sudokuQueue: Array<{ userId: string; name: string; queuedAt: number; messageId?: number }> = [];
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
@@ -1680,8 +1663,6 @@ export class TelegramBotManager {
       amongUsCompletedMatches: this.amongUsCompletedMatches,
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
-      sudokuGames: Array.from(this.sudokuGames.entries()).slice(-200),
-      sudokuQueue: this.sudokuQueue.slice(-500),
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
@@ -1738,8 +1719,6 @@ export class TelegramBotManager {
     if (Number.isFinite(state.amongUsCompletedMatches)) this.amongUsCompletedMatches = Number(state.amongUsCompletedMatches);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
-    if (Array.isArray(state.sudokuGames)) this.sudokuGames = new Map(state.sudokuGames);
-    if (Array.isArray(state.sudokuQueue)) this.sudokuQueue = state.sudokuQueue;
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
@@ -2289,14 +2268,6 @@ export class TelegramBotManager {
       return;
     }
 
-    if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
-      const sudokuUserId = String(sender.id);
-      const hasPendingTextService = this.pendingWhispers.has(sudokuUserId) || this.pendingSocialDl.has(sudokuUserId) ||
-        this.pendingAgeCalc.has(sudokuUserId) || this.pendingRouletteText.has(sudokuUserId) || this.pendingConvert.has(sudokuUserId) ||
-        this.audioEditDrafts.has(sudokuUserId) || this.pendingVocalSep.has(sudokuUserId);
-      if (!hasPendingTextService && await this.handleSudokuTextMove(sudokuUserId, text)) return;
-    }
-
     if (
       ['group', 'supergroup', 'channel'].includes(message.chat.type) &&
       this.isWhisperLauncherTrigger(text)
@@ -2783,12 +2754,6 @@ export class TelegramBotManager {
       data.startsWith('conv:')
     ) {
       await this.handleExtraServicesCb(cb, data);
-      return;
-    }
-
-    // ---- 🧩 سودوكو: جولات فردية ومطابقة عشوائية بالخاص ----
-    if (data.startsWith('sdk:')) {
-      await this.handleSudokuCallback(cb, data);
       return;
     }
 
@@ -3495,370 +3460,9 @@ export class TelegramBotManager {
     );
   }
 
-  private findActiveSudokuGame(userId: string): Sudoku.SudokuGame | undefined {
-    const now = Date.now();
-    for (const game of this.sudokuGames.values()) {
-      if (game.status === 'playing' && now - game.createdAt > 90 * 60 * 1000) {
-        game.status = 'finished';
-        continue;
-      }
-      if (game.status === 'playing' && game.players.some(player => player.userId === userId)) return game;
-    }
-    return undefined;
-  }
-
-  private createSudokuPlayer(userId: string, name: string, puzzle: number[]): Sudoku.SudokuPlayerState {
-    return {
-      userId,
-      name: name || 'لاعب',
-      board: puzzle.slice(),
-      mistakes: 0,
-      hintsUsed: 0,
-      startedAt: Date.now()
-    };
-  }
-
-  private createSudokuGame(
-    mode: Sudoku.SudokuGame['mode'],
-    difficulty: Sudoku.SudokuDifficulty,
-    players: Array<{ userId: string; name: string }>
-  ): Sudoku.SudokuGame {
-    const puzzle = Sudoku.generateSudoku(difficulty);
-    const game: Sudoku.SudokuGame = {
-      id: `${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 6)}`,
-      mode,
-      status: 'playing',
-      difficulty: puzzle.difficulty,
-      puzzle: puzzle.puzzle,
-      solution: puzzle.solution,
-      players: players.map(player => this.createSudokuPlayer(player.userId, player.name, puzzle.puzzle)),
-      createdAt: Date.now()
-    };
-    this.sudokuGames.set(game.id, game);
-    while (this.sudokuGames.size > 200) {
-      const finished = Array.from(this.sudokuGames.entries()).find(([, existing]) => existing.status === 'finished');
-      if (!finished) break;
-      this.sudokuGames.delete(finished[0]);
-    }
-    return game;
-  }
-
-  private sudokuBoardText(game: Sudoku.SudokuGame, player: Sudoku.SudokuPlayerState): string {
-    const rows: string[] = ['  123 456 789'];
-    const circled = ['', '❶', '❷', '❸', '❹', '❺', '❻', '❼', '❽', '❾'];
-    for (let r = 0; r < 9; r++) {
-      const cells: string[] = [];
-      for (let c = 0; c < 9; c++) {
-        const index = r * 9 + c;
-        const value = player.board[index];
-        cells.push(value ? (game.puzzle[index] ? String(value) : circled[value]) : '·');
-      }
-      rows.push(`${'ABCDEFGHI'[r]} ${cells.slice(0, 3).join('')}│${cells.slice(3, 6).join('')}│${cells.slice(6).join('')}`);
-      if (r === 2 || r === 5) rows.push('  ├───┼───┼───');
-    }
-
-    const elapsed = Math.max(0, Math.floor((Date.now() - player.startedAt) / 1000));
-    const time = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
-    const opponent = game.mode === 'random' ? game.players.find(other => other.userId !== player.userId) : undefined;
-    const totalBlanks = game.puzzle.filter(value => value === 0).length;
-    const opponentProgress = opponent
-      ? opponent.board.filter((value, index) => game.puzzle[index] === 0 && value !== 0).length
-      : 0;
-    const modeText = game.mode === 'random'
-      ? `سباق مع ${this.mdSafe(opponent?.name || 'لاعب')} — تقدمه ${opponentProgress}/${totalBlanks}`
-      : 'لعب فردي';
-    const status = game.status === 'playing'
-      ? `⏱ الوقت ${time}  •  ❌ أخطاء ${player.mistakes}  •  💡 تلميحات ${player.hintsUsed}`
-      : game.mode === 'solo'
-        ? (game.winnerId === player.userId ? '🏆 أحسنت! حلّيت اللغز.' : 'انتهت الجولة.')
-        : game.winnerId === player.userId
-          ? '🏆 فزت بالسباق!'
-          : game.winnerId
-            ? `🏁 ${this.mdSafe(game.players.find(other => other.userId === game.winnerId)?.name || 'خصمك')} حلّ اللغز قبلك.`
-            : 'انتهت المباراة.';
-    return `🧩 *سودوكو — ${Sudoku.sudokuDifficultyLabel(game.difficulty)}*\n` +
-      `🎮 ${modeText}\n` +
-      `${status}\n` +
-      `✍️ أرسل الحركة بصيغة *A1 5* (الصف A، العمود 1، الرقم 5). للمسح أرسل *A1 0*.\n` +
-      `الأرقام الدائرية إدخالاتك، والعادية من اللغز.\n` +
-      '```\n' + rows.join('\n') + '\n```';
-  }
-
-  private sudokuKeyboard(game: Sudoku.SudokuGame, _player: Sudoku.SudokuPlayerState): any[][] {
-    if (game.status === 'finished') {
-      return [
-        [{ text: '🧩 لعبة جديدة', callback_data: 'hub:sudoku:menu' }],
-        [{ text: '🔙 الألعاب', callback_data: 'hub:main' }]
-      ];
-    }
-    const keyboard: any[][] = [];
-    if (game.mode === 'solo') keyboard.push([{ text: '💡 تلميح لخانة فارغة', callback_data: `sdk:hint:${game.id}` }]);
-    keyboard.push([{ text: '🏳️ إنهاء الجولة', callback_data: `sdk:quit:${game.id}` }]);
-    return keyboard;
-  }
-
-  private async paintSudokuPlayer(game: Sudoku.SudokuGame, userId: string, fallbackMessageId?: number): Promise<boolean> {
-    const player = game.players.find(entry => entry.userId === userId);
-    if (!player) return false;
-    const text = this.sudokuBoardText(game, player);
-    const keyboard = this.sudokuKeyboard(game, player);
-    const messageId = player.messageId || fallbackMessageId;
-    if (messageId) {
-      const edited = await this.editMessageText(userId, messageId, text, keyboard);
-      if (edited?.ok || String(edited?.description || '').includes('not modified')) {
-        player.messageId = messageId;
-        return true;
-      }
-    }
-    const sent = await this.sendMessage(userId, text, keyboard);
-    if (sent?.ok && sent?.result?.message_id) {
-      player.messageId = Number(sent.result.message_id);
-      return true;
-    }
-    return false;
-  }
-
-  private async pruneSudokuQueue(): Promise<void> {
-    const now = Date.now();
-    const fresh = this.sudokuQueue.filter(entry => now - entry.queuedAt < 5 * 60 * 1000);
-    const expired = this.sudokuQueue.filter(entry => now - entry.queuedAt >= 5 * 60 * 1000);
-    this.sudokuQueue = fresh;
-    for (const entry of expired) {
-      if (entry.messageId) await this.deleteMessage(entry.userId, entry.messageId);
-      await this.sendMessage(entry.userId, '⌛ انتهت مدة انتظار السودوكو. إذا بعدك تريد تلعب، ارجع واضغط «أونلاين مع لاعب عشوائي».');
-    }
-  }
-
-  private async handleSudokuQueue(cb: TelegramCallbackQuery, userId: string, playerName: string): Promise<void> {
-    await this.pruneSudokuQueue();
-    const active = this.findActiveSudokuGame(userId);
-    if (active) {
-      await this.answerCallbackQuery(cb.id, 'عندك جولة سودوكو شغالة؛ رجعتلك اللوحة.');
-      await this.paintSudokuPlayer(active, userId);
-      return;
-    }
-
-    const currentIndex = this.sudokuQueue.findIndex(entry => entry.userId === userId);
-    if (currentIndex >= 0) {
-      await this.answerCallbackQuery(cb.id, 'إنت بالطابور؛ انتظر لاعباً ثانياً.');
-      const entry = this.sudokuQueue[currentIndex];
-      const waitingText = '🎲 *انتظار لاعب سودوكو*\n━━━━━━━━━━━━━━━━━━━\nراح نطابقك تلقائياً مع أول لاعب يدخل خلال 5 دقائق.';
-      const waitingKeyboard = [[{ text: '❌ إلغاء الانتظار', callback_data: 'sdk:cancel' }]];
-      const edited = entry.messageId ? await this.editMessageText(userId, entry.messageId, waitingText, waitingKeyboard) : null;
-      if (!edited?.ok) {
-        const sent = await this.sendMessage(userId, waitingText, waitingKeyboard);
-        if (sent?.ok && sent?.result?.message_id) entry.messageId = Number(sent.result.message_id);
-      }
-      return;
-    }
-
-    const opponentIndex = this.sudokuQueue.findIndex(entry => entry.userId !== userId && !this.findActiveSudokuGame(entry.userId));
-    if (opponentIndex < 0) {
-      const entry: (typeof this.sudokuQueue)[number] = { userId, name: playerName, queuedAt: Date.now() };
-      this.sudokuQueue.push(entry);
-      await this.answerCallbackQuery(cb.id, 'دخلت طابور الانتظار 🎲');
-      const sent = await this.sendMessage(userId,
-        '🎲 *انتظار لاعب سودوكو*\n━━━━━━━━━━━━━━━━━━━\nراح نطابقك تلقائياً مع أول لاعب يدخل خلال 5 دقائق.',
-        [[{ text: '❌ إلغاء الانتظار', callback_data: 'sdk:cancel' }]]
-      );
-      if (sent?.ok && sent?.result?.message_id) entry.messageId = Number(sent.result.message_id);
-      else {
-        this.sudokuQueue = this.sudokuQueue.filter(queued => queued.userId !== userId);
-        await this.sendMessage(userId, '⚠️ ما كدرت أدخلك طابور الانتظار؛ جرّب الزر مرة ثانية.');
-      }
-      this.scheduleLocalQuizTimer();
-      return;
-    }
-
-    const opponent = this.sudokuQueue.splice(opponentIndex, 1)[0];
-    const game = this.createSudokuGame('random', 'medium', [
-      { userId: opponent.userId, name: opponent.name },
-      { userId, name: playerName }
-    ]);
-    await this.answerCallbackQuery(cb.id, '🎉 لقيتلك لاعباً! جاري تجهيز نفس اللغز إلكم اثنين.');
-    if (opponent.messageId) await this.deleteMessage(opponent.userId, opponent.messageId);
-    const sentFirst = await this.paintSudokuPlayer(game, opponent.userId);
-    const sentSecond = await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
-    if (!sentFirst || !sentSecond) {
-      game.status = 'finished';
-      for (const player of game.players) {
-        await this.sendMessage(player.userId, '⚠️ تعذّر إيصال لوحة المباراة للطرفين، فما بدأت الجولة. جرّب البحث عن لاعب مرة ثانية.');
-      }
-    }
-    this.scheduleLocalQuizTimer();
-  }
-
-  private async handleSudokuTextMove(userId: string, rawText: string): Promise<boolean> {
-    const move = rawText.trim().match(/^([A-I])\s*([1-9])\s*(?:=|\s)\s*([0-9])$/i);
-    if (!move) return false;
-    const game = this.findActiveSudokuGame(userId);
-    if (!game) return false;
-    const player = game.players.find(entry => entry.userId === userId);
-    if (!player) return false;
-
-    const row = move[1].toUpperCase().charCodeAt(0) - 65;
-    const col = Number(move[2]) - 1;
-    const value = Number(move[3]);
-    const cell = row * 9 + col;
-    if (game.puzzle[cell] !== 0) {
-      await this.sendMessage(userId, '⚠️ هاي الخانة ثابتة من بداية اللغز. اختار خانة ثانية.');
-      return true;
-    }
-    if (value === 0) {
-      player.board[cell] = 0;
-    } else if (!Sudoku.isLegalSudokuMove(player.board, cell, value)) {
-      player.mistakes++;
-      await this.sendMessage(userId, '⚠️ الرقم مكرر بنفس الصف أو العمود أو المربع؛ ما انضاف.');
-      await this.paintSudokuPlayer(game, userId);
-      return true;
-    } else {
-      player.board[cell] = value;
-    }
-
-    if (Sudoku.isSudokuSolved(player.board, game.solution)) {
-      game.status = 'finished';
-      game.winnerId = userId;
-      await this.sendMessage(userId, game.mode === 'solo' ? '🏆 أحسنت! حلّيت السودوكو.' : '🏆 فزت بسباق السودوكو!');
-      await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId)));
-    } else if (game.mode === 'random') {
-      await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId)));
-    } else {
-      await this.paintSudokuPlayer(game, userId);
-    }
-    return true;
-  }
-
-  private async handleSudokuCallback(cb: TelegramCallbackQuery, data: string): Promise<void> {
-    const userId = String(cb.from.id);
-    const chatId = String(cb.message?.chat.id || '');
-    if (cb.message?.chat.type !== 'private' || chatId !== userId) {
-      await this.answerCallbackQuery(cb.id, 'السودوكو والمطابقة العشوائية متاحتان بالخاص فقط.', true);
-      return;
-    }
-
-    const parts = data.split(':');
-    const action = parts[1] || '';
-    const playerName = [cb.from.first_name, cb.from.last_name].filter(Boolean).join(' ') || 'لاعب';
-
-    if (action === 'queue') {
-      await this.handleSudokuQueue(cb, userId, playerName);
-      return;
-    }
-    if (action === 'cancel') {
-      const index = this.sudokuQueue.findIndex(entry => entry.userId === userId);
-      if (index >= 0) {
-        this.sudokuQueue.splice(index, 1);
-        this.scheduleLocalQuizTimer();
-        await this.answerCallbackQuery(cb.id, 'ألغيت الانتظار.');
-        if (cb.message?.message_id) {
-          await this.editMessageText(chatId, cb.message.message_id, '❌ ألغيت انتظار لاعب السودوكو.', [[{ text: '🔙 رجوع للسودوكو', callback_data: 'hub:sudoku:menu' }]]);
-        }
-      } else {
-        await this.answerCallbackQuery(cb.id, 'ماكو انتظار فعّال حتى ألغيه.', true);
-      }
-      return;
-    }
-    if (action === 'solo') {
-      const difficulty = parts[2] as Sudoku.SudokuDifficulty;
-      if (!['easy', 'medium', 'hard'].includes(difficulty)) {
-        await this.answerCallbackQuery(cb.id, 'المستوى غير صالح.', true);
-        return;
-      }
-      const active = this.findActiveSudokuGame(userId);
-      if (active) {
-        await this.answerCallbackQuery(cb.id, 'عندك جولة شغالة؛ رجعتلك اللوحة.');
-        await this.paintSudokuPlayer(active, userId);
-        return;
-      }
-      const waiting = this.sudokuQueue.findIndex(entry => entry.userId === userId);
-      if (waiting >= 0) {
-        const [entry] = this.sudokuQueue.splice(waiting, 1);
-        if (entry.messageId) await this.deleteMessage(userId, entry.messageId);
-        this.scheduleLocalQuizTimer();
-      }
-      const game = this.createSudokuGame('solo', difficulty, [{ userId, name: playerName }]);
-      await this.answerCallbackQuery(cb.id, `بدأت جولة سودوكو ${Sudoku.sudokuDifficultyLabel(difficulty)} 🧩`);
-      await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
-      return;
-    }
-
-    const gameId = parts[2] || '';
-    const game = this.sudokuGames.get(gameId);
-    const player = game?.players.find(entry => entry.userId === userId);
-    if (!game || !player) {
-      await this.answerCallbackQuery(cb.id, 'هاي الجولة مو موجودة؛ ابدأ جولة جديدة.', true);
-      return;
-    }
-    if (game.status === 'playing' && Date.now() - game.createdAt > 90 * 60 * 1000) game.status = 'finished';
-    if (game.status !== 'playing') {
-      await this.answerCallbackQuery(cb.id, 'انتهت هاي الجولة.');
-      await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
-      return;
-    }
-
-    if (action === 'hint') {
-      if (game.mode !== 'solo') {
-        await this.answerCallbackQuery(cb.id, 'التلميح متاح باللعب الفردي فقط حتى تبقى المنافسة عادلة.', true);
-        return;
-      }
-      const emptyCells = game.puzzle.map((value, index) => value === 0 && player.board[index] === 0 ? index : -1).filter(index => index >= 0);
-      const candidates = emptyCells.filter(cell => Sudoku.isLegalSudokuMove(player.board, cell, game.solution[cell]));
-      if (!candidates.length) {
-        await this.answerCallbackQuery(cb.id, 'ماكو خانة آمنة للتلميح؛ امسح الرقم المتعارض أولاً.', true);
-        return;
-      }
-      const cell = candidates[Math.floor(Math.random() * candidates.length)];
-      player.board[cell] = game.solution[cell];
-      player.hintsUsed++;
-      if (Sudoku.isSudokuSolved(player.board, game.solution)) {
-        game.status = 'finished';
-        game.winnerId = userId;
-        await this.answerCallbackQuery(cb.id, '🏆 أحسنت! حلّيت السودوكو.');
-      } else {
-        await this.answerCallbackQuery(cb.id, `💡 تلميح للخانة ${'ABCDEFGHI'[Math.floor(cell / 9)]}${cell % 9 + 1}.`);
-      }
-      await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
-      return;
-    }
-
-    if (action === 'quit') {
-      game.status = 'finished';
-      if (game.mode === 'random') game.winnerId = game.players.find(entry => entry.userId !== userId)?.userId;
-      await this.answerCallbackQuery(cb.id, game.mode === 'random' ? 'انسحبت؛ الفوز للخصم.' : 'أنهيت الجولة.');
-      await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
-      return;
-    }
-
-    await this.answerCallbackQuery(cb.id, 'هذا الخيار غير معروف.', true);
-  }
-
-  /** عرض قسم من قائمة الألعاب (أزرار فقط) */
   private async handleGamesMenu(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
-
-    if (section === 'sudoku:menu') {
-      if (cb.message?.chat.type !== 'private') {
-        await this.answerCallbackQuery(cb.id, 'السودوكو تنلعب بالخاص مع البوت فقط.', true);
-        return;
-      }
-      await this.paintMenuView(cb, {
-        text:
-          `🧩 *سودوكو*\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `اختار مستوى للعب الفردي، أو العب أونلاين ضد شخص عشوائي على مستوى متوسط.`,
-        keyboard: [
-          [
-            { text: '🟢 فردي — سهل', callback_data: 'sdk:solo:easy' },
-            { text: '🟡 فردي — متوسط', callback_data: 'sdk:solo:medium' }
-          ],
-          [{ text: '🔴 فردي — صعب', callback_data: 'sdk:solo:hard' }],
-          [{ text: '🎲 أونلاين مع لاعب عشوائي', callback_data: 'sdk:queue' }],
-          [{ text: '🔙 رجوع للعبة', callback_data: 'hub:g:sudoku' }]
-        ]
-      });
-      return;
-    }
 
     if (section === 'soon') {
       await this.answerCallbackQuery(cb.id, '🔜 هاي اللعبة جاية قريب!');
@@ -4913,10 +4517,6 @@ export class TelegramBotManager {
   public getNextQuizDeadline(): number | null {
     let earliest = Infinity;
     const now = Date.now();
-    for (const entry of this.sudokuQueue) {
-      const expiryAt = entry.queuedAt + 5 * 60 * 1000;
-      if (expiryAt < earliest) earliest = expiryAt;
-    }
     for (const g of this.gqGames.values()) {
       if (g.status === 'playing') {
         const d = g.roundDeadline ?? (g.roundDeadline = now + GG.ROUND_MS);
@@ -5077,8 +4677,6 @@ export class TelegramBotManager {
   /** ينقل الجولات المنتهية تلقائياً للسؤال اللي بعده (بعد 15 ثانية أو بعد شاشة النتيجة القصيرة) */
   public async processQuizTimers(): Promise<void> {
     const now = Date.now();
-    await this.pruneSudokuQueue();
-
     // ⏱️ كود نيمز: تحديث لوحة العدّ كل 15 ثانية، وتمرير الدور بعد دقيقتين دون رسائل خاصة تلقائية.
     for (const game of Array.from(this.games.values())) {
       // لا نُحيي لوبي/مباراة قديمة: بعد 24 ساعة نوقفها بصمت.
@@ -7754,13 +7352,16 @@ export class TelegramBotManager {
     }
 
     if (data === 'svc:speedtest') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'اختبار السرعة يفتح داخل الخاص مع البوت فقط.', true);
+        return;
+      }
       const text =
         `⚡ *قياس سرعة الإنترنت على جهازك*\n` +
         `${SEP}\n` +
-        `حتى يكون القياس حقيقياً، لازم يشتغل من جهازك نفسه؛ تيليگرام ما يرسل للبوت سرعة اتصال موبايلك.\n` +
-        `افتح صفحة الاختبار حتى تقيس التنزيل والرفع وزمن الاستجابة على اتصالك الحالي. نتيجة الصفحة تخص جهازك، مو سرعة خادم البوت.`;
+        `راح يفتح الاختبار داخل نافذة تيليگرام ويقيس سرعة التنزيل والرفع وزمن الاستجابة على اتصال جهازك الحالي.`;
       const keyboard = [
-        [{ text: '🚀 ابدأ اختبار السرعة', url: 'https://speed.cloudflare.com/' }],
+        [{ text: '🚀 افتح الاختبار داخل تيليگرام', web_app: { url: 'https://speed.cloudflare.com/' } }],
         [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
       ];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
@@ -7783,7 +7384,7 @@ export class TelegramBotManager {
       const lines = [
         `⚽ *${Football.footballDayTitle(offset)}*`,
         `${SEP}`,
-        `🕒 الأوقات حسب ${Football.footballTimezoneLabel(timeZone)} — اضغط تحديث لمراجعة أي تغيير بالموعد أو الحالة.`,
+        `🕒 الأوقات حسب ${Football.footballTimezoneLabel(timeZone)} — العراق والسعودية UTC+3، والإمارات UTC+4. اضغط تحديث لمراجعة التغييرات.`,
         ''
       ];
       if (result.unavailable) {
@@ -7791,7 +7392,8 @@ export class TelegramBotManager {
       } else if (!result.fixtures.length) {
         lines.push('ماكو مباريات مسجلة بهذا المصدر لهذا اليوم.');
       } else {
-        for (const fixture of shown) {
+        for (let fixtureIndex = 0; fixtureIndex < shown.length; fixtureIndex++) {
+          const fixture = shown[fixtureIndex];
           const icon = fixture.state === 'live' ? '🔴' : fixture.state === 'finished' ? '✅' : fixture.state === 'postponed' ? '⏸️' : '⚽';
           const score = fixture.homeScore !== undefined && fixture.awayScore !== undefined
             ? `${fixture.homeScore} - ${fixture.awayScore}`
@@ -7802,6 +7404,7 @@ export class TelegramBotManager {
                 : fixture.status;
           lines.push(`${icon} *${this.mdSafe(fixture.home)}* ${score} *${this.mdSafe(fixture.away)}*`);
           lines.push(`   ⏰ ${Football.formatFootballKickoff(fixture.startAt, timeZone)}  ·  ${this.mdSafe(fixture.competition)}  ·  ${this.mdSafe(status)}`);
+          if (fixtureIndex < shown.length - 1) lines.push('━━━━━━━━━━━━━━━━━━━');
         }
         if (result.fixtures.length > pageSize) lines.push(`\nصفحة ${page + 1} من ${pageCount} · ${result.fixtures.length} مباراة`);
       }

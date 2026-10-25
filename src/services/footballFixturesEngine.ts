@@ -2,39 +2,52 @@ export type FootballDayOffset = -1 | 0 | 1;
 
 export const FOOTBALL_TIMEZONES = [
   { id: 'Asia/Baghdad', label: '🇮🇶 العراق' },
-  { id: 'Asia/Riyadh', label: '🇸🇦 السعودية' },
-  { id: 'Asia/Dubai', label: '🇦🇪 الإمارات' },
-  { id: 'Europe/London', label: '🇬🇧 لندن' },
-  { id: 'Europe/Paris', label: '🇫🇷 باريس' },
-  { id: 'America/New_York', label: '🇺🇸 نيويورك' }
+  { id: 'Asia/Dubai', label: '🇦🇪 الإمارات' }
 ] as const;
 
 export type FootballTimezone = typeof FOOTBALL_TIMEZONES[number]['id'];
+type CompetitionSource = 'espn' | 'thesportsdb';
+interface CompetitionConfig { id: string; label: string; source?: CompetitionSource }
 
-const COMPETITIONS = [
+const COMPETITIONS: CompetitionConfig[] = [
+  // الدوريات المطلوبة فقط
   { id: 'eng.1', label: 'الدوري الإنجليزي' },
   { id: 'esp.1', label: 'الدوري الإسباني' },
   { id: 'ger.1', label: 'الدوري الألماني' },
   { id: 'ita.1', label: 'الدوري الإيطالي' },
   { id: 'fra.1', label: 'الدوري الفرنسي' },
-  { id: 'usa.1', label: 'الدوري الأمريكي' },
-  { id: 'mex.1', label: 'الدوري المكسيكي' },
-  { id: 'bra.1', label: 'الدوري البرازيلي' },
-  { id: 'arg.1', label: 'الدوري الأرجنتيني' },
-  { id: 'por.1', label: 'الدوري البرتغالي' },
-  { id: 'tur.1', label: 'الدوري التركي' },
+  { id: 'usa.1', label: 'الدوري الأمريكي MLS' },
   { id: 'ksa.1', label: 'الدوري السعودي' },
-  { id: 'ned.1', label: 'الدوري الهولندي' },
-  { id: 'uefa.champions', label: 'دوري أبطال أوروبا' },
-  { id: 'uefa.europa', label: 'الدوري الأوروبي' },
-  { id: 'fifa.world', label: 'مباريات المنتخبات' },
-  { id: 'fifa.friendly', label: 'مباريات ودية للمنتخبات' },
-  { id: 'uefa.nations', label: 'دوري الأمم الأوروبية' },
+  // ESPN لا يوفر مساراً للدوري العراقي؛ نأخذ مبارياته من TheSportsDB.
+  { id: '5056', label: 'الدوري العراقي', source: 'thesportsdb' },
+
+  // مباريات المنتخبات: البطولات، التصفيات الدولية، والوديات للرجال والنساء والفئات العمرية.
+  { id: 'fifa.world', label: 'كأس العالم' },
+  { id: 'fifa.wwc', label: 'كأس العالم للسيدات' },
+  { id: 'fifa.world.u20', label: 'كأس العالم تحت 20' },
+  { id: 'fifa.world.u17', label: 'كأس العالم تحت 17' },
+  { id: 'fifa.wworld.u17', label: 'كأس العالم للسيدات تحت 17' },
+  { id: 'fifa.olympics', label: 'أولمبياد الرجال' },
+  { id: 'fifa.w.olympics', label: 'أولمبياد السيدات' },
+  { id: 'fifa.friendly', label: 'وديات المنتخبات' },
+  { id: 'fifa.friendly.w', label: 'وديات المنتخبات النسائية' },
+  { id: 'fifa.friendly_u21', label: 'وديات تحت 21' },
+  { id: 'fifa.u20.friendly', label: 'وديات تحت 20' },
+  { id: 'fifa.worldq', label: 'تصفيات كأس العالم' },
+  { id: 'fifa.worldq.uefa', label: 'تصفيات أوروبا لكأس العالم' },
+  { id: 'fifa.worldq.caf', label: 'تصفيات أفريقيا لكأس العالم' },
+  { id: 'fifa.worldq.afc', label: 'تصفيات آسيا لكأس العالم' },
+  { id: 'fifa.worldq.concacaf', label: 'تصفيات الكونكاكاف لكأس العالم' },
+  { id: 'fifa.worldq.conmebol', label: 'تصفيات أمريكا الجنوبية لكأس العالم' },
+  { id: 'fifa.worldq.ofc', label: 'تصفيات أوقيانوسيا لكأس العالم' },
   { id: 'uefa.euro', label: 'بطولات المنتخبات الأوروبية' },
-  { id: 'concacaf.gold', label: 'كأس الكونكاكاف الذهبية' },
+  { id: 'uefa.nations', label: 'دوري الأمم الأوروبية' },
   { id: 'conmebol.america', label: 'كوبا أمريكا' },
-  { id: 'afc.asian.cup', label: 'كأس آسيا' }
-] as const;
+  { id: 'concacaf.gold', label: 'الكأس الذهبية للكونكاكاف' },
+  { id: 'afc.asian.cup', label: 'كأس آسيا' },
+  { id: 'caf.nations', label: 'كأس أمم أفريقيا' },
+  { id: 'ofc.nations', label: 'كأس أمم أوقيانوسيا' }
+];
 
 export interface FootballFixture {
   id: string;
@@ -109,15 +122,14 @@ function stateForEvent(event: any): FootballFixture['state'] {
   return 'scheduled';
 }
 
-function fixtureFromEvent(event: any, competition: string): FootballFixture | undefined {
-  const match = event?.competitions?.[0];
-  const competitors = match?.competitors || [];
+function fixtureFromEspnEvent(event: any, competition: string): FootballFixture | undefined {
+  const competitors = event?.competitions?.[0]?.competitors || [];
   const home = competitors.find((team: any) => team.homeAway === 'home') || competitors[0];
   const away = competitors.find((team: any) => team.homeAway === 'away') || competitors[1];
   if (!home || !away || !event?.date) return undefined;
   return {
     id: String(event.id || `${event.date}-${home.team?.id}-${away.team?.id}`),
-    competition: event?.leagues?.[0]?.name || competition,
+    competition,
     startAt: String(event.date),
     home: String(home.team?.displayName || home.team?.name || 'الفريق الأول'),
     away: String(away.team?.displayName || away.team?.name || 'الفريق الثاني'),
@@ -128,22 +140,49 @@ function fixtureFromEvent(event: any, competition: string): FootballFixture | un
   };
 }
 
+function fixtureFromSportsDbEvent(event: any): FootballFixture | undefined {
+  if (!event?.strHomeTeam || !event?.strAwayTeam || (!event?.strTimestamp && !event?.dateEvent)) return undefined;
+  const rawTimestamp = String(event.strTimestamp || `${event.dateEvent}T${event.strTime || '00:00:00'}`);
+  const startAt = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(rawTimestamp) ? rawTimestamp : `${rawTimestamp}Z`;
+  const rawStatus = String(event?.strStatus || 'مجدولة');
+  const postponed = /yes|true|postpon/i.test(String(event?.strPostponed || '')) || /postpon|cancel|suspend/i.test(rawStatus);
+  const live = /live|half|in progress|1st|2nd|\b(?:1h|2h|ht|et|bt)\b/i.test(rawStatus);
+  const finished = /ft|full.?time|aet|pen/i.test(rawStatus);
+  return {
+    id: String(event.idEvent || `${event.dateEvent}-${event.strHomeTeam}-${event.strAwayTeam}`),
+    competition: 'الدوري العراقي',
+    startAt,
+    home: String(event.strHomeTeam),
+    away: String(event.strAwayTeam),
+    homeScore: event.intHomeScore == null ? undefined : String(event.intHomeScore),
+    awayScore: event.intAwayScore == null ? undefined : String(event.intAwayScore),
+    status: postponed ? 'تأجلت' : /^(?:ns|scheduled)$/i.test(rawStatus) ? 'لم تبدأ' : rawStatus,
+    state: postponed ? 'postponed' : live ? 'live' : finished ? 'finished' : 'scheduled'
+  };
+}
+
+async function fetchCompetition(competition: CompetitionConfig, date: string): Promise<FootballFixture[]> {
+  if (competition.source === 'thesportsdb') {
+    const isoDate = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+    const url = `https://www.thesportsdb.com/api/v1/json/123/eventsday.php?d=${isoDate}&l=${competition.id}`;
+    const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
+    if (!response.ok) throw new Error(`TheSportsDB ${response.status}`);
+    const payload = await response.json() as { events?: any[] | null };
+    return (payload.events || []).map(fixtureFromSportsDbEvent).filter(Boolean) as FootballFixture[];
+  }
+
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${competition.id}/scoreboard?dates=${date}&limit=100`;
+  const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
+  if (!response.ok) throw new Error(`ESPN ${response.status}`);
+  const payload = await response.json() as { events?: any[] };
+  return (payload.events || []).map(event => fixtureFromEspnEvent(event, competition.label)).filter(Boolean) as FootballFixture[];
+}
+
 export async function getFootballFixtures(date: string, forceRefresh = false): Promise<FootballFixtureResult> {
   const cached = cache.get(date);
   if (!forceRefresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.result;
 
-  const requests = COMPETITIONS.map(async competition => {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${competition.id}/scoreboard?dates=${date}&limit=100`;
-    const response = await fetch(url, {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(6000)
-    });
-    if (!response.ok) throw new Error(`ESPN ${response.status}`);
-    const payload = await response.json() as { events?: any[] };
-    return (payload.events || []).map(event => fixtureFromEvent(event, competition.label)).filter(Boolean) as FootballFixture[];
-  });
-
-  const outcomes = await Promise.allSettled(requests);
+  const outcomes = await Promise.allSettled(COMPETITIONS.map(competition => fetchCompetition(competition, date)));
   const byId = new Map<string, FootballFixture>();
   for (const outcome of outcomes) {
     if (outcome.status !== 'fulfilled') continue;
