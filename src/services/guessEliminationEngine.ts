@@ -17,6 +17,8 @@ export interface GuessGame {
   chatTitle: string;
   messageId?: number;
   inlineMessageId?: string;
+  /** جلسة المطابقة العشوائية تعمل بين رسائل اللاعبين الخاصة. */
+  privateMatch?: boolean;
   category: GuessCategory;
   status: GuessStatus;
   players: GuessPlayer[];

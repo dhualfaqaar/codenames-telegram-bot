@@ -5,6 +5,7 @@ export interface ChessPlayer {
   name: string;
   color: 'w' | 'b';
   isBot?: boolean;
+  dmMessageId?: number;
 }
 export interface ChessGame {
   chatId: string;
@@ -20,6 +21,8 @@ export interface ChessGame {
   finishReason?: 'checkmate' | 'draw' | 'resignation';
   lastMoveSan?: string;
   botOpponent?: boolean;
+  /** المباراة خاصة بين لاعبين طابقهما البوت. */
+  privateMatch?: boolean;
   /** Chosen approximate rating for bot-opponent matches. */
   botElo?: number;
 }
