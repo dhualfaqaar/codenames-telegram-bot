@@ -169,6 +169,8 @@ export interface WKGame {
   chatTitle: string;
   messageId?: number;
   inlineMessageId?: string;
+  /** جلسة المطابقة العشوائية بين لاعبين في رسائل خاصة. */
+  privateMatch?: boolean;
   status: 'lobby' | 'answering' | 'guessing' | 'game_over';
   questions: WKQuestion[];
   players: WKPlayer[];

@@ -11,6 +11,9 @@ export interface RPSPlayer {
   name: string;
   score: number;
   isBot?: boolean;
+  /** رسالة لوحة اللاعب الخاصة في المطابقة العشوائية. */
+  dmChatId?: string;
+  dmMessageId?: number;
   /** اختيار الجولة الحالية (سري) */
   move?: RPSMove;
 }
@@ -33,6 +36,8 @@ export interface RPSGame {
   inlineMessageId?: string;
   channel?: boolean;
   botOpponent?: boolean;
+  /** المباراة تجمع شخصين طابقهما البوت وتعرض نسخة خاصة لكل لاعب. */
+  privateMatch?: boolean;
   createdAt: number;
   updatedAt: number;
 }

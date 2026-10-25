@@ -181,6 +181,8 @@ interface BotGameCard {
   guess?: boolean;
   /** حمولة زر «العب بالقناة» للإنلاين (مثلاً 'gq general') */
   inline?: string;
+  /** تنضم إلى طابور خصم عشوائي من نفس اللعبة؟ */
+  randomMatch?: boolean;
   /** جاهزة للعب؟ (غير الجاهزة تظهر 🔜) */
   ready: boolean;
 }
@@ -247,7 +249,7 @@ const BOT_GAMES: BotGameCard[] = [
       'بعدها يحاول كل طرف تخمين إجابات الطرف الثاني، وفي النهاية تُكشف جميع البطاقات في القناة لمعرفة من يعرف الثاني أكثر وكم بطاقة أصاب كل طرف.',
     channel: true,
     inline: 'wk',
-    ready: true
+    randomMatch: true, ready: true
   },
   {
     id: 'rps',
@@ -263,7 +265,7 @@ const BOT_GAMES: BotGameCard[] = [
       'التعادل يعيد الجولة، وصاحب أعلى نقاط في النهاية يحسم الفوز. وتكدر تلعبها بالخاص ضد البوت.',
     channel: true,
     play: { label: '🤖 العب ضد البوت', data: 'hub:bot:rps' },
-    ready: true
+    randomMatch: true, ready: true
   },
 
   // ─────────────── ⚔️ ألعاب الفرق (2 ضد 2) ───────────────
@@ -749,7 +751,7 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'لاعبان فقط', where: 'في المجموعة والخاص',
     goal: 'اكتشاف الموقف المفبرك الذي يكتبه الخصم', reward: 'الفوز لمن يكتشف الكذبة',
     about: 'كل لاعب يرسل موقفاً حقيقياً وآخر مفبركاً برسالتين منفصلتين في الخاص. بعدها يخمّن كل لاعب أيّ موقف من موقفي خصمه هو الكذبة، وتُعرض النتيجة بعد انتهاء التخمينين.',
-    channel: true, inline: 'st duo', ready: true
+    channel: true, inline: 'st duo', randomMatch: true, ready: true
   },
   {
     id: 'truth_lies_group', emoji: '🕵️', title: 'كذبة وحقائق', category: 'group',
@@ -763,14 +765,14 @@ const BOT_GAMES: BotGameCard[] = [
     players: 'لاعبان فقط', where: 'في المجموعة والخاص',
     goal: 'اكتشاف اختيار الخصم بأسئلة صفات واستبعادات', reward: 'نقطة للفائز الذي يخمّن اختيار خصمه أولاً',
     about: 'يختار كل لاعب سراً اسماً من فئة متنوعة. يتناوب اللاعبان على أسئلة نعم/لا غير مكررة، ويستبعدان المرشحين حتى يخمّن أحدهما اختيار خصمه. تشمل الفئات لاعبي كرة، حيوانات، فواكه، مزيجاً، وأسماء مركّبة طريفة.',
-    channel: true, inline: 'ge mixed', ready: true
+    channel: true, inline: 'ge mixed', randomMatch: true, ready: true
   },
   {
     id: 'chess', emoji: '♟️', title: 'شطرنج 1 ضد 1', category: 'duo',
     players: 'لاعبان فقط', where: 'في المجموعة',
     goal: 'كش مات لملك الخصم', reward: 'فوز بالكش مات أو التعادل بالقواعد الرسمية',
     about: 'مباراة شطرنج كاملة بحركات قانونية، مع اختيار قطعة ومربع وجهة من لوحة تفاعلية. الأبيض يبدأ، والترقية تتم تلقائياً إلى وزير. تگدر تلعب أيضاً بالخاص ضد البوت.',
-    channel: true, inline: 'chess', play: { label: '🤖 العب ضد البوت', data: 'hub:bot:chess' }, ready: true
+    channel: true, inline: 'chess', play: { label: '🤖 العب ضد البوت', data: 'hub:bot:chess' }, randomMatch: true, ready: true
   }
 ];
 
@@ -995,6 +997,8 @@ export class TelegramBotManager {
   private poet: Map<string, Poet.PoetRound> = new Map();
   /** أي لعبة راح تنشرها بالقناة (Key: User ID) */
   private pendingChannelGame: Map<string, { gameId: string; rounds?: number; at: number }> = new Map();
+  /** مطابقة عشوائية منفصلة لكل لعبة ثنائية، وتُحفظ عبر إعادة تشغيل العامل. */
+  private randomMatchQueues: Map<string, Array<{ userId: string; name: string; queuedAt: number }>> = new Map();
   /** ✊✋✌️ مباريات حجرة ورقة مقص بالقنوات (Key: chatId) */
   private rpsGames: Map<string, RPS.RPSGame> = new Map();
   private gqGames: Map<string, GG.QuizGame> = new Map();
@@ -1680,7 +1684,8 @@ export class TelegramBotManager {
       pendingVocalSep: Array.from(this.pendingVocalSep.values()),
       songSearches: Array.from(this.songSearches.entries()).slice(-200),
       commandsSyncVer: this.commandsSyncVer,
-      pendingChannelGame: Array.from(this.pendingChannelGame.entries())
+      pendingChannelGame: Array.from(this.pendingChannelGame.entries()),
+      randomMatchQueues: Array.from(this.randomMatchQueues.entries())
     };
   }
 
@@ -1737,6 +1742,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.songSearches)) this.songSearches = new Map(state.songSearches);
     if (typeof state.commandsSyncVer === 'number') this.commandsSyncVer = state.commandsSyncVer;
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
+    if (Array.isArray(state.randomMatchQueues)) this.randomMatchQueues = new Map(state.randomMatchQueues);
   }
 
   public setToken(token: string) {
@@ -3460,9 +3466,162 @@ export class TelegramBotManager {
     );
   }
 
+  private async handleRandomMatchQueue(cb: TelegramCallbackQuery, gameId: string, cancel: boolean) {
+    const userId = String(cb.from.id);
+    const gameCard = findBotGame(gameId);
+    if (!gameCard?.randomMatch) {
+      await this.answerCallbackQuery(cb.id, 'المطابقة العشوائية غير متاحة لهذه اللعبة حالياً.', true);
+      return;
+    }
+    if (cb.message?.chat.type !== 'private' || String(cb.message.chat.id) !== userId) {
+      await this.answerCallbackQuery(cb.id, 'افتح صفحة اللعبة بالخاص مع البوت حتى تدخل طابور المطابقة.', true);
+      return;
+    }
+
+    const keyboard = [[{ text: '✖️ إلغاء البحث', callback_data: `hub:matchcancel:${gameId}` }]];
+    const queue = (this.randomMatchQueues.get(gameId) || []).filter(entry => Date.now() - entry.queuedAt < 10 * 60 * 1000);
+    if (cancel) {
+      const remaining = queue.filter(entry => entry.userId !== userId);
+      if (remaining.length) this.randomMatchQueues.set(gameId, remaining);
+      else this.randomMatchQueues.delete(gameId);
+      await this.answerCallbackQuery(cb.id, 'تم إلغاء البحث عن لاعب.');
+      await this.sendMessage(userId, `تم إلغاء البحث عن خصم عشوائي في ${gameCard.title}.`);
+      return;
+    }
+
+    if (queue.some(entry => entry.userId === userId)) {
+      this.randomMatchQueues.set(gameId, queue);
+      await this.answerCallbackQuery(cb.id, 'أنت موجود بالطابور بالفعل.');
+      await this.sendMessage(userId, `🎲 بعدنا نبحث لك عن لاعب في *${this.mdSafe(gameCard.title)}*.`, keyboard);
+      return;
+    }
+
+    const opponentIndex = queue.findIndex(entry => entry.userId !== userId);
+    if (opponentIndex < 0) {
+      queue.push({
+        userId,
+        name: `${cb.from.first_name || 'لاعب'}${cb.from.last_name ? ` ${cb.from.last_name}` : ''}`,
+        queuedAt: Date.now()
+      });
+      this.randomMatchQueues.set(gameId, queue);
+      await this.answerCallbackQuery(cb.id, 'دخلت طابور البحث عن لاعب 🎲');
+      await this.sendMessage(userId, `🎲 دخلت طابور *${this.mdSafe(gameCard.title)}*. راح نبدأ أول ما ينضم لاعب ثاني؛ تگدر تلغي البحث بأي وقت.`, keyboard);
+      return;
+    }
+
+    const [opponent] = queue.splice(opponentIndex, 1);
+    if (queue.length) this.randomMatchQueues.set(gameId, queue);
+    else this.randomMatchQueues.delete(gameId);
+    const currentName = `${cb.from.first_name || 'لاعب'}${cb.from.last_name ? ` ${cb.from.last_name}` : ''}`;
+    const roomId = `rnd_${gameId}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
+    const players = [
+      { userId: opponent.userId, name: opponent.name },
+      { userId, name: currentName }
+    ];
+    await this.answerCallbackQuery(cb.id, '🎉 لگينا لاعب — جاي أبدأ المباراة!');
+    try {
+      await this.startRandomDuel(gameId, roomId, players);
+    } catch (error) {
+      const note = 'تعذر بدء المباراة هالمرة. ارجع لصفحة اللعبة وحاول تدخل الطابور من جديد.';
+      for (const player of players) await this.sendMessage(player.userId, note);
+      console.error('[Random matchmaking] Could not start game:', gameId, error);
+    }
+  }
+
+  private async startRandomDuel(
+    gameId: string,
+    roomId: string,
+    players: Array<{ userId: string; name: string }>
+  ) {
+    if (gameId === 'rps') {
+      const game = RPS.createGame(roomId, 'مطابقة عشوائية', 5);
+      game.privateMatch = true;
+      game.players = players.map(player => ({ id: player.userId, name: player.name, score: 0, dmChatId: player.userId }));
+      const started = RPS.start(game);
+      this.rpsGames.set(roomId, started);
+      await this.paintRPSBoard(started);
+      return;
+    }
+
+    if (gameId === 'chess') {
+      const game = CH.createChessLobby(roomId, 'مطابقة عشوائية');
+      game.privateMatch = true;
+      for (const player of players) CH.chessJoin(game, player.userId, player.name);
+      CH.chessStart(game);
+      this.chessGames.set(roomId, game);
+      await this.paintChessBoard(game);
+      return;
+    }
+
+    if (gameId === 'guess_elimination') {
+      const game = GE.createGuessGame(roomId, 'مطابقة عشوائية', 'mixed');
+      game.privateMatch = true;
+      for (const entry of players) {
+        GE.guessJoin(game, entry.userId, entry.name);
+        const player = game.players.find(item => item.id === entry.userId);
+        if (player) {
+          player.dmReady = true;
+          player.dmChatId = entry.userId;
+        }
+      }
+      GE.guessStart(game);
+      this.guessEliminationGames.set(roomId, game);
+      for (const player of game.players) {
+        const opponent = game.players.find(entry => entry.id !== player.id);
+        await this.sendMessage(player.dmChatId || player.id, `🎉 لقيتلك خصم عشوائي: ${opponent?.name || 'لاعب'}. نبدأ خمن واستبعد الآن.`);
+        await this.sendGuessSecretPicker(game, player);
+      }
+      return;
+    }
+
+    if (gameId === 'truth_lie_duo') {
+      const game = STORY.createStoryGame(roomId, 'مطابقة عشوائية', 'duo');
+      game.privateMatch = true;
+      for (const entry of players) {
+        STORY.storyJoin(game, entry.userId, entry.name);
+        const player = game.players.find(item => item.id === entry.userId);
+        if (player) {
+          player.dmReady = true;
+          player.dmChatId = entry.userId;
+        }
+      }
+      STORY.storyStart(game);
+      this.storyGames.set(roomId, game);
+      for (const player of game.players) {
+        const opponent = game.players.find(entry => entry.id !== player.id);
+        await this.sendMessage(player.dmChatId || player.id, `🎉 لقيتلك خصم عشوائي: ${opponent?.name || 'لاعب'}. هسه اكتب موقفك الحقيقي أولاً.`);
+        const prompt = STORY.storyNextPrompt(game, player.id);
+        if (prompt) await this.sendMessage(player.dmChatId || player.id, prompt.text);
+      }
+      return;
+    }
+
+    if (gameId === 'who_knows') {
+      const game = WK.createWKGame(roomId, 'مطابقة عشوائية');
+      game.privateMatch = true;
+      for (const entry of players) {
+        WK.wkJoin(game, entry.userId, entry.name);
+        const player = game.players.find(item => item.id === entry.userId);
+        if (player) player.dmReady = true;
+      }
+      this.wkGames.set(roomId, game);
+      const result = await this.startWhoKnowsGame(game);
+      if (!result.started) throw new Error(result.missingNames.join(', '));
+      return;
+    }
+
+    throw new Error(`Unsupported random-match game: ${gameId}`);
+  }
+
   private async handleGamesMenu(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
+
+    const randomMatchAction = section.match(/^(match|matchcancel):([a-z_]+)$/);
+    if (randomMatchAction) {
+      await this.handleRandomMatchQueue(cb, randomMatchAction[2], randomMatchAction[1] === 'matchcancel');
+      return;
+    }
 
     if (section === 'soon') {
       await this.answerCallbackQuery(cb.id, '🔜 هاي اللعبة جاية قريب!');
@@ -3634,9 +3793,9 @@ export class TelegramBotManager {
         `━━━━━━━━━━━━━━━━━━━\n` +
         `🎯 اختار عدد الجولات للمباراة:`,
         keyboard: [
-          [inlineDestinationButton('🎮 العب أونلاين — 5 جولات', 'rps 5', true)],
-          [inlineDestinationButton('🎮 العب أونلاين — 10 جولات', 'rps 10', true)],
-          [inlineDestinationButton('🎮 العب أونلاين — 15 جولة', 'rps 15', true)],
+          [inlineDestinationButton('🎮 العب — 5 جولات', 'rps 5', true)],
+          [inlineDestinationButton('🎮 العب — 10 جولات', 'rps 10', true)],
+          [inlineDestinationButton('🎮 العب — 15 جولة', 'rps 15', true)],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
         ]
     });
@@ -6509,9 +6668,9 @@ export class TelegramBotManager {
           `━━━━━━━━━━━━━━━━━━━\n` +
           `🎯 اختار عدد الجولات:`,
         keyboard: [
-          [inlineDestinationButton('🎮 العب أونلاين — 5 جولات', 'rps 5', true)],
-          [inlineDestinationButton('🎮 العب أونلاين — 10 جولات', 'rps 10', true)],
-          [inlineDestinationButton('🎮 العب أونلاين — 15 جولة', 'rps 15', true)],
+          [inlineDestinationButton('🎮 العب — 5 جولات', 'rps 5', true)],
+          [inlineDestinationButton('🎮 العب — 10 جولات', 'rps 10', true)],
+          [inlineDestinationButton('🎮 العب — 15 جولة', 'rps 15', true)],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
         ]
       };
@@ -6650,7 +6809,7 @@ export class TelegramBotManager {
       const emojiKind: GG.QuizKind | undefined = gqKind ? GG.EMOJI_VARIANT_OF[gqKind] : undefined;
       const supportsMultiMode = Boolean(gqKind || game.id === 'rps');
       const privateChatAllowed = canPlayInPrivateChat(game);
-      const onlineButtonLabel = ['team', 'team3', 'team4'].includes(game.category) ? '🎮 العب' : '🎮 العب أونلاين';
+      const playButtonLabel = '🎮 العب';
 
       const lines = [`${game.emoji} *${game.title}*`];
 
@@ -6666,6 +6825,10 @@ export class TelegramBotManager {
       const keyboard: any[][] = [];
 
       if (game.ready) {
+        if (game.randomMatch) {
+          const randomLabel = game.id === 'rps' ? '🎲 لاعب عشوائي — 5 جولات' : '🎲 العب مع لاعب عشوائي';
+          keyboard.push([{ text: randomLabel, callback_data: `hub:match:${game.id}` }]);
+        }
         // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات 8/16/32 | إيموجي) ──
         if (game.channel) {
           if (game.id === 'football_tournament') {
@@ -6673,18 +6836,18 @@ export class TelegramBotManager {
             keyboard.push([inlineDestinationButton('🥈 بطولة 16 لاعباً', 'trn football 16', true)]);
             keyboard.push([inlineDestinationButton('👑 بطولة 32 لاعباً', 'trn football 32', true)]);
           } else if (game.id === 'guess_elimination') {
-            keyboard.push([inlineDestinationButton('⚽ كرة القدم أونلاين', 'ge football', privateChatAllowed), inlineDestinationButton('🐾 الحيوانات أونلاين', 'ge animals', privateChatAllowed)]);
-            keyboard.push([inlineDestinationButton('🍉 الفواكه أونلاين', 'ge fruits', privateChatAllowed), inlineDestinationButton('🎲 مزيج أونلاين', 'ge mixed', privateChatAllowed)]);
-            keyboard.push([inlineDestinationButton('🥭 مركّبة أونلاين', 'ge mashup', privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('⚽ كرة القدم', 'ge football', privateChatAllowed), inlineDestinationButton('🐾 الحيوانات', 'ge animals', privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('🍉 الفواكه', 'ge fruits', privateChatAllowed), inlineDestinationButton('🎲 مزيج', 'ge mixed', privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('🥭 مركّبة', 'ge mashup', privateChatAllowed)]);
           } else if (game.id === 'guess_song') {
-            keyboard.push([{ text: onlineButtonLabel, callback_data: 'hub:songpick' }]);
+            keyboard.push([{ text: playButtonLabel, callback_data: 'hub:songpick' }]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
               keyboard.push([inlineDestinationButton('😀 إيموجي', `gq ${emojiKind}`, privateChatAllowed)]);
               keyboard.push([inlineDestinationButton('⚡ سرعة إيموجي', `gq speed ${emojiKind}`, privateChatAllowed)]);
             }
           } else if (gqKind && game.inline) {
-            keyboard.push([inlineDestinationButton(onlineButtonLabel, game.inline, privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton(playButtonLabel, game.inline, privateChatAllowed)]);
             keyboard.push([inlineDestinationButton('⚡ السرعة', `gq speed ${gqKind}`, privateChatAllowed)]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
@@ -6692,10 +6855,10 @@ export class TelegramBotManager {
               keyboard.push([inlineDestinationButton('⚡ سرعة إيموجي', `gq speed ${emojiKind}`, privateChatAllowed)]);
             }
           } else if (game.id === 'rps') {
-            keyboard.push([{ text: onlineButtonLabel, callback_data: 'hub:rps_normal' }]);
+            keyboard.push([{ text: playButtonLabel, callback_data: 'hub:rps_normal' }]);
             keyboard.push([{ text: '🏆 نظام البطولات', callback_data: `hub:trn:rps` }]);
           } else if (game.inline) {
-            keyboard.push([inlineDestinationButton(onlineButtonLabel, game.inline, privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton(playButtonLabel, game.inline, privateChatAllowed)]);
           } else {
             keyboard.push([inlineDestinationButton('🎮 العب', 'cn', false)]);
           }
@@ -7384,7 +7547,7 @@ export class TelegramBotManager {
       const lines = [
         `⚽ *${Football.footballDayTitle(offset)}*`,
         `${SEP}`,
-        `🕒 الأوقات حسب ${Football.footballTimezoneLabel(timeZone)} — العراق والسعودية UTC+3، والإمارات UTC+4. اضغط تحديث لمراجعة التغييرات.`,
+        `🕒 التوقيت المختار: ${Football.footballTimezoneLabel(timeZone)}. اضغط تحديث لمراجعة التغييرات.`,
         ''
       ];
       if (result.unavailable) {
@@ -9928,6 +10091,7 @@ export class TelegramBotManager {
   }
 
   private async paintStoryBoard(game: STORY.StoryGame, notice?: string) {
+    if (game.privateMatch) return;
     const botUser = await this.getBotUsername();
     const kb: any[][] = [];
     if (game.status === 'lobby') {
@@ -10078,11 +10242,18 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, response, alert);
     await this.paintStoryBoard(this.storyGames.get(chatId) || game);
     if (game.status === 'finished' && game.mode === 'duo') {
-      for (const player of game.players) if (player.dmChatId) await this.sendMessage(player.dmChatId, '🏁 اكتمل التخمينان؛ النتيجة نُشرت في لوحة المجموعة.');
+      for (const player of game.players) {
+        const opponent = game.players.find(entry => entry.id !== player.id);
+        const summary = game.privateMatch
+          ? `🏁 انتهى التحدي العشوائي. ${player.guess === 1 ? '✅ اكتشفت كذبة خصمك!' : '❌ ما اكتشفت كذبة خصمك هذه المرة.'}\nالحقيقة: ${opponent?.statements[0] || '—'}\nالكذبة: ${opponent?.statements[1] || '—'}`
+          : '🏁 اكتمل التخمينان؛ النتيجة نُشرت في لوحة المجموعة.';
+        if (player.dmChatId) await this.sendMessage(player.dmChatId, summary);
+      }
     }
   }
 
   private async paintGuessEliminationBoard(game: GE.GuessGame, notice?: string) {
+    if (game.privateMatch) return;
     const meta = GE.GUESS_CATEGORY_INFO[game.category];
     const kb: any[][] = [];
     if (game.status === 'lobby') {
@@ -10229,6 +10400,18 @@ export class TelegramBotManager {
     ];
     else kb = CH.chessBoardKeyboard(game);
     const text = await this.withBotFooter(`${notice ? `${escapeMarkdownV2Text(notice)}\n\n` : ''}${CH.renderChess(game)}`, true);
+    if (game.privateMatch) {
+      for (const player of game.players.filter(entry => !entry.isBot)) {
+        if (player.dmMessageId) {
+          const edited = await this.editMessageText(player.id, player.dmMessageId, text, kb, 'MarkdownV2');
+          if (edited?.ok || String(edited?.description || '').includes('not modified')) continue;
+        }
+        const sent = await this.sendMessage(player.id, text, kb, 'MarkdownV2');
+        if (sent?.result?.message_id) player.dmMessageId = sent.result.message_id;
+      }
+      this.chessGames.set(game.chatId, game);
+      return;
+    }
     if (game.messageId) {
       const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) return;
@@ -10255,6 +10438,20 @@ export class TelegramBotManager {
     let game = this.chessGames.get(chatId);
     const uid = String(cb.from.id);
     if (op === 'new') {
+      if (game?.privateMatch) {
+        if (game.status !== 'finished') {
+          await this.answerCallbackQuery(cb.id, 'المباراة العشوائية ما زالت جارية.', true);
+          return;
+        }
+        const fresh = CH.createChessLobby(chatId, 'مطابقة عشوائية');
+        fresh.privateMatch = true;
+        for (const player of game.players) CH.chessJoin(fresh, player.id, player.name);
+        CH.chessStart(fresh);
+        this.chessGames.set(chatId, fresh);
+        await this.answerCallbackQuery(cb.id, '🔄 بدأت مباراة جديدة بينكما.');
+        await this.paintChessBoard(fresh);
+        return;
+      }
       const botRematch = Boolean(game?.botOpponent || p[3] === 'bot');
       const botElo = CH.normalizeChessBotElo(Number(p[4]) || game?.botElo);
       const fresh = botRematch
@@ -10309,6 +10506,7 @@ export class TelegramBotManager {
   }
 
   private async paintWKBoard(game: WK.WKGame, notice?: string) {
+    if (game.privateMatch) return;
     const botUser = await this.getBotUsername();
     const text = await this.withBotFooter(WK.renderWKBoard(game, notice), true);
     const kb = WK.wkBoardKeyboard(game, botUser);
@@ -10701,6 +10899,19 @@ export class TelegramBotManager {
   private async paintRPSBoard(game: RPS.RPSGame) {
     const text = await this.withBotFooter(RPS.renderGame(game), true);
     const keyboard = RPS.boardKeyboard(game);
+    if (game.privateMatch) {
+      for (const player of game.players.filter(entry => !entry.isBot)) {
+        const dmChatId = player.dmChatId || player.id;
+        if (player.dmMessageId) {
+          const edited = await this.editMessageText(dmChatId, player.dmMessageId, text, keyboard, 'MarkdownV2');
+          if (edited?.ok || String(edited?.description || '').includes('not modified')) continue;
+        }
+        const sent = await this.sendMessage(dmChatId, text, keyboard, 'MarkdownV2');
+        if (sent?.result?.message_id) player.dmMessageId = sent.result.message_id;
+      }
+      this.rpsGames.set(game.chatId, game);
+      return;
+    }
     if (game.messageId) {
       await this.editMessageText(game.chatId, game.messageId, text, keyboard, 'MarkdownV2');
     } else if (game.inlineMessageId) {
@@ -10786,6 +10997,22 @@ export class TelegramBotManager {
     }
 
     if (action === 'again') {
+      if (game.privateMatch) {
+        if (game.status !== 'game_over') {
+          await this.answerCallbackQuery(cb.id, 'المباراة الجديدة بدأت بالفعل.', true);
+          return;
+        }
+        const fresh = RPS.createGame(chatId, game.chatTitle, game.totalRounds);
+        fresh.privateMatch = true;
+        fresh.players = game.players.filter(player => !player.isBot).map(player => ({
+          id: player.id, name: player.name, score: 0, dmChatId: player.dmChatId || player.id
+        }));
+        const started = RPS.start(fresh);
+        this.rpsGames.set(chatId, started);
+        await this.answerCallbackQuery(cb.id, '🔄 بدأت مباراة جديدة بينكما.');
+        await this.paintRPSBoard(started);
+        return;
+      }
       const human = game.players.find(p => !p.isBot);
       const fresh = game.botOpponent && human
         ? RPS.createBotGame(chatId, game.chatTitle, game.totalRounds, human.id, human.name)

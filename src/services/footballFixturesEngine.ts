@@ -2,7 +2,10 @@ export type FootballDayOffset = -1 | 0 | 1;
 
 export const FOOTBALL_TIMEZONES = [
   { id: 'Asia/Baghdad', label: '🇮🇶 العراق' },
-  { id: 'Asia/Dubai', label: '🇦🇪 الإمارات' }
+  { id: 'Asia/Dubai', label: '🇦🇪 الإمارات' },
+  { id: 'Europe/London', label: '🇬🇧 لندن' },
+  { id: 'Europe/Paris', label: '🇫🇷 باريس' },
+  { id: 'America/New_York', label: '🇺🇸 نيويورك' }
 ] as const;
 
 export type FootballTimezone = typeof FOOTBALL_TIMEZONES[number]['id'];
@@ -21,16 +24,12 @@ const COMPETITIONS: CompetitionConfig[] = [
   // ESPN لا يوفر مساراً للدوري العراقي؛ نأخذ مبارياته من TheSportsDB.
   { id: '5056', label: 'الدوري العراقي', source: 'thesportsdb' },
 
-  // مباريات المنتخبات: البطولات، التصفيات الدولية، والوديات للرجال والنساء والفئات العمرية.
+  // مباريات المنتخبات للرجال فقط: البطولات، التصفيات الدولية، والوديات.
   { id: 'fifa.world', label: 'كأس العالم' },
-  { id: 'fifa.wwc', label: 'كأس العالم للسيدات' },
   { id: 'fifa.world.u20', label: 'كأس العالم تحت 20' },
   { id: 'fifa.world.u17', label: 'كأس العالم تحت 17' },
-  { id: 'fifa.wworld.u17', label: 'كأس العالم للسيدات تحت 17' },
   { id: 'fifa.olympics', label: 'أولمبياد الرجال' },
-  { id: 'fifa.w.olympics', label: 'أولمبياد السيدات' },
   { id: 'fifa.friendly', label: 'وديات المنتخبات' },
-  { id: 'fifa.friendly.w', label: 'وديات المنتخبات النسائية' },
   { id: 'fifa.friendly_u21', label: 'وديات تحت 21' },
   { id: 'fifa.u20.friendly', label: 'وديات تحت 20' },
   { id: 'fifa.worldq', label: 'تصفيات كأس العالم' },

@@ -18,6 +18,8 @@ export interface StoryGame {
   chatTitle: string;
   messageId?: number;
   inlineMessageId?: string;
+  /** جلسة المطابقة العشوائية بين لاعبين في رسائل خاصة. */
+  privateMatch?: boolean;
   mode: StoryMode;
   status: StoryStatus;
   players: StoryPlayer[];
