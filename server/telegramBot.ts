@@ -1124,6 +1124,7 @@ export class TelegramBotManager {
   private readonly geminiApiKey: string;
   private readonly openSubtitlesApiKey: string;
   private readonly openSubtitlesUserAgent: string;
+  private readonly sudokuWebAppUrl: string;
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioOutputDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
@@ -1141,7 +1142,7 @@ export class TelegramBotManager {
     initialToken?: string,
     ownerId?: string,
     externalScheduler: boolean = false,
-    cinemaApiConfig: { geminiApiKey?: string; openSubtitlesApiKey?: string; openSubtitlesUserAgent?: string } = {}
+    cinemaApiConfig: { geminiApiKey?: string; openSubtitlesApiKey?: string; openSubtitlesUserAgent?: string; sudokuWebAppUrl?: string } = {}
   ) {
     if (initialToken) {
       this.token = initialToken.trim();
@@ -1151,6 +1152,7 @@ export class TelegramBotManager {
     this.geminiApiKey = String(cinemaApiConfig.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
     this.openSubtitlesApiKey = String(cinemaApiConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
     this.openSubtitlesUserAgent = String(cinemaApiConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
+    this.sudokuWebAppUrl = String(cinemaApiConfig.sudokuWebAppUrl || process.env.SUDOKU_WEB_APP_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/sudoku').trim();
     this.seedInitialMatchHistory();
   }
 
@@ -4013,6 +4015,9 @@ export class TelegramBotManager {
         ? this.users.get(String(cb.from.id))
         : undefined
     );
+    if (section === 'main' && cb.message?.chat.type === 'private') {
+      view.keyboard.unshift([{ text: '🧩 سودوكو تفاعلي', web_app: { url: this.sudokuWebAppUrl } }]);
+    }
     const text = await this.withBotFooter(view.text);
     if (messageId) {
       await this.editMessageText(chatId, messageId, text, view.keyboard);
