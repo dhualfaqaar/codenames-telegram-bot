@@ -482,6 +482,8 @@ export interface QuizPlayer {
   done: boolean;
   /** هل جوابه بالجولة الحالية صحيح */
   roundHit?: boolean;
+  /** رسالة اللاعب الخاصة في المطابقة العشوائية. */
+  dmMessageId?: number;
 }
 
 export interface QuizGame {
@@ -490,6 +492,8 @@ export interface QuizGame {
   messageId?: number;
   /** معرّف رسالة الإنلاين (تيليجرام يلقّص الأزرار منها بدون محادثة — نحتاجه للتعديل) */
   inlineMessageId?: string;
+  /** مسابقة خاصة بين لاعبين طابقهما البوت عشوائياً. */
+  privateMatch?: boolean;
   kind: QuizKind;
   /** نظام السرعة: نقطة واحدة لأول إجابة صحيحة في كل جولة. */
   speedMode?: boolean;
