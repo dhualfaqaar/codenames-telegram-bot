@@ -225,8 +225,10 @@ export class BotState {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname.startsWith('/api/interactive/rooms') || new URL(request.url).pathname.startsWith('/api/interactive/matchmaking')) return this.interactiveRooms.handle(request);
+    const pathname = new URL(request.url).pathname;
+    if (pathname.startsWith('/api/interactive/rooms') || pathname.startsWith('/api/interactive/matchmaking')) return this.interactiveRooms.handle(request);
     const bot = await this.getBot();
+    if (pathname === '/interactive-config' && request.method === 'GET') return Response.json({ botUsername: await bot.getBotUsername() }, { headers: { 'Cache-Control': 'public, max-age=300' } });
 
     if (request.method !== 'POST') {
       const avatarSync = await bot.applyAndDeliverOfficialAvatar(false);
@@ -338,6 +340,7 @@ export default {
 
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
+    if (requestUrl.pathname === '/api/interactive/config' && request.method === 'GET') return stub.fetch('https://bot.internal/interactive-config');
     if (requestUrl.pathname.startsWith('/api/interactive/rooms') || requestUrl.pathname.startsWith('/api/interactive/matchmaking')) {
       const init: RequestInit = { method: request.method, headers: request.headers };
       if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.text();
