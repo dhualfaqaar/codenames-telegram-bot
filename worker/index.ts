@@ -9,6 +9,8 @@
 import { TelegramBotManager } from '../server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { INTERACTIVE_GAMES_MINI_APP_HTML } from '../src/services/interactiveGamesMiniApp';
+import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
+import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -159,11 +161,13 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
 export class BotState {
   private readonly state: any;
   private readonly env: Env;
+  private readonly interactiveRooms: InteractiveGameRooms;
   private bot: TelegramBotManager | null = null;
 
   constructor(state: any, env: Env) {
     this.state = state;
     this.env = env;
+    this.interactiveRooms = new InteractiveGameRooms(state.storage);
   }
 
   private async getBot(): Promise<TelegramBotManager> {
@@ -216,6 +220,7 @@ export class BotState {
   }
 
   async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith('/api/interactive/rooms')) return this.interactiveRooms.handle(request);
     const bot = await this.getBot();
 
     if (request.method !== 'POST') {
@@ -309,6 +314,11 @@ export default {
         }
       });
     }
+    if (request.method === 'GET' && requestUrl.pathname === '/code-games-avatar.jpg') {
+      const binary = atob(BOT_AVATAR_JPG_BASE64);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
+    }
     if (request.method === 'GET' && (requestUrl.pathname === '/sudoku' || requestUrl.pathname === '/sudoku/')) {
       return new Response(SUDOKU_MINI_APP_HTML, {
         headers: {
@@ -320,13 +330,18 @@ export default {
       });
     }
 
-    // Preview deployments are isolated diagnostics only: never touch Telegram or production Durable Objects.
-    if (env.PREVIEW_MODE === 'true') {
-      return Response.json({ ok: true, info: 'Worker Preview; Telegram integration is disabled.' });
-    }
-
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
+    if (requestUrl.pathname.startsWith('/api/interactive/rooms')) {
+      const init: RequestInit = { method: request.method, headers: request.headers };
+      if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.text();
+      return stub.fetch(`https://bot.internal${requestUrl.pathname}${requestUrl.search}`, init);
+    }
+
+    // Preview builds can exercise isolated browser game rooms without touching the production Durable Object.
+    if (env.PREVIEW_MODE === 'true') {
+      return Response.json({ ok: true, info: 'Worker Preview; Telegram bot integration is disabled.' });
+    }
 
     if (request.method === 'POST' && requestUrl.pathname === '/api/interactive/profile') {
       let body: any;
