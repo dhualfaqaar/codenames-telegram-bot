@@ -18,6 +18,8 @@ import * as GE from '../src/services/guessEliminationEngine';
 import * as CH from '../src/services/chessGameEngine';
 import * as EXT from '../src/services/extraToolsEngine';
 import * as Sudoku from '../src/services/sudokuEngine';
+import * as Football from '../src/services/footballFixturesEngine';
+import * as Reco from '../src/services/recommendationEngine';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
@@ -773,7 +775,7 @@ const BOT_GAMES: BotGameCard[] = [
     where: 'الخاص مع البوت',
     goal: 'أكمل شبكة 9×9 بالأرقام من 1 إلى 9 دون تكرار في الصف أو العمود أو المربع',
     reward: 'حل اللغز بأقل وقت وأخطاء وتلميحات',
-    about: 'اختار مستوى سهل أو متوسط أو صعب والعب وحدك، أو ادخل طابوراً لمواجهة لاعب عشوائي على اللغز نفسه. تختار الخانة والرقم من أزرار تلگرام، وتگدر تستخدم الملاحظات أو تلميحاً عند الحاجة.',
+    about: 'اختار مستوى سهل أو متوسط أو صعب والعب وحدك، أو ادخل طابوراً لمواجهة لاعب عشوائي على اللغز نفسه. أرسل الحركة مباشرة بصيغة A1 5، وللمسح أرسل A1 0؛ والتلميح متاح باللعب الفردي.',
     channel: false,
     play: { label: '🧩 ابدأ سودوكو', data: 'hub:sudoku:menu' },
     ready: true
@@ -792,7 +794,7 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
   duo: {
     emoji: '👥',
     title: 'ألعاب ثنائية (1 ضد 1)',
-    intro: 'منافسات مباشرة وجهاً لوجه؛ تگدر تختار القناة أو مجموعة أو محادثة خاصة بين لاعبين.'
+    intro: 'منافسات مباشرة وجهاً لوجه وتحديات سريعة بين لاعبين.'
   },
   team: {
     emoji: '⚔️',
@@ -812,7 +814,7 @@ const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: str
   group: {
     emoji: '🎉',
     title: 'الألعاب الجماعية',
-    intro: 'ألعاب جماعية بالقناة أو المجموعة أو الخاص حسب اللعبة؛ ألعاب الفرق متاحة بالقناة والمجموعات فقط.'
+    intro: 'ألعاب جماعية متنوعة؛ اختار اللعبة وابدأ التحدي.'
   }
 };
 
@@ -2287,6 +2289,14 @@ export class TelegramBotManager {
       return;
     }
 
+    if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
+      const sudokuUserId = String(sender.id);
+      const hasPendingTextService = this.pendingWhispers.has(sudokuUserId) || this.pendingSocialDl.has(sudokuUserId) ||
+        this.pendingAgeCalc.has(sudokuUserId) || this.pendingRouletteText.has(sudokuUserId) || this.pendingConvert.has(sudokuUserId) ||
+        this.audioEditDrafts.has(sudokuUserId) || this.pendingVocalSep.has(sudokuUserId);
+      if (!hasPendingTextService && await this.handleSudokuTextMove(sudokuUserId, text)) return;
+    }
+
     if (
       ['group', 'supergroup', 'channel'].includes(message.chat.type) &&
       this.isWhisperLauncherTrigger(text)
@@ -3502,8 +3512,6 @@ export class TelegramBotManager {
       userId,
       name: name || 'لاعب',
       board: puzzle.slice(),
-      notes: Array.from({ length: 81 }, () => []),
-      noteMode: false,
       mistakes: 0,
       hintsUsed: 0,
       startedAt: Date.now()
@@ -3542,9 +3550,8 @@ export class TelegramBotManager {
       const cells: string[] = [];
       for (let c = 0; c < 9; c++) {
         const index = r * 9 + c;
-        const rawValue = player.board[index];
-        const value = rawValue ? (game.puzzle[index] ? String(rawValue) : circled[rawValue]) : '·';
-        cells.push(index === player.selectedCell ? `[${value}]` : value);
+        const value = player.board[index];
+        cells.push(value ? (game.puzzle[index] ? String(value) : circled[value]) : '·');
       }
       rows.push(`${'ABCDEFGHI'[r]} ${cells.slice(0, 3).join('')}│${cells.slice(3, 6).join('')}│${cells.slice(6).join('')}`);
       if (r === 2 || r === 5) rows.push('  ├───┼───┼───');
@@ -3569,23 +3576,15 @@ export class TelegramBotManager {
           : game.winnerId
             ? `🏁 ${this.mdSafe(game.players.find(other => other.userId === game.winnerId)?.name || 'خصمك')} حلّ اللغز قبلك.`
             : 'انتهت المباراة.';
-    const selection = player.selectedCell === undefined
-      ? player.selectingRow === undefined
-        ? 'اختار صفاً من الأزرار، ثم العمود لتحديد خانة.'
-        : `اختار عموداً للصف ${'ABCDEFGHI'[player.selectingRow]}.`
-      : `الخانة المحددة: ${'ABCDEFGHI'[Math.floor(player.selectedCell / 9)]}${(player.selectedCell % 9) + 1}${game.puzzle[player.selectedCell] ? ' (ثابتة)' : ''}` +
-        (player.notes[player.selectedCell].length
-          ? ` — ملاحظاتك: ${player.notes[player.selectedCell].join('، ')}`
-          : '');
     return `🧩 *سودوكو — ${Sudoku.sudokuDifficultyLabel(game.difficulty)}*\n` +
       `🎮 ${modeText}\n` +
       `${status}\n` +
+      `✍️ أرسل الحركة بصيغة *A1 5* (الصف A، العمود 1، الرقم 5). للمسح أرسل *A1 0*.\n` +
       `الأرقام الدائرية إدخالاتك، والعادية من اللغز.\n` +
-      `${selection}\n` +
       '```\n' + rows.join('\n') + '\n```';
   }
 
-  private sudokuKeyboard(game: Sudoku.SudokuGame, player: Sudoku.SudokuPlayerState): any[][] {
+  private sudokuKeyboard(game: Sudoku.SudokuGame, _player: Sudoku.SudokuPlayerState): any[][] {
     if (game.status === 'finished') {
       return [
         [{ text: '🧩 لعبة جديدة', callback_data: 'hub:sudoku:menu' }],
@@ -3593,41 +3592,7 @@ export class TelegramBotManager {
       ];
     }
     const keyboard: any[][] = [];
-    if (player.selectedCell === undefined) {
-      if (player.selectingRow === undefined) {
-        for (let r = 0; r < 9; r += 3) {
-          keyboard.push([0, 1, 2].map(offset => ({
-            text: `صف ${'ABCDEFGHI'[r + offset]}`,
-            callback_data: `sdk:row:${game.id}:${r + offset}`
-          })));
-        }
-      } else {
-        for (let c = 0; c < 9; c += 3) {
-          keyboard.push([0, 1, 2].map(offset => ({
-            text: `عمود ${c + offset + 1}`,
-            callback_data: `sdk:col:${game.id}:${c + offset}`
-          })));
-        }
-        keyboard.push([{ text: '↩️ تغيير الصف', callback_data: `sdk:rowback:${game.id}` }]);
-      }
-    } else {
-      for (let n = 1; n <= 9; n += 3) {
-        keyboard.push([0, 1, 2].map(offset => ({
-          text: `${n + offset}`,
-          callback_data: `sdk:num:${game.id}:${n + offset}`
-        })));
-      }
-      keyboard.push([
-        { text: player.noteMode ? '✏️ الملاحظات: شغالة' : '✏️ الملاحظات: مطفية', callback_data: `sdk:notes:${game.id}` },
-        { text: '🧹 مسح الخانة', callback_data: `sdk:erase:${game.id}` }
-      ]);
-      keyboard.push(game.mode === 'solo'
-        ? [
-            { text: '💡 تلميح', callback_data: `sdk:hint:${game.id}` },
-            { text: '📍 خانة أخرى', callback_data: `sdk:choose:${game.id}` }
-          ]
-        : [{ text: '📍 خانة أخرى', callback_data: `sdk:choose:${game.id}` }]);
-    }
+    if (game.mode === 'solo') keyboard.push([{ text: '💡 تلميح لخانة فارغة', callback_data: `sdk:hint:${game.id}` }]);
     keyboard.push([{ text: '🏳️ إنهاء الجولة', callback_data: `sdk:quit:${game.id}` }]);
     return keyboard;
   }
@@ -3723,6 +3688,46 @@ export class TelegramBotManager {
     this.scheduleLocalQuizTimer();
   }
 
+  private async handleSudokuTextMove(userId: string, rawText: string): Promise<boolean> {
+    const move = rawText.trim().match(/^([A-I])\s*([1-9])\s*(?:=|\s)\s*([0-9])$/i);
+    if (!move) return false;
+    const game = this.findActiveSudokuGame(userId);
+    if (!game) return false;
+    const player = game.players.find(entry => entry.userId === userId);
+    if (!player) return false;
+
+    const row = move[1].toUpperCase().charCodeAt(0) - 65;
+    const col = Number(move[2]) - 1;
+    const value = Number(move[3]);
+    const cell = row * 9 + col;
+    if (game.puzzle[cell] !== 0) {
+      await this.sendMessage(userId, '⚠️ هاي الخانة ثابتة من بداية اللغز. اختار خانة ثانية.');
+      return true;
+    }
+    if (value === 0) {
+      player.board[cell] = 0;
+    } else if (!Sudoku.isLegalSudokuMove(player.board, cell, value)) {
+      player.mistakes++;
+      await this.sendMessage(userId, '⚠️ الرقم مكرر بنفس الصف أو العمود أو المربع؛ ما انضاف.');
+      await this.paintSudokuPlayer(game, userId);
+      return true;
+    } else {
+      player.board[cell] = value;
+    }
+
+    if (Sudoku.isSudokuSolved(player.board, game.solution)) {
+      game.status = 'finished';
+      game.winnerId = userId;
+      await this.sendMessage(userId, game.mode === 'solo' ? '🏆 أحسنت! حلّيت السودوكو.' : '🏆 فزت بسباق السودوكو!');
+      await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId)));
+    } else if (game.mode === 'random') {
+      await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId)));
+    } else {
+      await this.paintSudokuPlayer(game, userId);
+    }
+    return true;
+  }
+
   private async handleSudokuCallback(cb: TelegramCallbackQuery, data: string): Promise<void> {
     const userId = String(cb.from.id);
     const chatId = String(cb.message?.chat.id || '');
@@ -3791,132 +3796,40 @@ export class TelegramBotManager {
       return;
     }
 
-    if (action === 'row') {
-      const row = Number(parts[3]);
-      if (!Number.isInteger(row) || row < 0 || row > 8) {
-        await this.answerCallbackQuery(cb.id, 'اختيار الصف غير صالح.', true);
-        return;
-      }
-      player.selectedCell = undefined;
-      player.selectingRow = row;
-      await this.answerCallbackQuery(cb.id, `اختار عموداً بالصف ${'ABCDEFGHI'[row]}.`);
-    } else if (action === 'rowback') {
-      player.selectingRow = undefined;
-      player.selectedCell = undefined;
-      await this.answerCallbackQuery(cb.id, 'اختار الصف من جديد.');
-    } else if (action === 'col') {
-      const col = Number(parts[3]);
-      if (player.selectingRow === undefined || !Number.isInteger(col) || col < 0 || col > 8) {
-        await this.answerCallbackQuery(cb.id, 'اختيار العمود غير صالح.', true);
-        return;
-      }
-      player.selectedCell = player.selectingRow * 9 + col;
-      player.selectingRow = undefined;
-      await this.answerCallbackQuery(cb.id, 'اختار رقماً للخانة.');
-    } else if (action === 'choose') {
-      player.selectedCell = undefined;
-      player.selectingRow = undefined;
-      await this.answerCallbackQuery(cb.id, 'اختار الصف ثم العمود.');
-    } else if (action === 'notes') {
-      player.noteMode = !player.noteMode;
-      await this.answerCallbackQuery(cb.id, player.noteMode ? 'وضع الملاحظات شغّال؛ اختار الأرقام المحتملة.' : 'رجعنا لوضع إدخال الأرقام.');
-    } else if (action === 'erase') {
-      const cell = player.selectedCell;
-      if (cell === undefined || game.puzzle[cell] !== 0) {
-        await this.answerCallbackQuery(cb.id, 'اختار خانة مو ثابتة حتى تمسحها.', true);
-        return;
-      }
-      player.board[cell] = 0;
-      player.notes[cell] = [];
-      await this.answerCallbackQuery(cb.id, 'تم مسح الخانة.');
-      if (game.mode === 'random') {
-        await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
-        return;
-      }
-    } else if (action === 'hint') {
+    if (action === 'hint') {
       if (game.mode !== 'solo') {
-        await this.answerCallbackQuery(cb.id, 'التلميحات متاحة باللعب الفردي فقط حتى تبقى المنافسة عادلة.', true);
+        await this.answerCallbackQuery(cb.id, 'التلميح متاح باللعب الفردي فقط حتى تبقى المنافسة عادلة.', true);
         return;
       }
-      const cell = player.selectedCell;
-      if (cell === undefined || game.puzzle[cell] !== 0) {
-        await this.answerCallbackQuery(cb.id, 'اختار خانة فارغة حتى أعطيك تلميحاً.', true);
+      const emptyCells = game.puzzle.map((value, index) => value === 0 && player.board[index] === 0 ? index : -1).filter(index => index >= 0);
+      const candidates = emptyCells.filter(cell => Sudoku.isLegalSudokuMove(player.board, cell, game.solution[cell]));
+      if (!candidates.length) {
+        await this.answerCallbackQuery(cb.id, 'ماكو خانة آمنة للتلميح؛ امسح الرقم المتعارض أولاً.', true);
         return;
       }
-      if (!Sudoku.isLegalSudokuMove(player.board, cell, game.solution[cell])) {
-        await this.answerCallbackQuery(cb.id, 'عندك رقم متعارض بالصف أو العمود؛ امسحه قبل استخدام التلميح.', true);
-        return;
-      }
+      const cell = candidates[Math.floor(Math.random() * candidates.length)];
       player.board[cell] = game.solution[cell];
-      player.notes[cell] = [];
       player.hintsUsed++;
       if (Sudoku.isSudokuSolved(player.board, game.solution)) {
         game.status = 'finished';
         game.winnerId = userId;
-        await this.answerCallbackQuery(cb.id, game.mode === 'solo' ? '🏆 أحسنت! حلّيت السودوكو.' : '🏆 فزت بالسباق!');
-        await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
-        return;
-      }
-      await this.answerCallbackQuery(cb.id, `💡 الرقم الصحيح ${game.solution[cell]}.`);
-    } else if (action === 'num') {
-      const cell = player.selectedCell;
-      const value = Number(parts[3]);
-      if (cell === undefined || !Number.isInteger(value) || value < 1 || value > 9) {
-        await this.answerCallbackQuery(cb.id, 'اختار خانة ورقماً صالحاً.', true);
-        return;
-      }
-      if (game.puzzle[cell] !== 0) {
-        await this.answerCallbackQuery(cb.id, 'هاي خانة ثابتة من بداية اللغز.', true);
-        return;
-      }
-      if (player.noteMode) {
-        if (player.board[cell] !== 0) {
-          await this.answerCallbackQuery(cb.id, 'امسح رقم الخانة أولاً حتى تضيف ملاحظات.', true);
-          return;
-        }
-        const notes = player.notes[cell];
-        const noteIndex = notes.indexOf(value);
-        if (noteIndex >= 0) notes.splice(noteIndex, 1);
-        else notes.push(value);
-        notes.sort((a, b) => a - b);
-        await this.answerCallbackQuery(cb.id, `تم تحديث ملاحظات الخانة.`);
-      } else if (!Sudoku.isLegalSudokuMove(player.board, cell, value)) {
-        player.mistakes++;
-        await this.answerCallbackQuery(cb.id, 'هذا الرقم مكرر بنفس الصف أو العمود أو المربع.', true);
+        await this.answerCallbackQuery(cb.id, '🏆 أحسنت! حلّيت السودوكو.');
       } else {
-        player.board[cell] = value;
-        player.notes[cell] = [];
-        for (let i = 0; i < 81; i++) {
-          const sameRow = Math.floor(i / 9) === Math.floor(cell / 9);
-          const sameCol = i % 9 === cell % 9;
-          const sameBox = Math.floor(Math.floor(i / 9) / 3) === Math.floor(Math.floor(cell / 9) / 3) && Math.floor((i % 9) / 3) === Math.floor((cell % 9) / 3);
-          if (sameRow || sameCol || sameBox) player.notes[i] = player.notes[i].filter(note => note !== value);
-        }
-        if (Sudoku.isSudokuSolved(player.board, game.solution)) {
-          game.status = 'finished';
-          game.winnerId = userId;
-          await this.answerCallbackQuery(cb.id, game.mode === 'solo' ? '🏆 أحسنت! حلّيت السودوكو.' : '🏆 فزت بالسباق!');
-          await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
-          return;
-        }
-        await this.answerCallbackQuery(cb.id, 'تم إدخال الرقم.');
-        if (game.mode === 'random') {
-          await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
-          return;
-        }
+        await this.answerCallbackQuery(cb.id, `💡 تلميح للخانة ${'ABCDEFGHI'[Math.floor(cell / 9)]}${cell % 9 + 1}.`);
       }
-    } else if (action === 'quit') {
+      await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
+      return;
+    }
+
+    if (action === 'quit') {
       game.status = 'finished';
       if (game.mode === 'random') game.winnerId = game.players.find(entry => entry.userId !== userId)?.userId;
       await this.answerCallbackQuery(cb.id, game.mode === 'random' ? 'انسحبت؛ الفوز للخصم.' : 'أنهيت الجولة.');
       await Promise.all(game.players.map(entry => this.paintSudokuPlayer(game, entry.userId, entry.userId === userId ? cb.message?.message_id : undefined)));
       return;
-    } else {
-      await this.answerCallbackQuery(cb.id, 'هذا الخيار غير معروف.', true);
-      return;
     }
 
-    await this.paintSudokuPlayer(game, userId, cb.message?.message_id);
+    await this.answerCallbackQuery(cb.id, 'هذا الخيار غير معروف.', true);
   }
 
   /** عرض قسم من قائمة الألعاب (أزرار فقط) */
@@ -4115,11 +4028,11 @@ export class TelegramBotManager {
       text:
         `${game.emoji} *${game.title}*\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
-        `🎯 اختار كم راوند تلعبون بالقناة:`,
+        `🎯 اختار عدد الجولات للمباراة:`,
         keyboard: [
-          [inlineDestinationButton('العب — 5 جولات (قناة/خاص)', 'rps 5', true)],
-          [inlineDestinationButton('العب — 10 جولات (قناة/خاص)', 'rps 10', true)],
-          [inlineDestinationButton('العب — 15 جولة (قناة/خاص)', 'rps 15', true)],
+          [inlineDestinationButton('🎮 العب أونلاين — 5 جولات', 'rps 5', true)],
+          [inlineDestinationButton('🎮 العب أونلاين — 10 جولات', 'rps 10', true)],
+          [inlineDestinationButton('🎮 العب أونلاين — 15 جولة', 'rps 15', true)],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
         ]
     });
@@ -6981,10 +6894,10 @@ export class TelegramBotManager {
         text:
           `🎵 *احزر الأغنية*\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
-          `👇 اختار نوع الأغاني لتحويل اللعبة للقناة:`,
+          `👇 اختار نوع الأغاني:`,
         keyboard: [
-          [inlineDestinationButton('🎤 عربي — القناة/المجموعة/الخاص', 'gq song_ar', true), inlineDestinationButton('⚡ السرعة عربي — القناة/المجموعة/الخاص', 'gq speed song_ar', true)],
-          [inlineDestinationButton('🎸 إنجليزي — القناة/المجموعة/الخاص', 'gq song_en', true), inlineDestinationButton('⚡ السرعة إنجليزي — القناة/المجموعة/الخاص', 'gq speed song_en', true)],
+          [inlineDestinationButton('🎤 أغاني عربية', 'gq song_ar', true), inlineDestinationButton('⚡ أغاني عربية — سرعة', 'gq speed song_ar', true)],
+          [inlineDestinationButton('🎸 أغاني إنجليزية', 'gq song_en', true), inlineDestinationButton('⚡ أغاني إنجليزية — سرعة', 'gq speed song_en', true)],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:guess_song' }]
         ]
       };
@@ -6996,11 +6909,11 @@ export class TelegramBotManager {
         text:
           `✊ *حجرة ورقة مقص — النظام العادي*\n` +
           `━━━━━━━━━━━━━━━━━━━\n` +
-          `🎯 اختار عدد الراوندات لتحويل اللعبة للقناة أو المجموعة:`,
+          `🎯 اختار عدد الجولات:`,
         keyboard: [
-          [inlineDestinationButton('العب — 5 جولات (قناة/خاص)', 'rps 5', true)],
-          [inlineDestinationButton('العب — 10 جولات (قناة/خاص)', 'rps 10', true)],
-          [inlineDestinationButton('العب — 15 جولة (قناة/خاص)', 'rps 15', true)],
+          [inlineDestinationButton('🎮 العب أونلاين — 5 جولات', 'rps 5', true)],
+          [inlineDestinationButton('🎮 العب أونلاين — 10 جولات', 'rps 10', true)],
+          [inlineDestinationButton('🎮 العب أونلاين — 15 جولة', 'rps 15', true)],
           [{ text: '🔙 رجوع', callback_data: 'hub:g:rps' }]
         ]
       };
@@ -7066,14 +6979,14 @@ export class TelegramBotManager {
             `👇 اختار نوع الأغاني وسعة البطولة:`,
           keyboard: [
             [
-              inlineDestinationButton('🎤 عربي — 8 (قناة/مجموعة/خاص)', 'trn song_ar 8', true),
-              inlineDestinationButton('🎤 عربي — 16 (قناة/مجموعة/خاص)', 'trn song_ar 16', true),
-              inlineDestinationButton('🎤 عربي — 32 (قناة/مجموعة/خاص)', 'trn song_ar 32', true)
+              inlineDestinationButton('🎤 عربي — 8', 'trn song_ar 8', true),
+              inlineDestinationButton('🎤 عربي — 16', 'trn song_ar 16', true),
+              inlineDestinationButton('🎤 عربي — 32', 'trn song_ar 32', true)
             ],
             [
-              inlineDestinationButton('🎸 إنجليزي — 8 (قناة/مجموعة/خاص)', 'trn song_en 8', true),
-              inlineDestinationButton('🎸 إنجليزي — 16 (قناة/مجموعة/خاص)', 'trn song_en 16', true),
-              inlineDestinationButton('🎸 إنجليزي — 32 (قناة/مجموعة/خاص)', 'trn song_en 32', true)
+              inlineDestinationButton('🎸 إنجليزي — 8', 'trn song_en 8', true),
+              inlineDestinationButton('🎸 إنجليزي — 16', 'trn song_en 16', true),
+              inlineDestinationButton('🎸 إنجليزي — 32', 'trn song_en 32', true)
             ],
             [{ text: '😀 بطولات الإيموجي (8 / 16 / 32)', callback_data: 'hub:trn_emoji:guess_song' }],
             [{ text: '🔙 رجوع للعبة', callback_data: `hub:g:${game.id}` }]
@@ -7096,9 +7009,9 @@ export class TelegramBotManager {
               : baseKind || 'general';
 
       const kb: any[][] = [
-        [inlineDestinationButton('🥇 دوري الـ 8 (قناة/مجموعة/خاص)', `trn ${disc} 8`, true)],
-        [inlineDestinationButton('🥈 دوري الـ 16 (قناة/مجموعة/خاص)', `trn ${disc} 16`, true)],
-        [inlineDestinationButton('👑 دوري الـ 32 (قناة/مجموعة/خاص)', `trn ${disc} 32`, true)]
+        [inlineDestinationButton('🥇 دوري الـ 8', `trn ${disc} 8`, true)],
+        [inlineDestinationButton('🥈 دوري الـ 16', `trn ${disc} 16`, true)],
+        [inlineDestinationButton('👑 دوري الـ 32', `trn ${disc} 32`, true)]
       ];
       if (!useEmoji && emojiVariant) {
         kb.push([{ text: '😀 بطولات نظام الإيموجي (8 / 16 / 32)', callback_data: `hub:trn_emoji:${game.id}` }]);
@@ -7115,7 +7028,7 @@ export class TelegramBotManager {
           `يتواجه كل لاعبين اثنين وجهاً لوجه بنظام خروج المغلوب مثل أدوار كرة القدم تماماً:\n` +
           `🏟️ دور الـ 32 ⬅️ دور الـ 16 ⬅️ ربع النهائي ⬅️ نصف النهائي ⬅️ النهائي الكبير 🏆\n` +
           `يشترط اكتمال *عدد زوجي* من اللاعبين لبدء القرعة، ويتوَّج *لاعب واحد فقط* بطلاً في النهاية!\n\n` +
-          `👇 اختار حجم البطولة للإرسال للقناة أو المجموعة:`,
+          `👇 اختار حجم البطولة:`,
         keyboard: kb
       };
     }
@@ -7139,6 +7052,7 @@ export class TelegramBotManager {
       const emojiKind: GG.QuizKind | undefined = gqKind ? GG.EMOJI_VARIANT_OF[gqKind] : undefined;
       const supportsMultiMode = Boolean(gqKind || game.id === 'rps');
       const privateChatAllowed = canPlayInPrivateChat(game);
+      const onlineButtonLabel = ['team', 'team3', 'team4'].includes(game.category) ? '🎮 العب' : '🎮 العب أونلاين';
 
       const lines = [`${game.emoji} *${game.title}*`];
 
@@ -7157,35 +7071,35 @@ export class TelegramBotManager {
         // ── أنظمة نوع اللعب للألعاب المتوافقة (عادي | بطولات 8/16/32 | إيموجي) ──
         if (game.channel) {
           if (game.id === 'football_tournament') {
-            keyboard.push([inlineDestinationButton('🥇 بطولة 8 لاعبين (قناة/مجموعة/خاص)', 'trn football 8', true)]);
-            keyboard.push([inlineDestinationButton('🥈 بطولة 16 لاعباً (قناة/مجموعة/خاص)', 'trn football 16', true)]);
-            keyboard.push([inlineDestinationButton('👑 بطولة 32 لاعباً (قناة/مجموعة/خاص)', 'trn football 32', true)]);
+            keyboard.push([inlineDestinationButton('🥇 بطولة 8 لاعبين', 'trn football 8', true)]);
+            keyboard.push([inlineDestinationButton('🥈 بطولة 16 لاعباً', 'trn football 16', true)]);
+            keyboard.push([inlineDestinationButton('👑 بطولة 32 لاعباً', 'trn football 32', true)]);
           } else if (game.id === 'guess_elimination') {
-            keyboard.push([inlineDestinationButton('⚽ كرة القدم — القناة/المجموعة/الخاص', 'ge football', privateChatAllowed), inlineDestinationButton('🐾 الحيوانات — القناة/المجموعة/الخاص', 'ge animals', privateChatAllowed)]);
-            keyboard.push([inlineDestinationButton('🍉 الفواكه — القناة/المجموعة/الخاص', 'ge fruits', privateChatAllowed), inlineDestinationButton('🎲 مزيج — القناة/المجموعة/الخاص', 'ge mixed', privateChatAllowed)]);
-            keyboard.push([inlineDestinationButton('🥭 أسماء مركّبة — القناة/المجموعة/الخاص', 'ge mashup', privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('⚽ كرة القدم أونلاين', 'ge football', privateChatAllowed), inlineDestinationButton('🐾 الحيوانات أونلاين', 'ge animals', privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('🍉 الفواكه أونلاين', 'ge fruits', privateChatAllowed), inlineDestinationButton('🎲 مزيج أونلاين', 'ge mixed', privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('🥭 مركّبة أونلاين', 'ge mashup', privateChatAllowed)]);
           } else if (game.id === 'guess_song') {
-            keyboard.push([{ text: '🎮 العب', callback_data: 'hub:songpick' }]);
+            keyboard.push([{ text: onlineButtonLabel, callback_data: 'hub:songpick' }]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
-              keyboard.push([inlineDestinationButton('😀 إيموجي (قناة/مجموعة/خاص)', `gq ${emojiKind}`, privateChatAllowed)]);
-              keyboard.push([inlineDestinationButton('⚡ سرعة إيموجي (قناة/مجموعة/خاص)', `gq speed ${emojiKind}`, privateChatAllowed)]);
+              keyboard.push([inlineDestinationButton('😀 إيموجي', `gq ${emojiKind}`, privateChatAllowed)]);
+              keyboard.push([inlineDestinationButton('⚡ سرعة إيموجي', `gq speed ${emojiKind}`, privateChatAllowed)]);
             }
           } else if (gqKind && game.inline) {
-            keyboard.push([inlineDestinationButton(`🎮 العب — ${privateChatAllowed ? 'قناة/مجموعة/خاص' : 'قناة/مجموعة'}`, game.inline, privateChatAllowed)]);
-            keyboard.push([inlineDestinationButton(`⚡ السرعة — ${privateChatAllowed ? 'قناة/مجموعة/خاص' : 'قناة/مجموعة'}`, `gq speed ${gqKind}`, privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton(onlineButtonLabel, game.inline, privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton('⚡ السرعة', `gq speed ${gqKind}`, privateChatAllowed)]);
             keyboard.push([{ text: '🏆 نظام البطولات والدوريات (8 / 16 / 32)', callback_data: `hub:trn:${game.id}` }]);
             if (emojiKind) {
-              keyboard.push([inlineDestinationButton('😀 إيموجي (قناة/مجموعة/خاص)', `gq ${emojiKind}`, privateChatAllowed)]);
-              keyboard.push([inlineDestinationButton('⚡ سرعة إيموجي (قناة/مجموعة/خاص)', `gq speed ${emojiKind}`, privateChatAllowed)]);
+              keyboard.push([inlineDestinationButton('😀 إيموجي', `gq ${emojiKind}`, privateChatAllowed)]);
+              keyboard.push([inlineDestinationButton('⚡ سرعة إيموجي', `gq speed ${emojiKind}`, privateChatAllowed)]);
             }
           } else if (game.id === 'rps') {
-            keyboard.push([{ text: '🎮 العب', callback_data: 'hub:rps_normal' }]);
+            keyboard.push([{ text: onlineButtonLabel, callback_data: 'hub:rps_normal' }]);
             keyboard.push([{ text: '🏆 نظام البطولات', callback_data: `hub:trn:rps` }]);
           } else if (game.inline) {
-            keyboard.push([inlineDestinationButton(`🎮 العب — ${privateChatAllowed ? 'قناة/مجموعة/خاص' : 'قناة/مجموعة'}`, game.inline, privateChatAllowed)]);
+            keyboard.push([inlineDestinationButton(onlineButtonLabel, game.inline, privateChatAllowed)]);
           } else {
-            keyboard.push([inlineDestinationButton('🎮 العب بالقناة', 'cn', false)]);
+            keyboard.push([inlineDestinationButton('🎮 العب', 'cn', false)]);
           }
           if (game.play) {
             keyboard.push([{ text: game.play.label, callback_data: game.play.data }]);
@@ -7839,6 +7753,186 @@ export class TelegramBotManager {
       this.pendingVocalSep.delete(userId);
     }
 
+    if (data === 'svc:speedtest') {
+      const text =
+        `⚡ *قياس سرعة الإنترنت على جهازك*\n` +
+        `${SEP}\n` +
+        `حتى يكون القياس حقيقياً، لازم يشتغل من جهازك نفسه؛ تيليگرام ما يرسل للبوت سرعة اتصال موبايلك.\n` +
+        `افتح صفحة الاختبار حتى تقيس التنزيل والرفع وزمن الاستجابة على اتصالك الحالي. نتيجة الصفحة تخص جهازك، مو سرعة خادم البوت.`;
+      const keyboard = [
+        [{ text: '🚀 ابدأ اختبار السرعة', url: 'https://speed.cloudflare.com/' }],
+        [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
+      ];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    const footballDayMatch = data.match(/^svc:football:(day|refresh):(-1|0|1):([^:]+):(\d+)$/);
+    if (data === 'svc:football' || footballDayMatch) {
+      const offset = (footballDayMatch ? Number(footballDayMatch[2]) : 0) as Football.FootballDayOffset;
+      const requestedZone = footballDayMatch?.[3] || 'Asia/Baghdad';
+      const timeZone: Football.FootballTimezone = Football.isFootballTimezone(requestedZone) ? requestedZone : 'Asia/Baghdad';
+      const requestedPage = footballDayMatch ? Math.max(0, Number(footballDayMatch[4]) || 0) : 0;
+      const result = await Football.getFootballFixtures(Football.footballDate(offset), footballDayMatch?.[1] === 'refresh');
+      const pageSize = 8;
+      const pageCount = Math.max(1, Math.ceil(result.fixtures.length / pageSize));
+      const page = Math.min(requestedPage, pageCount - 1);
+      const shown = result.fixtures.slice(page * pageSize, (page + 1) * pageSize);
+      const lines = [
+        `⚽ *${Football.footballDayTitle(offset)}*`,
+        `${SEP}`,
+        `🕒 الأوقات حسب ${Football.footballTimezoneLabel(timeZone)} — اضغط تحديث لمراجعة أي تغيير بالموعد أو الحالة.`,
+        ''
+      ];
+      if (result.unavailable) {
+        lines.push('⚠️ ما كدرت أوصل لمصدر المباريات حالياً؛ جرّب تحديث الصفحة بعد شوي.');
+      } else if (!result.fixtures.length) {
+        lines.push('ماكو مباريات مسجلة بهذا المصدر لهذا اليوم.');
+      } else {
+        for (const fixture of shown) {
+          const icon = fixture.state === 'live' ? '🔴' : fixture.state === 'finished' ? '✅' : fixture.state === 'postponed' ? '⏸️' : '⚽';
+          const score = fixture.homeScore !== undefined && fixture.awayScore !== undefined
+            ? `${fixture.homeScore} - ${fixture.awayScore}`
+            : 'ضد';
+          const status = fixture.state === 'live' ? `مباشر · ${fixture.status}`
+            : fixture.state === 'finished' ? `انتهت · ${fixture.status}`
+              : fixture.state === 'postponed' ? `تأجلت/تغيرت · ${fixture.status}`
+                : fixture.status;
+          lines.push(`${icon} *${this.mdSafe(fixture.home)}* ${score} *${this.mdSafe(fixture.away)}*`);
+          lines.push(`   ⏰ ${Football.formatFootballKickoff(fixture.startAt, timeZone)}  ·  ${this.mdSafe(fixture.competition)}  ·  ${this.mdSafe(status)}`);
+        }
+        if (result.fixtures.length > pageSize) lines.push(`\nصفحة ${page + 1} من ${pageCount} · ${result.fixtures.length} مباراة`);
+      }
+      lines.push('', 'تُحدَّث الحالة عند إعادة فتح القائمة أو الضغط على «تحديث».');
+      const keyboard: any[][] = [
+        [
+          { text: '📅 أمس', callback_data: `svc:football:day:-1:${timeZone}:0` },
+          { text: '📅 اليوم', callback_data: `svc:football:day:0:${timeZone}:0` },
+          { text: '📅 باچر', callback_data: `svc:football:day:1:${timeZone}:0` }
+        ]
+      ];
+      for (let i = 0; i < Football.FOOTBALL_TIMEZONES.length; i += 2) {
+        const first = Football.FOOTBALL_TIMEZONES[i];
+        const second = Football.FOOTBALL_TIMEZONES[i + 1];
+        const row = [{ text: `${first.id === timeZone ? '✓ ' : ''}${first.label}`, callback_data: `svc:football:day:${offset}:${first.id}:0` }];
+        if (second) row.push({ text: `${second.id === timeZone ? '✓ ' : ''}${second.label}`, callback_data: `svc:football:day:${offset}:${second.id}:0` });
+        keyboard.push(row);
+      }
+      if (pageCount > 1) {
+        const pageButtons: any[] = [];
+        if (page > 0) pageButtons.push({ text: '⬅️ السابق', callback_data: `svc:football:day:${offset}:${timeZone}:${page - 1}` });
+        if (page < pageCount - 1) pageButtons.push({ text: 'التالي ➡️', callback_data: `svc:football:day:${offset}:${timeZone}:${page + 1}` });
+        keyboard.push(pageButtons);
+      }
+      keyboard.push([{ text: '🔄 تحديث المباريات', callback_data: `svc:football:refresh:${offset}:${timeZone}:${page}` }]);
+      keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
+      const text = lines.join('\n');
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data === 'svc:recommend' || data.startsWith('svc:rec:')) {
+      const parts = data.split(':');
+      if (data === 'svc:recommend') {
+        const text = `🎬 *اقترحلي شي أشوفه*\n${SEP}\nاختار نوع المشاهدة أولاً 👇`;
+        const keyboard = [
+          [{ text: '🎬 فيلم', callback_data: 'svc:rec:kind:movie' }],
+          [{ text: '📺 مسلسل', callback_data: 'svc:rec:kind:series' }],
+          [{ text: '🍥 أنمي', callback_data: 'svc:rec:kind:anime' }],
+          [{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]
+        ];
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      const isType = (value: string): value is Reco.RecommendationType => ['movie', 'series', 'anime'].includes(value);
+      const type = parts[3] || '';
+      if (parts[2] === 'kind' && isType(type)) {
+        const genres = Reco.recommendationGenres(type);
+        const keyboard: any[][] = [];
+        for (let i = 0; i < genres.length; i += 2) {
+          const first = genres[i];
+          const second = genres[i + 1];
+          const row = [{ text: Reco.RECOMMENDATION_GENRE_LABELS[first], callback_data: `svc:rec:genre:${type}:${first}` }];
+          if (second) row.push({ text: Reco.RECOMMENDATION_GENRE_LABELS[second], callback_data: `svc:rec:genre:${type}:${second}` });
+          keyboard.push(row);
+        }
+        keyboard.push([{ text: '🔙 تغيير النوع', callback_data: 'svc:recommend' }]);
+        const text = `${Reco.RECOMMENDATION_TYPE_LABELS[type]} *اختار التصنيف*\n${SEP}\nشنو الجو اللي تحبه؟`;
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      if (parts[2] === 'genre' && isType(type)) {
+        const genre = parts[4] as Reco.RecommendationGenre;
+        const decades = Reco.recommendationDecades(type, genre);
+        if (!decades.length || !Reco.recommendationGenres(type).includes(genre)) {
+          await this.answerCallbackQuery(cb.id, 'هذا التصنيف غير متوفر لهالنوع.', true);
+          return;
+        }
+        const keyboard: any[][] = [];
+        for (let i = 0; i < decades.length; i += 2) {
+          const first = decades[i];
+          const second = decades[i + 1];
+          const row = [{ text: Reco.recommendationDecadeLabel(first), callback_data: `svc:rec:pick:${type}:${genre}:${first}` }];
+          if (second !== undefined) row.push({ text: Reco.recommendationDecadeLabel(second), callback_data: `svc:rec:pick:${type}:${genre}:${second}` });
+          keyboard.push(row);
+        }
+        keyboard.push([{ text: '🗓️ أي عقد', callback_data: `svc:rec:pick:${type}:${genre}:all` }]);
+        keyboard.push([{ text: '🔙 تغيير التصنيف', callback_data: `svc:rec:kind:${type}` }]);
+        const text = `🎭 *${Reco.RECOMMENDATION_GENRE_LABELS[genre]}*\n${SEP}\nاختار عقداً من عشر سنوات؛ مثلاً الستينات تعني 1960–1969:`;
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      if ((parts[2] === 'pick' || parts[2] === 'again') && isType(type)) {
+        const genre = parts[4] as Reco.RecommendationGenre;
+        const decadeText = parts[5] || '';
+        const decade: Reco.RecommendationDecade = decadeText === 'all' ? 'all' : Number(decadeText);
+        const excludeId = parts[2] === 'again' ? parts[6] : undefined;
+        if (!Reco.recommendationGenres(type).includes(genre) || (decade !== 'all' && (!Number.isInteger(decade) || decade < 1900 || decade > 2030))) {
+          await this.answerCallbackQuery(cb.id, 'الاختيار غير صالح؛ ابدأ من جديد.', true);
+          return;
+        }
+        const item = Reco.pickRecommendation(type, genre, decade, excludeId);
+        if (!item) {
+          await this.answerCallbackQuery(cb.id, 'ما لكيت اقتراح مطابق؛ جرّب عقداً أو تصنيفاً آخر.', true);
+          return;
+        }
+        const dateLabel = decade === 'all' ? `كل العقود · ${item.year}` : `عقد ${Reco.recommendationDecadeLabel(decade)} · سنة ${item.year}`;
+        const text =
+          `✨ *ترشيح إلك*\n${SEP}\n` +
+          `${Reco.RECOMMENDATION_TYPE_LABELS[type]} · ${Reco.RECOMMENDATION_GENRE_LABELS[genre]}\n` +
+          `🗓️ ${dateLabel}\n\n` +
+          `🎞️ *${this.mdSafe(item.title)}*\n` +
+          `${this.mdSafe(item.blurb)}\n\n` +
+          `اقتراحات مختارة يدوياً — اختار اقتراحاً ثانياً أو غيّر الفلاتر.`;
+        const keyboard = [
+          [{ text: '🎲 اقتراح ثاني', callback_data: `svc:rec:again:${type}:${genre}:${decadeText}:${item.id}` }],
+          [{ text: '🔄 تغيير العقد', callback_data: `svc:rec:genre:${type}:${genre}` }],
+          [{ text: '🎭 تغيير التصنيف', callback_data: `svc:rec:kind:${type}` }],
+          [{ text: '🔙 تغيير النوع', callback_data: 'svc:recommend' }]
+        ];
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      await this.answerCallbackQuery(cb.id, 'الاختيار غير معروف؛ ابدأ من جديد.', true);
+      return;
+    }
+
     // ── القائمة الرئيسية للخدمات الأخرى ──
     if (data === 'svc:main') {
       const text =
@@ -7858,7 +7952,14 @@ export class TelegramBotManager {
           { text: '🔄 تحويل الصيغ', callback_data: 'svc:convert' },
           { text: '🎼 عزل الموسيقى', callback_data: 'svc:vocal' }
         ],
-        [{ text: '🎂 حساب العمر', callback_data: 'svc:age' }],
+        [
+          { text: '⚡ قياس سرعة النت', callback_data: 'svc:speedtest' },
+          { text: '⚽ مباريات كرة القدم', callback_data: 'svc:football' }
+        ],
+        [
+          { text: '🎬 اقترحلي مشاهدة', callback_data: 'svc:recommend' },
+          { text: '🎂 حساب العمر', callback_data: 'svc:age' }
+        ],
         [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
       ];
       if (messageId) await this.editMessageText(chatId, messageId, await this.withBotFooter(text), keyboard);
@@ -8097,7 +8198,7 @@ export class TelegramBotManager {
         `${SEP}\n` +
         `اختر نوع الروليت 👇`;
       const keyboard = [
-        [inlineDestinationButton('🎰 روليت بالقناة/المجموعة/الخاص', 'roulette', true)],
+        [inlineDestinationButton('🎰 روليت أونلاين', 'roulette', true)],
         [{ text: '📝 قرعة أسماء سريعة', callback_data: 'svc:roulette_list' }],
         [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
       ];

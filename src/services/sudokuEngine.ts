@@ -10,10 +10,6 @@ export interface SudokuPlayerState {
   userId: string;
   name: string;
   board: number[];
-  notes: number[][];
-  selectedCell?: number;
-  selectingRow?: number;
-  noteMode: boolean;
   mistakes: number;
   hintsUsed: number;
   startedAt: number;
