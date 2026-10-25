@@ -7,6 +7,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import { telegramBot } from './server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from './src/services/sudokuMiniApp';
+import { INTERACTIVE_GAMES_MINI_APP_HTML } from './src/services/interactiveGamesMiniApp';
 import { ARABIC_STANDARD_WORDS, ARABIC_IRAQI_WORDS, POP_CULTURE_WORDS, ENGLISH_WORDS } from './src/data/words';
 
 dotenv.config();
@@ -19,7 +20,10 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
-// Standalone Telegram Mini App for the first interactive puzzle game.
+// Interactive game launcher and first standalone puzzle game.
+app.get('/interactive', (_req, res) => {
+  res.type('html').set('Cache-Control', 'no-cache').send(INTERACTIVE_GAMES_MINI_APP_HTML);
+});
 app.get('/sudoku', (_req, res) => {
   res.type('html').set('Cache-Control', 'no-cache').send(SUDOKU_MINI_APP_HTML);
 });

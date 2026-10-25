@@ -1124,7 +1124,7 @@ export class TelegramBotManager {
   private readonly geminiApiKey: string;
   private readonly openSubtitlesApiKey: string;
   private readonly openSubtitlesUserAgent: string;
-  private readonly sudokuWebAppUrl: string;
+  private readonly interactiveGamesUrl: string;
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioOutputDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
@@ -1142,17 +1142,17 @@ export class TelegramBotManager {
     initialToken?: string,
     ownerId?: string,
     externalScheduler: boolean = false,
-    cinemaApiConfig: { geminiApiKey?: string; openSubtitlesApiKey?: string; openSubtitlesUserAgent?: string; sudokuWebAppUrl?: string } = {}
+    serviceConfig: { geminiApiKey?: string; openSubtitlesApiKey?: string; openSubtitlesUserAgent?: string; interactiveGamesUrl?: string } = {}
   ) {
     if (initialToken) {
       this.token = initialToken.trim();
     }
     if (ownerId) this.ownerId = String(ownerId);
     this.externalScheduler = externalScheduler;
-    this.geminiApiKey = String(cinemaApiConfig.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
-    this.openSubtitlesApiKey = String(cinemaApiConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
-    this.openSubtitlesUserAgent = String(cinemaApiConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
-    this.sudokuWebAppUrl = String(cinemaApiConfig.sudokuWebAppUrl || process.env.SUDOKU_WEB_APP_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/sudoku').trim();
+    this.geminiApiKey = String(serviceConfig.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
+    this.openSubtitlesApiKey = String(serviceConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
+    this.openSubtitlesUserAgent = String(serviceConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
+    this.interactiveGamesUrl = String(serviceConfig.interactiveGamesUrl || process.env.INTERACTIVE_GAMES_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/interactive').trim();
     this.seedInitialMatchHistory();
   }
 
@@ -1724,6 +1724,35 @@ export class TelegramBotManager {
       activeGamesCount: this.games.size,
       lastError: this.lastError,
       lastPollTime: this.lastPollTimestamp
+    };
+  }
+
+  /** Trusted Telegram Web App profile data for the authenticated player. */
+  public getInteractiveProfile(userId: string | number) {
+    const user = this.users.get(String(userId));
+    const xp = Math.max(0, Number(user?.xp) || 0);
+    const level = Economy.levelFromXp(xp);
+    const progress = Economy.levelProgress(xp);
+    const games = Math.max(0, Number(user?.onlineGames) || 0);
+    const wins = Math.max(0, Number(user?.onlineWins) || 0);
+    return {
+      name: user?.name || 'لاعب',
+      username: user?.username || '',
+      xp,
+      level,
+      levelTitle: Economy.levelTitle(level),
+      xpIntoLevel: progress.into,
+      xpForNextLevel: progress.span,
+      xpLeft: progress.left,
+      money: Economy.formatMoney(Number(user?.money) || 0),
+      games,
+      wins,
+      winRate: games ? Math.round((wins / games) * 100) : 0,
+      points: Math.max(0, Number(user?.points) || 0),
+      mafiaGames: Math.max(0, Number(user?.mfGames) || 0),
+      amongUsGames: Math.max(0, Number(user?.amongUsGames) || 0),
+      outOfLoopGames: Math.max(0, Number(user?.oolGames) || 0),
+      firstSeen: Number(user?.firstSeen) || Date.now()
     };
   }
 
@@ -4015,9 +4044,6 @@ export class TelegramBotManager {
         ? this.users.get(String(cb.from.id))
         : undefined
     );
-    if (section === 'main' && cb.message?.chat.type === 'private') {
-      view.keyboard.unshift([{ text: '🧩 سودوكو تفاعلي', web_app: { url: this.sudokuWebAppUrl } }]);
-    }
     const text = await this.withBotFooter(view.text);
     if (messageId) {
       await this.editMessageText(chatId, messageId, text, view.keyboard);
@@ -7225,6 +7251,7 @@ export class TelegramBotManager {
         { text: '🏰 ألعاب رباعية 4v4', callback_data: 'hub:team4' }
       ]
     ];
+    if (viewer) keyboard.unshift([{ text: '🎮 الألعاب التفاعلية', web_app: { url: this.interactiveGamesUrl } }]);
     // 💵 المتصدرون + خدمات أخرى، وتحتهم ارفع البوت مشرف بقناتك، وتحتهم القناة العريض
     keyboard.push([
       { text: '🏅 المتصدرون', callback_data: 'rank:menu' },
