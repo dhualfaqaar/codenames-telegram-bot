@@ -776,6 +776,11 @@ const BOT_GAMES: BotGameCard[] = [
   }
 ];
 
+// مسابقات الأسئلة يمكن تشغيلها بمطابقة خاصة بين لاعبين من دون الحاجة إلى مجموعة مشتركة.
+for (const game of BOT_GAMES) {
+  if (game.inline?.startsWith('gq ') || game.id === 'guess_song') game.randomMatch = true;
+}
+
 /** معلومات الأصناف */
 const GAME_CATEGORIES: Record<string, { emoji: string; title: string; intro: string }> = {
   duo: {
@@ -997,7 +1002,7 @@ export class TelegramBotManager {
   private poet: Map<string, Poet.PoetRound> = new Map();
   /** أي لعبة راح تنشرها بالقناة (Key: User ID) */
   private pendingChannelGame: Map<string, { gameId: string; rounds?: number; at: number }> = new Map();
-  /** مطابقة عشوائية منفصلة لكل لعبة ثنائية، وتُحفظ عبر إعادة تشغيل العامل. */
+  /** طوابير مطابقة مستقلة لكل لعبة تدعم جلسات خاصة بين لاعبين، وتُحفظ عبر إعادة التشغيل. */
   private randomMatchQueues: Map<string, Array<{ userId: string; name: string; queuedAt: number }>> = new Map();
   /** ✊✋✌️ مباريات حجرة ورقة مقص بالقنوات (Key: chatId) */
   private rpsGames: Map<string, RPS.RPSGame> = new Map();
@@ -3520,7 +3525,7 @@ export class TelegramBotManager {
     ];
     await this.answerCallbackQuery(cb.id, '🎉 لگينا لاعب — جاي أبدأ المباراة!');
     try {
-      await this.startRandomDuel(gameId, roomId, players);
+      await this.startRandomMatchGame(gameId, roomId, players);
     } catch (error) {
       const note = 'تعذر بدء المباراة هالمرة. ارجع لصفحة اللعبة وحاول تدخل الطابور من جديد.';
       for (const player of players) await this.sendMessage(player.userId, note);
@@ -3528,7 +3533,7 @@ export class TelegramBotManager {
     }
   }
 
-  private async startRandomDuel(
+  private async startRandomMatchGame(
     gameId: string,
     roomId: string,
     players: Array<{ userId: string; name: string }>
@@ -3607,6 +3612,20 @@ export class TelegramBotManager {
       this.wkGames.set(roomId, game);
       const result = await this.startWhoKnowsGame(game);
       if (!result.started) throw new Error(result.missingNames.join(', '));
+      return;
+    }
+
+    const gameCard = findBotGame(gameId);
+    const quizKindRaw = gameId === 'guess_song' ? 'song_ar' : gameCard?.inline?.startsWith('gq ') ? gameCard.inline.slice(3).trim() : '';
+    if ((Object.keys(GG.QUIZ_KINDS) as GG.QuizKind[]).includes(quizKindRaw as GG.QuizKind)) {
+      const game = GG.createQuiz(roomId, 'مطابقة عشوائية', quizKindRaw as GG.QuizKind);
+      game.privateMatch = true;
+      for (const entry of players) GG.quizJoin(game, entry.userId, entry.name);
+      const started = GG.quizStart(game);
+      if (!started.ok) throw new Error(started.msg);
+      this.gqGames.set(roomId, game);
+      await this.paintQuiz(game);
+      this.scheduleLocalQuizTimer();
       return;
     }
 
@@ -5360,8 +5379,20 @@ export class TelegramBotManager {
   /** يعيد رسم لوحة لعبة جماعية — بنفس الرسالة إن كانت عادية، أو بمعرّف الإنلاين إن كانت أصلها تحويل */
   private async paintQuiz(game: GG.QuizGame) {
     const text = await this.withBotFooter(GG.renderQuiz(game), true);
-    const isCarPhotoRound = game.kind === 'cars' && game.status !== 'lobby' && !game.inlineMessageId;
+    const isCarPhotoRound = game.kind === 'cars' && game.status !== 'lobby' && !game.inlineMessageId && !game.privateMatch;
     const kb = isCarPhotoRound ? [] : GG.quizKeyboard(game);
+    if (game.privateMatch) {
+      for (const player of game.players) {
+        if (player.dmMessageId) {
+          const edited = await this.editMessageText(player.id, player.dmMessageId, text, kb, 'MarkdownV2');
+          if (edited?.ok || String(edited?.description || '').includes('not modified')) continue;
+        }
+        const sent = await this.sendMessage(player.id, text, kb, 'MarkdownV2');
+        if (sent?.result?.message_id) player.dmMessageId = sent.result.message_id;
+      }
+      this.gqGames.set(game.chatId, game);
+      return;
+    }
     if (game.messageId) {
       const res = await this.editMessageText(game.chatId, game.messageId, text, kb, 'MarkdownV2');
       if (res?.ok || String(res?.description || '').includes('not modified')) {
@@ -5478,7 +5509,7 @@ export class TelegramBotManager {
     const storedInline = cb.inline_message_id
       ? Array.from(this.gqGames.values()).find(g => g.inlineMessageId === cb.inline_message_id)
       : undefined;
-    const cbChatId = (/^-?\d{4,}$/.test(target) || target.startsWith('gq_i_') ? target : '') ||
+    const cbChatId = (/^-?\d{4,}$/.test(target) || target.startsWith('gq_i_') || target.startsWith('rnd_') ? target : '') ||
       String(cb.message?.chat.id || '') || storedInline?.chatId ||
       (cb.inline_message_id ? this.inlineSessionChatId('gq', cb.inline_message_id) : '');
     const playerId = String(cb.from.id);
@@ -5535,6 +5566,23 @@ export class TelegramBotManager {
         await this.paintQuiz(game);
         this.scheduleLocalQuizTimer();
       }
+      return;
+    }
+
+    // 🔄 مباراة عشوائية جديدة مع الخصم نفسه؛ لا نرجع للوبي مجموعة وهمية.
+    if (op === 'gqn' && game.privateMatch) {
+      const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind, Boolean(game.speedMode));
+      fresh.privateMatch = true;
+      for (const player of game.players) GG.quizJoin(fresh, player.id, player.name);
+      const started = GG.quizStart(fresh);
+      if (!started.ok) {
+        await this.answerCallbackQuery(cb.id, started.msg, true);
+        return;
+      }
+      this.gqGames.set(game.chatId, fresh);
+      await this.paintQuiz(fresh);
+      this.scheduleLocalQuizTimer();
+      await this.answerCallbackQuery(cb.id, '🔄 بدأت جولة جديدة بينكما!');
       return;
     }
 
