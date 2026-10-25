@@ -1890,6 +1890,13 @@ export class TelegramBotManager {
     if (Array.isArray(state.randomMatchQueues)) this.randomMatchQueues = new Map(state.randomMatchQueues);
   }
 
+  /** هل توجد متابعة فعّالة تحتاج منبّهاً دورياً مستقلاً عن Cron الخمس دقائق؟ */
+  public hasActiveFootballAlerts(): boolean {
+    return Array.from(this.footballTeamFollows.values()).some(follow =>
+      follow.notifyGoals || follow.notifyKickoff || follow.notifyFinal
+    );
+  }
+
   /** Poll opted-in users' followed teams and send only state-change alerts. */
   public async processFootballAlerts(): Promise<void> {
     if (this.footballTeamFollows.size === 0 || Array.from(this.footballTeamFollows.values()).every(follow =>
@@ -2530,7 +2537,7 @@ export class TelegramBotManager {
         const follow = this.footballTeamFollows.get(uid)!;
         await this.sendMessage(uid,
           `✅ صارت متابعة *${this.mdSafe(teamName)}* مفعّلة. التنبيهات اختيارية وتگدر تديرها أو تلغي المتابعة بأي وقت.\n\n` +
-          `راح أفحص المباريات المتاحة كل خمس دقائق؛ إذا ظهر النادي بمصدر النتائج، أوصلك تنبيه الأهداف وبداية ونهاية المباراة حسب إعداداتك.`,
+          `راح أفحص النتائج كل ١٠ ثواني؛ وأرسل تنبيه الهدف وبداية/نهاية المباراة حسب إعداداتك. سرعة ظهور التنبيه تعتمد على تحديث المصدر نفسه.`,
           footballFollowSettingsKeyboard(follow));
         return;
       }
