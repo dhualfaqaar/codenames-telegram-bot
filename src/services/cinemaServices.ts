@@ -10,14 +10,21 @@ export interface AnimeRecognition {
   source: string;
 }
 
+export type VisualStyle = 'live_action' | 'anime' | 'western_animation' | 'unknown';
+
 export interface VisualRecognition {
   title: string;
   originalTitle?: string;
   year?: string;
   kind?: string;
-  confidence?: string;
+  visualStyle: VisualStyle;
+  confidenceScore: number;
   note?: string;
 }
+
+export type CinemaRecognition =
+  | { type: 'anime'; recognition: AnimeRecognition }
+  | { type: 'visual'; recognition: VisualRecognition };
 
 export interface OpenSubtitleResult {
   fileId: string;
@@ -59,7 +66,7 @@ export function parseEpisodeInput(input: string): { season: number; episode: num
   return null;
 }
 
-export async function identifyAnimeScreenshot(bytes: Uint8Array, mimeType: string): Promise<AnimeRecognition | null> {
+export async function identifyAnimeScreenshot(bytes: Uint8Array, mimeType: string, minimumSimilarity = 0.8): Promise<AnimeRecognition | null> {
   const form = new FormData();
   form.append('image', new Blob([bytes as unknown as ArrayBuffer], { type: mimeType || 'image/jpeg' }), 'frame.jpg');
   const response = await fetch('https://api.trace.moe/search?anilistInfo&cutBorders', {
@@ -71,7 +78,7 @@ export async function identifyAnimeScreenshot(bytes: Uint8Array, mimeType: strin
   const payload: any = await response.json();
   const results: any[] = Array.isArray(payload?.result) ? payload.result : [];
   const best = results
-    .filter(result => Number(result?.similarity) >= 0.72 && result?.anilist)
+    .filter(result => Number(result?.similarity) >= minimumSimilarity && result?.anilist)
     .sort((a, b) => Number(b.similarity) - Number(a.similarity))[0];
   if (!best) return null;
   const titles = best.anilist.title || {};
@@ -103,12 +110,12 @@ export async function identifyVisualTitle(
         contents: [{
           parts: [
             {
-              text: 'Identify the live-action or animated film/TV series shown in this screenshot. Do not guess if the image is too generic. Return only JSON: {"title":"...","originalTitle":"...","year":"...","kind":"movie|series|anime|unknown","confidence":"high|medium|low","note":"short reason or ambiguity"}. Use the work title, not actors or a description. If uncertain, set confidence to low and note that it is uncertain.'
+              text: 'You are identifying a work from one screenshot. Analyze the visual medium before naming the work. Return only JSON with fields: {"visual_style":"live_action|anime|western_animation|unknown","title":"exact recognized film or series title, or empty string","original_title":"...","year":"YYYY or empty","kind":"movie|series|anime|unknown","confidence":0,"note":"brief visual evidence or uncertainty"}. IMPORTANT: A photographic frame with real actors MUST be live_action, never anime, regardless of actors’ ethnicity, genre, costumes, fantasy effects, or subject. anime means unmistakably Japanese animation; western cartoons/CG animation are western_animation. Do not infer anime from a trace/search guess. Identify titles only from distinctive visual evidence in this frame, not a generic actor, genre, or plot guess. If the image is a poster, collage, blurry, generic, or not clearly identifiable, return an empty title and confidence below 60. Confidence is an integer 0-100. Be conservative and prefer no answer over a wrong title.'
             },
             { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64FromBytes(bytes) } }
           ]
         }],
-        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' }
       }),
       signal: AbortSignal.timeout(25_000)
     }
@@ -127,16 +134,75 @@ export async function identifyVisualTitle(
     if (start < 0 || end <= start) return null;
     try { parsed = JSON.parse(jsonText.slice(start, end + 1)); } catch { return null; }
   }
-  const title = String(parsed?.title || '').trim();
-  if (!title || /^(unknown|غير معروف|لا أعرف|none)$/i.test(title)) return null;
+  const rawStyle = String(parsed?.visual_style || parsed?.visualStyle || '').toLowerCase().replace(/[ -]/g, '_');
+  const visualStyle: VisualStyle = rawStyle.includes('live') || rawStyle.includes('photo') || rawStyle.includes('real_actor')
+    ? 'live_action'
+    : rawStyle.includes('anime')
+      ? 'anime'
+      : rawStyle.includes('western') || rawStyle.includes('cartoon') || rawStyle.includes('animation')
+        ? 'western_animation'
+        : 'unknown';
+  const rawConfidence = parsed?.confidence ?? parsed?.confidence_score;
+  const confidenceWords: Record<string, number> = { high: 85, medium: 68, low: 40 };
+  const confidenceScore = Number.isFinite(Number(rawConfidence))
+    ? Math.max(0, Math.min(100, Number(rawConfidence)))
+    : confidenceWords[String(rawConfidence || '').toLowerCase()] || 0;
+  const title = String(parsed?.title || '').trim().slice(0, 160);
+  const kindRaw = String(parsed?.kind || '').toLowerCase();
+  const kind = /anime/.test(kindRaw) ? 'anime'
+    : /movie|film/.test(kindRaw) ? 'movie'
+      : /series|show|tv/.test(kindRaw) ? 'series'
+        : 'unknown';
+  const normalizedTitle = /^(unknown|غير معروف|لا أعرف|none|n\/a)$/i.test(title) ? '' : title;
   return {
-    title: title.slice(0, 160),
-    originalTitle: String(parsed?.originalTitle || '').trim().slice(0, 160) || undefined,
+    title: normalizedTitle,
+    originalTitle: String(parsed?.original_title || parsed?.originalTitle || '').trim().slice(0, 160) || undefined,
     year: String(parsed?.year || '').match(/\b(?:18|19|20)\d{2}\b/)?.[0],
-    kind: String(parsed?.kind || '').slice(0, 30) || undefined,
-    confidence: String(parsed?.confidence || '').slice(0, 20) || undefined,
+    kind,
+    visualStyle,
+    confidenceScore,
     note: String(parsed?.note || '').slice(0, 220) || undefined
   };
+}
+
+/**
+ * Classify the medium with Gemini first, then consult trace.moe only for a frame
+ * independently classified as anime. This prevents a visual-search false positive
+ * from relabelling a live-action film as anime.
+ */
+export async function identifyCinemaScreenshot(
+  bytes: Uint8Array,
+  mimeType: string,
+  geminiApiKey: string
+): Promise<CinemaRecognition | null> {
+  let visual: VisualRecognition | null = null;
+  if (geminiApiKey) {
+    try {
+      visual = await identifyVisualTitle(bytes, mimeType, geminiApiKey);
+    } catch {
+      // If the vision model is temporarily unavailable, only accept a near-certain anime match below.
+    }
+  }
+
+  if (visual?.visualStyle === 'live_action' || visual?.visualStyle === 'western_animation') {
+    return visual.title && visual.confidenceScore >= 70 ? { type: 'visual', recognition: visual } : null;
+  }
+
+  if (visual?.visualStyle === 'anime') {
+    const anime = await identifyAnimeScreenshot(bytes, mimeType, 0.8).catch(() => null);
+    if (anime) return { type: 'anime', recognition: anime };
+    return visual.title && visual.confidenceScore >= 70 ? { type: 'visual', recognition: visual } : null;
+  }
+
+  if (visual) {
+    // A successful classifier that calls the image unknown must veto anime-only matching.
+    return null;
+  }
+
+  // Classifier unavailable: use anime matching only at an exceptionally high threshold.
+  const animeFallback = await identifyAnimeScreenshot(bytes, mimeType, 0.97).catch(() => null);
+  if (animeFallback) return { type: 'anime', recognition: animeFallback };
+  return null;
 }
 
 function openSubtitlesHeaders(apiKey: string, userAgent: string): HeadersInit {

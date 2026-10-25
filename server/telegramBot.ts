@@ -8361,45 +8361,37 @@ export class TelegramBotManager {
         if (waitId) await this.editMessageText(uid, waitId, '⚠️ الصورة كبيرة؛ أرسل لقطة شاشة أصغر من 12 ميغابايت.');
         return;
       }
-      let anime: Cinema.AnimeRecognition | null = null;
-      try {
-        anime = await Cinema.identifyAnimeScreenshot(file.bytes, mimeType);
-      } catch (error) {
-        console.warn('Anime screenshot recognition failed:', error);
+      const detected = await Cinema.identifyCinemaScreenshot(file.bytes, mimeType, this.geminiApiKey);
+      if (!detected) {
+        const text = 'ما حصلت تطابق واثق من هاي الصورة، وما أريد أخمّن اسم غلط. جرّب لقطة أوضح من مشهد داخل العمل، مو بوستر أو صورة عامة.';
+        if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔎 جرّب لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
+        else await this.sendMessage(uid, text);
+        return;
       }
-      if (anime) {
+      if (detected.type === 'anime') {
+        const anime = detected.recognition;
         this.lastCinemaRecognition.set(uid, { title: anime.title, kind: 'series' });
         const confidence = Math.round(anime.similarity * 100);
         const episode = anime.episode && anime.episode !== 'null' ? `\n📺 الحلقة: *${this.mdSafe(String(anime.episode))}*` : '';
         const nativeTitle = anime.nativeTitle && anime.nativeTitle !== anime.title
           ? `\n🈯 الاسم الأصلي: ${this.mdSafe(anime.nativeTitle)}`
           : '';
-        const text = `🍥 *أقرب تطابق أنمي*\n${SEP}\n🎞️ *${this.mdSafe(anime.title)}*${nativeTitle}${episode}\n🎯 تشابه اللقطة: ${confidence}%\n\nالتعرّف تلقائي، فاعتبر النتيجة مطابقة مرجّحة مو تأكيداً نهائياً.`;
+        const text = `🍥 *أقرب تطابق أنمي*\n${SEP}\n🎞️ *${this.mdSafe(anime.title)}*${nativeTitle}${episode}\n🎯 تشابه اللقطة: ${confidence}%\n\nالنوع تأكد أولاً من شكل الصورة، وبعدها قارنّا اللقطة بمشاهد الأنمي.`;
         if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔤 أبحث عن ترجمة', callback_data: 'cinema:subtitle:use-last' }], [{ text: '🔎 لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
         else await this.sendMessage(uid, text);
         return;
       }
-      if (!this.geminiApiKey) {
-        const text = 'ما ظهر تطابق أنمي واضح. التعرّف على الأفلام والمسلسلات يحتاج تفعيل خدمة الرؤية أولاً؛ جرّب لقطة أنمي أو صورة أوضح حالياً.';
-        if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔎 جرّب لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
-        else await this.sendMessage(uid, text);
-        return;
-      }
-      const visual = await Cinema.identifyVisualTitle(file.bytes, mimeType, this.geminiApiKey);
-      if (!visual) {
-        const text = 'ما كدرت أحدد العمل من هاي اللقطة. جرّب لقطة أوضح، ويفضّل تكون بيها شخصيات أو تفاصيل مميزة.';
-        if (waitId) await this.editMessageText(uid, waitId, text, [[{ text: '🔎 لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]]);
-        else await this.sendMessage(uid, text);
-        return;
-      }
-      const recognizedKind: Cinema.CinemaSubtitleKind = /movie|film|فيلم/i.test(String(visual.kind || '')) ? 'movie' : 'series';
+
+      const visual = detected.recognition;
+      const recognizedKind: Cinema.CinemaSubtitleKind = visual.kind === 'movie' ? 'movie' : 'series';
       this.lastCinemaRecognition.set(uid, { title: visual.title, kind: recognizedKind });
       const titleParts = [`🎞️ *${this.mdSafe(visual.title)}*`];
       if (visual.originalTitle && visual.originalTitle.toLowerCase() !== visual.title.toLowerCase()) titleParts.push(`🈯 الاسم الأصلي: ${this.mdSafe(visual.originalTitle)}`);
       if (visual.year) titleParts.push(`📅 ${visual.year}`);
-      if (visual.kind && visual.kind !== 'unknown') titleParts.push(`🎬 النوع: ${this.mdSafe(visual.kind)}`);
-      const certainty = visual.confidence === 'high' ? 'مرجّح بدرجة عالية' : visual.confidence === 'low' ? 'تخمين غير مؤكد' : 'مطابقة مرجّحة';
-      const text = `🎬 *نتيجة التعرّف*\n${SEP}\n${titleParts.join('\n')}\n\n⚠️ ${certainty}${visual.note ? ` — ${this.mdSafe(visual.note)}` : ''}.`;
+      const kindLabel = visual.kind === 'movie' ? 'فيلم' : visual.kind === 'anime' ? 'أنمي' : 'مسلسل';
+      titleParts.push(`📺 النوع: ${kindLabel}`);
+      titleParts.push(`🎯 ثقة التعرّف: ${Math.round(visual.confidenceScore)}%`);
+      const text = `🎬 *نتيجة التعرّف*\n${SEP}\n${titleParts.join('\n')}\n\n${visual.note ? this.mdSafe(visual.note) : 'تم التأكد أن اللقطة حقيقية وليست أنمي قبل تحديد الاسم.'}`;
       const keyboard = [[{ text: '🔤 أبحث عن ترجمة هذا العمل', callback_data: 'cinema:subtitle:use-last' }], [{ text: '🔎 لقطة ثانية', callback_data: 'svc:cinema:identify' }], [{ text: '🔙 الخدمات', callback_data: 'svc:main' }]];
       if (waitId) await this.editMessageText(uid, waitId, text, keyboard);
       else await this.sendMessage(uid, text, keyboard);
