@@ -25,3 +25,7 @@ pinned: false
 يحتاج متغير بيئة واحد:
 
 - `TELEGRAM_BOT_TOKEN` = توكن البوت من BotFather.
+
+## خدمات الأفلام والترجمات
+
+تعرّف لقطات الأنمي يستخدم trace.moe، أما التعرّف على الأفلام والمسلسلات فيحتاج سرّ Cloudflare `GEMINI_API_KEY`. البحث عن ملفات الترجمة وإرسالها يحتاج `OPEN_SUBTITLES_API_KEY` من OpenSubtitles؛ أضفهما كـ Worker Secrets (وللتشغيل المحلي في `.env`). لا تضع مفاتيح API في `wrangler.toml` أو في Git.
