@@ -54,6 +54,71 @@ function decodeHiddenTag(text: string): { tag: string; deployerId?: string } | n
   const [tag, deployerId] = decoded.split('|');
   return tag ? { tag, deployerId: deployerId || undefined } : null;
 }
+
+const FOOTBALL_TEAM_ALIAS_GROUPS: string[][] = [
+  ['Liverpool', 'ليفربول'], ['Manchester City', 'مانشستر سيتي', 'السيتي'],
+  ['Manchester United', 'Manchester Utd', 'Man United', 'Man Utd', 'مانشستر يونايتد', 'مان يونايتد'], ['Arsenal', 'أرسنال', 'ارسنال'],
+  ['Chelsea', 'تشيلسي'], ['Tottenham', 'Spurs', 'توتنهام'], ['Real Madrid', 'ريال مدريد'],
+  ['Barcelona', 'برشلونة', 'برشا'], ['Atletico Madrid', 'أتلتيكو مدريد', 'اتلتيكو مدريد'],
+  ['Bayern Munich', 'بايرن ميونخ', 'بايرن ميونيخ'], ['Borussia Dortmund', 'بوروسيا دورتموند', 'دورتموند'],
+  ['Paris Saint-Germain', 'باريس سان جيرمان', 'بي اس جي', 'PSG'], ['Juventus', 'يوفنتوس'],
+  ['Inter Milan', 'إنتر ميلان', 'انتر ميلان', 'Inter'], ['AC Milan', 'ميلان', 'اي سي ميلان'],
+  ['Al Hilal', 'الهلال'], ['Al Nassr', 'النصر'], ['Al Ittihad', 'الاتحاد'],
+  ['Al Ahli', 'الأهلي', 'الاهلي'], ['Al Shorta', 'الشرطة', 'الشرطه'],
+  ['Al Zawraa', 'الزوراء'], ['Al Quwa Al Jawiya', 'القوة الجوية'], ['Iraq', 'العراق']
+];
+
+function normalizeFootballTeamName(value: string): string {
+  let normalized = String(value || '').normalize('NFKD').toLowerCase()
+    .replace(/[\u064b-\u065f\u0670\u0640]/g, '')
+    .replace(/[إأآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/\b(?:football club|fc|cf|sc|ssc|afc|club)\b/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+  for (const aliases of FOOTBALL_TEAM_ALIAS_GROUPS) {
+    if (aliases.some(alias => normalizeFootballAlias(alias) === normalized)) {
+      normalized = normalizeFootballAlias(aliases[0]);
+      break;
+    }
+  }
+  return normalized;
+}
+
+function normalizeFootballAlias(value: string): string {
+  return String(value || '').normalize('NFKD').toLowerCase()
+    .replace(/[\u064b-\u065f\u0670\u0640]/g, '')
+    .replace(/[إأآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/\b(?:football club|fc|cf|sc|ssc|afc|club)\b/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function footballTeamMatches(selected: string, actual: string): boolean {
+  const wanted = normalizeFootballTeamName(selected);
+  const found = normalizeFootballTeamName(actual);
+  return Boolean(wanted && found && (wanted === found || (wanted.length >= 7 && found.includes(wanted)) || (found.length >= 7 && wanted.includes(found))));
+}
+
+function parseFootballScore(value: string | undefined): number | undefined {
+  if (value === undefined || value === null || String(value).trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function footballFollowSettingsKeyboard(follow: FootballTeamFollow): any[][] {
+  const status = (enabled: boolean) => enabled ? '✅' : '❌';
+  return [
+    [{ text: `${status(follow.notifyGoals)} أهداف`, callback_data: 'svc:football:follow:toggle:goals' }],
+    [
+      { text: `${status(follow.notifyKickoff)} بداية المباراة`, callback_data: 'svc:football:follow:toggle:kickoff' },
+      { text: `${status(follow.notifyFinal)} نهايتها`, callback_data: 'svc:football:follow:toggle:final' }
+    ],
+    [
+      { text: '🔁 تغيير النادي', callback_data: 'svc:football:follow:change' },
+      { text: '🗑️ إلغاء المتابعة', callback_data: 'svc:football:follow:remove' }
+    ],
+    [{ text: '⚽ المباريات', callback_data: 'svc:football' }]
+  ];
+}
+
 import { CodenamesGame, CardType, GameStats, PlayerStat, PlayerRole, Team, Player } from '../src/types/codenames';
 
 interface TelegramUser {
@@ -114,6 +179,14 @@ interface TelegramMessage {
   document?: any;
   location?: any;
   contact?: any;
+}
+
+interface FootballTeamFollow {
+  teamName: string;
+  notifyGoals: boolean;
+  notifyKickoff: boolean;
+  notifyFinal: boolean;
+  lastFixtures: Record<string, { state: Football.FootballFixture['state']; homeScore?: string; awayScore?: string }>;
 }
 
 type CinemaFlowState =
@@ -1044,6 +1117,8 @@ export class TelegramBotManager {
   private pendingRouletteText: Set<string> = new Set();
   private pendingAgeCalc: Set<string> = new Set();
   private pendingCinemaFlows: Map<string, CinemaFlowState> = new Map();
+  private footballTeamFollows: Map<string, FootballTeamFollow> = new Map();
+  private pendingFootballFollow: Set<string> = new Set();
   private cinemaSubtitleResults: Map<string, Cinema.OpenSubtitleResult[]> = new Map();
   private lastCinemaRecognition: Map<string, { title: string; kind: Cinema.CinemaSubtitleKind }> = new Map();
   private readonly geminiApiKey: string;
@@ -1705,6 +1780,8 @@ export class TelegramBotManager {
       pendingRouletteText: Array.from(this.pendingRouletteText.values()),
       pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
       pendingCinemaFlows: Array.from(this.pendingCinemaFlows.entries()),
+      footballTeamFollows: Array.from(this.footballTeamFollows.entries()),
+      pendingFootballFollow: Array.from(this.pendingFootballFollow.values()),
       cinemaSubtitleResults: Array.from(this.cinemaSubtitleResults.entries()),
       lastCinemaRecognition: Array.from(this.lastCinemaRecognition.entries()),
       pendingConvert: Array.from(this.pendingConvert.entries()),
@@ -1766,6 +1843,8 @@ export class TelegramBotManager {
     if (Array.isArray(state.pendingRouletteText)) this.pendingRouletteText = new Set(state.pendingRouletteText);
     if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
     if (Array.isArray(state.pendingCinemaFlows)) this.pendingCinemaFlows = new Map(state.pendingCinemaFlows);
+    if (Array.isArray(state.footballTeamFollows)) this.footballTeamFollows = new Map(state.footballTeamFollows);
+    if (Array.isArray(state.pendingFootballFollow)) this.pendingFootballFollow = new Set(state.pendingFootballFollow);
     if (Array.isArray(state.cinemaSubtitleResults)) this.cinemaSubtitleResults = new Map(state.cinemaSubtitleResults);
     if (Array.isArray(state.lastCinemaRecognition)) this.lastCinemaRecognition = new Map(state.lastCinemaRecognition);
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
@@ -1778,6 +1857,63 @@ export class TelegramBotManager {
     if (typeof state.commandsSyncVer === 'number') this.commandsSyncVer = state.commandsSyncVer;
     if (Array.isArray(state.pendingChannelGame)) this.pendingChannelGame = new Map(state.pendingChannelGame);
     if (Array.isArray(state.randomMatchQueues)) this.randomMatchQueues = new Map(state.randomMatchQueues);
+  }
+
+  /** Poll opted-in users' followed teams and send only state-change alerts. */
+  public async processFootballAlerts(): Promise<void> {
+    if (this.footballTeamFollows.size === 0 || Array.from(this.footballTeamFollows.values()).every(follow =>
+      !follow.notifyGoals && !follow.notifyKickoff && !follow.notifyFinal
+    )) return;
+    const result = await Football.getFootballFixtures(Football.footballDate(0), true);
+    if (result.unavailable) return;
+
+    for (const [userId, follow] of this.footballTeamFollows) {
+      const teamFixtures = result.fixtures.filter(fixture =>
+        footballTeamMatches(follow.teamName, fixture.home) || footballTeamMatches(follow.teamName, fixture.away)
+      );
+      for (const fixture of teamFixtures) {
+        const previous = follow.lastFixtures[fixture.id];
+        const lines: string[] = [];
+        const home = this.mdSafe(fixture.home);
+        const away = this.mdSafe(fixture.away);
+        const score = fixture.homeScore !== undefined && fixture.awayScore !== undefined
+          ? `${fixture.homeScore} - ${fixture.awayScore}`
+          : '—';
+
+        if (previous?.state === 'scheduled' && fixture.state === 'live' && follow.notifyKickoff) {
+          lines.push(`🔔 بدأت المباراة: *${home}* ضد *${away}*.`);
+        }
+
+        if (previous && fixture.state === 'live' && follow.notifyGoals) {
+          const oldHome = parseFootballScore(previous.homeScore) ?? (previous.state === 'scheduled' ? 0 : undefined);
+          const oldAway = parseFootballScore(previous.awayScore) ?? (previous.state === 'scheduled' ? 0 : undefined);
+          const newHome = parseFootballScore(fixture.homeScore);
+          const newAway = parseFootballScore(fixture.awayScore);
+          const homeScored = oldHome !== undefined && newHome !== undefined && newHome > oldHome;
+          const awayScored = oldAway !== undefined && newAway !== undefined && newAway > oldAway;
+          if (homeScored || awayScored) {
+            const followedTeamScored = (homeScored && footballTeamMatches(follow.teamName, fixture.home)) ||
+              (awayScored && footballTeamMatches(follow.teamName, fixture.away));
+            lines.push(`${followedTeamScored ? '⚽ ناديك سجّل هدفاً!' : '🥅 الفريق المنافس سجّل هدفاً.'} النتيجة: *${home} ${score} ${away}*.`);
+          }
+        }
+
+        if (previous && previous.state !== 'finished' && fixture.state === 'finished' && follow.notifyFinal) {
+          lines.push(`🏁 انتهت المباراة: *${home} ${score} ${away}*.`);
+        }
+
+        follow.lastFixtures[fixture.id] = {
+          state: fixture.state,
+          homeScore: fixture.homeScore,
+          awayScore: fixture.awayScore
+        };
+        if (lines.length) {
+          await this.sendMessage(userId, `🔔 *تنبيه ${this.mdSafe(follow.teamName)}*\n${lines.join('\n')}`);
+        }
+      }
+      const entries = Object.entries(follow.lastFixtures);
+      if (entries.length > 120) follow.lastFixtures = Object.fromEntries(entries.slice(-120));
+    }
   }
 
   public setToken(token: string) {
@@ -2340,6 +2476,33 @@ export class TelegramBotManager {
     // 🤫 إكمال خطوات الخدمات الإضافية بالخاص
     if (message.chat.type === 'private' && sender && !text.startsWith('/') && text !== '🎮 الألعاب' && text !== '👑 لوحة التحكم') {
       const uid = String(sender.id);
+      if (this.pendingFootballFollow.has(uid)) {
+        const teamName = text.trim().slice(0, 50);
+        if (/^(?:إلغاء|الغاء|cancel)$/i.test(teamName)) {
+          this.pendingFootballFollow.delete(uid);
+          await this.sendMessage(uid, 'تم إلغاء اختيار النادي؛ متابعة الفرق اختيارية وما تأثر على استخدام البوت أو المباريات.');
+          return;
+        }
+        if (!teamName) {
+          await this.sendMessage(uid, 'اكتب اسم النادي أو المنتخب، أو أرسل «إلغاء».');
+          return;
+        }
+        const existing = this.footballTeamFollows.get(uid);
+        this.footballTeamFollows.set(uid, {
+          teamName,
+          notifyGoals: existing?.notifyGoals ?? true,
+          notifyKickoff: existing?.notifyKickoff ?? true,
+          notifyFinal: existing?.notifyFinal ?? true,
+          lastFixtures: {}
+        });
+        this.pendingFootballFollow.delete(uid);
+        const follow = this.footballTeamFollows.get(uid)!;
+        await this.sendMessage(uid,
+          `✅ صارت متابعة *${this.mdSafe(teamName)}* مفعّلة. التنبيهات اختيارية وتگدر تديرها أو تلغي المتابعة بأي وقت.\n\n` +
+          `راح أفحص المباريات المتاحة كل خمس دقائق؛ إذا ظهر النادي بمصدر النتائج، أوصلك تنبيه الأهداف وبداية ونهاية المباراة حسب إعداداتك.`,
+          footballFollowSettingsKeyboard(follow));
+        return;
+      }
       const activeAudioDraft = this.audioEditDrafts.get(uid);
       if (activeAudioDraft?.waitingField === 'presetName') {
         const presetName = text.trim().slice(0, 32);
@@ -7636,6 +7799,7 @@ export class TelegramBotManager {
       this.pendingConvert.delete(userId);
       this.audioEditDrafts.delete(userId);
       this.pendingVocalSep.delete(userId);
+      this.pendingFootballFollow.delete(userId);
     }
 
     if (data === 'svc:speedtest') {
@@ -7654,6 +7818,62 @@ export class TelegramBotManager {
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
       await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
+    if (data.startsWith('svc:football:follow')) {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'متابعة النادي والتنبيهات متاحة اختيارياً بالخاص فقط.', true);
+        return;
+      }
+      const follow = this.footballTeamFollows.get(userId);
+      if ((data === 'svc:football:follow' || data === 'svc:football:follow:manage') && follow) {
+        if (messageId) await this.editMessageText(chatId, messageId,
+          `⭐ *متابعة ${this.mdSafe(follow.teamName)}*\nاختار التنبيهات اللي تريدها. كل نوع تگدر تشغّله أو تطفيه وحده.`,
+          footballFollowSettingsKeyboard(follow));
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+      if (data === 'svc:football:follow' || data === 'svc:football:follow:change') {
+        this.pendingFootballFollow.add(userId);
+        const text = data.endsWith(':change')
+          ? 'اكتب اسم النادي أو المنتخب الجديد. المتابعة والتنبيهات اختيارية، وما تأثر على باقي الخدمات. أرسل «إلغاء» للتراجع.'
+          : '🔔 *متابعة النادي المفضّل — اختيارية*\nاكتب اسم النادي أو المنتخب اللي تريد تتابعه. هذا الاختيار مو مطلوب لاستخدام البوت أو خدمة المباريات. أرسل «إلغاء» إذا غيّرت رأيك.';
+        if (messageId) await this.editMessageText(chatId, messageId, text, [[{ text: 'إلغاء', callback_data: 'svc:football:follow:cancel' }]]);
+        else await this.sendMessage(chatId, text, [[{ text: 'إلغاء', callback_data: 'svc:football:follow:cancel' }]]);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+      if (data === 'svc:football:follow:cancel') {
+        this.pendingFootballFollow.delete(userId);
+        if (messageId) await this.editMessageText(chatId, messageId, 'تم إلغاء اختيار النادي. تگدر تستخدم المباريات وكل خدمات البوت بشكل طبيعي.');
+        else await this.sendMessage(chatId, 'تم إلغاء اختيار النادي. تگدر تستخدم المباريات وكل خدمات البوت بشكل طبيعي.');
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+      if (data === 'svc:football:follow:remove') {
+        this.footballTeamFollows.delete(userId);
+        this.pendingFootballFollow.delete(userId);
+        if (messageId) await this.editMessageText(chatId, messageId, '🗑️ انلغت متابعة النادي والتنبيهات. خدمة المباريات وباقي البوت تبقى متاحة بشكل طبيعي.');
+        else await this.sendMessage(chatId, '🗑️ انلغت متابعة النادي والتنبيهات. خدمة المباريات وباقي البوت تبقى متاحة بشكل طبيعي.');
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+      const setting = data.match(/^svc:football:follow:toggle:(goals|kickoff|final)$/)?.[1];
+      if (setting && follow) {
+        const hadAnyAlerts = follow.notifyGoals || follow.notifyKickoff || follow.notifyFinal;
+        if (setting === 'goals') follow.notifyGoals = !follow.notifyGoals;
+        else if (setting === 'kickoff') follow.notifyKickoff = !follow.notifyKickoff;
+        else follow.notifyFinal = !follow.notifyFinal;
+        const hasAnyAlerts = follow.notifyGoals || follow.notifyKickoff || follow.notifyFinal;
+        if (!hadAnyAlerts && hasAnyAlerts) follow.lastFixtures = {};
+        if (messageId) await this.editMessageText(chatId, messageId,
+          `⭐ *متابعة ${this.mdSafe(follow.teamName)}*\nاختار التنبيهات اللي تريدها.`,
+          footballFollowSettingsKeyboard(follow));
+        await this.answerCallbackQuery(cb.id, 'تم تحديث إعدادات التنبيه.');
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, 'ماكو متابعة حالية؛ اختار النادي من جديد.', true);
       return;
     }
 
@@ -7717,6 +7937,13 @@ export class TelegramBotManager {
         keyboard.push(pageButtons);
       }
       keyboard.push([{ text: '🔄 تحديث المباريات', callback_data: `svc:football:refresh:${offset}:${timeZone}:${page}` }]);
+      if (cb.message?.chat.type === 'private') {
+        const follow = this.footballTeamFollows.get(userId);
+        keyboard.push([{
+          text: follow ? `⭐ متابعة ${follow.teamName.slice(0, 35)}` : '🔔 متابعة نادٍ (اختياري)',
+          callback_data: follow ? 'svc:football:follow:manage' : 'svc:football:follow'
+        }]);
+      }
       keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
       const text = lines.join('\n');
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
@@ -7852,7 +8079,7 @@ export class TelegramBotManager {
         ],
         [
           { text: '🖼️ تعرّف على فيلم/أنمي', callback_data: 'svc:cinema:identify' },
-          { text: '🔤 ترجمات', callback_data: 'svc:cinema:subtitles' }
+          { text: '🔤 ترجمة الأعمال السينمائية', callback_data: 'svc:cinema:subtitles' }
         ],
         [{ text: '🔙 رجوع', callback_data: 'hub:main' }]
       ];

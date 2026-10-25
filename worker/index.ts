@@ -201,6 +201,17 @@ export class BotState {
       });
     }
 
+    if (new URL(request.url).pathname === '/football-alerts') {
+      try {
+        await bot.processFootballAlerts();
+        await this.state.storage.put('state', bot.exportState());
+        return Response.json({ ok: true });
+      } catch (error) {
+        console.error('Football alert polling failed:', error);
+        return new Response('football alert polling failed', { status: 500 });
+      }
+    }
+
     let update: any;
     try {
       update = await request.json();
@@ -298,6 +309,7 @@ export default {
           const id = env.BOT_STATE.idFromName('main');
           const stub = env.BOT_STATE.get(id);
           await stub.fetch('https://bot.internal/status');
+          await stub.fetch('https://bot.internal/football-alerts', { method: 'POST' });
         } catch {
           // ignore
         }
