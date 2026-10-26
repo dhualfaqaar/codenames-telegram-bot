@@ -21,6 +21,8 @@ assert(stockfishThinkTimeForElo(2_800) > stockfishThinkTimeForElo(200), 'Stockfi
 assert(stockfishThinkTimeForElo(2_800) <= 3_000, 'Stockfish mobile thinking budget should stay bounded');
 const miniAppHtml = interactiveGamesMiniAppHtml('chess');
 const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
+const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
+assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
 assert(sudokuMiniAppHtml.includes('العب مع شخص عشوائي') && sudokuMiniAppHtml.includes('id="friendGameButton"'), 'Sudoku home should expose random-human and friend-play actions');
 assert(!sudokuMiniAppHtml.includes('battleLevelSelect') && !sudokuMiniAppHtml.includes('defaultLevelSelect') && !sudokuMiniAppHtml.includes('محترف'), 'Sudoku battle must not expose difficulty choices or a locked pro mode');
 assert(sudokuMiniAppHtml.includes('readBattleTickets') && sudokuMiniAppHtml.includes('بطاقات المعركة') && sudokuMiniAppHtml.includes('creator-verified-badge'), 'Sudoku battle tickets and creator badge should be available');
@@ -33,7 +35,11 @@ assert(miniAppHtml.includes('id=\"chessFriendCard\"') && miniAppHtml.includes('c
 assert(!miniAppHtml.includes('إعدادات المباراة') && !miniAppHtml.includes('data-pref=\"chessTheme\"') && !miniAppHtml.includes('chessDefaultMinutes'), 'chess match settings must not remain in the profile page or active match toolbar');
 assert(miniAppHtml.includes('id="chessChatButton"') && miniAppHtml.includes('chess-header-chat') && miniAppHtml.includes('chessChatMessages'), 'the chat control should sit in the room header, outside the chessboard');
 assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verified-star'), 'verified badge should use a centered upright vector star');
-assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.includes('data-play-mode=\"random\"') && miniAppHtml.includes("if(event.target.closest('#chessPlayButton')){openChessPlayMenu();return}"), 'the large chess play button should open bot, friend, and random-human choices');
+assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.includes('data-play-mode=\"friend\"') && !miniAppHtml.includes('data-play-mode=\"random\"') && miniAppHtml.includes("if(event.target.closest('#chessPlayButton')){openChessPlayMenu();return}"), 'the large chess play button should offer bot and friend, while random matchmaking has its own card');
+assert(miniAppHtml.includes('id=\"chessRandomCard\"') && miniAppHtml.includes("if(event.target.closest('#chessRandomCard')){openChessRandomMenu();return}"), 'random chess matchmaking should be a dedicated feature card below vision');
+assert(!miniAppHtml.includes('<span class=\"card-status') && !miniAppHtml.includes('chessPlayTheme') && !miniAppHtml.includes('chessRandomTheme') && !miniAppHtml.includes('chessFriendTheme'), 'game cards should not show status chips and match-start menus should not show board themes');
+assert(miniAppHtml.includes('id=\"accountChessThemeSelect\"') && miniAppHtml.includes('for=\"accountCountrySelect\">بلدك'), 'account settings should show the country label and board theme setting');
+assert(miniAppHtml.includes('<a class=\"game-card\" data-game=\"sudoku\" href=\"/sudoku\">'), 'the Sudoku card should retain a native route as a navigation fallback');
 assert(miniAppHtml.includes("'https://t.me/'+username+'?start='+encodeURIComponent(payload)") && miniAppHtml.includes("'room_'+roomData.room.id+'_'+roomData.room.game") && miniAppHtml.includes("params.get('room')"), 'friend invitation should share a Telegram bot deep link that opens the requested room');
 assert(!miniAppHtml.includes('اقلب الهاتف') && !sudokuMiniAppHtml.includes('اقلب الهاتف'), 'game screens must not recommend rotating the phone');
 assert(miniAppHtml.includes('sudoku-race-arena') && miniAppHtml.includes('data-sudoku-tool=\"undo\"') && miniAppHtml.includes('sudoku-racer-avatar'), 'Sudoku race should use the mobile layout with opponent identity and working controls');
