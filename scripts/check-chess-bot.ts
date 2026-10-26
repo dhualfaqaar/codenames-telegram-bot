@@ -38,12 +38,16 @@ assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verifie
 assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.includes('data-play-mode=\"bot\"') && miniAppHtml.includes('data-play-mode=\"friend\"') && miniAppHtml.includes('data-play-mode=\"random\"') && miniAppHtml.includes('chess-mode-tile-grid') && miniAppHtml.includes("if(event.target.closest('#chessPlayButton')){openChessPlayMenu();return}"), 'the chess play button should show three square choices: bot, friend, and random opponent');
 assert(miniAppHtml.includes('id=\"chessRandomCard\"') && miniAppHtml.includes("if(event.target.closest('#chessRandomCard')){openChessRandomMenu();return}"), 'random chess matchmaking should be a dedicated feature card below vision');
 assert(!miniAppHtml.includes('<span class=\"card-status') && !miniAppHtml.includes('chessPlayTheme') && !miniAppHtml.includes('chessRandomTheme') && !miniAppHtml.includes('chessFriendTheme'), 'game cards should not show status chips and match-start menus should not show board themes');
-assert(miniAppHtml.includes('id=\"chessThemeSetting\"') && miniAppHtml.includes('for=\"accountCountrySelect\">بلدك') && !miniAppHtml.includes('accountChessThemeSelect') && miniAppHtml.includes('country-setting-flag'), 'account should keep a dark country selector while board themes live in chess settings');
+assert(miniAppHtml.includes('id=\"chessThemeSetting\"') && miniAppHtml.includes('for=\"accountCountrySelect\">بلدك') && !miniAppHtml.includes('accountChessThemeSelect') && miniAppHtml.includes('id=\"accountCountrySelect\"') && !miniAppHtml.includes('id=\"accountCountryFlag\"'), 'account should keep a dark country selector while board themes live in chess settings');
 assert(miniAppHtml.includes('code-games-avatar.jpg') && miniAppHtml.includes("player.bot?'/code-games-avatar.jpg':''"), 'chess bots should display the main Code Games bot avatar');
 assert(miniAppHtml.includes('#roomPage[data-game=\"chess\"] .chessboard>.square.light{background:#dce8f2!important}') && miniAppHtml.includes('.chess-piece{display:block!important'), 'live chessboard squares and pieces should remain visible as a full 8x8 board');
 assert(miniAppHtml.includes('chess-chat-unread-dot') && miniAppHtml.includes('function updateChessChatUnread') && miniAppHtml.includes('function markChessChatRead'), 'incoming opponent messages should mark chat unread until opened');
 assert(miniAppHtml.includes('ضد بوت</strong>') && miniAppHtml.includes('ضد صديق</strong>') && miniAppHtml.includes('لاعب عشوائي</strong>') && miniAppHtml.includes('overflow-x:auto;overscroll-behavior-inline:contain'), 'chess options should remain ordered in a horizontal scroll strip');
-assert(miniAppHtml.includes('id=\"chessPieceSetting\"') && miniAppHtml.includes('مظهر الشطرنج') && miniAppHtml.includes('data-global-country-flag'), 'chess appearance options and global country flags should be available');
+assert(miniAppHtml.includes('id=\"chessPieceSetting\"') && miniAppHtml.includes('إعدادات المظهر') && miniAppHtml.includes('id=\"profileCountryFlag\"') && miniAppHtml.includes('countryFlag(player.countryCode'), 'chess appearance options and player country flags should be available');
+assert(miniAppHtml.includes('function showChessMatchIntro') && miniAppHtml.includes('matchIntroUntil') && miniAppHtml.includes('المباراة راح تبدي'), 'human chess matches should show their player introduction before the clock starts');
+assert(miniAppHtml.includes('id=\"chessHistoryMore\"') && miniAppHtml.includes('ضد بوت</button>') && miniAppHtml.includes('ضد لاعبين</button>') && miniAppHtml.includes('items.slice(0,5)'), 'chess history should split opponents and paginate each category after five matches');
+assert(miniAppHtml.includes('data-pieces="bold"') && miniAppHtml.includes('data-pieces="outline"') && miniAppHtml.includes('data-pieces="modern"') && miniAppHtml.includes('data-pieces="royal"'), 'selected chess piece styles should apply to all pieces on the board');
+assert(!sudokuMiniAppHtml.includes('data-global-country-flag>🇮🇶</span></div></header>') && sudokuMiniAppHtml.includes('id=\"battlePlayerFlag\"'), 'country flags should sit with player identities, not beside Sudoku branding');
 assert(miniAppHtml.includes("showSudokuFriendRoomStarting();createRoom('sudoku',{mode:'friend'})") && miniAppHtml.includes('function openRoom(data,push){closeMode();'), 'Sudoku friend entry should show its invitation wait screen directly without flashing back to the library');
 assert(!miniAppHtml.includes('تشتغل داخل الصفحة') && !miniAppHtml.includes('اسم حساب تيليجرام'), 'redundant game library and Telegram profile copy should be removed');
 assert(!sudokuMiniAppHtml.includes('countrySelect') && !sudokuMiniAppHtml.includes('COUNTRY_CODES') && !sudokuMiniAppHtml.includes('تيليجرام') && sudokuMiniAppHtml.includes('cg-player-country') && sudokuMiniAppHtml.includes('data-global-country-flag'), 'Sudoku should use the account-wide country and show its flag without a local selector');
@@ -107,7 +111,8 @@ for (const trainer of CHESS_TRAINERS) {
   if (trainer.elo >= 800) assert(move.san === 'Rxe4', `${trainer.id} missed the hanging queen with ${move.san}`);
 }
 
-const rooms = new InteractiveGameRooms(new MemoryRoomStorage());
+const roomStorage = new MemoryRoomStorage();
+const rooms = new InteractiveGameRooms(roomStorage);
 async function post(path: string, body: unknown): Promise<any> {
   const response = await rooms.handle(new Request(`https://test.local${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -148,8 +153,24 @@ const humanOpponent = await post(`/api/interactive/rooms/${humanRoom.room.id}`, 
 assert(humanOpponent.room.status === 'playing' && humanOpponent.room.players.length === 2, 'human match should start after the second player joins');
 assert(humanOpponent.room.players[1].isBotCreator !== true, 'creator badge must not be copied to other players');
 assert(humanOpponent.room.players[0].countryCode === 'GB' && humanOpponent.room.players[1].countryCode === 'AE', 'both chess players should retain their own flags');
+assert(humanOpponent.state.mode === 'friend' && humanOpponent.state.matchIntroUntil > Date.now() && humanOpponent.state.clockRunning === false, 'a human match should show the intro before starting its clock');
+const earlyMoveResponse = await rooms.handle(new Request(`https://game.test/api/interactive/rooms/${humanRoom.room.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'move', token: humanRoom.token, from: 'e2', to: 'e4' }) }));
+assert(earlyMoveResponse.status === 400, 'players must not make moves before the match intro ends');
+await new Promise(resolve => setTimeout(resolve, Math.max(0, humanOpponent.state.matchIntroUntil - Date.now() + 30)));
 const humanResult = await post(`/api/interactive/rooms/${humanRoom.room.id}`, { action: 'resign', token: humanRoom.token });
 assert(humanResult.room.players[0].elo === 188 && humanResult.room.players[1].elo === 212, 'human-versus-human results should update both ratings');
+const leaveRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'friend', name: 'المنسحب', elo: 200, clockMinutes: 5 });
+const leaveOpponent = await post(`/api/interactive/rooms/${leaveRoom.room.id}`, { action: 'join', name: 'الفائز', elo: 200 });
+const leftGame = await post(`/api/interactive/rooms/${leaveRoom.room.id}`, { action: 'leave', token: leaveRoom.token });
+assert(leftGame.room.status === 'finished' && leftGame.state.winnerSeat === 1 && leftGame.room.players.length === 2, 'leaving a human chess match should award a forfeit win and retain both seats');
+const disconnectRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'friend', name: 'انقطاع', elo: 200, clockMinutes: 5 });
+const disconnectOpponent = await post(`/api/interactive/rooms/${disconnectRoom.room.id}`, { action: 'join', name: 'متصل', elo: 200 });
+const staleRoom = await roomStorage.get<any>(`interactive-room:${disconnectRoom.room.id}`);
+staleRoom.players[1].lastSeenAt = Date.now() - 31_000;
+await roomStorage.put(`interactive-room:${disconnectRoom.room.id}`, staleRoom);
+const disconnectResponse = await rooms.handle(new Request(`https://game.test/api/interactive/rooms/${disconnectRoom.room.id}`, { headers: { Authorization: `Bearer ${disconnectRoom.token}` } }));
+const disconnectResult = await disconnectResponse.json() as any;
+assert(disconnectResult.room.status === 'finished' && disconnectResult.state.winnerSeat === 0 && disconnectResult.room.players.length === 2, 'a chess player who stops heartbeating should forfeit after the disconnect timeout');
 
 const sudokuQueueOne = await post('/api/interactive/matchmaking', { game: 'sudoku', name: 'منشئ البوت', countryCode: 'IQ', difficulty: 'easy', isBotCreator: true });
 assert(sudokuQueueOne.ticket.status === 'waiting', 'first Sudoku player should wait for a real opponent');

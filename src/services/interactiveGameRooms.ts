@@ -4,7 +4,7 @@ import { getChessTrainer } from '../data/chessTrainers';
 
 export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
 
-type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; trainerId?: string; countryCode?: string; photoUrl?: string; isBotCreator?: boolean; bot?: boolean; joinedAt: number };
+type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; trainerId?: string; countryCode?: string; photoUrl?: string; isBotCreator?: boolean; bot?: boolean; joinedAt: number; lastSeenAt?: number };
 type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; countryCode?: string; photoUrl?: string; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number; opponentPhotoUrl?: string; opponentCountryCode?: string; opponentIsBotCreator?: boolean; isBotCreator?: boolean };
 type Card = { id: string; color: string | null; value: string };
 type PlayingCard = { rank: number; suit: string };
@@ -28,6 +28,7 @@ export interface RoomStorage {
 const ROOM_KEY = (id: string) => `interactive-room:${id}`;
 const TICKET_KEY = (id: string) => `interactive-match:${id}`;
 const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
+const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000;
 const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'ارسم وخمّن', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
 const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
@@ -136,6 +137,7 @@ export class InteractiveGameRooms {
       if (game === 'sudoku') { room.gameState.difficulty = this.cleanDifficulty(body?.difficulty); if (body?.mode === 'friend') room.gameState.mode = 'friend'; }
       if (game === 'chess') {
         const clockMinutes = Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5)));
+        room.gameState.mode = body?.mode === 'bot' ? 'bot' : 'friend';
         room.gameState.clockMinutes = clockMinutes;
         room.gameState.clockInitialMs = clockMinutes * 60_000;
         room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
@@ -155,7 +157,25 @@ export class InteractiveGameRooms {
     if (request.method === 'GET') {
       const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
       if (token && !room.players.some(player => player.token === token)) return Response.json({ error: 'رمز اللاعب غير صالح' }, { status: 403 });
-      if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); }
+      const now = Date.now();
+      let changed = false;
+      if (token && room.game === 'chess' && room.status === 'playing') {
+        const player = room.players.find(item => item.token === token);
+        const opponent = room.players.find(item => item.token !== token && !item.bot);
+        if (player) { player.lastSeenAt = now; changed = true; }
+        if (player && opponent && opponent.lastSeenAt && now - opponent.lastSeenAt > CHESS_HEARTBEAT_TIMEOUT_MS) {
+          room.gameState.clocks = this.chessClockValues(room);
+          room.gameState.clockStartedAt = 0;
+          room.gameState.matchIntroUntil = 0;
+          room.status = 'finished';
+          room.gameState.result = `${player.name} فاز لانقطاع خصمه`;
+          room.gameState.winnerSeat = room.players.indexOf(player);
+          this.updateChessElo(room, room.gameState.winnerSeat);
+          changed = true;
+        }
+      }
+      const started = this.startChessClockAfterIntro(room, now);
+      if (changed || started || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
       return this.jsonFor(room, token);
     }
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
@@ -178,6 +198,7 @@ export class InteractiveGameRooms {
 
     const player = room.players.find(item => item.token === body?.token);
     if (!player) return Response.json({ error: 'انضم للغرفة أولاً' }, { status: 403 });
+    this.startChessClockAfterIntro(room);
     if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); return this.jsonFor(room, player.token); }
     const result = this.act(room, player, action, body || {});
     if (result) return Response.json({ error: result }, { status: 400 });
@@ -206,7 +227,20 @@ export class InteractiveGameRooms {
   private startGame(room: Room): void {
     if (room.status !== 'waiting' || room.players.length < 2) return;
     room.status = 'playing';
-    if (room.game === 'chess') { const chess = new Chess(); room.gameState.fen = chess.fen(); room.gameState.turn = 'w'; room.gameState.clocks ||= { w: room.gameState.clockInitialMs || 300_000, b: room.gameState.clockInitialMs || 300_000 }; room.gameState.clockStartedAt = Date.now(); }
+    if (room.game === 'chess') {
+      const chess = new Chess();
+      room.gameState.fen = chess.fen(); room.gameState.turn = 'w';
+      room.gameState.clocks ||= { w: room.gameState.clockInitialMs || 300_000, b: room.gameState.clockInitialMs || 300_000 };
+      const now = Date.now();
+      for (const player of room.players) if (!player.bot) player.lastSeenAt = now;
+      if (room.gameState.mode === 'friend') {
+        room.gameState.matchIntroUntil = now + 2_800;
+        room.gameState.clockStartedAt = 0;
+      } else {
+        room.gameState.matchIntroUntil = 0;
+        room.gameState.clockStartedAt = Date.now();
+      }
+    }
     else if (room.game === 'uno') this.dealUno(room);
     else if (room.game === 'sudoku') this.startSudokuRace(room);
   }
@@ -214,9 +248,24 @@ export class InteractiveGameRooms {
   private act(room: Room, player: RoomPlayer, action: string, body: any): string | null {
     if (action === 'leave') {
       const index = room.players.findIndex(item => item.token === player.token);
-      if (room.status === 'playing' && room.game === 'chess') {
-        room.status = 'finished'; room.gameState.result = `${room.players[1 - index]?.name || 'الخصم'} فاز بالانسحاب`; room.gameState.winnerSeat = 1 - index; this.updateChessElo(room, 1 - index);
-      } else if (room.status === 'playing' && room.game === 'poker') {
+      if (index < 0) return 'اللاعب مو موجود بالغرفة';
+      if (room.game === 'chess') {
+        if (room.status === 'playing') {
+          room.gameState.clocks = this.chessClockValues(room);
+          room.gameState.clockStartedAt = 0;
+          room.gameState.matchIntroUntil = 0;
+          room.status = 'finished';
+          room.gameState.result = `${room.players[1 - index]?.name || 'الخصم'} فاز بالانسحاب`;
+          room.gameState.winnerSeat = 1 - index;
+          this.updateChessElo(room, 1 - index);
+        } else if (room.status === 'waiting') {
+          room.status = 'finished';
+          room.gameState.result = `${player.name} غادر قبل بدء المباراة`;
+          room.gameState.winnerSeat = -1;
+        }
+        return null;
+      }
+      if (room.status === 'playing' && room.game === 'poker') {
         const res = this.pokerAction(room, player, 'fold', 0);
         if (res) return res;
       }
@@ -253,6 +302,15 @@ export class InteractiveGameRooms {
     return clocks;
   }
 
+  private startChessClockAfterIntro(room: Room, now = Date.now()): boolean {
+    const state = room.gameState;
+    if (room.game !== 'chess' || room.status !== 'playing' || state.clockStartedAt || !state.matchIntroUntil || now < Number(state.matchIntroUntil)) return false;
+    state.clockStartedAt = now;
+    state.matchIntroUntil = 0;
+    room.updatedAt = now;
+    return true;
+  }
+
   private expireChessClock(room: Room, now = Date.now()): boolean {
     const state = room.gameState;
     if (room.game !== 'chess' || room.status !== 'playing' || !state.clockStartedAt || (state.turn !== 'w' && state.turn !== 'b')) return false;
@@ -280,6 +338,7 @@ export class InteractiveGameRooms {
       return null;
     }
     if (room.status !== 'playing') return 'ننتظر انضمام اللاعب الثاني';
+    if (state.matchIntroUntil && Date.now() < Number(state.matchIntroUntil)) return 'المباراة راح تبدي بعد لحظات';
     if (action === 'resign') {
       state.clocks = this.chessClockValues(room); state.clockStartedAt = 0;
       room.status = 'finished'; state.result = `${room.players[1 - seat].name} فاز بالانسحاب`; state.winnerSeat = 1 - seat; this.updateChessElo(room, state.winnerSeat);
