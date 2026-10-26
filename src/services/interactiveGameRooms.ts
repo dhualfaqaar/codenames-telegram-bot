@@ -1,8 +1,10 @@
 import { Chess } from 'chess.js';
+import { chooseChessBotMove } from './chessBot';
+import { getChessTrainer } from '../data/chessTrainers';
 
 export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
 
-type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; countryCode?: string; photoUrl?: string; bot?: boolean; joinedAt: number };
+type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; trainerId?: string; countryCode?: string; photoUrl?: string; bot?: boolean; joinedAt: number };
 type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; countryCode?: string; photoUrl?: string; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number; opponentPhotoUrl?: string };
 type Card = { id: string; color: string | null; value: string };
 type PlayingCard = { rank: number; suit: string };
@@ -117,15 +119,16 @@ export class InteractiveGameRooms {
       const body = await request.json().catch(() => null) as any;
       const game = String(body?.game || '') as InteractiveGameId;
       if (!Object.hasOwn(GAME_NAMES, game)) return Response.json({ error: 'اللعبة غير معروفة' }, { status: 400 });
-      const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
+      const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 200)));
       const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' ? 4 : game === 'gartic' ? 16 : 6;
       const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
       const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
       const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), photoUrl: cleanPhotoUrl(body?.photoUrl), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'sudoku' ? { countryCode: cleanCountryCode(body?.countryCode) } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
-      const botElo = game === 'chess' && body?.mode === 'bot' ? Math.max(400, Math.min(2000, Math.round(Number(body?.botElo) || 800))) : 0;
+      const botTrainer = game === 'chess' && body?.mode === 'bot' ? getChessTrainer(body?.trainerId, Number(body?.botElo) || 200) : undefined;
+      const botElo = botTrainer?.elo || 0;
       const players = [player];
-      if (botElo) players.push({ token: randomString(30), name: 'بوت', elo: botElo, bot: true, joinedAt: Date.now() });
+      if (botTrainer) players.push({ token: randomString(30), name: botTrainer.name, trainerId: botTrainer.id, elo: botElo, bot: true, joinedAt: Date.now() });
       const room: Room = {
         id: randomString(12), game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: player.token,
         players, capacity, gameState: this.initialState(game)
@@ -139,7 +142,7 @@ export class InteractiveGameRooms {
       }
       if (game === 'poker') room.gameState.startingChips = startingChips;
       if (game === 'gartic') room.gameState.roundDurationMs = roundDurationMs;
-      if (botElo) { room.gameState.botElo = botElo; room.gameState.mode = 'bot'; this.startGame(room); }
+      if (botTrainer) { room.gameState.botElo = botElo; room.gameState.botTrainerId = botTrainer.id; room.gameState.botStyle = botTrainer.style; room.gameState.mode = 'bot'; this.startGame(room); }
       await this.save(room);
       return this.jsonFor(room, player.token, 201);
     }
@@ -165,7 +168,7 @@ export class InteractiveGameRooms {
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
       const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 16 : 6);
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}), ...(room.game === 'sudoku' ? { countryCode: cleanCountryCode(body.countryCode) } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 200))) } : {}), ...(room.game === 'sudoku' ? { countryCode: cleanCountryCode(body.countryCode) } : {}) };
       room.players.push(player);
       room.updatedAt = Date.now();
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
@@ -212,7 +215,7 @@ export class InteractiveGameRooms {
     if (action === 'leave') {
       const index = room.players.findIndex(item => item.token === player.token);
       if (room.status === 'playing' && room.game === 'chess') {
-        room.status = 'finished'; room.gameState.result = `${room.players[1 - index]?.name || 'الخصم'} فاز بالانسحاب`;
+        room.status = 'finished'; room.gameState.result = `${room.players[1 - index]?.name || 'الخصم'} فاز بالانسحاب`; room.gameState.winnerSeat = 1 - index; this.updateChessElo(room, 1 - index);
       } else if (room.status === 'playing' && room.game === 'poker') {
         const res = this.pokerAction(room, player, 'fold', 0);
         if (res) return res;
@@ -302,40 +305,50 @@ export class InteractiveGameRooms {
   }
 
   private updateChessElo(room: Room, winnerSeat: number): void {
-    const players = room.players.filter(p => !p.bot);
-    if (players.length !== 2 || room.gameState.eloUpdated) return;
-    const [a,b] = players, ratingA = a.elo || 800, ratingB = b.elo || 800;
-    const scoreA = winnerSeat < 0 ? 0.5 : room.players[winnerSeat]?.token === a.token ? 1 : 0;
-    const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400)), changeA = Math.round(24 * (scoreA - expectedA));
-    a.elo = Math.max(100, ratingA + changeA); b.elo = Math.max(100, ratingB - changeA);
-    room.gameState.eloChanges = { [a.token]: a.elo - ratingA, [b.token]: b.elo - ratingB }; room.gameState.eloUpdated = true;
+    const humans = room.players.filter(player => !player.bot);
+    if (!humans.length || room.gameState.eloUpdated) return;
+    const scoreFor = (player: RoomPlayer) => winnerSeat < 0 ? 0.5 : room.players[winnerSeat]?.token === player.token ? 1 : 0;
+    const ratingDelta = (score: number, expected: number, kFactor: number) => {
+      const raw = kFactor * (score - expected);
+      return raw === 0 ? 0 : Math.sign(raw) * Math.max(1, Math.round(Math.abs(raw)));
+    };
+    if (humans.length === 1 && room.players.some(player => player.bot)) {
+      const human = humans[0];
+      const humanRating = Number(human.elo) || 200;
+      const botRating = Number(room.players.find(player => player.bot)?.elo) || Number(room.gameState.botElo) || 200;
+      const expected = 1 / (1 + Math.pow(10, (botRating - humanRating) / 400));
+      const kFactor = humanRating < 800 ? 40 : humanRating < 1_600 ? 32 : 24;
+      const change = ratingDelta(scoreFor(human), expected, kFactor);
+      human.elo = Math.max(100, Math.min(3_000, humanRating + change));
+      room.gameState.eloChanges = { [human.token]: human.elo - humanRating };
+      room.gameState.eloUpdated = true;
+      return;
+    }
+    if (humans.length !== 2) return;
+    const [a, b] = humans, ratingA = Number(a.elo) || 200, ratingB = Number(b.elo) || 200;
+    const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
+    const changeA = ratingDelta(scoreFor(a), expectedA, 24);
+    a.elo = Math.max(100, ratingA + changeA);
+    b.elo = Math.max(100, ratingB - changeA);
+    room.gameState.eloChanges = { [a.token]: a.elo - ratingA, [b.token]: b.elo - ratingB };
+    room.gameState.eloUpdated = true;
   }
 
   private makeBotMove(room: Room): void {
-    const state = room.gameState, elo = Math.max(400, Math.min(2000, Number(state.botElo) || 800));
-    const chess = new Chess(state.fen); if (chess.turn() !== 'b') return;
-    const moves = chess.moves({ verbose: true }) as any[]; if (!moves.length) return;
-    const blunderChance = elo <= 500 ? 0.24 : elo <= 800 ? 0.12 : elo <= 1200 ? 0.06 : 0.025;
-    let chosen: any;
-    if (Math.random() < blunderChance) chosen = moves[Math.floor(Math.random() * moves.length)];
-    else {
-      const value: Record<string, number> = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
-      const scored = moves.map(move => {
-        const copy = new Chess(state.fen); copy.move(move.san);
-        let score = (value[move.captured] || 0) * 1.1 + (move.promotion ? value[move.promotion] * 0.8 : 0);
-        if (copy.isCheckmate()) score += 10000; else if (copy.isCheck()) score += 12;
-        const file = 'abcdefgh'.indexOf(move.to[0]), rank = Number(move.to[1]) - 1;
-        score += (3.5 - Math.abs(3.5 - file) + 3.5 - Math.abs(3.5 - rank)) * (elo > 900 ? 1.2 : 0.3);
-        score += (Math.random() - 0.5) * (elo <= 600 ? 85 : elo <= 1000 ? 42 : 20);
-        return { move, score };
-      }).sort((x,y) => y.score - x.score);
-      chosen = scored[0].move;
-    }
-    const movedAt = Date.now(); state.clocks = this.chessClockValues(room, movedAt);
+    const state = room.gameState;
+    const trainer = getChessTrainer(state.botTrainerId, Number(state.botElo) || 200);
+    const chess = new Chess(state.fen);
+    if (chess.turn() !== 'b') return;
+    const chosen = chooseChessBotMove(chess.fen(), trainer.elo, trainer.style);
+    if (!chosen) return;
+    const movedAt = Date.now();
+    state.clocks = this.chessClockValues(room, movedAt);
     if (state.clocks.b <= 0) { this.expireChessClock(room, movedAt); return; }
-    const moved = chess.move(chosen.san); state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san; state.lastMoveSquares = [moved.from, moved.to]; state.clockStartedAt = movedAt;
-    if (chess.isCheckmate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = 1; state.result = `${room.players[1].name} فاز بالكش مات`; }
-    else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = -1; state.result = 'تعادل'; }
+    const moved = chess.move({ from: chosen.from, to: chosen.to, promotion: chosen.promotion || 'q' });
+    if (!moved) return;
+    state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = moved.san; state.lastMoveSquares = [moved.from, moved.to]; state.clockStartedAt = movedAt;
+    if (chess.isCheckmate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = 1; state.result = `${room.players[1].name} فاز بالكش مات`; this.updateChessElo(room, state.winnerSeat); }
+    else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = -1; state.result = 'تعادل'; this.updateChessElo(room, -1); }
   }
 
   private sudokuAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
@@ -548,7 +561,7 @@ export class InteractiveGameRooms {
       const body = await request.json().catch(() => null) as any;
       const game = body?.game === 'sudoku' ? 'sudoku' : body?.game === 'chess' ? 'chess' : null;
       if (!game) return Response.json({ error: 'اللعبة غير مدعومة للمطابقة' }, { status: 400 });
-      const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 800)));
+      const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 200)));
       const difficulty = this.cleanDifficulty(body?.difficulty);
       const clockMinutes = game === 'chess' ? Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5))) : 5;
       const playerToken = randomString(30), ticket: MatchTicket = {
@@ -628,6 +641,7 @@ export class InteractiveGameRooms {
       state.legalMoves = own && s.turn === state.side ? (new Chess(s.fen).moves({ verbose: true }) as any[]).map(move => ({ from: move.from, to: move.to })) : [];
       state.lastMoveSquares = s.lastMoveSquares || [];
       state.botElo = Number(s.botElo) || 0;
+      state.botTrainerId = String(s.botTrainerId || '');
     } else if (room.game === 'sudoku') {
       const ownBoard = s.boards?.[token]; state.values = ownBoard?.values || []; state.mistakes = ownBoard?.mistakes || 0; state.lastCorrect = ownBoard?.lastCorrect ?? null; state.winner = s.winner === token;
       state.opponentProgress = room.players.filter(p => p.token !== token).map(p => ({ name: p.name, countryCode: p.countryCode || 'IQ', progress: (s.boards?.[p.token]?.values || []).filter((v: number, i: number) => !s.puzzle[i] && v === s.solution[i]).length, bot: p.bot || false }));
@@ -653,7 +667,7 @@ export class InteractiveGameRooms {
       state.winners = (s.winners || []).map((token:string)=>room.players.findIndex(p=>p.token===token)).filter((i:number)=>i>=0);
       state.betAmounts = room.players.map(p=>s.bets[p.token]||0);
     }
-    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,countryCode:p.countryCode||'IQ',photoUrl:p.photoUrl||'',eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
+    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,countryCode:p.countryCode||'IQ',photoUrl:p.photoUrl||'',trainerId:p.trainerId||'',eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
   }
 }
 

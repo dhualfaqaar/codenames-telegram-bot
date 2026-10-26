@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
+    "test:chess": "tsx scripts/check-chess-bot.ts",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
