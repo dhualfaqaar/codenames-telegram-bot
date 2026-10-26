@@ -7,6 +7,12 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 WEBHOOK_URL = "https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev"
 
+# Ship the small single-threaded Stockfish browser worker as immutable static assets.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/stockfish/*"]
+
 # Worker Preview builds must never register or replace the production Telegram webhook.
 [previews.vars]
 WEBHOOK_URL = "https://preview-codenames-telegram-bot.invalid"

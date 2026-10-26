@@ -1,0 +1,5 @@
+Stockfish.js 19.0.1, lite single-threaded WebAssembly build
+Package: https://www.npmjs.com/package/stockfish
+Source: https://github.com/nmrugg/stockfish.js
+Engine source is licensed under GNU General Public License version 3 (GPL-3.0).
+The matching JavaScript and WASM files are distributed together in this directory.

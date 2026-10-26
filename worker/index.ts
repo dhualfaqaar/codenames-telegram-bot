@@ -26,6 +26,7 @@ interface Env {
   OPEN_SUBTITLES_API_KEY?: string;
   OPEN_SUBTITLES_USER_AGENT?: string;
   BOT_STATE: any;
+  ASSETS?: { fetch(request: Request): Promise<Response> };
 }
 
 const DEFAULT_WEBHOOK_URL = 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev';
@@ -313,6 +314,14 @@ export class BotState {
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname.startsWith('/stockfish/') && env.ASSETS) {
+      const asset = await env.ASSETS.fetch(request);
+      if (asset.status === 404) return asset;
+      const headers = new Headers(asset.headers);
+      headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+      headers.set('X-Content-Type-Options', 'nosniff');
+      return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+    }
     if (request.method === 'GET' && (requestUrl.pathname === '/interactive' || requestUrl.pathname === '/interactive/')) {
       return new Response(interactiveGamesMiniAppHtml(requestUrl.searchParams.get('game') || ''), {
         headers: {
