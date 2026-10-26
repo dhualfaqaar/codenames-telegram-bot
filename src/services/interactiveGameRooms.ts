@@ -2,8 +2,8 @@ import { Chess } from 'chess.js';
 
 export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
 
-type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; bot?: boolean; joinedAt: number };
-type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number };
+type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; countryCode?: string; bot?: boolean; joinedAt: number };
+type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; countryCode?: string; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number };
 type Card = { id: string; color: string | null; value: string };
 type PlayingCard = { rank: number; suit: string };
 type Room = {
@@ -43,6 +43,10 @@ function randomString(length: number): string {
 function cleanName(value: unknown): string {
   const name = String(value || '').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 24);
   return name || 'لاعب';
+}
+function cleanCountryCode(value: unknown): string {
+  const code = String(value || 'IQ').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : 'IQ';
 }
 function shuffle<T>(items: T[]): T[] {
   for (let i = items.length - 1; i > 0; i--) {
@@ -107,7 +111,7 @@ export class InteractiveGameRooms {
       const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
       const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
       const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'sudoku' ? { countryCode: cleanCountryCode(body?.countryCode) } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
       const botElo = game === 'chess' && body?.mode === 'bot' ? Math.max(400, Math.min(2000, Math.round(Number(body?.botElo) || 800))) : 0;
       const players = [player];
       if (botElo) players.push({ token: randomString(30), name: 'بوت', elo: botElo, bot: true, joinedAt: Date.now() });
@@ -115,7 +119,7 @@ export class InteractiveGameRooms {
         id: randomString(12), game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: player.token,
         players, capacity, gameState: this.initialState(game)
       };
-      if (game === 'sudoku') room.gameState.difficulty = this.cleanDifficulty(body?.difficulty);
+      if (game === 'sudoku') { room.gameState.difficulty = this.cleanDifficulty(body?.difficulty); if (body?.mode === 'friend') room.gameState.mode = 'friend'; }
       if (game === 'chess') {
         const clockMinutes = Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5)));
         room.gameState.clockMinutes = clockMinutes;
@@ -150,7 +154,7 @@ export class InteractiveGameRooms {
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
       const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 16 : 6);
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), joinedAt: Date.now(), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 800))) } : {}), ...(room.game === 'sudoku' ? { countryCode: cleanCountryCode(body.countryCode) } : {}) };
       room.players.push(player);
       room.updatedAt = Date.now();
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
@@ -333,7 +337,7 @@ export class InteractiveGameRooms {
       if (s.puzzle[index]) return 'هذا الرقم ثابت باللغز';
       if (value !== s.solution[index]) { board.mistakes++; board.lastCorrect = false; return null; }
       board.values[index] = value; board.lastCorrect = true;
-      if (board.values.every((v: number, i: number) => v === s.solution[i])) { board.finished = true; s.winner = player.token; s.result = `${player.name} حلّ السودوكو أولاً!`; room.status = 'finished'; }
+      if (board.values.every((v: number, i: number) => v === s.solution[i])) { board.finished = true; s.winner = player.token; s.result = `${player.name} حلّ السودوكو أولاً!`; s.finishedAt = Date.now(); room.status = 'finished'; }
       return null;
     }
     if (action === 'clear') { const index = Number(body.index); if (Number.isInteger(index) && index >= 0 && index < 81 && !s.puzzle[index]) board.values[index] = 0; board.lastCorrect = null; return null; }
@@ -538,9 +542,9 @@ export class InteractiveGameRooms {
       const clockMinutes = game === 'chess' ? Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5))) : 5;
       const playerToken = randomString(30), ticket: MatchTicket = {
         id: randomString(12), secret: randomString(30), game, status: 'waiting', roomId: randomString(12), roomToken: playerToken,
-        name: cleanName(body?.name), elo, difficulty, clockMinutes, createdAt: Date.now()
+        name: cleanName(body?.name), elo, countryCode: cleanCountryCode(body?.countryCode), difficulty, clockMinutes, createdAt: Date.now()
       };
-      const player: RoomPlayer = { token: playerToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
+      const player: RoomPlayer = { token: playerToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'sudoku' ? { countryCode: ticket.countryCode } : {}) };
       const room: Room = { id: ticket.roomId, game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: playerToken, players: [player], capacity: 2, gameState: this.initialState(game) };
       if (game === 'sudoku') room.gameState.difficulty = difficulty; else {
         room.gameState.mode = 'random'; room.gameState.clockMinutes = clockMinutes; room.gameState.clockInitialMs = clockMinutes * 60_000;
@@ -558,7 +562,7 @@ export class InteractiveGameRooms {
       if (opponent) {
         const opponentRoom = await this.load(opponent.roomId);
         if (opponentRoom?.status === 'waiting' && opponentRoom.players.length === 1) {
-          const rival: RoomPlayer = { token: ticket.roomToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}) };
+          const rival: RoomPlayer = { token: ticket.roomToken, name: ticket.name, joinedAt: Date.now(), ...(game === 'chess' ? { elo } : {}), ...(game === 'sudoku' ? { countryCode: ticket.countryCode || 'IQ' } : {}) };
           opponentRoom.players.push(rival); opponentRoom.updatedAt = Date.now();
           this.startGame(opponentRoom); await this.save(opponentRoom);
           opponent.status = 'matched'; opponent.opponentName = ticket.name; opponent.opponentElo = elo;
@@ -593,7 +597,7 @@ export class InteractiveGameRooms {
   }
 
   private ticketJson(ticket: MatchTicket, status = 200): Response {
-    return Response.json({ ticket: { id: ticket.id, game: ticket.game, status: ticket.status, roomId: ticket.roomId, roomToken: ticket.status === 'matched' ? ticket.roomToken : '', name: ticket.name, elo: ticket.elo, difficulty: ticket.difficulty, opponentName: ticket.opponentName || '', opponentElo: ticket.opponentElo || 0, createdAt: ticket.createdAt }, secret: status === 201 ? ticket.secret : undefined }, { status, headers: { 'Cache-Control': 'no-store' } });
+    return Response.json({ ticket: { id: ticket.id, game: ticket.game, status: ticket.status, roomId: ticket.roomId, roomToken: ticket.status === 'matched' ? ticket.roomToken : '', name: ticket.name, elo: ticket.elo, countryCode: ticket.countryCode || 'IQ', difficulty: ticket.difficulty, opponentName: ticket.opponentName || '', opponentElo: ticket.opponentElo || 0, createdAt: ticket.createdAt }, secret: status === 201 ? ticket.secret : undefined }, { status, headers: { 'Cache-Control': 'no-store' } });
   }
 
   private async load(id: string): Promise<Room | undefined> { return await this.storage.get<Room>(ROOM_KEY(id)); }
@@ -615,7 +619,7 @@ export class InteractiveGameRooms {
       state.botElo = Number(s.botElo) || 0;
     } else if (room.game === 'sudoku') {
       const ownBoard = s.boards?.[token]; state.values = ownBoard?.values || []; state.mistakes = ownBoard?.mistakes || 0; state.lastCorrect = ownBoard?.lastCorrect ?? null; state.winner = s.winner === token;
-      state.opponentProgress = room.players.filter(p => p.token !== token).map(p => ({ name: p.name, progress: (s.boards?.[p.token]?.values || []).filter((v: number, i: number) => !s.puzzle[i] && v === s.solution[i]).length, bot: p.bot || false }));
+      state.opponentProgress = room.players.filter(p => p.token !== token).map(p => ({ name: p.name, countryCode: p.countryCode || 'IQ', progress: (s.boards?.[p.token]?.values || []).filter((v: number, i: number) => !s.puzzle[i] && v === s.solution[i]).length, bot: p.bot || false }));
     } else if (room.game === 'uno') {
       state.hand = own ? s.hands[token] || [] : [];
       state.handsCount = room.players.map((player,i) => ({ seat:i, name:player.name, count:(s.hands[player.token]||[]).length, isTurn:i===s.turn }));
@@ -638,7 +642,7 @@ export class InteractiveGameRooms {
       state.winners = (s.winners || []).map((token:string)=>room.players.findIndex(p=>p.token===token)).filter((i:number)=>i>=0);
       state.betAmounts = room.players.map(p=>s.bets[p.token]||0);
     }
-    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
+    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,countryCode:p.countryCode||'IQ',eloChange:room.gameState.eloChanges?.[p.token] ?? 0,bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
   }
 }
 
