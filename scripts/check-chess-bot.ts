@@ -14,6 +14,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 assert(STOCKFISH_ASSET_VERSION === '19.0.1', 'expected the current Stockfish engine assets');
+assert(CHESS_TRAINERS.every(trainer => trainer.name === 'بوت') && new Set(CHESS_TRAINERS.map(trainer => trainer.elo)).size === CHESS_TRAINERS.length, 'all chess trainers should use the same Bot display name while keeping distinct ELO ratings');
 assert(stockfishSkillForElo(200) === 0 && stockfishSkillForElo(2_800) === 20, 'Stockfish strength endpoints are incorrect');
 assert(stockfishSkillForElo(1_600) > stockfishSkillForElo(800), 'Stockfish skill should increase with ELO');
 assert(stockfishThinkTimeForElo(2_800) > stockfishThinkTimeForElo(200), 'Stockfish think time should increase with ELO');
@@ -32,6 +33,10 @@ assert(miniAppHtml.includes('id=\"chessFriendCard\"') && miniAppHtml.includes('c
 assert(!miniAppHtml.includes('إعدادات المباراة') && !miniAppHtml.includes('data-pref=\"chessTheme\"') && !miniAppHtml.includes('chessDefaultMinutes'), 'chess match settings must not remain in the profile page or active match toolbar');
 assert(miniAppHtml.includes('id="chessChatButton"') && miniAppHtml.includes('chess-header-chat') && miniAppHtml.includes('chessChatMessages'), 'the chat control should sit in the room header, outside the chessboard');
 assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verified-star'), 'verified badge should use a centered upright vector star');
+assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.includes('data-play-mode=\"random\"') && miniAppHtml.includes("if(event.target.closest('#chessPlayButton')){openChessPlayMenu();return}"), 'the large chess play button should open bot, friend, and random-human choices');
+assert(miniAppHtml.includes("new URL('/interactive',location.origin)") && miniAppHtml.includes("url.searchParams.set('room',roomData.room.id)") && miniAppHtml.includes("params.get('room')"), 'friend invitation should open the correct interactive room directly');
+assert(miniAppHtml.includes('function renderSudokuFriendWaiting') && miniAppHtml.includes('sudoku-share-friend'), 'Sudoku friend rooms should use a compact dedicated waiting screen');
+assert(sudokuMiniAppHtml.includes('levelDialogTitle') && sudokuMiniAppHtml.includes('level-option-icon') && sudokuMiniAppHtml.includes('level-dialog-art'), 'solo Sudoku difficulty selection should use the redesigned level dialog');
 assert(miniAppHtml.includes('accountCountrySelect') && miniAppHtml.includes('cg-chess-country') && !miniAppHtml.includes('chessBotCountry') && !miniAppHtml.includes('chessFriendCountry'), 'country should be editable in account settings, not during chess match setup');
 assert(miniAppHtml.includes('chess-seat-card') && miniAppHtml.includes('opponentCard') && miniAppHtml.includes('self-seat-row') && miniAppHtml.includes('data-chess-clock'), 'chess seats should show opponent above and player below with live clocks');
 assert(miniAppHtml.includes('background:#b9d8ed') && miniAppHtml.includes('background:#376b95') && miniAppHtml.includes('overflow-x:clip'), 'chess match should use the blue board palette and avoid horizontal spill');
@@ -134,6 +139,9 @@ const sudokuMatchRoomResponse = await rooms.handle(new Request(`https://game.tes
 const sudokuMatchRoom = await sudokuMatchRoomResponse.json() as any;
 assert(sudokuMatchRoom.state.mode === 'random' && sudokuMatchRoom.state.difficulty === 'easy', "random Sudoku match should start without carrying either player's chosen difficulty");
 assert(sudokuMatchRoom.room.players[0].countryCode === 'IQ' && sudokuMatchRoom.room.players[1].countryCode === 'US', 'Sudoku match players should retain their selected country flags');
+const sudokuFriendRoom = await post('/api/interactive/rooms', { game: 'sudoku', mode: 'friend', name: 'صاحب الغرفة', countryCode: 'IQ' });
+const sudokuFriendJoin = await post(`/api/interactive/rooms/${sudokuFriendRoom.room.id}`, { action: 'join', name: 'الصديق', countryCode: 'US' });
+assert(sudokuFriendJoin.room.status === 'playing' && sudokuFriendJoin.state.mode === 'friend' && sudokuFriendJoin.room.players.length === 2, 'a friend opening the shared Sudoku room should join the correct game');
 
 const fallbackRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'bot', name: 'اختبار الاحتياط', trainerId: 'salem', botElo: 200, clockMinutes: 5 });
 const fallbackHumanMove = await post(`/api/interactive/rooms/${fallbackRoom.room.id}`, { action: 'move', token: fallbackRoom.token, from: 'e2', to: 'e4' });
