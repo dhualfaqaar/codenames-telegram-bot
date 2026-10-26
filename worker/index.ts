@@ -13,6 +13,8 @@ import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { CHESS_HERO_JPG_BASE64 } from '../src/assets/chessHeroJpgBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
+export const INTERACTIVE_APP_BUILD = '2026-10-26-screen-profiles-v1';
+
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
@@ -175,11 +177,13 @@ export class BotState {
   private async getBot(): Promise<TelegramBotManager> {
     if (this.bot) return this.bot;
 
+    const interactiveGamesUrl = new URL('/interactive', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL);
+    interactiveGamesUrl.searchParams.set('app_build', INTERACTIVE_APP_BUILD);
     const bot = new TelegramBotManager(this.env.TELEGRAM_BOT_TOKEN, this.env.OWNER_ID, true, {
       geminiApiKey: this.env.GEMINI_API_KEY,
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
-      interactiveGamesUrl: new URL('/interactive', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL).toString()
+      interactiveGamesUrl: interactiveGamesUrl.toString()
     });
     try {
       const saved = await this.state.storage.get('state');
@@ -326,7 +330,7 @@ export default {
       return new Response(interactiveGamesMiniAppHtml(requestUrl.searchParams.get('game') || ''), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-store, max-age=0, must-revalidate',
           'X-Content-Type-Options': 'nosniff',
           'Referrer-Policy': 'strict-origin-when-cross-origin'
         }
