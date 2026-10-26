@@ -124,7 +124,7 @@ export class InteractiveGameRooms {
       const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
       const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
       const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), photoUrl: cleanPhotoUrl(body?.photoUrl), joinedAt: Date.now(), ...(body?.isBotCreator === true ? { isBotCreator: true } : {}), ...(game === 'chess' ? { elo, countryCode: cleanCountryCode(body?.countryCode) } : {}), ...(game === 'sudoku' ? { countryCode: cleanCountryCode(body?.countryCode) } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), photoUrl: cleanPhotoUrl(body?.photoUrl), countryCode: cleanCountryCode(body?.countryCode), joinedAt: Date.now(), ...(body?.isBotCreator === true ? { isBotCreator: true } : {}), ...(game === 'chess' ? { elo } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
       const botTrainer = game === 'chess' && body?.mode === 'bot' ? getChessTrainer(body?.trainerId, Number(body?.botElo) || 200) : undefined;
       const botElo = botTrainer?.elo || 0;
       const players = [player];
@@ -168,7 +168,7 @@ export class InteractiveGameRooms {
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
       const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 16 : 6);
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
-      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), joinedAt: Date.now(), ...(body.isBotCreator === true ? { isBotCreator: true } : {}), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 200))), countryCode: cleanCountryCode(body.countryCode) } : {}), ...(room.game === 'sudoku' ? { countryCode: cleanCountryCode(body.countryCode) } : {}) };
+      const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), countryCode: cleanCountryCode(body.countryCode), joinedAt: Date.now(), ...(body.isBotCreator === true ? { isBotCreator: true } : {}), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 200))) } : {}) };
       room.players.push(player);
       room.updatedAt = Date.now();
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
