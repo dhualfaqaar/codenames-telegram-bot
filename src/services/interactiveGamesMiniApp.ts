@@ -405,6 +405,14 @@ body:has(#gameApp[data-page="room"][data-game="chess"]){background:radial-gradie
 #roomPage[data-game="chess"] .chess-chat-form input{min-width:0!important;flex:1!important}
 }
 @media (orientation:landscape) and (min-width:1100px) and (min-height:600px) and (max-height:720px){#roomPage[data-game="chess"] .chess-board-panel .board-wrap{width:min(100%,calc(100dvh - env(safe-area-inset-top) - var(--tg-header-reserve,0px) - 118px),900px)!important}}
+
+/* Phone portrait: use nearly the full device width while reserving room for both complete player cards. */
+@media (orientation:portrait) and (max-width:600px){
+#roomPage[data-game="chess"] .chess-arena{padding:6px 0 8px!important}
+#roomPage[data-game="chess"] .chess-main-column{grid-template-rows:minmax(var(--chess-seat-row),auto) auto minmax(var(--chess-seat-row),auto)!important;gap:3px!important;height:auto!important}
+#roomPage[data-game="chess"] .chess-clock-row,#roomPage[data-game="chess"] .chess-main-column>.self-seat-row{width:min(100%,var(--chess-board-limit))!important}
+#roomPage[data-game="chess"] .chess-board-panel .board-wrap{width:min(100%,calc(100vw - 16px),calc(100dvh - env(safe-area-inset-top) - var(--tg-header-reserve,0px) - 190px),var(--chess-board-limit))!important}
+}
 </style>
 </head>
 <body>
