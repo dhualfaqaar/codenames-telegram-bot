@@ -13,7 +13,7 @@ import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { CHESS_HERO_JPG_BASE64 } from '../src/assets/chessHeroJpgBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
-export const INTERACTIVE_APP_BUILD = '2026-10-26-screen-profiles-v1';
+export const INTERACTIVE_APP_BUILD = '2026-10-26-standalone-chess-home-v1';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -325,6 +325,16 @@ export default {
       headers.set('Cache-Control', 'public, max-age=31536000, immutable');
       headers.set('X-Content-Type-Options', 'nosniff');
       return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+    }
+    if (request.method === 'GET' && (requestUrl.pathname === '/chess' || requestUrl.pathname === '/chess/')) {
+      return new Response(interactiveGamesMiniAppHtml('chess'), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, max-age=0, must-revalidate',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin'
+        }
+      });
     }
     if (request.method === 'GET' && (requestUrl.pathname === '/interactive' || requestUrl.pathname === '/interactive/')) {
       return new Response(interactiveGamesMiniAppHtml(requestUrl.searchParams.get('game') || ''), {
