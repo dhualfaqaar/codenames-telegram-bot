@@ -5,7 +5,7 @@ import { getChessTrainer } from '../data/chessTrainers';
 export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
 
 type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; trainerId?: string; countryCode?: string; photoUrl?: string; isBotCreator?: boolean; bot?: boolean; joinedAt: number };
-type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; countryCode?: string; photoUrl?: string; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number; opponentPhotoUrl?: string; isBotCreator?: boolean };
+type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; countryCode?: string; photoUrl?: string; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number; opponentPhotoUrl?: string; opponentCountryCode?: string; opponentIsBotCreator?: boolean; isBotCreator?: boolean };
 type Card = { id: string; color: string | null; value: string };
 type PlayingCard = { rank: number; suit: string };
 type Room = {
@@ -570,7 +570,7 @@ export class InteractiveGameRooms {
       };
       const player: RoomPlayer = { token: playerToken, name: ticket.name, photoUrl: ticket.photoUrl, joinedAt: Date.now(), ...(ticket.isBotCreator ? { isBotCreator: true } : {}), ...(game === 'chess' ? { elo, countryCode: ticket.countryCode || 'IQ' } : {}), ...(game === 'sudoku' ? { countryCode: ticket.countryCode } : {}) };
       const room: Room = { id: ticket.roomId, game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: playerToken, players: [player], capacity: 2, gameState: this.initialState(game) };
-      if (game === 'sudoku') room.gameState.difficulty = difficulty; else {
+      if (game === 'sudoku') { room.gameState.difficulty = 'easy'; room.gameState.mode = 'random'; } else {
         room.gameState.mode = 'random'; room.gameState.clockMinutes = clockMinutes; room.gameState.clockInitialMs = clockMinutes * 60_000;
         room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
       }
@@ -581,7 +581,7 @@ export class InteractiveGameRooms {
         const waiting = await this.storage.get<MatchTicket>(TICKET_KEY(ticketId));
         if (!waiting || waiting.status !== 'waiting' || Date.now() - waiting.createdAt > 120_000) continue;
         fresh.push(ticketId);
-        if (!opponent && waiting.id !== ticket.id && (game === 'chess' ? Math.abs(waiting.elo - elo) <= 350 && waiting.clockMinutes === clockMinutes : waiting.difficulty === difficulty)) opponent = waiting;
+        if (!opponent && waiting.id !== ticket.id && (game === 'chess' ? Math.abs(waiting.elo - elo) <= 350 && waiting.clockMinutes === clockMinutes : true)) opponent = waiting;
       }
       if (opponent) {
         const opponentRoom = await this.load(opponent.roomId);
@@ -589,8 +589,8 @@ export class InteractiveGameRooms {
           const rival: RoomPlayer = { token: ticket.roomToken, name: ticket.name, photoUrl: ticket.photoUrl, joinedAt: Date.now(), ...(ticket.isBotCreator ? { isBotCreator: true } : {}), ...(game === 'chess' ? { elo, countryCode: ticket.countryCode || 'IQ' } : {}), ...(game === 'sudoku' ? { countryCode: ticket.countryCode || 'IQ' } : {}) };
           opponentRoom.players.push(rival); opponentRoom.updatedAt = Date.now();
           this.startGame(opponentRoom); await this.save(opponentRoom);
-          opponent.status = 'matched'; opponent.opponentName = ticket.name; opponent.opponentElo = elo; opponent.opponentPhotoUrl = ticket.photoUrl;
-          ticket.status = 'matched'; ticket.roomId = opponentRoom.id; ticket.opponentName = opponent.name; ticket.opponentElo = opponent.elo; ticket.opponentPhotoUrl = opponent.photoUrl;
+          opponent.status = 'matched'; opponent.opponentName = ticket.name; opponent.opponentElo = elo; opponent.opponentPhotoUrl = ticket.photoUrl; opponent.opponentCountryCode = ticket.countryCode || 'IQ'; opponent.opponentIsBotCreator = ticket.isBotCreator === true;
+          ticket.status = 'matched'; ticket.roomId = opponentRoom.id; ticket.opponentName = opponent.name; ticket.opponentElo = opponent.elo; ticket.opponentPhotoUrl = opponent.photoUrl; ticket.opponentCountryCode = opponent.countryCode || 'IQ'; ticket.opponentIsBotCreator = opponent.isBotCreator === true;
           await this.storage.put(TICKET_KEY(opponent.id), opponent);
           await this.storage.put(TICKET_KEY(ticket.id), ticket);
           await this.storage.put(QUEUE_KEY(game), fresh.filter(q => q !== opponent!.id));
@@ -621,7 +621,7 @@ export class InteractiveGameRooms {
   }
 
   private ticketJson(ticket: MatchTicket, status = 200): Response {
-    return Response.json({ ticket: { id: ticket.id, game: ticket.game, status: ticket.status, roomId: ticket.roomId, roomToken: ticket.status === 'matched' ? ticket.roomToken : '', name: ticket.name, elo: ticket.elo, countryCode: ticket.countryCode || 'IQ', photoUrl: ticket.photoUrl || '', difficulty: ticket.difficulty, opponentName: ticket.opponentName || '', opponentElo: ticket.opponentElo || 0, opponentPhotoUrl: ticket.opponentPhotoUrl || '', createdAt: ticket.createdAt }, secret: status === 201 ? ticket.secret : undefined }, { status, headers: { 'Cache-Control': 'no-store' } });
+    return Response.json({ ticket: { id: ticket.id, game: ticket.game, status: ticket.status, roomId: ticket.roomId, roomToken: ticket.status === 'matched' ? ticket.roomToken : '', name: ticket.name, elo: ticket.elo, countryCode: ticket.countryCode || 'IQ', photoUrl: ticket.photoUrl || '', difficulty: ticket.difficulty, opponentName: ticket.opponentName || '', opponentElo: ticket.opponentElo || 0, opponentPhotoUrl: ticket.opponentPhotoUrl || '', opponentCountryCode: ticket.opponentCountryCode || 'IQ', opponentIsBotCreator: Boolean(ticket.opponentIsBotCreator), createdAt: ticket.createdAt }, secret: status === 201 ? ticket.secret : undefined }, { status, headers: { 'Cache-Control': 'no-store' } });
   }
 
   private async load(id: string): Promise<Room | undefined> { return await this.storage.get<Room>(ROOM_KEY(id)); }

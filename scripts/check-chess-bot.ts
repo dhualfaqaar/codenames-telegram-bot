@@ -4,6 +4,7 @@ import { chooseChessBotMove } from '../src/services/chessBot';
 import { STOCKFISH_ASSET_VERSION, stockfishSkillForElo, stockfishThinkTimeForElo } from '../src/services/chessStockfish';
 import { CHESS_LESSONS, CHESS_PUZZLES } from '../src/data/chessLearning';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
+import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
 const cloudflareWorker = workerModule.default;
 import { InteractiveGameRooms, MemoryRoomStorage } from '../src/services/interactiveGameRooms';
@@ -18,6 +19,12 @@ assert(stockfishSkillForElo(1_600) > stockfishSkillForElo(800), 'Stockfish skill
 assert(stockfishThinkTimeForElo(2_800) > stockfishThinkTimeForElo(200), 'Stockfish think time should increase with ELO');
 assert(stockfishThinkTimeForElo(2_800) <= 3_000, 'Stockfish mobile thinking budget should stay bounded');
 const miniAppHtml = interactiveGamesMiniAppHtml('chess');
+const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
+assert(sudokuMiniAppHtml.includes('العب مع شخص عشوائي') && sudokuMiniAppHtml.includes('id="friendGameButton"'), 'Sudoku home should expose random-human and friend-play actions');
+assert(!sudokuMiniAppHtml.includes('battleLevelSelect') && !sudokuMiniAppHtml.includes('defaultLevelSelect') && !sudokuMiniAppHtml.includes('محترف'), 'Sudoku battle must not expose difficulty choices or a locked pro mode');
+assert(sudokuMiniAppHtml.includes('readBattleTickets') && sudokuMiniAppHtml.includes('بطاقات المعركة') && sudokuMiniAppHtml.includes('creator-verified-badge'), 'Sudoku battle tickets and creator badge should be available');
+assert(miniAppHtml.includes('reserveSudokuBattleTicket') && miniAppHtml.includes('refundSudokuBattleTicket') && miniAppHtml.includes('settleSudokuBattleTicket'), 'random Sudoku ticket should reserve, refund on cancellation, and settle after matching');
+assert(miniAppHtml.includes('opponentCountryCode') && miniAppHtml.includes('opponentIsBotCreator') && miniAppHtml.includes('countryFlag(sudokuCountryCode())'), 'Sudoku matchmaking should show both players’ country flags and creator badge');
 assert(miniAppHtml.includes('id="chessPuzzleList"') && miniAppHtml.includes('id="chessDailyBoard"'), 'chess puzzle library and daily board should be rendered');
 assert(miniAppHtml.includes('stockfish-19-lite-single.js'), 'Stockfish 19 worker should be loaded by the browser app');
 assert(miniAppHtml.includes('chessLessons=JSON.parse') && miniAppHtml.includes('chessPuzzles=JSON.parse'), 'lesson and puzzle data should be injected into the app');
@@ -25,7 +32,7 @@ assert(miniAppHtml.includes('id=\"chessFriendCard\"') && miniAppHtml.includes('c
 assert(!miniAppHtml.includes('إعدادات المباراة') && !miniAppHtml.includes('data-pref=\"chessTheme\"') && !miniAppHtml.includes('chessDefaultMinutes'), 'chess match settings must not remain in the profile page or active match toolbar');
 assert(miniAppHtml.includes('id="chessChatButton"') && miniAppHtml.includes('chess-header-chat') && miniAppHtml.includes('chessChatMessages'), 'the chat control should sit in the room header, outside the chessboard');
 assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verified-star'), 'verified badge should use a centered upright vector star');
-assert(miniAppHtml.includes('chessBotCountry') && miniAppHtml.includes('chessFriendCountry') && miniAppHtml.includes('cg-chess-country'), 'chess country choice should be persisted in both match-start flows');
+assert(miniAppHtml.includes('accountCountrySelect') && miniAppHtml.includes('cg-chess-country') && !miniAppHtml.includes('chessBotCountry') && !miniAppHtml.includes('chessFriendCountry'), 'country should be editable in account settings, not during chess match setup');
 assert(miniAppHtml.includes('chess-seat-card') && miniAppHtml.includes('opponentCard') && miniAppHtml.includes('self-seat-row') && miniAppHtml.includes('data-chess-clock'), 'chess seats should show opponent above and player below with live clocks');
 assert(miniAppHtml.includes('background:#b9d8ed') && miniAppHtml.includes('background:#376b95') && miniAppHtml.includes('overflow-x:clip'), 'chess match should use the blue board palette and avoid horizontal spill');
 assert(miniAppHtml.includes('.chess-puzzle-board,.lesson-practice-board{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-template-rows:repeat(8,minmax(0,1fr))!important') && miniAppHtml.includes('body.chess-match-open .ambient-backdrop'), 'training boards must use fixed 8x8 tracks and active matches need their own background');
@@ -35,7 +42,7 @@ for (const item of [...CHESS_LESSONS.map(lesson => ({ id: lesson.id, ...lesson.e
   const exerciseGame = new Chess(item.fen);
   assert(exerciseGame.move({ from: item.from, to: item.to, promotion: item.promotion || 'q' }), `${item.id} has an illegal learning/puzzle move`);
 }
-for (const [, script] of miniAppHtml.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) new Function(script);
+for (const html of [miniAppHtml, sudokuMiniAppHtml]) for (const [, script] of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) new Function(script);
 let stockfishAssetRequested = '';
 const stockfishAssetResponse = await cloudflareWorker.fetch(new Request('https://game.test/stockfish/stockfish-19-lite-single.js'), {
   ASSETS: { fetch: async (request: Request) => { stockfishAssetRequested = new URL(request.url).pathname; return new Response('engine', { headers: { 'Content-Type': 'text/javascript' } }); } },
@@ -115,6 +122,18 @@ assert(humanOpponent.room.players[1].isBotCreator !== true, 'creator badge must 
 assert(humanOpponent.room.players[0].countryCode === 'GB' && humanOpponent.room.players[1].countryCode === 'AE', 'both chess players should retain their own flags');
 const humanResult = await post(`/api/interactive/rooms/${humanRoom.room.id}`, { action: 'resign', token: humanRoom.token });
 assert(humanResult.room.players[0].elo === 188 && humanResult.room.players[1].elo === 212, 'human-versus-human results should update both ratings');
+
+const sudokuQueueOne = await post('/api/interactive/matchmaking', { game: 'sudoku', name: 'منشئ البوت', countryCode: 'IQ', difficulty: 'easy', isBotCreator: true });
+assert(sudokuQueueOne.ticket.status === 'waiting', 'first Sudoku player should wait for a real opponent');
+const sudokuQueueTwo = await post('/api/interactive/matchmaking', { game: 'sudoku', name: 'لاعب ثاني', countryCode: 'US', difficulty: 'hard' });
+assert(sudokuQueueTwo.ticket.status === 'matched' && sudokuQueueTwo.ticket.opponentCountryCode === 'IQ' && sudokuQueueTwo.ticket.opponentIsBotCreator, 'Sudoku matchmaking should pair different puzzle levels and return the opponent flag and badge');
+const sudokuQueueOneResponse = await rooms.handle(new Request(`https://game.test/api/interactive/matchmaking/${sudokuQueueOne.ticket.id}`, { headers: { Authorization: `Bearer ${sudokuQueueOne.secret}` } }));
+const sudokuQueueOneStatus = await sudokuQueueOneResponse.json() as any;
+assert(sudokuQueueOneStatus.ticket.status === 'matched' && sudokuQueueOneStatus.ticket.opponentCountryCode === 'US' && !sudokuQueueOneStatus.ticket.opponentIsBotCreator, 'waiting player should receive the matched opponent country and creator metadata');
+const sudokuMatchRoomResponse = await rooms.handle(new Request(`https://game.test/api/interactive/rooms/${sudokuQueueOneStatus.ticket.roomId}`, { headers: { Authorization: `Bearer ${sudokuQueueOneStatus.ticket.roomToken}` } }));
+const sudokuMatchRoom = await sudokuMatchRoomResponse.json() as any;
+assert(sudokuMatchRoom.state.mode === 'random' && sudokuMatchRoom.state.difficulty === 'easy', "random Sudoku match should start without carrying either player's chosen difficulty");
+assert(sudokuMatchRoom.room.players[0].countryCode === 'IQ' && sudokuMatchRoom.room.players[1].countryCode === 'US', 'Sudoku match players should retain their selected country flags');
 
 const fallbackRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'bot', name: 'اختبار الاحتياط', trainerId: 'salem', botElo: 200, clockMinutes: 5 });
 const fallbackHumanMove = await post(`/api/interactive/rooms/${fallbackRoom.room.id}`, { action: 'move', token: fallbackRoom.token, from: 'e2', to: 'e4' });
