@@ -23,7 +23,8 @@ assert(miniAppHtml.includes('stockfish-19-lite-single.js'), 'Stockfish 19 worker
 assert(miniAppHtml.includes('chessLessons=JSON.parse') && miniAppHtml.includes('chessPuzzles=JSON.parse'), 'lesson and puzzle data should be injected into the app');
 assert(miniAppHtml.includes('id=\"chessFriendCard\"') && miniAppHtml.includes('creator-verified-badge'), 'friend play card and creator-only badge should exist');
 assert(!miniAppHtml.includes('إعدادات المباراة') && !miniAppHtml.includes('data-pref=\"chessTheme\"') && !miniAppHtml.includes('chessDefaultMinutes'), 'chess match settings must not remain in the profile page or active match toolbar');
-assert(miniAppHtml.includes('chess-chat-fab') && miniAppHtml.includes('chessChatMessages'), 'the match chat launcher and readable message list should be rendered');
+assert(miniAppHtml.includes('id="chessChatButton"') && miniAppHtml.includes('chess-header-chat') && miniAppHtml.includes('chessChatMessages'), 'the chat control should sit in the room header, outside the chessboard');
+assert(miniAppHtml.includes('.chess-puzzle-board,.lesson-practice-board{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-template-rows:repeat(8,minmax(0,1fr))!important') && miniAppHtml.includes('body.chess-match-open .ambient-backdrop'), 'training boards must use fixed 8x8 tracks and active matches need their own background');
 assert(!miniAppHtml.includes('__CHESS_LESSONS_URI__') && !miniAppHtml.includes('__CHESS_PUZZLES_URI__'), 'chess data injection markers must be resolved');
 assert(CHESS_LESSONS.length >= 9 && CHESS_PUZZLES.length >= 10, 'interactive lesson and puzzle catalogues should not regress');
 for (const item of [...CHESS_LESSONS.map(lesson => ({ id: lesson.id, ...lesson.exercise })), ...CHESS_PUZZLES]) {
