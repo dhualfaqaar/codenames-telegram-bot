@@ -39,6 +39,14 @@ assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.inclu
 assert(miniAppHtml.includes('id=\"chessRandomCard\"') && miniAppHtml.includes("if(event.target.closest('#chessRandomCard')){openChessRandomMenu();return}"), 'random chess matchmaking should be a dedicated feature card below vision');
 assert(!miniAppHtml.includes('<span class=\"card-status') && !miniAppHtml.includes('chessPlayTheme') && !miniAppHtml.includes('chessRandomTheme') && !miniAppHtml.includes('chessFriendTheme'), 'game cards should not show status chips and match-start menus should not show board themes');
 assert(miniAppHtml.includes('id=\"chessThemeSetting\"') && miniAppHtml.includes('for=\"accountCountrySelect\">بلدك') && !miniAppHtml.includes('accountChessThemeSelect') && miniAppHtml.includes('country-setting-flag'), 'account should keep a dark country selector while board themes live in chess settings');
+assert(miniAppHtml.includes('code-games-avatar.jpg') && miniAppHtml.includes("player.bot?'/code-games-avatar.jpg':''"), 'chess bots should display the main Code Games bot avatar');
+assert(miniAppHtml.includes('#roomPage[data-game=\"chess\"] .chessboard>.square.light{background:#dce8f2!important}') && miniAppHtml.includes('.chess-piece{display:block!important'), 'live chessboard squares and pieces should remain visible as a full 8x8 board');
+assert(miniAppHtml.includes('chess-chat-unread-dot') && miniAppHtml.includes('function updateChessChatUnread') && miniAppHtml.includes('function markChessChatRead'), 'incoming opponent messages should mark chat unread until opened');
+assert(miniAppHtml.includes('ضد بوت</strong>') && miniAppHtml.includes('ضد صديق</strong>') && miniAppHtml.includes('لاعب عشوائي</strong>') && miniAppHtml.includes('overflow-x:auto;overscroll-behavior-inline:contain'), 'chess options should remain ordered in a horizontal scroll strip');
+assert(miniAppHtml.includes('id=\"chessPieceSetting\"') && miniAppHtml.includes('مظهر الشطرنج') && miniAppHtml.includes('data-global-country-flag'), 'chess appearance options and global country flags should be available');
+assert(miniAppHtml.includes("showSudokuFriendRoomStarting();createRoom('sudoku',{mode:'friend'})") && miniAppHtml.includes('function openRoom(data,push){closeMode();'), 'Sudoku friend entry should show its invitation wait screen directly without flashing back to the library');
+assert(!miniAppHtml.includes('تشتغل داخل الصفحة') && !miniAppHtml.includes('اسم حساب تيليجرام'), 'redundant game library and Telegram profile copy should be removed');
+assert(!sudokuMiniAppHtml.includes('countrySelect') && !sudokuMiniAppHtml.includes('COUNTRY_CODES') && !sudokuMiniAppHtml.includes('تيليجرام') && sudokuMiniAppHtml.includes('cg-player-country') && sudokuMiniAppHtml.includes('data-global-country-flag'), 'Sudoku should use the account-wide country and show its flag without a local selector');
 assert(miniAppHtml.includes('<a class=\"game-card\" data-game=\"sudoku\" href=\"/sudoku\">'), 'the Sudoku card should retain a native route as a navigation fallback');
 assert(miniAppHtml.includes("'https://t.me/'+username+'?start='+encodeURIComponent(payload)") && miniAppHtml.includes("'room_'+roomData.room.id+'_'+roomData.room.game") && miniAppHtml.includes("params.get('room')"), 'friend invitation should share a Telegram bot deep link that opens the requested room');
 assert(!miniAppHtml.includes('اقلب الهاتف') && !sudokuMiniAppHtml.includes('اقلب الهاتف'), 'game screens must not recommend rotating the phone');
@@ -132,6 +140,8 @@ for (const scenario of [
   assert(ended.room.players[0].elo === 200 && !ended.state.eloUpdated, 'a game against a bot must not change ELO');
 }
 
+const unoCountryRoom = await post('/api/interactive/rooms', { game: 'uno', mode: 'friend', name: 'لاعب أونو', countryCode: 'CA' });
+assert(unoCountryRoom.room.players[0].countryCode === 'CA', 'account-wide country should be stored for games beyond Chess and Sudoku');
 const humanRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'friend', name: 'لاعب أول', elo: 200, isBotCreator: true, clockMinutes: 5, countryCode: 'GB' });
 assert(humanRoom.room.players[0].isBotCreator === true, 'creator badge metadata should be retained for public room rendering');
 const humanOpponent = await post(`/api/interactive/rooms/${humanRoom.room.id}`, { action: 'join', name: 'لاعب ثانٍ', elo: 200, countryCode: 'AE' });
