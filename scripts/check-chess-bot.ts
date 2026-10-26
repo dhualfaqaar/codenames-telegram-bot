@@ -34,7 +34,10 @@ assert(!miniAppHtml.includes('إعدادات المباراة') && !miniAppHtml.
 assert(miniAppHtml.includes('id="chessChatButton"') && miniAppHtml.includes('chess-header-chat') && miniAppHtml.includes('chessChatMessages'), 'the chat control should sit in the room header, outside the chessboard');
 assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verified-star'), 'verified badge should use a centered upright vector star');
 assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.includes('data-play-mode=\"random\"') && miniAppHtml.includes("if(event.target.closest('#chessPlayButton')){openChessPlayMenu();return}"), 'the large chess play button should open bot, friend, and random-human choices');
-assert(miniAppHtml.includes("new URL('/interactive',location.origin)") && miniAppHtml.includes("url.searchParams.set('room',roomData.room.id)") && miniAppHtml.includes("params.get('room')"), 'friend invitation should open the correct interactive room directly');
+assert(miniAppHtml.includes("'https://t.me/'+username+'?start='+encodeURIComponent(payload)") && miniAppHtml.includes("'room_'+roomData.room.id+'_'+roomData.room.game") && miniAppHtml.includes("params.get('room')"), 'friend invitation should share a Telegram bot deep link that opens the requested room');
+assert(!miniAppHtml.includes('اقلب الهاتف') && !sudokuMiniAppHtml.includes('اقلب الهاتف'), 'game screens must not recommend rotating the phone');
+assert(miniAppHtml.includes('sudoku-race-arena') && miniAppHtml.includes('data-sudoku-tool=\"undo\"') && miniAppHtml.includes('sudoku-racer-avatar'), 'Sudoku race should use the mobile layout with opponent identity and working controls');
+assert(miniAppHtml.includes('room-player-avatar') && miniAppHtml.includes('chess-seat-avatar'), 'multiplayer player cards should show Telegram profile photos');
 assert(miniAppHtml.includes('function renderSudokuFriendWaiting') && miniAppHtml.includes('sudoku-share-friend'), 'Sudoku friend rooms should use a compact dedicated waiting screen');
 assert(sudokuMiniAppHtml.includes('levelDialogTitle') && sudokuMiniAppHtml.includes('level-option-icon') && sudokuMiniAppHtml.includes('level-dialog-art'), 'solo Sudoku difficulty selection should use the redesigned level dialog');
 assert(miniAppHtml.includes('accountCountrySelect') && miniAppHtml.includes('cg-chess-country') && !miniAppHtml.includes('chessBotCountry') && !miniAppHtml.includes('chessFriendCountry'), 'country should be editable in account settings, not during chess match setup');
@@ -140,8 +143,18 @@ const sudokuMatchRoom = await sudokuMatchRoomResponse.json() as any;
 assert(sudokuMatchRoom.state.mode === 'random' && sudokuMatchRoom.state.difficulty === 'easy', "random Sudoku match should start without carrying either player's chosen difficulty");
 assert(sudokuMatchRoom.room.players[0].countryCode === 'IQ' && sudokuMatchRoom.room.players[1].countryCode === 'US', 'Sudoku match players should retain their selected country flags');
 const sudokuFriendRoom = await post('/api/interactive/rooms', { game: 'sudoku', mode: 'friend', name: 'صاحب الغرفة', countryCode: 'IQ' });
-const sudokuFriendJoin = await post(`/api/interactive/rooms/${sudokuFriendRoom.room.id}`, { action: 'join', name: 'الصديق', countryCode: 'US' });
+const sudokuFriendJoin = await post(`/api/interactive/rooms/${sudokuFriendRoom.room.id}`, { action: 'join', name: 'الصديق', photoUrl: 'https://t.me/i/userpic/320/friend.jpg', countryCode: 'US' });
 assert(sudokuFriendJoin.room.status === 'playing' && sudokuFriendJoin.state.mode === 'friend' && sudokuFriendJoin.room.players.length === 2, 'a friend opening the shared Sudoku room should join the correct game');
+assert(sudokuFriendJoin.room.players[1].photoUrl === 'https://t.me/i/userpic/320/friend.jpg', 'the opponent Telegram profile photo should be retained in the room');
+const editableCell = sudokuFriendJoin.state.puzzle.findIndex((value: number) => value === 0);
+let sudokuCorrectMove: any;
+for (let value = 1; value <= 9; value++) {
+  const attempt = await post(`/api/interactive/rooms/${sudokuFriendRoom.room.id}`, { action: 'place', token: sudokuFriendJoin.token, index: editableCell, value });
+  if (attempt.state.values[editableCell] === value) { sudokuCorrectMove = attempt; break; }
+}
+assert(sudokuCorrectMove?.state.canUndo, 'a correct Sudoku entry should enable undo');
+const sudokuUndo = await post(`/api/interactive/rooms/${sudokuFriendRoom.room.id}`, { action: 'undo', token: sudokuFriendJoin.token });
+assert(sudokuUndo.state.values[editableCell] === 0 && !sudokuUndo.state.canUndo, 'Sudoku undo should restore the previous empty cell');
 
 const fallbackRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'bot', name: 'اختبار الاحتياط', trainerId: 'salem', botElo: 200, clockMinutes: 5 });
 const fallbackHumanMove = await post(`/api/interactive/rooms/${fallbackRoom.room.id}`, { action: 'move', token: fallbackRoom.token, from: 'e2', to: 'e4' });

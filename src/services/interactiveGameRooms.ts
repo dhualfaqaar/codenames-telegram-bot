@@ -200,7 +200,7 @@ export class InteractiveGameRooms {
   private startSudokuRace(room: Room): void {
     const s = room.gameState, generated = generateSudoku(this.cleanDifficulty(s.difficulty));
     s.puzzle = generated.puzzle; s.solution = generated.solution; s.startedAt = Date.now(); s.winner = ''; s.result = '';
-    s.boards = Object.fromEntries(room.players.map(player => [player.token, { values: generated.puzzle.slice(), mistakes: 0, lastCorrect: null, finished: false }]));
+    s.boards = Object.fromEntries(room.players.map(player => [player.token, { values: generated.puzzle.slice(), mistakes: 0, lastCorrect: null, finished: false, history: [] }]));
     room.status = 'playing';
   }
   private startGame(room: Room): void {
@@ -360,11 +360,13 @@ export class InteractiveGameRooms {
       if (!Number.isInteger(index) || index < 0 || index >= 81 || !Number.isInteger(value) || value < 1 || value > 9) return 'اختار خانة ورقم صحيح';
       if (s.puzzle[index]) return 'هذا الرقم ثابت باللغز';
       if (value !== s.solution[index]) { board.mistakes++; board.lastCorrect = false; return null; }
+      board.history ||= []; board.history.push({ index, previous: board.values[index] || 0 }); if (board.history.length > 100) board.history.shift();
       board.values[index] = value; board.lastCorrect = true;
       if (board.values.every((v: number, i: number) => v === s.solution[i])) { board.finished = true; s.winner = player.token; s.result = `${player.name} حلّ السودوكو أولاً!`; s.finishedAt = Date.now(); room.status = 'finished'; }
       return null;
     }
-    if (action === 'clear') { const index = Number(body.index); if (Number.isInteger(index) && index >= 0 && index < 81 && !s.puzzle[index]) board.values[index] = 0; board.lastCorrect = null; return null; }
+    if (action === 'clear') { const index = Number(body.index); if (Number.isInteger(index) && index >= 0 && index < 81 && !s.puzzle[index]) { if (board.values[index]) { board.history ||= []; board.history.push({ index, previous: board.values[index] }); if (board.history.length > 100) board.history.shift(); } board.values[index] = 0; } board.lastCorrect = null; return null; }
+    if (action === 'undo') { const previous = board.history?.pop(); if (previous && Number.isInteger(previous.index) && !s.puzzle[previous.index]) { board.values[previous.index] = previous.previous || 0; board.finished = false; s.winner = ''; s.result = ''; room.status = 'playing'; } board.lastCorrect = null; return null; }
     return 'إجراء غير معروف';
   }
 
@@ -643,7 +645,7 @@ export class InteractiveGameRooms {
       state.botElo = Number(s.botElo) || 0;
       state.botTrainerId = String(s.botTrainerId || '');
     } else if (room.game === 'sudoku') {
-      const ownBoard = s.boards?.[token]; state.values = ownBoard?.values || []; state.mistakes = ownBoard?.mistakes || 0; state.lastCorrect = ownBoard?.lastCorrect ?? null; state.winner = s.winner === token;
+      const ownBoard = s.boards?.[token]; state.values = ownBoard?.values || []; state.mistakes = ownBoard?.mistakes || 0; state.lastCorrect = ownBoard?.lastCorrect ?? null; state.canUndo = Boolean(ownBoard?.history?.length); state.winner = s.winner === token;
       state.opponentProgress = room.players.filter(p => p.token !== token).map(p => ({ name: p.name, countryCode: p.countryCode || 'IQ', progress: (s.boards?.[p.token]?.values || []).filter((v: number, i: number) => !s.puzzle[i] && v === s.solution[i]).length, bot: p.bot || false }));
     } else if (room.game === 'uno') {
       state.hand = own ? s.hands[token] || [] : [];
