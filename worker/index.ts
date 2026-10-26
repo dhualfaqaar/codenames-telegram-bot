@@ -357,8 +357,28 @@ export default {
     const stub = env.BOT_STATE.get(id);
     if (requestUrl.pathname === '/api/interactive/config' && request.method === 'GET') return stub.fetch('https://bot.internal/interactive-config');
     if (requestUrl.pathname.startsWith('/api/interactive/rooms') || requestUrl.pathname.startsWith('/api/interactive/matchmaking')) {
-      const init: RequestInit = { method: request.method, headers: request.headers };
-      if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.text();
+      const headers = new Headers(request.headers);
+      headers.delete('content-length');
+      const init: RequestInit = { method: request.method, headers };
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        const text = await request.text();
+        try {
+          const body = JSON.parse(text) as Record<string, unknown>;
+          const roomCreation = requestUrl.pathname === '/api/interactive/rooms';
+          const roomJoin = requestUrl.pathname.startsWith('/api/interactive/rooms/') && body.action === 'join';
+          const matchmaking = requestUrl.pathname === '/api/interactive/matchmaking';
+          if (roomCreation || roomJoin || matchmaking) {
+            const authenticatedUser = await verifyTelegramWebAppInitData(String(body.initData || ''), String(env.TELEGRAM_BOT_TOKEN || ''));
+            body.isBotCreator = Boolean(authenticatedUser && String(authenticatedUser.id) === OWNER_ONLY_ID);
+          } else {
+            delete body.isBotCreator;
+          }
+          delete body.initData;
+          init.body = JSON.stringify(body);
+        } catch {
+          init.body = text;
+        }
+      }
       return stub.fetch(`https://bot.internal${requestUrl.pathname}${requestUrl.search}`, init);
     }
 
@@ -383,7 +403,7 @@ export default {
       });
       const profilePayload = await response.json().catch(() => null);
       if (!response.ok || !profilePayload?.profile) return Response.json({ error: 'profile unavailable' }, { status: 503 });
-      return Response.json({ profile: profilePayload.profile }, { headers: { 'Cache-Control': 'no-store' } });
+      return Response.json({ profile: profilePayload.profile, isBotCreator: String(authenticatedUser.id) === OWNER_ONLY_ID }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (request.method !== 'POST') {
