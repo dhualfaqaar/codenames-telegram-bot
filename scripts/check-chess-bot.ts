@@ -24,6 +24,10 @@ assert(miniAppHtml.includes('chessLessons=JSON.parse') && miniAppHtml.includes('
 assert(miniAppHtml.includes('id=\"chessFriendCard\"') && miniAppHtml.includes('creator-verified-badge'), 'friend play card and creator-only badge should exist');
 assert(!miniAppHtml.includes('إعدادات المباراة') && !miniAppHtml.includes('data-pref=\"chessTheme\"') && !miniAppHtml.includes('chessDefaultMinutes'), 'chess match settings must not remain in the profile page or active match toolbar');
 assert(miniAppHtml.includes('id="chessChatButton"') && miniAppHtml.includes('chess-header-chat') && miniAppHtml.includes('chessChatMessages'), 'the chat control should sit in the room header, outside the chessboard');
+assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verified-star'), 'verified badge should use a centered upright vector star');
+assert(miniAppHtml.includes('chessBotCountry') && miniAppHtml.includes('chessFriendCountry') && miniAppHtml.includes('cg-chess-country'), 'chess country choice should be persisted in both match-start flows');
+assert(miniAppHtml.includes('chess-seat-card') && miniAppHtml.includes('opponentCard') && miniAppHtml.includes('self-seat-row') && miniAppHtml.includes('data-chess-clock'), 'chess seats should show opponent above and player below with live clocks');
+assert(miniAppHtml.includes('background:#b9d8ed') && miniAppHtml.includes('background:#376b95') && miniAppHtml.includes('overflow-x:clip'), 'chess match should use the blue board palette and avoid horizontal spill');
 assert(miniAppHtml.includes('.chess-puzzle-board,.lesson-practice-board{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-template-rows:repeat(8,minmax(0,1fr))!important') && miniAppHtml.includes('body.chess-match-open .ambient-backdrop'), 'training boards must use fixed 8x8 tracks and active matches need their own background');
 assert(!miniAppHtml.includes('__CHESS_LESSONS_URI__') && !miniAppHtml.includes('__CHESS_PUZZLES_URI__'), 'chess data injection markers must be resolved');
 assert(CHESS_LESSONS.length >= 9 && CHESS_PUZZLES.length >= 10, 'interactive lesson and puzzle catalogues should not regress');
@@ -86,9 +90,10 @@ for (const scenario of [
 ]) {
   const created = await post('/api/interactive/rooms', {
     game: 'chess', mode: 'bot', name: 'اختبار', elo: 200,
-    trainerId: scenario.trainerId, botElo: scenario.botElo, clockMinutes: 5,
+    trainerId: scenario.trainerId, botElo: scenario.botElo, clockMinutes: 5, countryCode: 'US',
   });
   assert(created.room.players[0].elo === 200, 'player should start at 200 ELO');
+  assert(created.room.players[0].countryCode === 'US', 'chess room should retain the selected player country');
   assert(created.room.players[1].elo === scenario.botElo, 'selected trainer ELO was not applied');
   const moved = await post(`/api/interactive/rooms/${created.room.id}`, {
     action: 'move', token: created.token, from: 'e2', to: 'e4',
@@ -102,11 +107,12 @@ for (const scenario of [
   assert(ended.room.players[0].elo === 200 && !ended.state.eloUpdated, 'a game against a bot must not change ELO');
 }
 
-const humanRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'friend', name: 'لاعب أول', elo: 200, isBotCreator: true, clockMinutes: 5 });
+const humanRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'friend', name: 'لاعب أول', elo: 200, isBotCreator: true, clockMinutes: 5, countryCode: 'GB' });
 assert(humanRoom.room.players[0].isBotCreator === true, 'creator badge metadata should be retained for public room rendering');
-const humanOpponent = await post(`/api/interactive/rooms/${humanRoom.room.id}`, { action: 'join', name: 'لاعب ثانٍ', elo: 200 });
+const humanOpponent = await post(`/api/interactive/rooms/${humanRoom.room.id}`, { action: 'join', name: 'لاعب ثانٍ', elo: 200, countryCode: 'AE' });
 assert(humanOpponent.room.status === 'playing' && humanOpponent.room.players.length === 2, 'human match should start after the second player joins');
 assert(humanOpponent.room.players[1].isBotCreator !== true, 'creator badge must not be copied to other players');
+assert(humanOpponent.room.players[0].countryCode === 'GB' && humanOpponent.room.players[1].countryCode === 'AE', 'both chess players should retain their own flags');
 const humanResult = await post(`/api/interactive/rooms/${humanRoom.room.id}`, { action: 'resign', token: humanRoom.token });
 assert(humanResult.room.players[0].elo === 188 && humanResult.room.players[1].elo === 212, 'human-versus-human results should update both ratings');
 
