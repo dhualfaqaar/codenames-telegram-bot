@@ -2799,6 +2799,16 @@ export class TelegramBotManager {
           await this.handleMafiaPrivateReady(chatId, sender, rawPayload.slice(3));
           return;
         }
+        const roomInvite = rawPayload.match(/^room_([A-Z0-9]{12})_(chess|uno|gartic|poker|sudoku)$/i);
+        if (roomInvite) {
+          const roomId = roomInvite[1].toUpperCase();
+          const game = roomInvite[2].toLowerCase();
+          const appUrl = new URL(this.interactiveGamesUrl);
+          appUrl.searchParams.set('room', roomId);
+          appUrl.searchParams.set('game', game);
+          await this.sendMessage(chatId, '🎮 وصلت دعوة غرفة اللعب — افتحها حتى تنضم لصديقك.', [[{ text: 'فتح غرفة اللعبة', web_app: { url: appUrl.toString() } }]], 'HTML');
+          return;
+        }
         if (rawPayload.startsWith('cnum_')) {
           const targetChat = decodeURIComponent(rawPayload.slice(5));
           const ag = this.arenaGames.get(targetChat);
