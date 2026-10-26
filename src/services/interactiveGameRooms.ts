@@ -285,21 +285,33 @@ export class InteractiveGameRooms {
       room.status = 'finished'; state.result = `${room.players[1 - seat].name} فاز بالانسحاب`; state.winnerSeat = 1 - seat; this.updateChessElo(room, state.winnerSeat);
       return null;
     }
-    if (action !== 'move') return 'حركة غير معروفة';
-    const side = seat === 0 ? 'w' : 'b';
-    if (state.turn !== side) return 'مو دورك هسه';
+    if (action === 'bot-fallback') {
+      if (seat !== 0 || !room.players[1]?.bot || state.turn !== 'b') return 'مو دور البوت';
+      this.makeBotMove(room);
+      return null;
+    }
+    const botMove = action === 'bot-move';
+    if (action !== 'move' && !botMove) return 'حركة غير معروفة';
+    if (botMove) {
+      if (seat !== 0 || !room.players[1]?.bot || state.turn !== 'b') return 'مو دور البوت';
+    } else {
+      const side = seat === 0 ? 'w' : 'b';
+      if (state.turn !== side) return 'مو دورك هسه';
+    }
+    const movingSeat = botMove ? 1 : seat;
+    const mover = room.players[movingSeat];
     try {
       const movedAt = Date.now();
       const clocks = this.chessClockValues(room, movedAt);
+      const side = state.turn as 'w' | 'b';
       if (clocks[side] <= 0) { this.expireChessClock(room, movedAt); return null; }
       state.clocks = clocks;
       const chess = new Chess(state.fen);
       const move = chess.move({ from: String(body.from), to: String(body.to), promotion: body.promotion || 'q' });
       if (!move) return 'الحركة غير قانونية';
       state.fen = chess.fen(); state.turn = chess.turn(); state.lastMove = move.san; state.lastMoveSquares = [move.from, move.to]; state.clockStartedAt = movedAt;
-      if (chess.isCheckmate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = seat; state.result = `${player.name} فاز بالكش مات`; this.updateChessElo(room, seat); }
+      if (chess.isCheckmate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = movingSeat; state.result = `${mover.name} فاز بالكش مات`; this.updateChessElo(room, movingSeat); }
       else if (chess.isDraw() || chess.isStalemate()) { room.status = 'finished'; state.clockStartedAt = 0; state.winnerSeat = -1; state.result = 'تعادل'; this.updateChessElo(room, -1); }
-      else if (room.players[1]?.bot) this.makeBotMove(room);
       return null;
     } catch { return 'الحركة غير قانونية'; }
   }
