@@ -304,13 +304,19 @@ body:has(#gameApp[data-page="room"][data-game="chess"]){background:radial-gradie
 .chess-history-more{display:block;width:100%;margin-top:10px;padding:9px;border:1px solid #456485;border-radius:10px;background:#102c4b;color:#dff3ff;font:inherit;font-size:11px;font-weight:850;cursor:pointer}
 .chess-history-more[hidden]{display:none!important}
 .chess-more-profile[hidden],.chess-more-stats[hidden],.chess-history-card[hidden]{display:none!important}
-#roomPage[data-game="chess"]{width:100%;max-width:100%;min-width:0;overflow-x:clip}
-#roomPage[data-game="chess"] .chess-arena{width:100%;max-width:100%;min-width:0;margin:0;padding:4px 0 10px!important;overflow-x:clip}
+#roomPage[data-game="chess"]{width:100vw!important;max-width:none!important;min-width:0;margin-left:calc(50% - 50vw)!important;overflow:visible!important}
+#roomPage[data-game="chess"] .chess-arena{width:100%!important;max-width:none;min-width:0;margin:0!important;padding:4px 0 10px!important;overflow:visible!important}
 #roomPage[data-game="chess"] .chess-game-layout,#roomPage[data-game="chess"] .chess-main-column,#roomPage[data-game="chess"] .chess-board-panel{width:100%;max-width:100%;min-width:0}
-#roomPage[data-game="chess"] .chess-board-panel .board-wrap{width:min(100%,calc(100vw - 14px),calc(100dvh - 150px),740px);height:auto;max-width:740px;aspect-ratio:1;margin:0 auto;padding:3px;overflow:visible}
+#roomPage[data-game="chess"] .chess-board-panel .board-wrap{width:min(100%,calc(100vw - 8px),calc(100dvh - 120px),760px);height:auto;max-width:760px;aspect-ratio:1;margin:0 auto;padding:3px;overflow:visible}
 #roomPage[data-game="chess"] .chessboard{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-template-rows:repeat(8,minmax(0,1fr))!important;width:100%!important;height:100%!important;aspect-ratio:1!important}
 #roomPage[data-game="chess"] .chessboard>.square{display:grid!important;place-items:center!important;width:auto!important;height:auto!important;min-width:0!important;min-height:0!important}
-@media (orientation:landscape) and (min-width:500px){#roomPage[data-game="chess"] .chess-board-panel .board-wrap{width:min(calc(100dvh - 64px),calc(100vw - 12px),760px);height:min(calc(100dvh - 64px),calc(100vw - 12px),760px);max-width:none;overflow:visible}}
+@media (orientation:landscape) and (min-width:500px) and (min-height:300px){
+#roomPage[data-game="chess"] .chess-main-column{display:grid!important;grid-template-rows:24px minmax(0,1fr) 24px!important;gap:0!important;height:100%;min-height:0}
+#roomPage[data-game="chess"] .chess-clock-row{grid-row:1!important;height:24px!important;min-height:0;margin:0 auto!important;padding:0 4px!important}
+#roomPage[data-game="chess"] .chess-main-column>.self-seat-row{grid-row:3!important;height:24px!important;margin:0!important}
+#roomPage[data-game="chess"] .chess-board-panel{grid-row:2!important;display:grid!important;place-items:center!important;min-height:0;overflow:hidden!important}
+#roomPage[data-game="chess"] .chess-board-panel .board-wrap{width:min(calc(100dvh - 48px),calc(100vw - 8px),760px);height:min(calc(100dvh - 48px),calc(100vw - 8px),760px);max-width:none;overflow:visible}
+}
 .chess-chat-icon{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #roomPage[data-game="chess"] .chess-header-chat{display:inline-grid;place-items:center;width:38px;min-width:38px;height:38px;padding:0}
 #roomPage[data-game="chess"] .chess-header-chat[hidden]{display:none!important}
