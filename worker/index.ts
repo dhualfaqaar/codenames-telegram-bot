@@ -10,6 +10,7 @@ import { TelegramBotManager } from '../server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
+import { CHESS_HERO_JPG_BASE64 } from '../src/assets/chessHeroJpgBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
 interface Env {
@@ -321,6 +322,11 @@ export default {
           'Referrer-Policy': 'strict-origin-when-cross-origin'
         }
       });
+    }
+    if (request.method === 'GET' && requestUrl.pathname === '/chess-hero-v2.jpg') {
+      const binary = atob(CHESS_HERO_JPG_BASE64);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } });
     }
     if (request.method === 'GET' && requestUrl.pathname === '/code-games-avatar.jpg') {
       const binary = atob(BOT_AVATAR_JPG_BASE64);
