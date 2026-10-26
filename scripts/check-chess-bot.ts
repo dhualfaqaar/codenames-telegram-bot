@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js';
+import { existsSync } from 'node:fs';
 import { CHESS_TRAINERS } from '../src/data/chessTrainers';
 import { chooseChessBotMove } from '../src/services/chessBot';
 import { STOCKFISH_ASSET_VERSION, stockfishSkillForElo, stockfishThinkTimeForElo } from '../src/services/chessStockfish';
@@ -38,15 +39,20 @@ assert(miniAppHtml.includes('verified-rosette') && miniAppHtml.includes('verifie
 assert(miniAppHtml.includes('function openChessPlayMenu()') && miniAppHtml.includes('data-play-mode=\"bot\"') && miniAppHtml.includes('data-play-mode=\"friend\"') && miniAppHtml.includes('data-play-mode=\"random\"') && miniAppHtml.includes('chess-mode-tile-grid') && miniAppHtml.includes("if(event.target.closest('#chessPlayButton')){openChessPlayMenu();return}"), 'the chess play button should show three square choices: bot, friend, and random opponent');
 assert(miniAppHtml.includes('id=\"chessRandomCard\"') && miniAppHtml.includes("if(event.target.closest('#chessRandomCard')){openChessRandomMenu();return}"), 'random chess matchmaking should be a dedicated feature card below vision');
 assert(!miniAppHtml.includes('<span class=\"card-status') && !miniAppHtml.includes('chessPlayTheme') && !miniAppHtml.includes('chessRandomTheme') && !miniAppHtml.includes('chessFriendTheme'), 'game cards should not show status chips and match-start menus should not show board themes');
-assert(miniAppHtml.includes('id=\"chessThemeSetting\"') && miniAppHtml.includes('for=\"accountCountrySelect\">بلدك') && !miniAppHtml.includes('accountChessThemeSelect') && miniAppHtml.includes('id=\"accountCountrySelect\"') && !miniAppHtml.includes('id=\"accountCountryFlag\"'), 'account should keep a dark country selector while board themes live in chess settings');
+assert(miniAppHtml.includes('id=\"chessThemeSetting\"') && miniAppHtml.includes('for=\"countryPickerToggle\">بلدك') && miniAppHtml.includes('id=\"countryPickerOptions\"') && miniAppHtml.includes('id=\"accountCountryFlag\"') && !miniAppHtml.includes('accountChessThemeSelect'), 'account should keep a dark country selector while board themes live in chess settings');
 assert(miniAppHtml.includes('code-games-avatar.jpg') && miniAppHtml.includes("player.bot?'/code-games-avatar.jpg':''"), 'chess bots should display the main Code Games bot avatar');
 assert(miniAppHtml.includes('#roomPage[data-game=\"chess\"] .chessboard>.square.light{background:#dce8f2!important}') && miniAppHtml.includes('.chess-piece{display:block!important'), 'live chessboard squares and pieces should remain visible as a full 8x8 board');
 assert(miniAppHtml.includes('chess-chat-unread-dot') && miniAppHtml.includes('function updateChessChatUnread') && miniAppHtml.includes('function markChessChatRead'), 'incoming opponent messages should mark chat unread until opened');
 assert(miniAppHtml.includes('ضد بوت</strong>') && miniAppHtml.includes('ضد صديق</strong>') && miniAppHtml.includes('لاعب عشوائي</strong>') && miniAppHtml.includes('overflow-x:auto;overscroll-behavior-inline:contain'), 'chess options should remain ordered in a horizontal scroll strip');
 assert(miniAppHtml.includes('id=\"chessPieceSetting\"') && miniAppHtml.includes('إعدادات المظهر') && miniAppHtml.includes('id=\"profileCountryFlag\"') && miniAppHtml.includes('countryFlag(player.countryCode'), 'chess appearance options and player country flags should be available');
 const countryCodeListIndex = miniAppHtml.indexOf('var CHESS_COUNTRY_CODES=');
-const initialCountryRenderIndex = miniAppHtml.indexOf("$('profileCountryFlag').textContent=countryFlag(chessCountryCode())");
+const initialCountryRenderIndex = miniAppHtml.indexOf("$('profileCountryFlag').innerHTML=countryFlag(chessCountryCode())");
 assert(countryCodeListIndex >= 0 && countryCodeListIndex < initialCountryRenderIndex && miniAppHtml.includes('CHESS_COUNTRY_CODES.map(function(code)'), 'country codes must be initialized before profile rendering and selector population');
+assert(miniAppHtml.includes('function countryFlag') && miniAppHtml.includes('/country-flags/') && sudokuMiniAppHtml.includes('/country-flags/'), 'account and game player flags should use fixed local artwork, not OS-dependent emoji glyphs');
+const countryCodeData = /var CHESS_COUNTRY_CODES='([^']+)'/.exec(miniAppHtml)?.[1]?.split(' ') || [];
+assert(countryCodeData.length === 250, 'the country selector should retain all supported countries');
+for (const code of countryCodeData) assert(existsSync(new URL(`../public/country-flags/${code.toLowerCase()}.svg`, import.meta.url)), `missing flag art for ${code}`);
+assert(miniAppHtml.includes('calc(100vw - 14px)') && miniAppHtml.includes('calc(100dvh - 64px)') && miniAppHtml.includes('760px);height:min(calc(100dvh - 64px)'), 'chess board sizing should use the available viewport while preserving a full square board');
 assert(miniAppHtml.includes('function showChessMatchIntro') && miniAppHtml.includes('matchIntroUntil') && miniAppHtml.includes('المباراة راح تبدي'), 'human chess matches should show their player introduction before the clock starts');
 assert(miniAppHtml.includes('id=\"chessHistoryMore\"') && miniAppHtml.includes('ضد بوت</button>') && miniAppHtml.includes('ضد لاعبين</button>') && miniAppHtml.includes('items.slice(0,5)'), 'chess history should split opponents and paginate each category after five matches');
 assert(miniAppHtml.includes('data-pieces="bold"') && miniAppHtml.includes('data-pieces="outline"') && miniAppHtml.includes('data-pieces="modern"') && miniAppHtml.includes('data-pieces="royal"'), 'selected chess piece styles should apply to all pieces on the board');

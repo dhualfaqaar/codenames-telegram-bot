@@ -1,0 +1,3 @@
+Country flag SVG emoji artwork from Twemoji, licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+Source: https://github.com/jdecked/twemoji
+See LICENSE-GRAPHICS.txt for license terms.
