@@ -1,9 +1,5 @@
-Stockfish.js 10.0.2 WebAssembly worker bundle
-
-Engine: Stockfish, compiled to WebAssembly by Niklas Fiekas / niklasf.
-Package source: https://github.com/niklasf/stockfish.js
-NPM package: https://registry.npmjs.org/stockfish.js/-/stockfish.js-10.0.2.tgz
-Engine files are licensed under GNU GPL v3; see COPYING.txt.
-
-This is the single-threaded WebAssembly engine. The .js worker and .wasm file
-must remain together under /stockfish/ so the worker can load its sibling WASM.
+Stockfish.js 19.0.1, lite single-threaded WebAssembly build
+Package: https://www.npmjs.com/package/stockfish
+Source: https://github.com/nmrugg/stockfish.js
+Engine source is licensed under GNU General Public License version 3 (GPL-3.0).
+The matching JavaScript and WASM files are distributed together in this directory.

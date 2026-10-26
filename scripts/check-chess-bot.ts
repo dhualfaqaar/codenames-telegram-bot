@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js';
 import { CHESS_TRAINERS } from '../src/data/chessTrainers';
 import { chooseChessBotMove } from '../src/services/chessBot';
-import { stockfishSkillForElo, stockfishThinkTimeForElo } from '../src/services/chessStockfish';
+import { STOCKFISH_ASSET_VERSION, stockfishSkillForElo, stockfishThinkTimeForElo } from '../src/services/chessStockfish';
 import { CHESS_LESSONS, CHESS_PUZZLES } from '../src/data/chessLearning';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
@@ -12,12 +12,14 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+assert(STOCKFISH_ASSET_VERSION === '19.0.1', 'expected the current Stockfish engine assets');
 assert(stockfishSkillForElo(200) === 0 && stockfishSkillForElo(2_800) === 20, 'Stockfish strength endpoints are incorrect');
 assert(stockfishSkillForElo(1_600) > stockfishSkillForElo(800), 'Stockfish skill should increase with ELO');
 assert(stockfishThinkTimeForElo(2_800) > stockfishThinkTimeForElo(200), 'Stockfish think time should increase with ELO');
 assert(stockfishThinkTimeForElo(2_800) <= 3_000, 'Stockfish mobile thinking budget should stay bounded');
 const miniAppHtml = interactiveGamesMiniAppHtml('chess');
 assert(miniAppHtml.includes('id="chessPuzzleList"') && miniAppHtml.includes('id="chessDailyBoard"'), 'chess puzzle library and daily board should be rendered');
+assert(miniAppHtml.includes('stockfish-19-lite-single.js'), 'Stockfish 19 worker should be loaded by the browser app');
 assert(miniAppHtml.includes('chessLessons=JSON.parse') && miniAppHtml.includes('chessPuzzles=JSON.parse'), 'lesson and puzzle data should be injected into the app');
 assert(!miniAppHtml.includes('__CHESS_LESSONS_URI__') && !miniAppHtml.includes('__CHESS_PUZZLES_URI__'), 'chess data injection markers must be resolved');
 assert(CHESS_LESSONS.length >= 9 && CHESS_PUZZLES.length >= 10, 'interactive lesson and puzzle catalogues should not regress');
@@ -27,10 +29,10 @@ for (const item of [...CHESS_LESSONS.map(lesson => ({ id: lesson.id, ...lesson.e
 }
 for (const [, script] of miniAppHtml.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) new Function(script);
 let stockfishAssetRequested = '';
-const stockfishAssetResponse = await cloudflareWorker.fetch(new Request('https://game.test/stockfish/stockfish.wasm.js'), {
+const stockfishAssetResponse = await cloudflareWorker.fetch(new Request('https://game.test/stockfish/stockfish-19-lite-single.js'), {
   ASSETS: { fetch: async (request: Request) => { stockfishAssetRequested = new URL(request.url).pathname; return new Response('engine', { headers: { 'Content-Type': 'text/javascript' } }); } },
 } as any, {} as any);
-assert(stockfishAssetRequested === '/stockfish/stockfish.wasm.js' && stockfishAssetResponse.status === 200, 'Worker should route Stockfish assets through ASSETS');
+assert(stockfishAssetRequested === '/stockfish/stockfish-19-lite-single.js' && stockfishAssetResponse.status === 200, 'Worker should route Stockfish assets through ASSETS');
 assert(stockfishAssetResponse.headers.get('Cache-Control')?.includes('immutable') && stockfishAssetResponse.headers.get('X-Content-Type-Options') === 'nosniff', 'Stockfish asset response headers are incorrect');
 
 const tacticalFen = '4r2k/8/8/8/4Q3/8/8/K7 b - - 0 1';

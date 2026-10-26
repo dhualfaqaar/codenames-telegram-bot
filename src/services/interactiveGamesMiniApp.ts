@@ -327,7 +327,7 @@ function ensureStockfishReady(){
       reject(new Error('انتهت مهلة تحميل محرك الشطرنج'))
     },15000);
     try{
-      worker=new Worker('/stockfish/stockfish.wasm.js');stockfishWorker=worker;
+      worker=new Worker('/stockfish/stockfish-19-lite-single.js');stockfishWorker=worker;
       worker.onmessage=function(event){
         var line=String(event.data||'').trim();
         if(line==='uciok'){worker.postMessage('isready');return}

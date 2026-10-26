@@ -1,4 +1,4 @@
-export const STOCKFISH_ASSET_VERSION = '10.0.2';
+export const STOCKFISH_ASSET_VERSION = '19.0.1';
 
 /** Keep the UCI strength ladder monotonic across the trainer catalogue. */
 export function stockfishSkillForElo(elo: number): number {
