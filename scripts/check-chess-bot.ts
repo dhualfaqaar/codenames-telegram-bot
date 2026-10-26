@@ -8,6 +8,7 @@ import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMin
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
 const cloudflareWorker = workerModule.default;
+const INTERACTIVE_APP_BUILD = workerModule.INTERACTIVE_APP_BUILD as string;
 import { InteractiveGameRooms, MemoryRoomStorage } from '../src/services/interactiveGameRooms';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -24,6 +25,8 @@ const miniAppHtml = interactiveGamesMiniAppHtml('chess');
 const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
 const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
 assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
+const interactivePageResponse = await cloudflareWorker.fetch(new Request(`https://game.test/interactive?app_build=${INTERACTIVE_APP_BUILD}`), {} as any, {} as any);
+assert(INTERACTIVE_APP_BUILD === '2026-10-26-screen-profiles-v1' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('إعدادات الشاشة'), 'the live Mini App route should bypass stale caches and return the screen-profile UI');
 assert(sudokuMiniAppHtml.includes('العب مع شخص عشوائي') && sudokuMiniAppHtml.includes('id="friendGameButton"'), 'Sudoku home should expose random-human and friend-play actions');
 assert(!sudokuMiniAppHtml.includes('battleLevelSelect') && !sudokuMiniAppHtml.includes('defaultLevelSelect') && !sudokuMiniAppHtml.includes('محترف'), 'Sudoku battle must not expose difficulty choices or a locked pro mode');
 assert(sudokuMiniAppHtml.includes('readBattleTickets') && sudokuMiniAppHtml.includes('بطاقات المعركة') && sudokuMiniAppHtml.includes('creator-verified-badge'), 'Sudoku battle tickets and creator badge should be available');
