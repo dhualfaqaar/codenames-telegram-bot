@@ -10,10 +10,10 @@ import { TelegramBotManager } from '../server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
-import { CHESS_HERO_JPG_BASE64 } from '../src/assets/chessHeroJpgBase64';
+import { CHESS_HERO_JPG_BASE64, DRAWING_HERO_JPG_BASE64, SUDOKU_HERO_JPG_BASE64 } from '../src/assets/gameArtBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
-export const INTERACTIVE_APP_BUILD = '2026-10-29-drawing-lobby-selects-v8';
+export const INTERACTIVE_APP_BUILD = '2026-10-30-game-art-v9';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -346,8 +346,9 @@ export default {
         }
       });
     }
-    if (request.method === 'GET' && requestUrl.pathname === '/chess-hero-v2.jpg') {
-      const binary = atob(CHESS_HERO_JPG_BASE64);
+    const gameArt = request.method === 'GET' ? ({ '/chess-hero-v2.jpg': CHESS_HERO_JPG_BASE64, '/drawing-hero.jpg': DRAWING_HERO_JPG_BASE64, '/sudoku-hero.jpg': SUDOKU_HERO_JPG_BASE64 } as Record<string, string>)[requestUrl.pathname] : undefined;
+    if (gameArt) {
+      const binary = atob(gameArt);
       const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
       return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' } });
     }
