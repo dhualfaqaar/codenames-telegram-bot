@@ -23,7 +23,7 @@ for (const width of [280,320,360,390,640,740,768,820,844,1024,1280,1366,1568,192
 assert.equal(context.calculateChessLayout(390,844,48,20).wide, false);
 assert.equal(context.calculateChessLayout(1024,768,48,20).wide, true);
 assert.equal(context.calculateChessLayout(1568,882,48,20).wide, true);
-for (const [path, name] of [['uno','أونو'], ['gartic','ارسم وخمّن'], ['poker','بوكر تكساس']]) {
+for (const [path, name] of [['uno','أونو'], ['gartic','لعبة الرسم'], ['poker','بوكر تكساس']]) {
   for (const suffix of ['', '/']) {
     const response = await worker.fetch(new Request(`https://games.test/${path}${suffix}`), {} as any, {} as any);
     assert.equal(response.status, 200);
@@ -49,5 +49,18 @@ const startedResponse = await post('/' + created.room.id, { action: 'start', tok
 assert.equal(startedResponse.status, 200);
 const started = await startedResponse.json() as any;
 assert.equal(started.room.status, 'playing');
-console.log('Drawing room create, join and start checks passed.');
+assert.ok(started.state.word, 'only the drawer receives the word');
+const guestViewResponse = await rooms.handle(new Request(`https://games.test/api/interactive/rooms/${created.room.id}`, { headers: { Authorization: 'Bearer ' + joined.token } }));
+const guestView = await guestViewResponse.json() as any;
+assert.equal(guestView.state.word, '');
+const strokeResponse = await post('/' + created.room.id, { action: 'stroke', token: created.token, color: '#ef4444', size: 5, points: [[0.1, 0.1], [0.5, 0.5]] });
+assert.equal(strokeResponse.status, 200);
+const guessResponse = await post('/' + created.room.id, { action: 'guess', token: joined.token, text: started.state.word });
+assert.equal(guessResponse.status, 200);
+const afterGuess = await guessResponse.json() as any;
+assert.equal(afterGuess.state.guesses[0].seat, joined.room.playerSeat);
+assert.equal(afterGuess.state.guesses[0].correct, true);
+assert.notEqual(afterGuess.state.guesses[0].text, started.state.word, 'correct guesses are masked');
+assert.equal(afterGuess.state.word, '');
+console.log('Drawing room create, join, draw and guess checks passed.');
 console.log(`Responsive sizing checks passed: ${count} viewport/inset combinations and independent game routes.`);
