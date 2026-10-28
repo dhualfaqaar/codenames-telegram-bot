@@ -13,7 +13,7 @@ import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { CHESS_HERO_JPG_BASE64 } from '../src/assets/chessHeroJpgBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
-export const INTERACTIVE_APP_BUILD = '2026-10-26-native-navigation-autofullscreen-v3';
+export const INTERACTIVE_APP_BUILD = '2026-10-28-adaptive-games-v4';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -326,8 +326,8 @@ export default {
       headers.set('X-Content-Type-Options', 'nosniff');
       return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
     }
-    if (request.method === 'GET' && (requestUrl.pathname === '/chess' || requestUrl.pathname === '/chess/')) {
-      return new Response(interactiveGamesMiniAppHtml('chess'), {
+    if (request.method === 'GET' && ['/chess','/uno','/gartic','/poker'].includes(requestUrl.pathname.replace(/\/$/, ''))) {
+      return new Response(interactiveGamesMiniAppHtml(requestUrl.pathname.replaceAll('/', '')), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store, max-age=0, must-revalidate',

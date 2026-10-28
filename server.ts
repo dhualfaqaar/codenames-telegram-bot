@@ -54,8 +54,8 @@ app.all(['/api/interactive/rooms*', '/api/interactive/matchmaking*'], async (req
 app.get('/interactive', (req, res) => {
   res.type('html').set('Cache-Control', 'no-cache').send(interactiveGamesMiniAppHtml(String(req.query.game || '')));
 });
-app.get('/chess', (_req, res) => {
-  res.type('html').set('Cache-Control', 'no-cache').send(interactiveGamesMiniAppHtml('chess'));
+app.get(['/chess','/uno','/gartic','/poker'], (req, res) => {
+  res.type('html').set('Cache-Control', 'no-cache').send(interactiveGamesMiniAppHtml(req.path.replaceAll('/', '')));
 });
 app.get('/sudoku', (_req, res) => {
   res.type('html').set('Cache-Control', 'no-cache').send(SUDOKU_MINI_APP_HTML);
