@@ -35,6 +35,8 @@ body:has(#gameApp[data-page="room"][data-game="gartic"]) .ambient-backdrop{displ
 #roomPage[data-game="gartic"] .draw-player-copy strong{display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#294861}
 #roomPage[data-game="gartic"] .draw-player-copy small{font-size:11px;color:#176db0;font-weight:800}
 #roomPage[data-game="gartic"] .draw-player-state{font-size:14px;font-weight:800;color:#238857;white-space:nowrap}
+#roomPage[data-game="gartic"] .creator-verified-badge{flex:none;margin-inline:3px;width:16px;height:16px}
+#roomPage[data-game="gartic"] .creator-verified-badge svg{width:16px;height:16px}
 
 /* ---------- board ---------- */
 #roomPage[data-game="gartic"] .draw-word-bar{display:flex;align-items:center;justify-content:center;gap:10px;padding:7px 10px;border-radius:12px;background:linear-gradient(180deg,#1b4f8b,#123a66);color:#fff;direction:ltr}

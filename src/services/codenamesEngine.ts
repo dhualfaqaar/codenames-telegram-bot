@@ -88,7 +88,7 @@ export class CodenamesEngine {
       ([t, r]) => !game.players.some(p => p.team === t && p.role === r && String(p.id) !== String(player.id))
     );
 
-    // إذا اللاعب الجديد ضغط زر «انضم» العام أو ضغط بالغلط مقعد محجوز واكو مقعد فاضي → نجلسه تلقائياً بالمقعد الفاضي!
+    // إذا اللاعب الجديد ضغط زر «انضم» العام أو ضغط بالغلط مقعد محجوز واكو مقعد فارغ → نجلسه تلقائياً بالمقعد الفارغ!
     const seatTaken = game.players.find(
       p => p.team === targetTeam && p.role === targetRole && String(p.id) !== String(player.id)
     );
@@ -108,7 +108,7 @@ export class CodenamesEngine {
       const seatName = targetRole === 'spymaster' ? 'الجاسوس 🕵️' : 'العميل 👤';
       return {
         success: false,
-        message: `⚠️ مقعد ${seatName} (${teamColor}) محجوز — اختار مقعد فاضي ⬜.`,
+        message: `⚠️ مقعد ${seatName} (${teamColor}) محجوز — اختار مقعد فارغ ⬜.`,
         game
       };
     }
@@ -183,7 +183,7 @@ export class CodenamesEngine {
 
     return {
       success: true,
-      message: `🚪 انسحبت — مقعدك (${roleText} ${teamColor}) صار فاضي.`,
+      message: `🚪 انسحبت — مقعدك (${roleText} ${teamColor}) صار فارغ.`,
       game: {
         ...game,
         players: game.players.filter((_, i) => i !== index),
