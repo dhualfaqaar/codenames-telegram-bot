@@ -6,6 +6,13 @@ const rooms = new InteractiveGameRooms(storage);
 const post = (id: string, body: object) => rooms.handle(new Request(`https://test/api/interactive/rooms${id ? '/' + id : ''}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }));
 const view = async (id: string, token = '') => (await rooms.handle(new Request(`https://test/api/interactive/rooms/${id}`, {headers:{Authorization:'Bearer '+token}}))).json() as any;
 const created = await (await post('', {game:'gartic', name:'رسام', capacity:4, targetScore:500})).json() as any;
+// Round length is chosen from the lobby list and stays within a safe range.
+const timed=(await (await post('',{game:'gartic',name:'وقت',capacity:4,roundSeconds:250})).json() as any).room.id;
+assert.equal((await storage.get<any>('interactive-room:'+timed)).gameState.roundDurationMs,250000);
+const tooLong=(await (await post('',{game:'gartic',name:'وقت',capacity:4,roundSeconds:900})).json() as any).room.id;
+assert.equal((await storage.get<any>('interactive-room:'+tooLong)).gameState.roundDurationMs,300000);
+const legacyTime=(await (await post('',{game:'gartic',name:'وقت',capacity:4,roundSeconds:45})).json() as any).room.id;
+assert.equal((await storage.get<any>('interactive-room:'+legacyTime)).gameState.roundDurationMs,45000);
 const id=created.room.id, host=created.token;
 const one=(await (await post(id,{action:'join',name:'الأول'})).json() as any).token;
 const two=(await (await post(id,{action:'join',name:'الثاني'})).json() as any).token;

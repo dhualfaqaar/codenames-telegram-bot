@@ -103,13 +103,15 @@ try {
     payload = route.request().postDataJSON();
     await route.fulfill({ status: 503, json: { error: 'اختبار تعذر الاتصال' } });
   });
-  await page.locator('#capacity').selectOption('4');
-  await page.locator('#roundSeconds').selectOption('45');
+  await page.locator('#capacityTrigger').click();
+  await page.locator('#capacityMenu .draw-select-option[data-value="4"]').click();
+  await page.locator('#roundSecondsTrigger').click();
+  await page.locator('#roundSecondsMenu .draw-select-option[data-value="160"]').click();
   await page.locator('[data-action="friend"]').click();
   await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('اختبار تعذر الاتصال'));
   assert.equal(payload.game, 'gartic');
   assert.equal(payload.capacity, 4);
-  assert.equal(payload.roundSeconds, 45);
+  assert.equal(payload.roundSeconds, 160);
   let joinPayload;
   await page.route('**/api/interactive/rooms/ABC234DEF567', async route => {
     joinPayload = route.request().postDataJSON();

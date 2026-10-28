@@ -30,8 +30,47 @@ try {
   await host.locator('.lobby-avatar img').waitFor();
   assert.equal(await host.locator('.lobby-avatar img').getAttribute('src'), 'https://photo.telegram-cdn.org/ahmad.png');
   assert.equal(await host.locator('.draw-ribbon').innerText(), 'لعبة الرسم');
-  await host.locator('#capacity').selectOption('4');
-  await host.locator('#roundSeconds').selectOption('45');
+  // The lobby uses custom listboxes so the client cannot paint its own native
+  // menu colours over the game palette. Verify order, palette and selection.
+  const optionValues = async name => host.locator(`.draw-select[data-draw-select="${name}"] .draw-select-option`).evaluateAll(nodes => nodes.map(node => node.dataset.value));
+  assert.deepEqual(await optionValues('capacity'), ['2', '4', '6', '8', '12', '16']);
+  assert.deepEqual(await optionValues('roundSeconds'), ['100', '120', '140', '160', '180', '200', '225', '250']);
+  assert.equal(await host.locator('#capacityMenu').isVisible(), false);
+  await host.locator('#capacityTrigger').click();
+  assert.equal(await host.locator('#capacityMenu').isVisible(), true);
+  assert.equal(await host.locator('#capacityTrigger').getAttribute('aria-expanded'), 'true');
+  if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-menu.png` });
+  const menuBox = await host.locator('#capacityMenu').boundingBox();
+  assert.ok(menuBox.y >= 0 && menuBox.y + menuBox.height <= 768, 'opened list stays inside the viewport');
+  const menuStyles = await host.evaluate(() => {
+    const menu = document.querySelector('#capacityMenu');
+    const chosen = menu.querySelector('.draw-select-option[aria-selected="true"]');
+    const other = menu.querySelector('.draw-select-option[data-value="4"]');
+    return { menu: getComputedStyle(menu).backgroundColor, chosen: getComputedStyle(chosen).backgroundColor, other: getComputedStyle(other).backgroundColor, trigger: getComputedStyle(document.querySelector('#capacityTrigger')).backgroundColor };
+  });
+  assert.equal(menuStyles.menu, 'rgb(255, 255, 255)');
+  assert.equal(menuStyles.chosen, 'rgb(22, 136, 233)');
+  assert.equal(menuStyles.other, 'rgb(255, 255, 255)');
+  assert.equal(menuStyles.trigger, 'rgb(255, 255, 255)');
+  await host.locator('#capacityMenu .draw-select-option[data-value="4"]').click();
+  assert.equal(await host.locator('#capacityMenu').isVisible(), false);
+  assert.equal(await host.locator('[data-draw-select="capacity"]').getAttribute('data-value'), '4');
+  assert.equal(await host.locator('#capacityValue').innerText(), '٤ لاعبين');
+  await host.locator('#capacityTrigger').click();
+  // The list flips above the field when the viewport has no room below it.
+  const menuFits = await host.evaluate(() => {
+    const el = document.querySelector('#capacityMenu');
+    const menu = el.getBoundingClientRect();
+    return { top: menu.top, bottom: menu.bottom, height: menu.height, inner: window.innerHeight, openUp: el.classList.contains('open-up'), scroll: el.scrollHeight };
+  });
+  assert.equal(menuFits.bottom <= menuFits.inner && menuFits.top >= 0, true);
+  await host.locator('body').click({ position: { x: 5, y: 5 } });
+  assert.equal(await host.locator('#capacityMenu').isVisible(), false);
+  await host.locator('#roundSecondsTrigger').click();
+  await host.locator('#roundSecondsMenu .draw-select-option[data-value="160"]').click();
+  assert.equal(await host.locator('[data-draw-select="roundSeconds"]').getAttribute('data-value'), '160');
+  assert.equal(await host.locator('#roundSecondsValue').innerText(), '١٦٠ ثانية');
+  if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-selects.png`, fullPage: true });
   await host.locator('[data-action="friend"]').click();
   await host.locator('.draw-room').waitFor();
   const roomId = new URL(host.url()).searchParams.get('room');
@@ -44,6 +83,19 @@ try {
   const guest = await client('سارة', '', 390, 844);
   assert.equal(await guest.locator('.lobby-avatar img').count(), 0);
   assert.match(await guest.locator('.lobby-avatar').innerText(), /س/);
+  // Same custom list on a phone-sized screen keeps all eight times reachable.
+  await guest.locator('#roundSecondsTrigger').click();
+  const phoneMenu = await guest.evaluate(() => {
+    const menu = document.querySelector('#roundSecondsMenu').getBoundingClientRect();
+    return { top: menu.top, bottom: menu.bottom, viewport: window.innerHeight, count: document.querySelectorAll('#roundSecondsMenu .draw-select-option').length };
+  });
+  assert.equal(phoneMenu.count, 8);
+  const phoneLast = await guest.locator('#roundSecondsMenu .draw-select-option[data-value="250"]').boundingBox();
+  assert.ok(phoneLast.y + phoneLast.height <= phoneMenu.viewport, 'the last time is reachable without hiding behind the viewport');
+  assert.ok(phoneMenu.top >= 0 && phoneMenu.bottom <= phoneMenu.viewport, 'phone list stays inside the viewport');
+  if (process.env.GAMES_SCREENSHOT_DIR) await guest.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-menu-phone.png` });
+  await guest.locator('#roundSecondsMenu .draw-select-option[data-value="225"]').click();
+  assert.equal(await guest.locator('#roundSecondsValue').innerText(), '٢٢٥ ثانية');
   await guest.locator('#drawRoomCode').fill(roomId.toLowerCase());
   await guest.locator('#drawJoinButton').click();
   await guest.locator('.draw-room').waitFor();
