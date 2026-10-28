@@ -72,7 +72,25 @@ try {
     await page.locator(`.game-card[data-game="${game}"]`).click();
     await page.waitForURL(`**/${game}`);
     await page.waitForSelector('#gameSetupPage.active');
-    assert.ok(await page.locator('#setupTitle').innerText());
+    assert.ok(await page.locator('#setupTitle').textContent());
+  }
+  for (const [width, height] of [[320, 640], [390, 844], [768, 1024], [1366, 768], [1920, 1080]]) {
+    await page.setViewportSize({ width, height });
+    const layout = await page.evaluate(() => {
+      const panel = document.querySelector('#gameOptions');
+      const create = document.querySelector('#drawCreateTitle').getBoundingClientRect();
+      const join = document.querySelector('#drawJoinTitle').getBoundingClientRect();
+      return { scrollWidth: document.documentElement.scrollWidth, background: getComputedStyle(panel).backgroundColor,
+        columns: getComputedStyle(document.querySelector('.draw-lobby-grid')).gridTemplateColumns.split(' ').length,
+        createTop: create.top, joinTop: join.top, marginTop: panel.getBoundingClientRect().top };
+    });
+    assert.ok(layout.scrollWidth <= width + 1, `drawing lobby overflow at ${width}`);
+    assert.equal(layout.background, 'rgb(255, 255, 255)');
+    assert.ok(layout.marginTop >= 64, 'Telegram safe area is respected');
+    if (width <= 650) assert.ok(layout.joinTop > layout.createTop, 'mobile stacks sections');
+    else assert.ok(Math.abs(layout.joinTop - layout.createTop) < 1, 'wide screens show side-by-side sections');
+    console.log(`Drawing lobby passed: ${width}x${height}`);
+    if (process.env.GAMES_SCREENSHOT_DIR && (width === 390 || width === 1366)) await page.screenshot({path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-${width}.png`, fullPage: true});
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#drawRoomCode').fill('!');
@@ -92,6 +110,16 @@ try {
   assert.equal(payload.game, 'gartic');
   assert.equal(payload.capacity, 4);
   assert.equal(payload.roundSeconds, 45);
+  let joinPayload;
+  await page.route('**/api/interactive/rooms/ABC234DEF567', async route => {
+    joinPayload = route.request().postDataJSON();
+    await route.fulfill({ status: 404, json: { error: 'غرفة اختبار' } });
+  });
+  await page.locator('#drawRoomCode').fill('abc234def567');
+  await page.locator('#drawJoinButton').click();
+  await page.waitForSelector('#roomPage.active');
+  await page.getByText('غرفة اختبار').waitFor();
+  assert.equal(joinPayload.action, 'join');
   assert.deepEqual(errors, []);
   console.log('Browser routes, native Back, drawing input and create-room request checks passed.');
 } finally { await browser.close(); }
