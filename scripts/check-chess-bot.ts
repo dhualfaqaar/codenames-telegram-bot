@@ -26,7 +26,7 @@ const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
 const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
 assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
 const interactivePageResponse = await cloudflareWorker.fetch(new Request(`https://game.test/interactive?app_build=${INTERACTIVE_APP_BUILD}`), {} as any, {} as any);
-assert(INTERACTIVE_APP_BUILD === '2026-10-30-game-art-v9' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('إعدادات الشاشة'), 'the live Mini App route should bypass stale caches and return the screen-profile UI');
+assert(INTERACTIVE_APP_BUILD === '2026-10-30-chess-board-v10' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('إعدادات الشاشة'), 'the live Mini App route should bypass stale caches and return the screen-profile UI');
 for (const art of ['/chess-hero-v2.jpg', '/drawing-hero.jpg', '/sudoku-hero.jpg']) {
   const artResponse = await cloudflareWorker.fetch(new Request('https://game.test' + art), {} as any, {} as any);
   assert(artResponse.status === 200 && artResponse.headers.get('Content-Type') === 'image/jpeg' && (await artResponse.arrayBuffer()).byteLength > 5_000, 'game card art ' + art + ' should be served by the worker');
