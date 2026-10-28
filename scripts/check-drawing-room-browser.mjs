@@ -34,7 +34,8 @@ try {
   // menu colours over the game palette. Verify order, palette and selection.
   const optionValues = async name => host.locator(`.draw-select[data-draw-select="${name}"] .draw-select-option`).evaluateAll(nodes => nodes.map(node => node.dataset.value));
   assert.deepEqual(await optionValues('capacity'), ['2', '4', '6', '8', '12', '16']);
-  assert.deepEqual(await optionValues('roundSeconds'), ['100', '120', '140', '160', '180', '200', '225', '250']);
+  assert.deepEqual(await optionValues('roundSeconds'), ['30', '45', '75', '90', '120']);
+  assert.deepEqual(await optionValues('drawTargetScore'), ['100', '120', '140', '160', '180', '200', '225', '250']);
   assert.equal(await host.locator('#capacityMenu').isVisible(), false);
   await host.locator('#capacityTrigger').click();
   assert.equal(await host.locator('#capacityMenu').isVisible(), true);
@@ -67,9 +68,12 @@ try {
   await host.locator('body').click({ position: { x: 5, y: 5 } });
   assert.equal(await host.locator('#capacityMenu').isVisible(), false);
   await host.locator('#roundSecondsTrigger').click();
-  await host.locator('#roundSecondsMenu .draw-select-option[data-value="160"]').click();
-  assert.equal(await host.locator('[data-draw-select="roundSeconds"]').getAttribute('data-value'), '160');
-  assert.equal(await host.locator('#roundSecondsValue').innerText(), '١٦٠ ثانية');
+  await host.locator('#roundSecondsMenu .draw-select-option[data-value="90"]').click();
+  assert.equal(await host.locator('[data-draw-select="roundSeconds"]').getAttribute('data-value'), '90');
+  assert.equal(await host.locator('#roundSecondsValue').innerText(), '٩٠ ثانية');
+  await host.locator('#drawTargetScoreTrigger').click();
+  await host.locator('#drawTargetScoreMenu .draw-select-option[data-value="200"]').click();
+  assert.equal(await host.locator('#drawTargetScoreValue').innerText(), '٢٠٠ نقطة');
   if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-selects.png`, fullPage: true });
   await host.locator('[data-action="friend"]').click();
   await host.locator('.draw-room').waitFor();
@@ -83,19 +87,19 @@ try {
   const guest = await client('سارة', '', 390, 844);
   assert.equal(await guest.locator('.lobby-avatar img').count(), 0);
   assert.match(await guest.locator('.lobby-avatar').innerText(), /س/);
-  // Same custom list on a phone-sized screen keeps all eight times reachable.
-  await guest.locator('#roundSecondsTrigger').click();
+  // The score-target list keeps all eight options reachable on a phone screen.
+  await guest.locator('#drawTargetScoreTrigger').click();
   const phoneMenu = await guest.evaluate(() => {
-    const menu = document.querySelector('#roundSecondsMenu').getBoundingClientRect();
-    return { top: menu.top, bottom: menu.bottom, viewport: window.innerHeight, count: document.querySelectorAll('#roundSecondsMenu .draw-select-option').length };
+    const menu = document.querySelector('#drawTargetScoreMenu').getBoundingClientRect();
+    return { top: menu.top, bottom: menu.bottom, viewport: window.innerHeight, count: document.querySelectorAll('#drawTargetScoreMenu .draw-select-option').length };
   });
   assert.equal(phoneMenu.count, 8);
-  const phoneLast = await guest.locator('#roundSecondsMenu .draw-select-option[data-value="250"]').boundingBox();
-  assert.ok(phoneLast.y + phoneLast.height <= phoneMenu.viewport, 'the last time is reachable without hiding behind the viewport');
+  const phoneLast = await guest.locator('#drawTargetScoreMenu .draw-select-option[data-value="250"]').boundingBox();
+  assert.ok(phoneLast.y + phoneLast.height <= phoneMenu.viewport, 'the last score target is reachable without hiding behind the viewport');
   assert.ok(phoneMenu.top >= 0 && phoneMenu.bottom <= phoneMenu.viewport, 'phone list stays inside the viewport');
   if (process.env.GAMES_SCREENSHOT_DIR) await guest.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-menu-phone.png` });
-  await guest.locator('#roundSecondsMenu .draw-select-option[data-value="225"]').click();
-  assert.equal(await guest.locator('#roundSecondsValue').innerText(), '٢٢٥ ثانية');
+  await guest.locator('#drawTargetScoreMenu .draw-select-option[data-value="225"]').click();
+  assert.equal(await guest.locator('#drawTargetScoreValue').innerText(), '٢٢٥ نقطة');
   await guest.locator('#drawRoomCode').fill(roomId.toLowerCase());
   await guest.locator('#drawJoinButton').click();
   await guest.locator('.draw-room').waitFor();

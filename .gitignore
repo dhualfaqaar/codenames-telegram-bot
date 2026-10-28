@@ -10,3 +10,4 @@ coverage/
 .dev.vars
 logos/
 __pycache__/
+.arena-preview/

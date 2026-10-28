@@ -106,12 +106,15 @@ try {
   await page.locator('#capacityTrigger').click();
   await page.locator('#capacityMenu .draw-select-option[data-value="4"]').click();
   await page.locator('#roundSecondsTrigger').click();
-  await page.locator('#roundSecondsMenu .draw-select-option[data-value="160"]').click();
+  await page.locator('#roundSecondsMenu .draw-select-option[data-value="90"]').click();
+  await page.locator('#drawTargetScoreTrigger').click();
+  await page.locator('#drawTargetScoreMenu .draw-select-option[data-value="225"]').click();
   await page.locator('[data-action="friend"]').click();
   await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('اختبار تعذر الاتصال'));
   assert.equal(payload.game, 'gartic');
   assert.equal(payload.capacity, 4);
-  assert.equal(payload.roundSeconds, 160);
+  assert.equal(payload.roundSeconds, 90);
+  assert.equal(payload.targetScore, 225);
   let joinPayload;
   await page.route('**/api/interactive/rooms/ABC234DEF567', async route => {
     joinPayload = route.request().postDataJSON();
