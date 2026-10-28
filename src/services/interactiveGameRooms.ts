@@ -29,7 +29,7 @@ const ROOM_KEY = (id: string) => `interactive-room:${id}`;
 const TICKET_KEY = (id: string) => `interactive-match:${id}`;
 const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
 const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000;
-const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'ارسم وخمّن', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
+const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
 const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
 const UNO_COLORS = ['أحمر','أصفر','أخضر','أزرق'];
@@ -522,7 +522,7 @@ export class InteractiveGameRooms {
       const guess = String(body.text || '').trim().slice(0, 60); if (!guess) return 'اكتب تخمينك';
       const normalized = (x: string) => x.replace(/[\u064b-\u065f\u0670\u0640\s]/g, '').toLowerCase();
       const correct = normalized(guess) === normalized(s.word);
-      s.guesses.push({ name: player.name, text: guess, correct, at: Date.now() }); if (s.guesses.length > 30) s.guesses.shift();
+      s.guesses.push({ name: player.name, seat, text: guess, correct, at: Date.now() }); if (s.guesses.length > 30) s.guesses.shift();
       if (correct) { s.scores[player.token] = (s.scores[player.token] || 0) + Math.max(10, Math.round(100 * (1 - (Date.now() - s.roundStartedAt) / 100_000))); const artist = room.players[s.drawer]; s.scores[artist.token] = (s.scores[artist.token] || 0) + 25; s.roundResult = `${player.name} خمّنها صح: ${s.word}`; }
       return null;
     }
@@ -718,7 +718,7 @@ export class InteractiveGameRooms {
       state.drawerName = room.players[s.drawer]?.name || '';
       state.isDrawer = seat === s.drawer;
       state.scores = room.players.map(p=>({name:p.name,score:s.scores[p.token]||0}));
-      state.guesses = s.guesses.map((g:any)=>({name:g.name,text:g.correct?'✅ خمّنها صح':g.text,correct:g.correct}));
+      state.guesses = s.guesses.map((g:any)=>({name:g.name,seat:Number.isInteger(g.seat)?g.seat:null,text:g.correct?'✅ خمّنها صح':g.text,correct:g.correct}));
       state.roundLeft = Math.max(0,Math.ceil((s.deadline-Date.now())/1000));
     } else if (room.game === 'poker') {
       state.hand = s.revealed ? s.holes[token] || [] : own ? s.holes[token] || [] : [];
