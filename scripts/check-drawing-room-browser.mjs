@@ -8,13 +8,19 @@ const base = process.env.GAMES_TEST_URL || 'http://localhost:3000';
 const errors = [];
 const contexts = [];
 try {
-  async function client(name, photoUrl, width, height) {
+  async function client(name, photoUrl, width, height, options = {}) {
     const context = await browser.newContext({ viewport: { width, height } });
     contexts.push(context);
+    if (options.creator) {
+      await context.route('**/api/interactive/profile', route => route.fulfill({ status: 200, json: { profile: { level: 3, xp: 120, games: 8, winRate: 50 }, isBotCreator: true } }));
+    }
+    await context.route('**/api/interactive/config', route => route.fulfill({ status: 200, json: { botUsername: 'CodeGamesTestBot' } }));
     await context.route('https://telegram.org/**', route => route.fulfill({ body: '' }));
     await context.route('https://photo.telegram-cdn.org/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') }));
     await context.addInitScript(({ name, photoUrl }) => {
-      window.Telegram = { WebApp: { initData: '', initDataUnsafe: { user: { id: name === 'أحمد' ? 1 : 2, first_name: name, photo_url: photoUrl } },
+      window.__sharedLinks = [];
+      window.Telegram = { WebApp: { initData: 'mock-init-data', initDataUnsafe: { user: { id: name === 'أحمد' ? 1 : 2, first_name: name, photo_url: photoUrl } },
+        openTelegramLink(link) { window.__sharedLinks.push(link); },
         isFullscreen: true, safeAreaInset: { top: 24, bottom: 20 }, contentSafeAreaInset: { top: 64, bottom: 20 },
         ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}, requestFullscreen() {}, exitFullscreen() {},
         isVersionAtLeast: () => true, onEvent() {}, BackButton: { show() {}, hide() {}, onClick(fn) { window.__nativeBack = fn; } },
@@ -26,7 +32,7 @@ try {
     await page.locator('#drawCreateTitle').waitFor();
     return page;
   }
-  const host = await client('أحمد', 'https://photo.telegram-cdn.org/ahmad.png', 1366, 768);
+  const host = await client('أحمد', 'https://photo.telegram-cdn.org/ahmad.png', 1366, 768, { creator: true });
   await host.locator('.lobby-avatar img').waitFor();
   assert.equal(await host.locator('.lobby-avatar img').getAttribute('src'), 'https://photo.telegram-cdn.org/ahmad.png');
   assert.equal(await host.locator('.draw-ribbon').innerText(), 'لعبة الرسم');
@@ -80,6 +86,16 @@ try {
   const roomId = new URL(host.url()).searchParams.get('room');
   assert.match(roomId, /^[A-Z0-9]{12}$/);
   assert.ok(await host.getByText('بانتظار اللاعبين').first().isVisible());
+  // The verified creator badge follows the account into every game room.
+  await host.locator('.draw-player-row .creator-verified-badge').first().waitFor();
+  assert.equal(await host.locator('.draw-player-row .creator-verified-badge').count(), 1);
+  // A shared invite must carry the room code so the friend can retry manually.
+  await host.locator('#inviteButton').click();
+  await host.waitForFunction(() => (window.__sharedLinks || []).length > 0);
+  const shared = decodeURIComponent((await host.evaluate(() => window.__sharedLinks[0])) || '');
+  assert.ok(shared.includes('https://t.me/CodeGamesTestBot'), 'invite deep link should target the bot');
+  assert.ok(shared.includes('CodeGamesTestBot'), 'invite deep link should use the configured bot username');
+  assert.ok(shared.includes(encodeURIComponent('رمز الغرفة: ' + roomId)) || shared.includes('رمز الغرفة'), 'invite text should include the room code');
   assert.equal(await host.locator('.draw-player-row').count(), 1);
   assert.equal(await host.locator('.draw-player-row .draw-account-avatar img').getAttribute('src'), 'https://photo.telegram-cdn.org/ahmad.png');
   assert.equal(await host.locator('.draw-canvas').count(), 1);
@@ -106,9 +122,18 @@ try {
   await host.waitForFunction(() => document.querySelectorAll('.draw-player-row').length === 2);
   assert.equal(await guest.locator('.draw-player-row').count(), 2);
   assert.equal(await guest.locator('[data-action="start"]').count(), 0);
-  const positions = await host.evaluate(() => ({ players: document.querySelector('.draw-room-players').getBoundingClientRect().toJSON(), board: document.querySelector('.draw-board-card').getBoundingClientRect().toJSON(), feed: document.querySelector('.draw-feed-card').getBoundingClientRect().toJSON() }));
+  // Wide screens follow the reference layout: players | board | guesses + chat,
+  // all above the fold, with the guesses card wider than the social chat.
+  const positions = await host.evaluate(() => {
+    const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+    return { players: box('.draw-room-players'), board: box('.draw-board-card'), conversations: box('.draw-conversations'), feed: box('.draw-feed-card'), header: box('#roomPage .room-header'), viewport: window.innerHeight, scrollY: window.scrollY };
+  });
   assert.ok(positions.players.right <= positions.board.left, 'players are left of board on wide screens');
-  assert.ok(positions.feed.top >= positions.board.bottom, 'guess feed is below the board');
+  assert.ok(positions.conversations.left >= positions.board.right, 'guesses sit beside the board on wide screens');
+  assert.ok(positions.header.top < 140, 'no oversized gap above the room title');
+  await host.evaluate(() => window.scrollTo(0, 0));
+  assert.ok((await host.evaluate(() => window.scrollY)) === 0, 'the room can be viewed from the top without a blank band');
+  assert.ok(positions.conversations.bottom <= positions.viewport, 'guesses are visible without scrolling');
   if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/drawing-waiting.png`, fullPage: true });
   const third = await client('علي', '', 1024, 768);
   await third.locator('#drawRoomCode').fill(roomId);
@@ -123,6 +148,15 @@ try {
   assert.equal(await host.locator('#drawChatInput').count(), 0);
   assert.equal(await guest.locator('#drawChatInput').count(), 1);
   assert.equal(await host.locator('.draw-player-row .player-flag-marker').count(), 3);
+  // During play the social chat sits under the wider guesses card, both on screen.
+  const playLayout = await host.evaluate(() => {
+    const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+    return { feed: box('.draw-feed-card'), chat: box('.draw-chat-card'), feedList: box('.draw-feed-card .draw-room-feed'), chatList: box('.draw-chat-card .draw-room-feed'), board: box('.draw-board-card'), viewport: window.innerHeight };
+  });
+  assert.ok(playLayout.chat.top >= playLayout.feed.bottom, 'social chat sits under the guesses card');
+  assert.ok(playLayout.feedList.height > playLayout.chatList.height * 1.5, 'the guesses feed is clearly larger than the social chat feed');
+  assert.ok(playLayout.feed.left >= playLayout.board.right, 'conversations sit beside the board during play');
+  assert.ok(playLayout.chat.bottom <= playLayout.viewport, 'chat is visible without scrolling');
   const word = (await host.locator('.draw-hint').innerText()).replace('كلمتك: ', '').trim();
   assert.ok(word.length > 0);
   assert.equal(await guest.locator('.draw-hint').innerText(), 'الكلمة مخفية');
@@ -218,6 +252,35 @@ try {
   assert.equal(await host.locator('.draw-standing').count(), 3);
   assert.match(await host.locator('.draw-standings').innerText(), /ترتيب المباراة/);
   assert.equal(await host.locator('#revealTelegramControls').isVisible(), false);
+  // A stale invite link shows a recovery screen (retry + back) instead of a bare error,
+  // and retrying with a valid room code joins normally.
+  const stale = await client('مهند', '', 390, 844);
+  await stale.goto(`${base}/interactive?room=ZZZZZZZZZZZZ&game=gartic`);
+  await stale.locator('.draw-join-failure').waitFor();
+  assert.match(await stale.locator('.draw-join-failure h2').innerText(), /ما گدرنا نفتح الغرفة/);
+  assert.equal(await stale.locator('#retryRoomCode').count(), 1);
+  assert.equal(await stale.locator('#retryRoomButton').count(), 1);
+  assert.equal(await stale.locator('#backToGamesButton').count(), 1);
+  const failureColors = await stale.evaluate(() => {
+    const card = document.querySelector('.draw-join-failure'), text = card.querySelector('p');
+    const luminance = value => { const [r, g, b] = value.match(/\d+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; };
+    return { card: luminance(getComputedStyle(card).backgroundColor), text: luminance(getComputedStyle(text).color) };
+  });
+  assert.ok(failureColors.card < 0.35 && failureColors.text > 0.6, 'the recovery screen keeps readable light text on the dark card');
+  if (process.env.GAMES_SCREENSHOT_DIR) await stale.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-join-failure.png`, fullPage: true });
+  // Joining a room that already started keeps the recovery screen with the server's reason.
+  await stale.locator('#retryRoomCode').fill(roomId.toLowerCase());
+  await stale.locator('#retryRoomButton').click();
+  await stale.waitForFunction(() => /بدأت/.test(document.querySelector('.draw-join-failure')?.innerText || ''));
+  // Retrying with a fresh waiting room joins normally.
+  const freshRoom = await stale.evaluate(async () => {
+    const response = await fetch('/api/interactive/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'gartic', name: 'مهند', capacity: 4 }) });
+    return (await response.json()).room.id;
+  });
+  await stale.locator('#retryRoomCode').fill(freshRoom.toLowerCase());
+  await stale.locator('#retryRoomButton').click();
+  await stale.locator('.draw-room').waitFor();
+  assert.match(await stale.locator('#roomSubtitle').innerText(), new RegExp(freshRoom));
   await guest.evaluate(() => window.__nativeBack());
   await guest.waitForURL('**/interactive');
   assert.deepEqual(errors, []);

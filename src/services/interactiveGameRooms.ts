@@ -29,6 +29,10 @@ const ROOM_KEY = (id: string) => `interactive-room:${id}`;
 const TICKET_KEY = (id: string) => `interactive-match:${id}`;
 const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
 const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000;
+// Rooms stay reachable for a week of inactivity; every visit refreshes this window
+// so an invite link keeps working for friends who open it later.
+const ROOM_IDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ROOM_TOUCH_MS = 60_000;
 const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
 const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
@@ -170,7 +174,8 @@ export class InteractiveGameRooms {
     const id = match[1]?.toUpperCase();
     if (!id) return Response.json({ error: 'معرّف الغرفة مطلوب' }, { status: 400 });
     const room = await this.load(id);
-    if (!room || Date.now() - room.updatedAt > 24 * 60 * 60 * 1000) return Response.json({ error: 'الغرفة غير موجودة أو انتهت صلاحيتها' }, { status: 404 });
+    if (!room) return Response.json({ error: 'الغرفة غير موجودة أو انتهت صلاحيتها', code: 'room-missing' }, { status: 404 });
+    if (Date.now() - room.updatedAt > ROOM_IDLE_TTL_MS) return Response.json({ error: 'الغرفة غير موجودة أو انتهت صلاحيتها', code: 'room-expired' }, { status: 404 });
 
     if (request.method === 'GET') {
       const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
@@ -193,7 +198,8 @@ export class InteractiveGameRooms {
         }
       }
       const started = this.startChessClockAfterIntro(room, now);
-      if (changed || started || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
+      const touched = now - room.updatedAt > ROOM_TOUCH_MS;
+      if (changed || started || touched || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
       return this.jsonFor(room, token);
     }
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
@@ -202,7 +208,10 @@ export class InteractiveGameRooms {
     const action = String(body?.action || '');
     if (action === 'join') {
       const prior = typeof body.token === 'string' ? room.players.find(player => player.token === body.token) : undefined;
-      if (prior) return this.jsonFor(room, prior.token);
+      if (prior) {
+        if (body.isBotCreator === true && !prior.isBotCreator) { prior.isBotCreator = true; room.updatedAt = Date.now(); await this.save(room); }
+        return this.jsonFor(room, prior.token);
+      }
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
       const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 16 : 6);
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
