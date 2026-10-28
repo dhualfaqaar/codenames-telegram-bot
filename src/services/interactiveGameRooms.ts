@@ -33,9 +33,32 @@ const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000;
 // so an invite link keeps working for friends who open it later.
 const ROOM_IDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ROOM_TOUCH_MS = 60_000;
+// Drawing rounds: the artist picks one of two words, draws, then the round is
+// revealed briefly before the next artist starts automatically.
+const DRAW_CHOICE_MS = 20_000;
+const DRAW_REVEAL_MS = 5_000;
+const DRAW_MAX_HINTS = 2;
 const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
 const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
+const DRAW_PALETTE = ['#1f2937','#4b5563','#94a3b8','#e2e8f0','#ffffff','#d1d5db','#7dd3fc','#38bdf8','#0284c7','#0f766e','#22c55e','#84cc16','#facc15','#f59e0b','#f97316','#ef4444','#b91c1c','#a855f7','#ec4899','#fcd5b5'];
+const DRAW_SHAPE_KINDS = ['pen','eraser','line','rect','rect-fill','ellipse','ellipse-fill','diamond','diamond-fill'];
+function drawWordChoices(count = 2): string[] {
+  const pool = DRAW_WORDS.slice();
+  const picked: string[] = [];
+  while (picked.length < count && pool.length) picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  return picked;
+}
+function drawMaskedWord(word: string, revealed: number): string {
+  if (!word) return '';
+  let index = 0;
+  return word.split('').map(char => {
+    if (char === ' ') return ' ';
+    const shown = index < revealed ? char : '•';
+    index += 1;
+    return shown;
+  }).join('');
+}
 const UNO_COLORS = ['أحمر','أصفر','أخضر','أزرق'];
 const COLOR_KEYS: Record<string, string> = { 'أحمر':'red', 'أصفر':'yellow', 'أخضر':'green', 'أزرق':'blue' };
 const SUITS = ['♠','♥','♦','♣'];
@@ -198,6 +221,7 @@ export class InteractiveGameRooms {
         }
       }
       const started = this.startChessClockAfterIntro(room, now);
+      if (this.tickDraw(room, now)) changed = true;
       const touched = now - room.updatedAt > ROOM_TOUCH_MS;
       if (changed || started || touched || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
       return this.jsonFor(room, token);
@@ -218,6 +242,7 @@ export class InteractiveGameRooms {
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), countryCode: cleanCountryCode(body.countryCode), joinedAt: Date.now(), ...(body.isBotCreator === true ? { isBotCreator: true } : {}), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 200))) } : {}) };
       room.players.push(player);
       room.updatedAt = Date.now();
+      if (room.game === 'gartic') { room.gameState.logs ||= []; room.gameState.logs.push({ text: `${player.name} انضم`, kind: 'join', at: Date.now() }); room.gameState.logs = room.gameState.logs.slice(-40); }
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
       await this.save(room);
       return this.jsonFor(room, player.token);
@@ -227,6 +252,7 @@ export class InteractiveGameRooms {
     if (!player) return Response.json({ error: 'انضم للغرفة أولاً' }, { status: 403 });
     this.startChessClockAfterIntro(room);
     if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); return this.jsonFor(room, player.token); }
+    this.tickDraw(room);
     const result = this.act(room, player, action, body || {});
     if (result) return Response.json({ error: result }, { status: 400 });
     room.updatedAt = Date.now();
@@ -238,7 +264,7 @@ export class InteractiveGameRooms {
     switch (game) {
       case 'chess': return { fen: new Chess().fen(), turn: 'w', lastMove: '', result: '', clockMinutes: 5, clockInitialMs: 300_000, clocks: { w: 300_000, b: 300_000 }, clockStartedAt: 0, chat: [] };
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
-      case 'gartic': return { round: 0, drawer: 0, word: '', strokes: [], guesses: [], drawChat: [], correctPlayers: [], scores: {}, targetScore: 500, roundStartedAt: 0, deadline: 0, roundResult: '' };
+      case 'gartic': return { round: 0, drawer: 0, phase: 'waiting', word: '', wordChoices: [], strokes: [], guesses: [], drawChat: [], logs: [], correctPlayers: [], scores: {}, targetScore: 500, roundStartedAt: 0, deadline: 0, choiceDeadline: 0, autoNextAt: 0, revealed: 0, hintsUsed: 0, roundResult: '' };
       case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0, startingChips: 1000 };
       case 'sudoku': return { difficulty: 'easy', puzzle: [], solution: [], boards: {}, startedAt: 0, winner: '', result: '' };
     }
@@ -301,12 +327,11 @@ export class InteractiveGameRooms {
       if (room.game === 'gartic' && room.status === 'playing') {
         const s = room.gameState;
         s.guesses = (s.guesses || []).map((g: any) => ({ ...g, seat: g.seat === index ? null : g.seat > index ? g.seat - 1 : g.seat }));
-        if (drawArtist === player.token) { s.word = ''; s.roundResult = 'الرسّام غادر — ابدأوا جولة جديدة'; s.drawer = 0; }
-        else {
-          s.drawer = Math.max(0, room.players.findIndex(p => p.token === drawArtist));
-          if (room.players.length > 1 && room.players.filter(p => p.token !== drawArtist).every(p => (s.correctPlayers || []).includes(p.token))) s.roundResult = 'كل المخمّنين جاوبوا صح';
-        }
-        if (room.players.length < 2) { room.status = 'finished'; s.roundResult = 'انتهت المباراة بعد مغادرة اللاعبين'; }
+        this.pushDrawLog(room, `${player.name} غادر`, 'left');
+        s.drawer = Math.max(0, room.players.findIndex(p => p.token === drawArtist));
+        if (room.players.length < 2) { room.status = 'finished'; s.phase = 'reveal'; s.roundResult = 'انتهت المباراة بعد مغادرة اللاعبين'; s.autoNextAt = 0; }
+        else if (drawArtist === player.token) this.endDrawRound(room, 'الرسّام غادر — جولة جديدة بعد لحظات');
+        else if (room.players.filter(p => p.token !== drawArtist).every(p => (s.correctPlayers || []).includes(p.token))) this.endDrawRound(room, 'كل المخمّنين جاوبوا صح');
       }
       if (!room.players.length) room.status = 'finished';
       return null;
@@ -540,21 +565,120 @@ export class InteractiveGameRooms {
   }
   private advanceUno(room: Room, steps: number): void { room.gameState.turn = nextIndex(room.gameState.turn, room.players.length, room.gameState.direction * steps); }
 
+  private pushDrawLog(room: Room, text: string, kind = 'info'): void {
+    const s = room.gameState; if (!text) return;
+    s.logs ||= []; s.logs.push({ text, kind, at: Date.now() }); s.logs = s.logs.slice(-40);
+  }
+
   private startDrawRound(room: Room, index: number): void {
-    const s = room.gameState; s.round = index + 1; s.drawer = index % room.players.length; s.word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)]; s.strokes = []; s.guesses = []; s.drawChat = []; s.correctPlayers = []; s.roundStartedAt = Date.now(); s.deadline = Date.now() + (Number(s.roundDurationMs) || 75_000); s.roundResult = ''; room.status = 'playing';
+    const s = room.gameState;
+    const count = room.players.length;
+    s.round = index + 1;
+    s.drawer = count ? index % count : 0;
+    s.phase = 'choosing';
+    s.wordChoices = drawWordChoices(2);
+    s.word = '';
+    s.strokes = []; s.guesses = []; s.drawChat = []; s.correctPlayers = [];
+    s.revealed = 0; s.hintsUsed = 0;
+    s.roundStartedAt = Date.now();
+    s.choiceDeadline = Date.now() + DRAW_CHOICE_MS;
+    s.deadline = 0;
+    s.autoNextAt = 0;
+    s.roundResult = '';
+    room.status = 'playing';
+    const artist = room.players[s.drawer];
+    if (artist) this.pushDrawLog(room, `${artist.name} يختار كلمة…`, 'turn');
+  }
+
+  private beginDrawing(room: Room, word: string): void {
+    const s = room.gameState;
+    s.word = word; s.phase = 'drawing'; s.revealed = 0; s.hintsUsed = 0;
+    s.roundStartedAt = Date.now();
+    s.deadline = Date.now() + (Number(s.roundDurationMs) || 75_000);
+    const artist = room.players[s.drawer];
+    if (artist) this.pushDrawLog(room, `دور ${artist.name} يرسم`, 'turn');
+  }
+
+  private endDrawRound(room: Room, reason: string): void {
+    const s = room.gameState;
+    if (s.phase === 'reveal') return;
+    s.phase = 'reveal';
+    s.roundResult = reason;
+    s.autoNextAt = Date.now() + DRAW_REVEAL_MS;
+    s.deadline = Date.now();
+    if (s.word) {
+      this.pushDrawLog(room, `الجواب كان: ${s.word}`, 'answer');
+      s.guesses ||= [];
+      s.guesses.push({ name: 'الجواب', seat: null, text: s.word, correct: false, reveal: true });
+      if (s.guesses.length > 60) s.guesses = s.guesses.slice(-60);
+    }
+  }
+
+  private tickDraw(room: Room, now = Date.now()): boolean {
+    if (room.game !== 'gartic' || room.status !== 'playing') return false;
+    const s = room.gameState;
+    if (!s.round) return false;
+    const phase = s.phase || 'drawing';
+    if (phase === 'choosing' && now > (Number(s.choiceDeadline) || 0)) {
+      this.beginDrawing(room, (s.wordChoices || [])[0] || DRAW_WORDS[0]);
+      return true;
+    }
+    if (phase === 'drawing' && now > Number(s.deadline || 0)) { this.endDrawRound(room, 'انتهى الوقت'); return true; }
+    if (phase === 'reveal' && Number(s.autoNextAt) > 0 && now >= Number(s.autoNextAt) && room.players.length >= 2) {
+      this.startDrawRound(room, Number(s.round) || 0);
+      return true;
+    }
+    return false;
   }
   private drawAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
     const s = room.gameState; const seat = room.players.findIndex(item => item.token === player.token);
-    if (action === 'start-round') { if (room.status !== 'playing' || !s.round) return 'ابدأوا اللعبة أولاً'; if (s.roundResult || Date.now() > s.deadline) this.startDrawRound(room, s.round); else return 'الجولة الحالية بعدها شغالة'; return null; }
+    if (action === 'start-round') {
+      if (room.status !== 'playing' || !s.round) return 'ابدأوا اللعبة أولاً';
+      const phase = s.phase || 'drawing';
+      if (phase === 'reveal') { this.startDrawRound(room, s.round); return null; }
+      if (phase === 'choosing') return 'الرسام يختار الكلمة هسه';
+      return 'الجولة الحالية بعدها شغالة';
+    }
+    if (action === 'choose-word') {
+      if (s.phase !== 'choosing') return 'ما بقى وقت اختيار الكلمة';
+      if (seat !== s.drawer) return 'الرسام وحده يختار الكلمة';
+      if (Date.now() > Number(s.choiceDeadline || 0)) return 'انتهى وقت اختيار الكلمة';
+      const chosen = String(body.word || '');
+      if (!(s.wordChoices || []).includes(chosen)) return 'اختار وحدة من الكلمات المعروضة';
+      this.beginDrawing(room, chosen);
+      return null;
+    }
+    if (action === 'hint') {
+      if (seat !== s.drawer) return 'التلميح من الرسام';
+      if ((s.phase || 'drawing') !== 'drawing') return 'ماكو تلميح هسه';
+      if (Number(s.hintsUsed) >= DRAW_MAX_HINTS) return 'استخدمت كل التلميحات';
+      s.hintsUsed = Number(s.hintsUsed) + 1;
+      s.revealed = Math.min(Math.max(0, String(s.word).length - 2), Number(s.revealed || 0) + 1);
+      this.pushDrawLog(room, 'الرسام طلب تلميح', 'info');
+      return null;
+    }
+    if (action === 'skip') {
+      if (seat !== s.drawer) return 'التخطي من الرسام';
+      const phase = s.phase || 'drawing';
+      if (phase !== 'drawing' && phase !== 'choosing') return 'ماكو شي تتخطاه';
+      this.endDrawRound(room, 'الرسام تخطى الكلمة');
+      return null;
+    }
     if (room.status !== 'playing') return 'ابدأوا الجولة أولاً';
     if (action === 'stroke') {
-      if (seat !== s.drawer) return 'الرسم للرسام وحده'; if (Date.now() > s.deadline || s.roundResult) return 'انتهى وقت الرسم';
-      const points = Array.isArray(body.points) ? body.points.slice(0, 90).map((p: any) => [Math.max(0,Math.min(1,Number(p?.[0])||0)),Math.max(0,Math.min(1,Number(p?.[1])||0))]) : [];
-      if (points.length < 2) return 'الخط يحتاج نقطتين'; if (s.strokes.length >= 100) s.strokes.shift();
-      s.strokes.push({ points, color: DRAW_COLORS.includes(body.color) ? body.color : '#202635', size: Math.max(2,Math.min(20,Number(body.size)||5)) }); return null;
+      if (seat !== s.drawer) return 'الرسم للرسام وحده';
+      if ((s.phase || 'drawing') !== 'drawing') return 'وقت الرسم ما بدأ';
+      if (Date.now() > s.deadline || s.roundResult) return 'انتهى وقت الرسم';
+      const kind = DRAW_SHAPE_KINDS.includes(String(body.kind || '')) ? String(body.kind) : 'pen';
+      const limit = kind === 'pen' || kind === 'eraser' ? 120 : 2;
+      const points = Array.isArray(body.points) ? body.points.slice(0, limit).map((p: any) => [Math.max(0,Math.min(1,Number(p?.[0])||0)),Math.max(0,Math.min(1,Number(p?.[1])||0))]) : [];
+      if (points.length < 2) return 'الخط يحتاج نقطتين';
+      if (s.strokes.length >= 160) s.strokes.shift();
+      const color = kind === 'eraser' ? '#ffffff' : (DRAW_PALETTE.includes(body.color) || DRAW_COLORS.includes(body.color) ? body.color : '#1f2937');
+      s.strokes.push({ points, color, size: Math.max(2, Math.min(40, Number(body.size) || 5)), kind }); return null;
     }
-    if (action === 'undo-stroke') { if (seat !== s.drawer) return 'الرسام وحده يرجّع آخر خط'; if (s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes.pop(); return null; }
-    if (action === 'clear') { if (seat !== s.drawer) return 'الرسام وحده يمسح اللوحة'; if (s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes = []; return null; }
+    if (action === 'undo-stroke') { if (seat !== s.drawer) return 'الرسام وحده يرجّع آخر خط'; if ((s.phase || 'drawing') !== 'drawing' || s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes.pop(); return null; }
+    if (action === 'clear') { if (seat !== s.drawer) return 'الرسام وحده يمسح اللوحة'; if ((s.phase || 'drawing') !== 'drawing' || s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes = []; return null; }
     if (action === 'draw-chat') {
       if (seat === s.drawer) return 'المحادثة للمخمّنين فقط';
       const text = String(body.text || '').trim().slice(0, 240); if (!text) return 'اكتب رسالتك';
@@ -563,7 +687,7 @@ export class InteractiveGameRooms {
       const tokens = text.split(/[\s\p{P}\p{S}]+/u).filter(Boolean);
       const hasNearWord = tokens.some(token => normalizeDrawGuess(token).length >= 3 && drawGuessKind(token, s.word) === 'near');
       if (!s.roundResult && Date.now() <= s.deadline && answer.length > 0 && (message.includes(answer) || drawGuessKind(text, s.word) !== 'wrong' || hasNearWord)) return 'لا تكتب الإجابة أو شي قريب منها بالمحادثة';
-      s.drawChat ||= []; s.drawChat.push({ seat, name: player.name, text }); s.drawChat = s.drawChat.slice(-60); return null;
+      s.drawChat ||= []; s.drawChat.push({ seat, name: player.name, text, at: Date.now() }); s.drawChat = s.drawChat.slice(-60); return null;
     }
     if (action === 'guess') {
       if (seat === s.drawer) return 'الرسام ما يخمّن'; if (s.roundResult || Date.now() > s.deadline) return 'انتهت الجولة';
@@ -581,8 +705,8 @@ export class InteractiveGameRooms {
         const artist = room.players[s.drawer];
         if (artist) s.scores[artist.token] = (s.scores[artist.token] || 0) + 25;
         const target = Math.max(100, Number(s.targetScore) || 500);
-        if (room.players.some(p => (s.scores[p.token] || 0) >= target)) { room.status = 'finished'; s.roundResult = 'وصل لاعب للهدف — انتهت المباراة'; }
-        else if (room.players.filter(p => p.token !== artist?.token).every(p => s.correctPlayers.includes(p.token))) s.roundResult = 'كل المخمّنين جاوبوا صح';
+        if (room.players.some(p => (s.scores[p.token] || 0) >= target)) { room.status = 'finished'; s.phase = 'reveal'; s.autoNextAt = 0; s.roundResult = 'وصل لاعب للهدف — انتهت المباراة'; this.pushDrawLog(room, 'انتهت المباراة — وصل لاعب للهدف', 'end'); }
+        else if (room.players.filter(p => p.token !== artist?.token).every(p => s.correctPlayers.includes(p.token))) this.endDrawRound(room, 'كل المخمّنين جاوبوا صح');
       } else if (normalizeDrawGuess(guess).includes(normalizeDrawGuess(s.word))) {
         // A longer wrong guess can contain the answer; never broadcast it.
         s.guesses.push({ name: player.name, seat, text: 'تم إخفاء التخمين لأنه يتضمن الإجابة', privateTo: player.token, correct: false });
@@ -757,6 +881,7 @@ export class InteractiveGameRooms {
     delete state.deck; delete state.word; delete state.hands; delete state.holes;
     delete state.host; delete state.drawn; delete state.saidUno; delete state.pendingUno; delete state.pending; delete state.turnToken;
     delete state.bets; delete state.folded; delete state.solution; delete state.boards; delete state.eloChanges; delete state.eloUpdated;
+    delete state.wordChoices; delete state.choiceDeadline; delete state.autoNextAt; delete state.hintsUsed; delete state.revealed;
     if (room.game === 'chess') {
       state.turnName = room.players[s.turn === 'w' ? 0 : 1]?.name || '';
       state.seat = seat; state.side = seat === 0 ? 'w' : seat === 1 ? 'b' : '';
@@ -778,16 +903,26 @@ export class InteractiveGameRooms {
       state.pendingUnoSeat = room.players.findIndex(p => p.token === s.pendingUno); state.saidUno = own ? Boolean(s.saidUno[token]) : false;
       state.players = room.players.map((p,i)=>({name:p.name,seat:i,isTurn:i===s.turn,score:(s.hands[p.token]||[]).length}));
     } else if (room.game === 'gartic') {
-      state.word = own && seat === s.drawer && room.status === 'playing' ? s.word : '';
+      const playing = room.status === 'playing';
+      const isDrawer = playing && seat === s.drawer;
+      const phase = playing ? (s.phase || 'drawing') : room.status === 'finished' ? 'finished' : 'waiting';
+      state.phase = phase;
+      state.word = isDrawer ? s.word || '' : '';
+      state.wordChoices = isDrawer && phase === 'choosing' ? (s.wordChoices || []) : [];
+      state.masked = drawMaskedWord(s.word || '', Number(s.revealed) || 0);
+      state.hintsLeft = Math.max(0, DRAW_MAX_HINTS - (Number(s.hintsUsed) || 0));
       delete state.correctPlayers; delete state.drawChat;
       state.drawerName = room.players[s.drawer]?.name || '';
-      state.isDrawer = seat === s.drawer;
+      state.drawerSeat = Number(s.drawer) || 0;
+      state.isDrawer = isDrawer;
       state.scores = room.players.map(p=>({name:p.name,score:s.scores[p.token]||0}));
-      state.guesses = own ? (s.guesses||[]).filter((g:any)=>!g.privateTo||g.privateTo===token).map((g:any)=>({name:g.name,seat:Number.isInteger(g.seat)?g.seat:null,text:g.correct?'✅ خمّنها صح':g.text,correct:g.correct,near:Boolean(g.privateTo)})) : [];
+      state.guesses = own ? (s.guesses||[]).filter((g:any)=>!g.privateTo||g.privateTo===token).map((g:any)=>({name:g.name,seat:Number.isInteger(g.seat)?g.seat:null,text:g.correct?'✅ خمّنها صح':g.text,correct:g.correct,near:Boolean(g.privateTo),reveal:Boolean(g.reveal)})) : [];
       state.hasGuessed = Boolean(own && (s.correctPlayers||[]).includes(token));
-      state.drawChat = own && seat !== s.drawer ? (s.drawChat||[]) : [];
+      state.drawChat = own && !isDrawer ? (s.drawChat||[]) : [];
+      state.logs = (s.logs||[]).slice(-30);
       state.targetScore = Math.max(100, Number(s.targetScore)||500);
-      state.roundLeft = Math.max(0,Math.ceil((s.deadline-Date.now())/1000));
+      const leftMs = phase === 'choosing' ? Number(s.choiceDeadline||0) - Date.now() : phase === 'drawing' ? Number(s.deadline||0) - Date.now() : 0;
+      state.roundLeft = Math.max(0, Math.ceil(leftMs / 1000));
     } else if (room.game === 'poker') {
       state.hand = s.revealed ? s.holes[token] || [] : own ? s.holes[token] || [] : [];
       state.hands = room.players.map(p=>({name:p.name,chips:p.chips||0,folded:s.folded.includes(p.token),cards:s.revealed?s.holes[p.token]||[]:p.token===token?s.holes[p.token]||[]:[]}));

@@ -23,7 +23,7 @@ try {
         openTelegramLink(link) { window.__sharedLinks.push(link); },
         isFullscreen: true, safeAreaInset: { top: 24, bottom: 20 }, contentSafeAreaInset: { top: 64, bottom: 20 },
         ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}, requestFullscreen() {}, exitFullscreen() {},
-        isVersionAtLeast: () => true, onEvent() {}, BackButton: { show() {}, hide() {}, onClick(fn) { window.__nativeBack = fn; } },
+        isVersionAtLeast: () => true, onEvent() {}, BackButton: { show() { window.__nativeBackShown = true; }, hide() { window.__nativeBackShown = false; }, onClick(fn) { window.__nativeBack = fn; } },
       } };
     }, { name, photoUrl });
     const page = await context.newPage();
@@ -126,14 +126,16 @@ try {
   // all above the fold, with the guesses card wider than the social chat.
   const positions = await host.evaluate(() => {
     const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
-    return { players: box('.draw-room-players'), board: box('.draw-board-card'), conversations: box('.draw-conversations'), feed: box('.draw-feed-card'), header: box('#roomPage .room-header'), viewport: window.innerHeight, scrollY: window.scrollY };
+    return { players: box('.draw-room-players'), board: box('.draw-room-board'), bottom: box('.draw-room-bottom'), feed: box('.draw-feed-card'), logs: box('.draw-logs-card'), header: box('#roomPage .room-header'), viewport: window.innerHeight, scrollY: window.scrollY };
   });
   assert.ok(positions.players.right <= positions.board.left, 'players are left of board on wide screens');
-  assert.ok(positions.conversations.left >= positions.board.right, 'guesses sit beside the board on wide screens');
+  assert.ok(positions.bottom.top >= positions.board.bottom - 2, 'answers and logs sit under the board');
+  assert.ok(positions.bottom.left <= positions.board.left + 2, 'the answers row starts where the board starts');
+  assert.ok(positions.feed.width > positions.logs.width * 1.4, 'the answers card is wider than the log card');
   assert.ok(positions.header.top < 140, 'no oversized gap above the room title');
   await host.evaluate(() => window.scrollTo(0, 0));
   assert.ok((await host.evaluate(() => window.scrollY)) === 0, 'the room can be viewed from the top without a blank band');
-  assert.ok(positions.conversations.bottom <= positions.viewport, 'guesses are visible without scrolling');
+  assert.ok(positions.bottom.bottom <= positions.viewport, 'answers and logs are visible without scrolling');
   if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/drawing-waiting.png`, fullPage: true });
   const third = await client('علي', '', 1024, 768);
   await third.locator('#drawRoomCode').fill(roomId);
@@ -141,6 +143,11 @@ try {
   await third.locator('.draw-room').waitFor();
   await host.waitForFunction(() => document.querySelectorAll('.draw-player-row').length === 3);
   await host.locator('[data-action="start"]').click();
+  // The artist picks one of two suggested words before the clock starts.
+  await host.locator('.draw-word-choice').first().waitFor();
+  assert.equal(await host.locator('.draw-word-choice').count(), 2);
+  assert.equal(await guest.locator('.draw-word-choice').count(), 0, 'the artist suggestions stay private');
+  await host.locator('.draw-word-choice').first().click();
   await host.locator('.palette-color').first().waitFor();
   await guest.locator('#guessInput').waitFor();
   await third.locator('#guessInput').waitFor();
@@ -148,18 +155,22 @@ try {
   assert.equal(await host.locator('#drawChatInput').count(), 0);
   assert.equal(await guest.locator('#drawChatInput').count(), 1);
   assert.equal(await host.locator('.draw-player-row .player-flag-marker').count(), 3);
-  // During play the social chat sits under the wider guesses card, both on screen.
+  // During play the answers card and the log card share one row under the board.
   const playLayout = await host.evaluate(() => {
     const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
-    return { feed: box('.draw-feed-card'), chat: box('.draw-chat-card'), feedList: box('.draw-feed-card .draw-room-feed'), chatList: box('.draw-chat-card .draw-room-feed'), board: box('.draw-board-card'), viewport: window.innerHeight };
+    return { feed: box('.draw-feed-card'), logs: box('.draw-logs-card'), feedList: box('.draw-feed-card .draw-room-feed'), logList: box('.draw-logs-card .draw-room-feed'), board: box('.draw-room-board'), tools: box('.draw-room-tools'), viewport: window.innerHeight };
   });
-  assert.ok(playLayout.chat.top >= playLayout.feed.bottom, 'social chat sits under the guesses card');
-  assert.ok(playLayout.feedList.height > playLayout.chatList.height * 1.5, 'the guesses feed is clearly larger than the social chat feed');
-  assert.ok(playLayout.feed.left >= playLayout.board.right, 'conversations sit beside the board during play');
-  assert.ok(playLayout.chat.bottom <= playLayout.viewport, 'chat is visible without scrolling');
-  const word = (await host.locator('.draw-hint').innerText()).replace('كلمتك: ', '').trim();
-  assert.ok(word.length > 0);
-  assert.equal(await guest.locator('.draw-hint').innerText(), 'الكلمة مخفية');
+  assert.ok(playLayout.logs.left >= playLayout.feed.right - 1, 'the log card sits beside the answers card');
+  assert.ok(playLayout.feedList.height > playLayout.logList.height * 0.9, 'the answers feed keeps a readable height');
+  assert.ok(playLayout.feed.top >= playLayout.board.bottom - 2, 'answers sit under the board');
+  assert.ok(playLayout.tools.right <= playLayout.board.left + 2, 'the tool rail sits left of the board');
+  assert.ok(playLayout.logs.bottom <= playLayout.viewport, 'the log card is visible without scrolling');
+  assert.equal(await host.locator('.draw-tool[data-tool]').count(), 8);
+  assert.equal(await host.locator('.palette-color').count(), 20);
+  assert.equal(await guest.locator('.draw-tool').count(), 0, 'guessers get no drawing tools');
+  const word = (await host.locator('.draw-word').first().innerText()).trim();
+  assert.ok(word.length > 0, 'the artist sees the secret word');
+  assert.match(await guest.locator('.draw-word').first().innerText(), /•/);
   const guestState = await guest.evaluate(async id => {
     const token = localStorage.getItem('cg-room-token-' + id);
     return (await fetch('/api/interactive/rooms/' + id, { headers: { Authorization: 'Bearer ' + token } })).json();
@@ -194,39 +205,53 @@ try {
   assert.equal(await host.getByText('رسالة للمخمّنين').count(), 0);
   await guest.locator('#guessInput').fill(word);
   await guest.locator('#guessForm').evaluate(form => form.requestSubmit());
-  await guest.waitForFunction(() => document.querySelector('.draw-player-state')?.textContent || [...document.querySelectorAll('.draw-player-state')].some(el => el.textContent.includes('صح')));
-  await host.waitForFunction(() => [...document.querySelectorAll('.draw-player-state')].some(el => el.textContent.includes('صح')));
+  await guest.waitForFunction(() => [...document.querySelectorAll('.draw-player-state')].some(el => el.textContent.includes('✓')));
+  await host.waitForFunction(() => [...document.querySelectorAll('.draw-player-state')].some(el => el.textContent.includes('✓')));
   assert.match(await host.locator('.draw-feed-card .draw-room-feed').innerText(), /خمّنها صح/);
   assert.equal(await third.locator('#guessInput').isVisible(), true);
   assert.equal(await guest.locator('#guessInput').count(), 0);
+  // Restoring the Telegram buttons keeps the room in fullscreen and just shows them again.
+  const restoreBox = await host.locator('#revealTelegramControls').boundingBox();
+  assert.ok(restoreBox.x < 60 && restoreBox.y < 60, 'the restore control sits in the top-left corner');
+  const fullscreenBefore = await host.evaluate(() => !!window.Telegram.WebApp.isFullscreen);
   await host.locator('#revealTelegramControls').click();
+  await host.waitForTimeout(300);
+  assert.equal(await host.evaluate(() => !!window.Telegram.WebApp.isFullscreen), fullscreenBefore, 'restoring the buttons keeps fullscreen');
+  assert.equal(await host.evaluate(() => window.__nativeBackShown), true, 'the native back button is shown again');
   assert.equal(await host.locator('#revealTelegramControls').isVisible(), false);
   for (const [width,height] of [[320,640],[390,844],[768,1024],[1024,768],[1366,768],[1920,1080]]) {
     await host.setViewportSize({ width, height });
-    const result = await host.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, players: document.querySelector('.draw-room-players').getBoundingClientRect().toJSON(), board: document.querySelector('.draw-board-card').getBoundingClientRect().toJSON(), feed: document.querySelector('.draw-feed-card').getBoundingClientRect().toJSON() }));
+    const result = await host.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, players: document.querySelector('.draw-room-players').getBoundingClientRect().toJSON(), board: document.querySelector('.draw-room-board').getBoundingClientRect().toJSON(), feed: document.querySelector('.draw-feed-card').getBoundingClientRect().toJSON() }));
     assert.ok(result.scrollWidth <= width + 1, `drawing room overflow: ${width}x${height}`);
     if (width > 700) assert.ok(result.players.right <= result.board.left, 'wide players left');
     else assert.ok(result.players.top >= result.feed.bottom - 1, 'mobile players below the game');
   }
   // Play complete rotations using the real three clients until the target ends the match.
   const actors = [host, guest, third];
+  const pickWord = async () => {
+    for (const actor of actors) {
+      if (await actor.locator('.draw-word-choice').count()) { await actor.locator('.draw-word-choice').first().click(); return true; }
+    }
+    return false;
+  };
   const stateFor = async page => page.evaluate(async id => {
     const token = localStorage.getItem('cg-room-token-' + id);
     return (await fetch('/api/interactive/rooms/' + id, { headers: { Authorization: 'Bearer ' + token } })).json();
   }, roomId);
   await third.locator('#guessInput').fill(word);
   await third.locator('#guessForm').evaluate(form => form.requestSubmit());
-  await host.waitForFunction(() => !!document.querySelector('[data-action="start-round"]'));
   for (let i = 0; i < 10; i++) {
     let view = await stateFor(host);
     if (view.room.status === 'finished') break;
     const round = view.state.round;
-    await host.locator('[data-action="start-round"]').click();
+    // The next round starts by itself; the new artist then picks a word.
     await host.waitForFunction(async ({ id, round }) => {
       const token = localStorage.getItem('cg-room-token-' + id);
       const result = await (await fetch('/api/interactive/rooms/' + id, { headers: { Authorization: 'Bearer ' + token } })).json();
-      return result.state.round > round;
-    }, { id: roomId, round });
+      return result.state.round > round || result.room.status === 'finished';
+    }, { id: roomId, round }, { timeout: 15000 });
+    if ((await stateFor(host)).room.status === 'finished') break;
+    await pickWord();
     view = await stateFor(host);
     const drawer = view.state.drawer;
     const secret = (await stateFor(actors[drawer])).state.word;
@@ -245,7 +270,7 @@ try {
       }, { id: roomId, seat });
     }
     view = await stateFor(host);
-    if (view.room.status !== 'finished') await host.locator('[data-action="start-round"]').waitFor();
+    if (view.room.status !== 'finished') await actors[drawer === 0 ? 1 : 0].locator('#guessInput').waitFor();
   }
   await host.locator('.draw-standings').waitFor();
   assert.equal((await stateFor(host)).room.status, 'finished');

@@ -18,7 +18,8 @@
     "test:responsive": "tsx scripts/check-responsive-layout.ts",
     "test:responsive:browser": "node scripts/check-responsive-browser.mjs",
     "test:drawing:browser": "node scripts/check-drawing-room-browser.mjs",
-    "test:drawing": "tsx scripts/check-drawing-scoring.ts"
+    "test:drawing": "tsx scripts/check-drawing-scoring.ts",
+    "test:drawing:dom": "node scripts/check-drawing-room-dom.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -41,6 +42,7 @@
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.0",
+    "jsdom": "^27.4.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2"
   }

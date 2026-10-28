@@ -46,6 +46,8 @@ const context = createContext({
   clearInterval: () => calls.push('stop-polling'),
   window: { location: { assign: (url: string) => calls.push(url) } },
   syncTelegramFullscreen: () => calls.push('sync-fullscreen'),
+  // revealTelegramControls only reschedules a sync; no real timer in this context.
+  setTimeout: (callback: () => void) => { void callback; return 0; },
 });
 runInContext(shippedFunctions(gamesHtml, ['telegramFullscreenSupported', 'isGamesLobby', 'syncTelegramNavigation', 'returnToGamesLobby', 'handleTelegramBack', 'requestInitialFullscreen']), context);
 runInContext('syncTelegramNavigation();handleTelegramBack()', context);
@@ -79,7 +81,9 @@ assert.deepEqual(calls.splice(0), ['native-close']);
 tg.isFullscreen = true;
 runInContext('revealTelegramControls()', context);
 assert.equal(revealButton.hidden, true);
-assert.deepEqual(calls.splice(0), ['back', 'exit-fullscreen']);
+// Restoring the native buttons must never drop the player out of fullscreen.
+assert.deepEqual(calls.splice(0), ['back']);
+assert.equal(tg.isFullscreen, true, 'fullscreen survives restoring the Telegram buttons');
 tg.isFullscreen = false;
 context.roomData = null;
 

@@ -17,6 +17,19 @@ const id=created.room.id, host=created.token;
 const one=(await (await post(id,{action:'join',name:'الأول'})).json() as any).token;
 const two=(await (await post(id,{action:'join',name:'الثاني'})).json() as any).token;
 assert.equal((await post(id,{action:'start',token:host})).status,200);
+// The artist must pick one of two suggested words before the round starts.
+const choosing=await view(id,host);
+assert.equal(choosing.state.phase,'choosing');
+assert.equal(choosing.state.wordChoices.length,2);
+assert.equal(choosing.state.word,'');
+assert.equal((await view(id,one)).state.wordChoices.length,0);
+assert.notEqual((await post(id,{action:'choose-word',token:one,word:choosing.state.wordChoices[0]})).status,200);
+assert.equal((await post(id,{action:'choose-word',token:host,word:'كلمة مو موجودة'})).status,400);
+assert.equal((await post(id,{action:'choose-word',token:host,word:choosing.state.wordChoices[1]})).status,200);
+const drawingView=await view(id,host);
+assert.equal(drawingView.state.phase,'drawing');
+assert.equal(drawingView.state.word,choosing.state.wordChoices[1]);
+assert.equal((await view(id,one)).state.word,'');
 const saved = await storage.get<any>('interactive-room:'+id);
 saved.gameState.word='مدرسة'; await storage.put('interactive-room:'+id,saved);
 assert.equal(drawGuessKind('مدرسه','مدرسة'),'near');
@@ -45,14 +58,20 @@ v=await view(id,two);assert.equal(v.state.scores[1].score,initial);
 await post(id,{action:'guess',token:two,text:'مدرسة'});
 v=await view(id,two);assert.equal(v.state.scores[0].score,50);assert.match(v.state.roundResult,/كل/);
 await post(id,{action:'start-round',token:two});v=await view(id,one);
-assert.equal(v.state.round,2);assert.equal(v.state.drawer,1);assert.ok(v.state.word);
+assert.equal(v.state.round,2);assert.equal(v.state.drawer,1);assert.equal(v.state.phase,'choosing');assert.equal(v.state.wordChoices.length,2);assert.equal(v.state.word,'');
+await post(id,{action:'choose-word',token:one,word:v.state.wordChoices[0]});
+v=await view(id,one);assert.ok(v.state.word);assert.equal(v.state.phase,'drawing');
 // Old rooms without new fields remain playable and use the default target.
-const legacy=await storage.get<any>('interactive-room:'+id);delete legacy.gameState.correctPlayers;delete legacy.gameState.drawChat;delete legacy.gameState.targetScore;await storage.put('interactive-room:'+id,legacy);
-v=await view(id,two);assert.equal(v.state.targetScore,500);assert.deepEqual(v.state.drawChat,[]);
-// Timer expiry and rotation past the original number of players.
+const legacy=await storage.get<any>('interactive-room:'+id);delete legacy.gameState.correctPlayers;delete legacy.gameState.drawChat;delete legacy.gameState.targetScore;delete legacy.gameState.phase;delete legacy.gameState.logs;await storage.put('interactive-room:'+id,legacy);
+v=await view(id,one);assert.equal(v.state.targetScore,500);assert.deepEqual(v.state.drawChat,[]);assert.equal(v.state.phase,'drawing');
+// The round ends by itself when the clock runs out and pauses on the answer.
 legacy.gameState.deadline=Date.now()-1;await storage.put('interactive-room:'+id,legacy);
-await post(id,{action:'start-round',token:host});v=await view(id,two);assert.equal(v.state.round,3);assert.equal(v.state.drawer,2);
-const tie=await storage.get<any>('interactive-room:'+id);tie.gameState.word='مدرسة';tie.gameState.targetScore=100;tie.gameState.scores[two]=75;tie.gameState.scores[host]=90;tie.gameState.deadline=Date.now()+1000;await storage.put('interactive-room:'+id,tie);
+v=await view(id,two);assert.equal(v.state.phase,'reveal');assert.match(v.state.roundResult,/انتهى الوقت/);
+// Rotation past the original number of players happens on the next round.
+await post(id,{action:'start-round',token:host});v=await view(id,host);
+assert.equal(v.state.round,3);assert.equal(v.state.drawer,2);assert.equal(v.state.phase,'choosing');
+await post(id,{action:'choose-word',token:host,word:v.state.wordChoices[0]});
+const tie=await storage.get<any>('interactive-room:'+id);tie.gameState.word='مدرسة';tie.gameState.phase='drawing';tie.gameState.roundResult='';tie.gameState.autoNextAt=0;tie.gameState.targetScore=100;tie.gameState.scores[two]=75;tie.gameState.scores[host]=90;tie.gameState.deadline=Date.now()+1000;await storage.put('interactive-room:'+id,tie);
 await post(id,{action:'guess',token:host,text:'مدرسة'});v=await view(id,host);assert.equal(v.room.status,'finished');assert.equal(v.state.scores[0].score,100);assert.equal(v.state.scores[2].score,100);assert.equal(v.state.word,'');
 assert.notEqual((await post(id,{action:'start-round',token:host})).status,200);
 // If the drawer leaves mid-round, no successor inherits the secret word.
@@ -60,4 +79,5 @@ const c2=await (await post('',{game:'gartic',name:'مغادر',capacity:4})).jso
 const a=(await (await post(c2.room.id,{action:'join',name:'باقي'})).json() as any).token;
 await post(c2.room.id,{action:'join',name:'آخر'});await post(c2.room.id,{action:'start',token:c2.token});
 await post(c2.room.id,{action:'leave',token:c2.token});v=await view(c2.room.id,a);assert.equal(v.state.word,'');assert.ok(v.state.roundResult);
+assert.match(JSON.stringify(v.state.logs),/غادر/);
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms and leaving passed.');
