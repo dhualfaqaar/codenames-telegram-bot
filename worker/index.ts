@@ -13,7 +13,7 @@ import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { CHESS_HERO_JPG_BASE64, DRAWING_HERO_JPG_BASE64, SUDOKU_HERO_JPG_BASE64 } from '../src/assets/gameArtBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
-export const INTERACTIVE_APP_BUILD = '2026-11-01-iraqi-digits-badges-v12';
+export const INTERACTIVE_APP_BUILD = '2026-11-01-draw-canvas-tools-v13';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;

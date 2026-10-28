@@ -80,4 +80,23 @@ const a=(await (await post(c2.room.id,{action:'join',name:'باقي'})).json() a
 await post(c2.room.id,{action:'join',name:'آخر'});await post(c2.room.id,{action:'start',token:c2.token});
 await post(c2.room.id,{action:'leave',token:c2.token});v=await view(c2.room.id,a);assert.equal(v.state.word,'');assert.ok(v.state.roundResult);
 assert.match(JSON.stringify(v.state.logs),/غادر/);
+// Leaving a waiting room frees the seat and shows up in the log for the host.
+const c3=await (await post('',{game:'gartic',name:'مضيف',capacity:6})).json() as any;
+const b1=(await (await post(c3.room.id,{action:'join',name:'ضيف'})).json() as any).token;
+assert.equal((await post(c3.room.id,{action:'leave',token:b1})).status,200);
+const lv=await view(c3.room.id,c3.token);
+assert.equal(lv.room.players.length,1);
+assert.match(JSON.stringify(lv.state.logs),/ضيف غادر/);
+// A seat that stops polling is dropped after the presence window, and the host moves on.
+const c4=await (await post('',{game:'gartic',name:'مهجور',capacity:6})).json() as any;
+const b2=(await (await post(c4.room.id,{action:'join',name:'ساكت'})).json() as any).token;
+const parked=await storage.get<any>('interactive-room:'+c4.room.id);
+parked.players[0].lastSeenAt=Date.now()-120000;parked.players[0].joinedAt=Date.now()-200000;
+parked.players[1].lastSeenAt=Date.now();
+await storage.put('interactive-room:'+c4.room.id,parked);
+const pv=await view(c4.room.id,b2);
+assert.equal(pv.room.players.length,1,'the silent seat is removed');
+assert.equal(pv.room.players[0].name,'ساكت');
+assert.equal(pv.room.isHost,true,'the remaining player takes over the room');
+assert.match(JSON.stringify(pv.state.logs),/مهجور غادر/);
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms and leaving passed.');

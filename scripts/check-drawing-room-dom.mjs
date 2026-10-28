@@ -149,6 +149,12 @@ try {
   const drawerWindow = [host, guest, third][nextView.state.drawer];
   await waitFor(() => drawerWindow.document.querySelector('.draw-word-choice'), 'the next artist gets the word card');
   assert.match(drawerWindow.document.querySelector('.draw-choose h3').textContent, /دورك/);
+  // Leaving the room frees the seat for everyone and lands in the log.
+  delete third.navigator.sendBeacon;
+  third.dispatchEvent(new third.Event('pagehide'));
+  await waitFor(() => host.document.querySelectorAll('.draw-player-row:not(.empty)').length === 2, 'the host sees the player leave');
+  assert.match(host.document.querySelector('.draw-logs-card').textContent, /علي غادر/);
+  assert.doesNotMatch(host.document.querySelector('.draw-room-players').textContent, /علي/);
   assert.deepEqual(errors, []);
   console.log('Drawing room DOM flow passed: words, tools, shapes, logs, chat, hint and automatic next round.');
 } finally {

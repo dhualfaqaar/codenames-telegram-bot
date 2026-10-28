@@ -38,6 +38,9 @@ const ROOM_TOUCH_MS = 60_000;
 const DRAW_CHOICE_MS = 20_000;
 const DRAW_REVEAL_MS = 5_000;
 const DRAW_MAX_HINTS = 2;
+// A player who stops polling for this long is considered gone (app killed, lost network).
+const DRAW_PRESENCE_MS = 45_000;
+const DRAW_PRESENCE_TOUCH_MS = 15_000;
 const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
 const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
 const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
@@ -221,6 +224,11 @@ export class InteractiveGameRooms {
         }
       }
       const started = this.startChessClockAfterIntro(room, now);
+      const viewer = token ? room.players.find(item => item.token === token) : undefined;
+      if (viewer && room.game !== 'chess' && now - (Number(viewer.lastSeenAt) || 0) > DRAW_PRESENCE_TOUCH_MS) {
+        viewer.lastSeenAt = now; changed = true;
+      }
+      if (this.pruneDrawPresence(room, now)) changed = true;
       if (this.tickDraw(room, now)) changed = true;
       const touched = now - room.updatedAt > ROOM_TOUCH_MS;
       if (changed || started || touched || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
@@ -331,17 +339,8 @@ export class InteractiveGameRooms {
         const res = this.pokerAction(room, player, 'fold', 0);
         if (res) return res;
       }
-      const drawArtist = room.game === 'gartic' ? room.players[room.gameState.drawer]?.token : undefined;
+      if (room.game === 'gartic') { this.dropDrawPlayer(room, index); return null; }
       room.players.splice(index, 1);
-      if (room.game === 'gartic' && room.status === 'playing') {
-        const s = room.gameState;
-        s.guesses = (s.guesses || []).map((g: any) => ({ ...g, seat: g.seat === index ? null : g.seat > index ? g.seat - 1 : g.seat }));
-        this.pushDrawLog(room, `${player.name} غادر`, 'left');
-        s.drawer = Math.max(0, room.players.findIndex(p => p.token === drawArtist));
-        if (room.players.length < 2) { room.status = 'finished'; s.phase = 'reveal'; s.roundResult = 'انتهت المباراة بعد مغادرة اللاعبين'; s.autoNextAt = 0; }
-        else if (drawArtist === player.token) this.endDrawRound(room, 'الرسّام غادر — جولة جديدة بعد لحظات');
-        else if (room.players.filter(p => p.token !== drawArtist).every(p => (s.correctPlayers || []).includes(p.token))) this.endDrawRound(room, 'كل المخمّنين جاوبوا صح');
-      }
       if (!room.players.length) room.status = 'finished';
       return null;
     }
@@ -573,6 +572,40 @@ export class InteractiveGameRooms {
     return drawn;
   }
   private advanceUno(room: Room, steps: number): void { room.gameState.turn = nextIndex(room.gameState.turn, room.players.length, room.gameState.direction * steps); }
+
+  /** Removes one drawing-room player, logs the departure and keeps the round sane. */
+  private dropDrawPlayer(room: Room, index: number): void {
+    const player = room.players[index];
+    if (!player) return;
+    const s = room.gameState;
+    const artistToken = room.players[s.drawer]?.token;
+    room.players.splice(index, 1);
+    if (room.host === player.token && room.players.length) room.host = room.players[0].token;
+    this.pushDrawLog(room, `${player.name} غادر`, 'left');
+    s.guesses = (s.guesses || []).map((g: any) => ({ ...g, seat: g.seat === index ? null : g.seat > index ? g.seat - 1 : g.seat }));
+    s.drawer = Math.max(0, room.players.findIndex(item => item.token === artistToken));
+    if (!room.players.length) { room.status = 'finished'; s.phase = 'finished'; s.roundResult = 'ما بقى لاعب بالغرفة'; s.autoNextAt = 0; return; }
+    if (room.players.length < 2) {
+      if (room.status === 'playing') { room.status = 'finished'; s.phase = 'reveal'; s.roundResult = 'انتهت المباراة بعد مغادرة اللاعبين'; s.autoNextAt = 0; }
+      return;
+    }
+    if (room.status !== 'playing') return;
+    if (artistToken === player.token) this.endDrawRound(room, 'الرسّام غادر — جولة جديدة بعد لحظات');
+    else if (room.players.filter(item => item.token !== artistToken).every(item => (s.correctPlayers || []).includes(item.token))) this.endDrawRound(room, 'كل المخمّنين جاوبوا صح');
+  }
+
+  /** Drops seats that stopped sending heartbeats, so the room never keeps ghosts. */
+  private pruneDrawPresence(room: Room, now = Date.now()): boolean {
+    if (room.game !== 'gartic' || !room.players.length) return false;
+    const stale: number[] = [];
+    room.players.forEach((item, index) => {
+      const seen = Number(item.lastSeenAt) || Number(item.joinedAt) || 0;
+      if (seen && now - seen > DRAW_PRESENCE_MS) stale.push(index);
+    });
+    if (!stale.length) return false;
+    stale.sort((a, b) => b - a).forEach(index => this.dropDrawPlayer(room, index));
+    return true;
+  }
 
   private pushDrawLog(room: Room, text: string, kind = 'info'): void {
     const s = room.gameState; if (!text) return;
