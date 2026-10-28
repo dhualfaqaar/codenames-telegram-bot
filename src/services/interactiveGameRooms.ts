@@ -142,7 +142,7 @@ export class InteractiveGameRooms {
       const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' ? 4 : game === 'gartic' ? 16 : 6;
       const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
       const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
-      const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(120, Number(body?.roundSeconds) || 75)) * 1000 : 0;
+      const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(300, Number(body?.roundSeconds) || 75)) * 1000 : 0;
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body?.name), photoUrl: cleanPhotoUrl(body?.photoUrl), countryCode: cleanCountryCode(body?.countryCode), joinedAt: Date.now(), ...(body?.isBotCreator === true ? { isBotCreator: true } : {}), ...(game === 'chess' ? { elo } : {}), ...(game === 'poker' ? { chips: startingChips } : {}) };
       const botTrainer = game === 'chess' && body?.mode === 'bot' ? getChessTrainer(body?.trainerId, Number(body?.botElo) || 200) : undefined;
       const botElo = botTrainer?.elo || 0;
