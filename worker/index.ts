@@ -13,7 +13,7 @@ import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { CHESS_HERO_JPG_BASE64, DRAWING_HERO_JPG_BASE64, SUDOKU_HERO_JPG_BASE64 } from '../src/assets/gameArtBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 
-export const INTERACTIVE_APP_BUILD = '2026-10-30-chess-board-v10';
+export const INTERACTIVE_APP_BUILD = '2026-10-31-invite-room-layout-v11';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
