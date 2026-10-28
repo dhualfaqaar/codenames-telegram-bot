@@ -49,7 +49,7 @@ const context = createContext({
   // revealTelegramControls only reschedules a sync; no real timer in this context.
   setTimeout: (callback: () => void) => { void callback; return 0; },
 });
-runInContext(shippedFunctions(gamesHtml, ['telegramFullscreenSupported', 'isGamesLobby', 'syncTelegramNavigation', 'returnToGamesLobby', 'handleTelegramBack', 'requestInitialFullscreen']), context);
+runInContext(shippedFunctions(gamesHtml, ['telegramFullscreenSupported', 'isGamesLobby', 'syncTelegramNavigation', 'notifyRoomLeave', 'returnToGamesLobby', 'handleTelegramBack', 'requestInitialFullscreen']), context);
 runInContext('syncTelegramNavigation();handleTelegramBack()', context);
 assert.deepEqual(calls.splice(0), ['native-close', 'close']);
 
