@@ -38,7 +38,7 @@ try {
   assert.match(roomId, /^[A-Z0-9]{12}$/);
   assert.ok(await host.getByText('بانتظار اللاعبين').first().isVisible());
   assert.equal(await host.locator('.draw-player-row').count(), 1);
-  assert.equal(await host.locator('.draw-player-row img').getAttribute('src'), 'https://photo.telegram-cdn.org/ahmad.png');
+  assert.equal(await host.locator('.draw-player-row .draw-account-avatar img').getAttribute('src'), 'https://photo.telegram-cdn.org/ahmad.png');
   assert.equal(await host.locator('.draw-canvas').count(), 1);
   assert.equal(await host.locator('[data-action="start"]').count(), 0);
   const guest = await client('سارة', '', 390, 844);
@@ -54,9 +54,19 @@ try {
   assert.ok(positions.players.right <= positions.board.left, 'players are left of board on wide screens');
   assert.ok(positions.feed.top >= positions.board.bottom, 'guess feed is below the board');
   if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/drawing-waiting.png`, fullPage: true });
+  const third = await client('علي', '', 1024, 768);
+  await third.locator('#drawRoomCode').fill(roomId);
+  await third.locator('#drawJoinButton').click();
+  await third.locator('.draw-room').waitFor();
+  await host.waitForFunction(() => document.querySelectorAll('.draw-player-row').length === 3);
   await host.locator('[data-action="start"]').click();
   await host.locator('.palette-color').first().waitFor();
   await guest.locator('#guessInput').waitFor();
+  await third.locator('#guessInput').waitFor();
+  assert.equal(await host.locator('#revealTelegramControls').isVisible(), true);
+  assert.equal(await host.locator('#drawChatInput').count(), 0);
+  assert.equal(await guest.locator('#drawChatInput').count(), 1);
+  assert.equal(await host.locator('.draw-player-row .player-flag-marker').count(), 3);
   const word = (await host.locator('.draw-hint').innerText()).replace('كلمتك: ', '').trim();
   assert.ok(word.length > 0);
   assert.equal(await guest.locator('.draw-hint').innerText(), 'الكلمة مخفية');
@@ -88,11 +98,19 @@ try {
     await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/drawing-playing.png`, fullPage: true });
     await guest.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/drawing-phone.png`, fullPage: true });
   }
+  await guest.locator('#drawChatInput').fill('رسالة للمخمّنين');
+  await guest.locator('#drawChatForm').evaluate(form => form.requestSubmit());
+  await third.getByText('رسالة للمخمّنين').waitFor();
+  assert.equal(await host.getByText('رسالة للمخمّنين').count(), 0);
   await guest.locator('#guessInput').fill(word);
   await guest.locator('#guessForm').evaluate(form => form.requestSubmit());
   await guest.waitForFunction(() => document.querySelector('.draw-player-state')?.textContent || [...document.querySelectorAll('.draw-player-state')].some(el => el.textContent.includes('صح')));
   await host.waitForFunction(() => [...document.querySelectorAll('.draw-player-state')].some(el => el.textContent.includes('صح')));
-  assert.match(await host.locator('.draw-room-feed').innerText(), /خمّنها صح/);
+  assert.match(await host.locator('.draw-feed-card .draw-room-feed').innerText(), /خمّنها صح/);
+  assert.equal(await third.locator('#guessInput').isVisible(), true);
+  assert.equal(await guest.locator('#guessInput').count(), 0);
+  await host.locator('#revealTelegramControls').click();
+  assert.equal(await host.locator('#revealTelegramControls').isVisible(), false);
   for (const [width,height] of [[320,640],[390,844],[768,1024],[1024,768],[1366,768],[1920,1080]]) {
     await host.setViewportSize({ width, height });
     const result = await host.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, players: document.querySelector('.draw-room-players').getBoundingClientRect().toJSON(), board: document.querySelector('.draw-board-card').getBoundingClientRect().toJSON(), feed: document.querySelector('.draw-feed-card').getBoundingClientRect().toJSON() }));
@@ -100,6 +118,50 @@ try {
     if (width > 700) assert.ok(result.players.right <= result.board.left, 'wide players left');
     else assert.ok(result.players.top >= result.feed.bottom - 1, 'mobile players below the game');
   }
+  // Play complete rotations using the real three clients until the target ends the match.
+  const actors = [host, guest, third];
+  const stateFor = async page => page.evaluate(async id => {
+    const token = localStorage.getItem('cg-room-token-' + id);
+    return (await fetch('/api/interactive/rooms/' + id, { headers: { Authorization: 'Bearer ' + token } })).json();
+  }, roomId);
+  await third.locator('#guessInput').fill(word);
+  await third.locator('#guessForm').evaluate(form => form.requestSubmit());
+  await host.waitForFunction(() => !!document.querySelector('[data-action="start-round"]'));
+  for (let i = 0; i < 10; i++) {
+    let view = await stateFor(host);
+    if (view.room.status === 'finished') break;
+    const round = view.state.round;
+    await host.locator('[data-action="start-round"]').click();
+    await host.waitForFunction(async ({ id, round }) => {
+      const token = localStorage.getItem('cg-room-token-' + id);
+      const result = await (await fetch('/api/interactive/rooms/' + id, { headers: { Authorization: 'Bearer ' + token } })).json();
+      return result.state.round > round;
+    }, { id: roomId, round });
+    view = await stateFor(host);
+    const drawer = view.state.drawer;
+    const secret = (await stateFor(actors[drawer])).state.word;
+    assert.ok(secret);
+    for (let seat = 0; seat < actors.length; seat++) {
+      if (seat === drawer) continue;
+      view = await stateFor(host);
+      if (view.room.status === 'finished') break;
+      const input = actors[seat].locator('#guessInput');
+      await input.waitFor(); await input.fill(secret);
+      await actors[seat].locator('#guessForm').evaluate(form => form.requestSubmit());
+      await actors[seat].waitForFunction(async ({ id, seat }) => {
+        const token = localStorage.getItem('cg-room-token-' + id);
+        const result = await (await fetch('/api/interactive/rooms/' + id, { headers: { Authorization: 'Bearer ' + token } })).json();
+        return result.room.status === 'finished' || result.state.guesses.some(g => g.seat === seat && g.correct);
+      }, { id: roomId, seat });
+    }
+    view = await stateFor(host);
+    if (view.room.status !== 'finished') await host.locator('[data-action="start-round"]').waitFor();
+  }
+  await host.locator('.draw-standings').waitFor();
+  assert.equal((await stateFor(host)).room.status, 'finished');
+  assert.equal(await host.locator('.draw-standing').count(), 3);
+  assert.match(await host.locator('.draw-standings').innerText(), /ترتيب المباراة/);
+  assert.equal(await host.locator('#revealTelegramControls').isVisible(), false);
   await guest.evaluate(() => window.__nativeBack());
   await guest.waitForURL('**/interactive');
   assert.deepEqual(errors, []);

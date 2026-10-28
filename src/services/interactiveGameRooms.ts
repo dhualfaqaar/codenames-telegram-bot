@@ -62,6 +62,24 @@ function cleanPhotoUrl(value: unknown): string | undefined {
     return undefined;
   }
 }
+// Normalize common Arabic presentation and hamza variants without folding ه/ة:
+// "مدرسه" is close to "مدرسة", not an exact hit.
+export function normalizeDrawGuess(input: string): string {
+  return String(input || '').normalize('NFKC').toLowerCase().replace(/[\u064b-\u065f\u0670\u0640\s\p{P}\p{S}]/gu, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي');
+}
+export function drawGuessKind(guess: string, answer: string): 'exact' | 'near' | 'wrong' {
+  const a = Array.from(normalizeDrawGuess(guess)), b = Array.from(normalizeDrawGuess(answer));
+  if (!a.length || !b.length) return 'wrong';
+  if (a.join('') === b.join('')) return 'exact';
+  if (b.length < 3 || Math.abs(a.length - b.length) > 2) return 'wrong';
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(row[j - 1] + 1, prev[j] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = row;
+  }
+  return prev[b.length] <= (b.length >= 8 ? 2 : 1) ? 'near' : 'wrong';
+}
 function shuffle<T>(items: T[]): T[] {
   for (let i = items.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -143,7 +161,7 @@ export class InteractiveGameRooms {
         room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
       }
       if (game === 'poker') room.gameState.startingChips = startingChips;
-      if (game === 'gartic') room.gameState.roundDurationMs = roundDurationMs;
+      if (game === 'gartic') { room.gameState.roundDurationMs = roundDurationMs; room.gameState.targetScore = Math.max(100, Math.min(10000, Math.round(Number(body?.targetScore) || 500))); }
       if (botTrainer) { room.gameState.botElo = botElo; room.gameState.botTrainerId = botTrainer.id; room.gameState.botStyle = botTrainer.style; room.gameState.mode = 'bot'; this.startGame(room); }
       await this.save(room);
       return this.jsonFor(room, player.token, 201);
@@ -211,7 +229,7 @@ export class InteractiveGameRooms {
     switch (game) {
       case 'chess': return { fen: new Chess().fen(), turn: 'w', lastMove: '', result: '', clockMinutes: 5, clockInitialMs: 300_000, clocks: { w: 300_000, b: 300_000 }, clockStartedAt: 0, chat: [] };
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
-      case 'gartic': return { round: 0, drawer: 0, word: '', strokes: [], guesses: [], scores: {}, roundStartedAt: 0, deadline: 0, roundResult: '' };
+      case 'gartic': return { round: 0, drawer: 0, word: '', strokes: [], guesses: [], drawChat: [], correctPlayers: [], scores: {}, targetScore: 500, roundStartedAt: 0, deadline: 0, roundResult: '' };
       case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0, startingChips: 1000 };
       case 'sudoku': return { difficulty: 'easy', puzzle: [], solution: [], boards: {}, startedAt: 0, winner: '', result: '' };
     }
@@ -269,7 +287,18 @@ export class InteractiveGameRooms {
         const res = this.pokerAction(room, player, 'fold', 0);
         if (res) return res;
       }
+      const drawArtist = room.game === 'gartic' ? room.players[room.gameState.drawer]?.token : undefined;
       room.players.splice(index, 1);
+      if (room.game === 'gartic' && room.status === 'playing') {
+        const s = room.gameState;
+        s.guesses = (s.guesses || []).map((g: any) => ({ ...g, seat: g.seat === index ? null : g.seat > index ? g.seat - 1 : g.seat }));
+        if (drawArtist === player.token) { s.word = ''; s.roundResult = 'الرسّام غادر — ابدأوا جولة جديدة'; s.drawer = 0; }
+        else {
+          s.drawer = Math.max(0, room.players.findIndex(p => p.token === drawArtist));
+          if (room.players.length > 1 && room.players.filter(p => p.token !== drawArtist).every(p => (s.correctPlayers || []).includes(p.token))) s.roundResult = 'كل المخمّنين جاوبوا صح';
+        }
+        if (room.players.length < 2) { room.status = 'finished'; s.roundResult = 'انتهت المباراة بعد مغادرة اللاعبين'; }
+      }
       if (!room.players.length) room.status = 'finished';
       return null;
     }
@@ -503,11 +532,11 @@ export class InteractiveGameRooms {
   private advanceUno(room: Room, steps: number): void { room.gameState.turn = nextIndex(room.gameState.turn, room.players.length, room.gameState.direction * steps); }
 
   private startDrawRound(room: Room, index: number): void {
-    const s = room.gameState; s.round = index + 1; s.drawer = index % room.players.length; s.word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)]; s.strokes = []; s.guesses = []; s.roundStartedAt = Date.now(); s.deadline = Date.now() + (Number(s.roundDurationMs) || 75_000); s.roundResult = ''; room.status = 'playing';
+    const s = room.gameState; s.round = index + 1; s.drawer = index % room.players.length; s.word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)]; s.strokes = []; s.guesses = []; s.drawChat = []; s.correctPlayers = []; s.roundStartedAt = Date.now(); s.deadline = Date.now() + (Number(s.roundDurationMs) || 75_000); s.roundResult = ''; room.status = 'playing';
   }
   private drawAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
     const s = room.gameState; const seat = room.players.findIndex(item => item.token === player.token);
-    if (action === 'start-round') { if (!s.round) this.startDrawRound(room, 0); else if (s.roundResult || Date.now() > s.deadline) { if (s.round >= room.players.length) { room.status = 'finished'; s.roundResult = 'انتهت الجولات — شوفوا ترتيب النقاط'; } else this.startDrawRound(room, s.round); } else return 'الجولة الحالية بعدها شغالة'; return null; }
+    if (action === 'start-round') { if (room.status !== 'playing' || !s.round) return 'ابدأوا اللعبة أولاً'; if (s.roundResult || Date.now() > s.deadline) this.startDrawRound(room, s.round); else return 'الجولة الحالية بعدها شغالة'; return null; }
     if (room.status !== 'playing') return 'ابدأوا الجولة أولاً';
     if (action === 'stroke') {
       if (seat !== s.drawer) return 'الرسم للرسام وحده'; if (Date.now() > s.deadline || s.roundResult) return 'انتهى وقت الرسم';
@@ -517,13 +546,39 @@ export class InteractiveGameRooms {
     }
     if (action === 'undo-stroke') { if (seat !== s.drawer) return 'الرسام وحده يرجّع آخر خط'; if (s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes.pop(); return null; }
     if (action === 'clear') { if (seat !== s.drawer) return 'الرسام وحده يمسح اللوحة'; if (s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes = []; return null; }
+    if (action === 'draw-chat') {
+      if (seat === s.drawer) return 'المحادثة للمخمّنين فقط';
+      const text = String(body.text || '').trim().slice(0, 240); if (!text) return 'اكتب رسالتك';
+      // Don't let the second chat accidentally disclose an active answer.
+      const answer = normalizeDrawGuess(s.word), message = normalizeDrawGuess(text);
+      const tokens = text.split(/[\s\p{P}\p{S}]+/u).filter(Boolean);
+      const hasNearWord = tokens.some(token => normalizeDrawGuess(token).length >= 3 && drawGuessKind(token, s.word) === 'near');
+      if (!s.roundResult && Date.now() <= s.deadline && answer.length > 0 && (message.includes(answer) || drawGuessKind(text, s.word) !== 'wrong' || hasNearWord)) return 'لا تكتب الإجابة أو شي قريب منها بالمحادثة';
+      s.drawChat ||= []; s.drawChat.push({ seat, name: player.name, text }); s.drawChat = s.drawChat.slice(-60); return null;
+    }
     if (action === 'guess') {
       if (seat === s.drawer) return 'الرسام ما يخمّن'; if (s.roundResult || Date.now() > s.deadline) return 'انتهت الجولة';
+      s.correctPlayers ||= [];
+      if (s.correctPlayers.includes(player.token)) return 'خمّنت الإجابة بهاي الجولة';
       const guess = String(body.text || '').trim().slice(0, 60); if (!guess) return 'اكتب تخمينك';
-      const normalized = (x: string) => x.replace(/[\u064b-\u065f\u0670\u0640\s]/g, '').toLowerCase();
-      const correct = normalized(guess) === normalized(s.word);
-      s.guesses.push({ name: player.name, seat, text: guess, correct, at: Date.now() }); if (s.guesses.length > 30) s.guesses.shift();
-      if (correct) { s.scores[player.token] = (s.scores[player.token] || 0) + Math.max(10, Math.round(100 * (1 - (Date.now() - s.roundStartedAt) / 100_000))); const artist = room.players[s.drawer]; s.scores[artist.token] = (s.scores[artist.token] || 0) + 25; s.roundResult = `${player.name} خمّنها صح: ${s.word}`; }
+      const kind = drawGuessKind(guess, s.word);
+      if (kind === 'near') s.guesses.push({ name: player.name, seat, text: 'قريب من الإجابة ⚡', privateTo: player.token, correct: false });
+      else if (kind === 'exact') {
+        s.guesses.push({ name: player.name, seat, text: 'خمّنها صح', correct: true });
+        s.correctPlayers.push(player.token);
+        const duration = Number(s.roundDurationMs) || 75_000;
+        const remaining = Math.max(0, s.deadline - Date.now());
+        s.scores[player.token] = (s.scores[player.token] || 0) + Math.max(10, Math.ceil(100 * remaining / duration));
+        const artist = room.players[s.drawer];
+        if (artist) s.scores[artist.token] = (s.scores[artist.token] || 0) + 25;
+        const target = Math.max(100, Number(s.targetScore) || 500);
+        if (room.players.some(p => (s.scores[p.token] || 0) >= target)) { room.status = 'finished'; s.roundResult = 'وصل لاعب للهدف — انتهت المباراة'; }
+        else if (room.players.filter(p => p.token !== artist?.token).every(p => s.correctPlayers.includes(p.token))) s.roundResult = 'كل المخمّنين جاوبوا صح';
+      } else if (normalizeDrawGuess(guess).includes(normalizeDrawGuess(s.word))) {
+        // A longer wrong guess can contain the answer; never broadcast it.
+        s.guesses.push({ name: player.name, seat, text: 'تم إخفاء التخمين لأنه يتضمن الإجابة', privateTo: player.token, correct: false });
+      } else s.guesses.push({ name: player.name, seat, text: guess, correct: false });
+      if (s.guesses.length > 60) s.guesses = s.guesses.slice(-60);
       return null;
     }
     return 'إجراء غير معروف';
@@ -714,11 +769,15 @@ export class InteractiveGameRooms {
       state.pendingUnoSeat = room.players.findIndex(p => p.token === s.pendingUno); state.saidUno = own ? Boolean(s.saidUno[token]) : false;
       state.players = room.players.map((p,i)=>({name:p.name,seat:i,isTurn:i===s.turn,score:(s.hands[p.token]||[]).length}));
     } else if (room.game === 'gartic') {
-      state.word = seat === s.drawer ? s.word : '';
+      state.word = own && seat === s.drawer && room.status === 'playing' ? s.word : '';
+      delete state.correctPlayers; delete state.drawChat;
       state.drawerName = room.players[s.drawer]?.name || '';
       state.isDrawer = seat === s.drawer;
       state.scores = room.players.map(p=>({name:p.name,score:s.scores[p.token]||0}));
-      state.guesses = s.guesses.map((g:any)=>({name:g.name,seat:Number.isInteger(g.seat)?g.seat:null,text:g.correct?'✅ خمّنها صح':g.text,correct:g.correct}));
+      state.guesses = own ? (s.guesses||[]).filter((g:any)=>!g.privateTo||g.privateTo===token).map((g:any)=>({name:g.name,seat:Number.isInteger(g.seat)?g.seat:null,text:g.correct?'✅ خمّنها صح':g.text,correct:g.correct,near:Boolean(g.privateTo)})) : [];
+      state.hasGuessed = Boolean(own && (s.correctPlayers||[]).includes(token));
+      state.drawChat = own && seat !== s.drawer ? (s.drawChat||[]) : [];
+      state.targetScore = Math.max(100, Number(s.targetScore)||500);
       state.roundLeft = Math.max(0,Math.ceil((s.deadline-Date.now())/1000));
     } else if (room.game === 'poker') {
       state.hand = s.revealed ? s.holes[token] || [] : own ? s.holes[token] || [] : [];
