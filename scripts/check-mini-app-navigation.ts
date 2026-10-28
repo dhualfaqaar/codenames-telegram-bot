@@ -67,6 +67,22 @@ for (const state of [
   assert.equal(context.roomData, null, 'do not send a duplicate forfeit on pagehide');
 }
 
+// During a match the native Back control can be restored explicitly; in the
+// lobby it retains the normal native close/back semantics.
+const revealButton = { hidden: true };
+context.$ = (id: string) => id === 'revealTelegramControls' ? revealButton : ({classList:{contains:(name:string) => id === 'modeOverlay' ? overlay && name === 'show' : accountHidden && name === 'hide'}});
+Object.assign(context, { standaloneGame: 'chess', roomId: 'MATCH', setupGame: '', roomData: {room:{status:'playing'}}, nativeControlsRestored: false });
+runInContext(shippedFunctions(gamesHtml, ['revealTelegramControls']), context);
+runInContext('syncTelegramNavigation()', context);
+assert.equal(revealButton.hidden, false);
+assert.deepEqual(calls.splice(0), ['native-close']);
+tg.isFullscreen = true;
+runInContext('revealTelegramControls()', context);
+assert.equal(revealButton.hidden, true);
+assert.deepEqual(calls.splice(0), ['back', 'exit-fullscreen']);
+tg.isFullscreen = false;
+context.roomData = null;
+
 // Startup is automatic, but unsupported clients and an already-fullscreen app
 // must not be asked again. A denied request must not break navigation.
 runInContext('requestInitialFullscreen()', context);
@@ -93,7 +109,15 @@ const sudokuContext = createContext({
   save: () => calls.push('save'),
   window: { location: { assign: (url: string) => calls.push(url) } },
 });
-runInContext(shippedFunctions(sudokuHtml, ['returnToGamesLobby', 'requestInitialFullscreen']), sudokuContext);
+const sudokuReveal = {hidden:true};
+Object.assign(sudokuContext, {$: () => sudokuReveal});
+runInContext(shippedFunctions(sudokuHtml, ['returnToGamesLobby', 'requestInitialFullscreen', 'syncSudokuGameControls']), sudokuContext);
+runInContext('syncSudokuGameControls(true)', sudokuContext);
+assert.equal(sudokuReveal.hidden, false);
+assert.deepEqual(calls.splice(0), ['native-close']);
+runInContext('syncSudokuGameControls(false)', sudokuContext);
+assert.equal(sudokuReveal.hidden, true);
+assert.deepEqual(calls.splice(0), ['back']);
 runInContext('returnToGamesLobby();requestInitialFullscreen()', sudokuContext);
 assert.deepEqual(calls.splice(0), ['save', '/interactive', 'fullscreen']);
 tg.isVersionAtLeast = () => false;

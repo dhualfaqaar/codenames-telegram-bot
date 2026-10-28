@@ -24,7 +24,7 @@ body:has(#gameApp[data-page="room"][data-game="gartic"]) .ambient-backdrop{displ
 #roomPage[data-game="gartic"] .draw-player-copy small{font-size:12px;color:#176db0;font-weight:800}
 #roomPage[data-game="gartic"] .draw-player-state{font-size:12px;font-weight:800;color:#238857;white-space:nowrap}
 #roomPage[data-game="gartic"] .draw-room-main{grid-area:main;min-width:0;direction:rtl;display:grid;gap:14px}
-#roomPage[data-game="gartic"] .draw-board-card,#roomPage[data-game="gartic"] .draw-feed-card{background:#fff;border:1px solid #d9e7f3;border-radius:13px;overflow:hidden;box-shadow:0 4px 16px #204a7310}
+#roomPage[data-game="gartic"] .draw-board-card,#roomPage[data-game="gartic"] .draw-feed-card,#roomPage[data-game="gartic"] .draw-chat-card{background:#fff;border:1px solid #d9e7f3;border-radius:13px;overflow:hidden;box-shadow:0 4px 16px #204a7310}
 #roomPage[data-game="gartic"] .draw-board-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #eaf0f5}
 #roomPage[data-game="gartic"] .draw-board-head strong{color:#153e68;font-size:14px}
 #roomPage[data-game="gartic"] .draw-hint{padding:5px 13px;background:#164988;color:#fff;border-radius:8px;font-size:13px;font-weight:800;overflow-wrap:anywhere}
@@ -43,7 +43,11 @@ body:has(#gameApp[data-page="room"][data-game="gartic"]) .ambient-backdrop{displ
 #roomPage[data-game="gartic"] .draw-toolbar .button{width:auto;height:auto;min-height:40px;padding:8px 12px;border-radius:10px;white-space:nowrap}
 #roomPage[data-game="gartic"] .draw-toolbar .button,#roomPage[data-game="gartic"] .draw-room-actions .button{background:#eef6fd!important;border:1px solid #b9d7ed!important;color:#174d78!important}
 #roomPage[data-game="gartic"] .draw-toolbar select{background:#fff!important;color:#174d78!important;border:1px solid #b9d7ed!important}
-#roomPage[data-game="gartic"] .draw-feed-card{padding:14px 16px}
+#roomPage[data-game="gartic"] .draw-conversations{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+#roomPage[data-game="gartic"] .draw-feed-card,#roomPage[data-game="gartic"] .draw-chat-card{min-width:0;padding:14px 16px}
+#roomPage[data-game="gartic"] .draw-chat-entry{padding:5px 8px;font-size:13px;overflow-wrap:anywhere}
+#roomPage[data-game="gartic"] .draw-room-feed .guess-entry.near{background:#fff6d1;color:#865a00}
+#roomPage[data-game="gartic"] .draw-standings{background:white;border:1px solid #d9e7f3;border-radius:13px;padding:18px;color:#173957}.draw-standings h2{font-size:20px;margin:0 0 12px}.draw-standing{display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid #e7eef4}.draw-standing strong{flex:1;min-width:0}.draw-standing span:last-child{font-weight:800;color:#176db0}
 #roomPage[data-game="gartic"] .draw-feed-title{color:#174675;font-weight:900;padding-bottom:8px}
 #roomPage[data-game="gartic"] .draw-room-feed{height:clamp(90px,18vh,180px);overflow:auto;border-top:1px solid #edf2f7;padding:8px 0;color:#385b78}
 #roomPage[data-game="gartic"] .draw-room-feed .guess-entry{padding:5px 8px;border-radius:7px;font-size:13px}
