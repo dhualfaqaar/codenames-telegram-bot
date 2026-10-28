@@ -233,7 +233,16 @@ export class InteractiveGameRooms {
     if (action === 'join') {
       const prior = typeof body.token === 'string' ? room.players.find(player => player.token === body.token) : undefined;
       if (prior) {
-        if (body.isBotCreator === true && !prior.isBotCreator) { prior.isBotCreator = true; room.updatedAt = Date.now(); await this.save(room); }
+        let changed = false;
+        if (body.isBotCreator === true && !prior.isBotCreator) { prior.isBotCreator = true; changed = true; }
+        // Coming back through an invite link is still a join for everyone else in the room.
+        if (room.game === 'gartic') {
+          const logs: any[] = room.gameState.logs || (room.gameState.logs = []);
+          const label = `${prior.name} انضم`;
+          const last = logs.slice().reverse().find(item => item.text === label);
+          if (!last || Date.now() - Number(last.at) > 15_000) { this.pushDrawLog(room, label, 'join'); changed = true; }
+        }
+        if (changed) { room.updatedAt = Date.now(); await this.save(room); }
         return this.jsonFor(room, prior.token);
       }
       if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });

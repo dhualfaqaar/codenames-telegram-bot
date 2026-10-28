@@ -62,7 +62,7 @@ try {
   await host.locator('#capacityMenu .draw-select-option[data-value="4"]').click();
   assert.equal(await host.locator('#capacityMenu').isVisible(), false);
   assert.equal(await host.locator('[data-draw-select="capacity"]').getAttribute('data-value'), '4');
-  assert.equal(await host.locator('#capacityValue').innerText(), '٤ لاعبين');
+  assert.equal(await host.locator('#capacityValue').innerText(), '4 لاعبين');
   await host.locator('#capacityTrigger').click();
   // The list flips above the field when the viewport has no room below it.
   const menuFits = await host.evaluate(() => {
@@ -76,10 +76,10 @@ try {
   await host.locator('#roundSecondsTrigger').click();
   await host.locator('#roundSecondsMenu .draw-select-option[data-value="90"]').click();
   assert.equal(await host.locator('[data-draw-select="roundSeconds"]').getAttribute('data-value'), '90');
-  assert.equal(await host.locator('#roundSecondsValue').innerText(), '٩٠ ثانية');
+  assert.equal(await host.locator('#roundSecondsValue').innerText(), '90 ثانية');
   await host.locator('#drawTargetScoreTrigger').click();
   await host.locator('#drawTargetScoreMenu .draw-select-option[data-value="200"]').click();
-  assert.equal(await host.locator('#drawTargetScoreValue').innerText(), '٢٠٠ نقطة');
+  assert.equal(await host.locator('#drawTargetScoreValue').innerText(), '200 نقطة');
   if (process.env.GAMES_SCREENSHOT_DIR) await host.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-selects.png`, fullPage: true });
   await host.locator('[data-action="friend"]').click();
   await host.locator('.draw-room').waitFor();
@@ -115,7 +115,7 @@ try {
   assert.ok(phoneMenu.top >= 0 && phoneMenu.bottom <= phoneMenu.viewport, 'phone list stays inside the viewport');
   if (process.env.GAMES_SCREENSHOT_DIR) await guest.screenshot({ path: `${process.env.GAMES_SCREENSHOT_DIR}/draw-lobby-menu-phone.png` });
   await guest.locator('#drawTargetScoreMenu .draw-select-option[data-value="225"]').click();
-  assert.equal(await guest.locator('#drawTargetScoreValue').innerText(), '٢٢٥ نقطة');
+  assert.equal(await guest.locator('#drawTargetScoreValue').innerText(), '225 نقطة');
   await guest.locator('#drawRoomCode').fill(roomId.toLowerCase());
   await guest.locator('#drawJoinButton').click();
   await guest.locator('.draw-room').waitFor();

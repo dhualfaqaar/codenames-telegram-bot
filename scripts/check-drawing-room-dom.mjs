@@ -16,13 +16,18 @@ function makeClient(name) {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     beforeParse(window) {
-      window.fetch = (input, init) => fetch(new URL(String(input), base), init);
+      window.fetch = (input, init) => {
+        const url = new URL(String(input), base);
+        if (url.pathname === '/api/interactive/profile') return Promise.resolve(new Response(JSON.stringify({ profile: { level: 3, xp: 120, games: 8, winRate: 50 }, isBotCreator: name === 'أحمد' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        if (url.pathname === '/api/interactive/config') return Promise.resolve(new Response(JSON.stringify({ botUsername: 'CodeGamesBot' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        return fetch(url, init);
+      };
       window.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, { get: (_t, prop) => (prop === 'canvas' ? { width: 900, height: 580 } : () => {}), set: () => true });
       window.HTMLCanvasElement.prototype.setPointerCapture = () => {};
       window.HTMLCanvasElement.prototype.releasePointerCapture = () => {};
       window.Telegram = {
         WebApp: {
-          initData: '', initDataUnsafe: { user: { id: name.length + 10, first_name: name } },
+          initData: 'mock-init-data', initDataUnsafe: { user: { id: name.length + 10, first_name: name } },
           ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}, onEvent() {}, isVersionAtLeast: () => true,
           isFullscreen: true, requestFullscreen() {}, exitFullscreen() {},
           BackButton: { show() {}, hide() {}, onClick() {} },
@@ -73,6 +78,15 @@ try {
   }
   await waitFor(() => host.document.querySelectorAll('.draw-player-row:not(.empty)').length === 3, 'three players');
   assert.ok(host.document.querySelectorAll('.draw-player-row.empty').length >= 1, 'waiting rooms show free seats');
+  assert.match(host.document.querySelector('.draw-player-row.empty').textContent, /فارغ/);
+  assert.equal(host.document.querySelector('.draw-player-row.empty').textContent.includes('فاضي'), false);
+  // Counts and scores stay in western digits.
+  assert.match(host.document.querySelector('.draw-players-title small').textContent, /^\s*3\s*\/\s*16\s*$/);
+  assert.doesNotMatch(host.document.querySelector('#roomContent').textContent, /[\u0660-\u0669]/);
+  // The verified badge follows the creator into the room and reaches the other players too.
+  assert.equal(host.document.querySelectorAll('.draw-player-row .creator-verified-badge').length, 1, 'the creator badge shows for the host');
+  assert.ok(host.document.querySelector('.draw-player-row').querySelector('.creator-verified-badge'), 'the badge sits next to the creator name');
+  assert.equal(guest.document.querySelectorAll('.draw-player-row .creator-verified-badge').length, 1, 'the friends see the creator badge');
 
   click(host, '[data-action="start"]');
   await waitFor(() => host.document.querySelector('.draw-word-choice'), 'word suggestions');
