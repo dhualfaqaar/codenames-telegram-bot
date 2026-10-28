@@ -37,7 +37,7 @@ const tg = {
 };
 const context = createContext({
   tg,
-  standaloneChess: false,
+  standaloneChess: false, standaloneGame: '',
   roomId: '', setupGame: '', chessHomeActive: false, roomData: { room: {} }, polling: 7,
   $: (id: string) => ({ classList: { contains: (name: string) => id === 'modeOverlay' ? overlay && name === 'show' : accountHidden && name === 'hide' } }),
   abandonMatchForReplacement: () => calls.push('cancel-match'),
@@ -52,14 +52,14 @@ runInContext('syncTelegramNavigation();handleTelegramBack()', context);
 assert.deepEqual(calls.splice(0), ['native-close', 'close']);
 
 for (const state of [
-  { standaloneChess: true }, // Chess home
+  { standaloneChess: true, standaloneGame: 'chess' }, // Chess home
   { chessHomeActive: true }, // Puzzles, More and settings
   { roomId: 'BOT-MATCH' }, // Includes games against bots
   { setupGame: 'uno' },
   { overlay: true }, // Bot picker or matchmaking above the library
   { accountHidden: false },
 ]) {
-  Object.assign(context, { standaloneChess: false, roomId: '', setupGame: '', chessHomeActive: false }, state);
+  Object.assign(context, { standaloneChess: false, standaloneGame: '', roomId: '', setupGame: '', chessHomeActive: false }, state);
   overlay = state.overlay === true;
   accountHidden = state.accountHidden !== false;
   runInContext('syncTelegramNavigation();handleTelegramBack()', context);

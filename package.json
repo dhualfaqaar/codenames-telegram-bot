@@ -14,7 +14,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:navigation": "tsx scripts/check-mini-app-navigation.ts"
+    "test:navigation": "tsx scripts/check-mini-app-navigation.ts",
+    "test:responsive": "tsx scripts/check-responsive-layout.ts",
+    "test:responsive:browser": "node scripts/check-responsive-browser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
