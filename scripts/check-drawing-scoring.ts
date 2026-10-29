@@ -123,4 +123,56 @@ assert.equal(pv.room.players.length,1,'the silent seat is removed');
 assert.equal(pv.room.players[0].name,'ساكت');
 assert.equal(pv.room.isHost,true,'the remaining player takes over the room');
 assert.match(JSON.stringify(pv.state.logs),/مهجور غادر/);
-console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms and leaving passed.');
+// Coming back with the same room code must work even while the match runs.
+const c5=await (await post('',{game:'gartic',name:'صاحب الغرفة',capacity:6})).json() as any;
+const back=(await (await post(c5.room.id,{action:'join',name:'صديق'})).json() as any).token;
+await post(c5.room.id,{action:'join',name:'ثالث'});
+await post(c5.room.id,{action:'start',token:c5.token});
+await post(c5.room.id,{action:'leave',token:back});
+assert.equal((await storage.get<any>('interactive-room:'+c5.room.id)).players.length,2);
+const rejoin=await post(c5.room.id,{action:'join',name:'صديق'});
+assert.equal(rejoin.status,200,'a player who left can rejoin a running drawing match');
+const rejoined=await rejoin.json() as any;
+assert.equal(rejoined.room.status,'playing');
+assert.equal(rejoined.room.players.length,3,'the returning player gets a seat back');
+assert.equal(rejoined.state.scores.find((entry:any)=>entry.name==='صديق').score,0,'a late arrival starts from zero');
+assert.match(JSON.stringify(rejoined.state.logs),/صديق انضم وسط المباراة/);
+assert.equal(rejoined.room.players[0].name,'صاحب الغرفة','existing seats and the drawer do not move');
+// A drained room that ended for good reopens its lobby instead of trapping the code.
+const c6=await (await post('',{game:'gartic',name:'مالك',capacity:6})).json() as any;
+const left1=(await (await post(c6.room.id,{action:'join',name:'زائر'})).json() as any).token;
+await post(c6.room.id,{action:'start',token:c6.token});
+await post(c6.room.id,{action:'leave',token:c6.token});
+const drained=await storage.get<any>('interactive-room:'+c6.room.id);
+assert.equal(drained.status,'finished','the match ends when the room drains');
+assert.equal(drained.gameState.matchOver,undefined,'no podium countdown is running');
+const reopened=await (await post(c6.room.id,{action:'join',name:'وافد'})).json() as any;
+assert.equal(reopened.room.status,'waiting','the old code opens the lobby again');
+assert.equal(reopened.state.phase,'waiting');
+const stillHost=await view(c6.room.id,left1);
+assert.equal(stillHost.room.isHost,true,'whoever is left owns the room');
+assert.equal(stillHost.state.scores.length,2,'the newcomer is seated next to them');
+assert.equal((await post(c6.room.id,{action:'start',token:left1})).status,200,'a fresh match starts on the same code');
+// Even a room everyone walked out of hands ownership to the next player.
+const c6b=await (await post('',{game:'gartic',name:'خالي',capacity:6})).json() as any;
+const tmp=(await (await post(c6b.room.id,{action:'join',name:'عابر'})).json() as any).token;
+await post(c6b.room.id,{action:'leave',token:tmp});
+await post(c6b.room.id,{action:'leave',token:c6b.token});
+assert.equal((await storage.get<any>('interactive-room:'+c6b.room.id)).players.length,0);
+const owner=(await (await post(c6b.room.id,{action:'join',name:'أول وافد'})).json() as any);
+assert.equal(owner.room.isHost,true,'an empty room crowns its first arrival');
+// Other games keep the old rule: nobody joins after the start.
+const c7=await (await post('',{game:'uno',name:'أونو'})).json() as any;
+await post(c7.room.id,{action:'join',name:'لاعب'});
+const unoRoom=await storage.get<any>('interactive-room:'+c7.room.id);
+unoRoom.status='playing';await storage.put('interactive-room:'+c7.room.id,unoRoom);
+const blocked=await post(c7.room.id,{action:'join',name:'متأخر'});
+assert.equal(blocked.status,409,'uno still refuses late joins');
+assert.equal((await blocked.json() as any).code,'game-started');
+// A full drawing room says so plainly instead of a vague refusal.
+const c8=await (await post('',{game:'gartic',name:'ممتلئ',capacity:2})).json() as any;
+await post(c8.room.id,{action:'join',name:'ثاني'});
+const full=await post(c8.room.id,{action:'join',name:'ثالث'});
+assert.equal(full.status,409);
+assert.equal((await full.json() as any).code,'room-full');
+console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving and rejoining passed.');
