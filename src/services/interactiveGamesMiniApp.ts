@@ -454,6 +454,32 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 #gameSetupPage[data-game="gartic"] .draw-lobby-grid h2{margin:0 0 8px;text-align:center;color:#1764ad;font-size:17px;font-weight:900}
 .draw-section-copy{margin:0 0 20px;text-align:center;color:#637a91;font-size:13px}
 .draw-fields{display:grid;gap:14px}
+/* visibility switch inside the create card */
+.draw-toggle{display:flex;align-items:center;gap:11px;margin:14px 0 2px;padding:11px 13px;border:2px solid #cfe0ef;border-radius:12px;background:#f4f9ff;cursor:pointer;text-align:start}
+.draw-toggle input{position:absolute;opacity:0;width:1px;height:1px}
+.draw-toggle-track{position:relative;flex:none;width:46px;height:26px;border-radius:99px;background:#b9c9d8;transition:background .16s}
+.draw-toggle-track i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0d274055;transition:transform .16s}
+.draw-toggle input:checked+.draw-toggle-track{background:#12a05a}
+.draw-toggle input:checked+.draw-toggle-track i{transform:translateX(20px)}
+.draw-toggle input:focus-visible+.draw-toggle-track{outline:3px solid #87c9ff;outline-offset:2px}
+.draw-toggle-copy{display:grid;gap:2px;min-width:0}
+.draw-toggle-copy strong{color:#12558f;font-size:13px;font-weight:900}
+.draw-toggle-copy small{color:#5c7b95;font-size:11px;line-height:1.5}
+/* open rooms browser */
+.draw-public{grid-column:1/-1;border-top:1px solid #d9e2eb;padding:14px clamp(16px,3vw,32px) 20px}
+.draw-public-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.draw-public-head h2{margin:0;text-align:start!important}
+.draw-refresh{border:1px solid #b7c9d9;border-radius:9px;background:#fff;color:#1764ad;font:inherit;font-size:12px;font-weight:800;padding:7px 12px;cursor:pointer}
+.draw-public-list{display:grid;gap:8px;margin-top:10px;max-height:min(42vh,340px);overflow:auto}
+.draw-public-empty{margin:6px 0;color:#6b8598;font-size:12px}
+.draw-public-room{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid #d9e7f3;border-radius:12px;background:#fff;box-shadow:0 2px 8px #204a7310}
+.draw-public-avatar{position:relative;display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:50%;overflow:hidden;background:#e5f1fb;border:2px solid #c5ddef;color:#20557d;font-weight:900}
+.draw-public-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.draw-public-avatar .country-flag{position:absolute;bottom:-2px;left:-2px;width:16px;height:12px;border-radius:2px}
+.draw-public-copy{display:grid;gap:2px;min-width:0;flex:1;text-align:start}
+.draw-public-copy strong{display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#274761;font-size:13px}
+.draw-public-copy small{color:#6b8598;font-size:11px}
+.draw-public-join{width:auto;min-height:34px;padding:6px 14px;border-radius:9px;background:#1688e9!important;color:#fff!important;border:1px solid #0c67b8!important;font-size:12px}
 #gameSetupPage[data-game="gartic"] .draw-select{position:relative}
 #gameSetupPage[data-game="gartic"] .draw-select-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:48px;margin:0;padding:8px 14px;border:2px solid #b7c9d9;border-radius:10px;background:#fff;color:#193d5d;font:inherit;font-size:15px;font-weight:750;text-align:start;cursor:pointer}
 #gameSetupPage[data-game="gartic"] .draw-select-trigger:hover{border-color:#1688e9}
@@ -540,7 +566,7 @@ var tgUser=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user;
 var params=new URLSearchParams(location.search);var standaloneGame=({ '/chess':'chess','/uno':'uno','/gartic':'gartic','/poker':'poker' })[location.pathname.replace(/\/$/,'')]||'';var standaloneChess=standaloneGame==='chess';if(standaloneChess)document.body.classList.add('standalone-chess');
 var startParam=params.get('tgWebAppStartParam')||params.get('startapp')||(tg&&tg.initDataUnsafe&&tg.initDataUnsafe.start_param)||'';
 var sharedRoom=(/^room_([A-Z0-9]+)_(chess|uno|gartic|poker|sudoku)$/i).exec(startParam);
-var roomId=params.get('room')||(sharedRoom&&sharedRoom[1])||'';var activeRoomGame=(sharedRoom&&sharedRoom[2])||params.get('game')||'';var roomToken='';var roomData=null;var setupGame='';var chessIntroRoomId='';var chessIntroTimer=0;var chessIntroTick=0;var chessHistoryFilter='all';var chessHistoryExpanded=false;var chessChatExpanded=null;var chessChatUnread=false;var chessChatTrackedRoom='';var chessChatSeenMessages=Object.create(null);var chessHomeActive=false;var chessLandingTab='home';var chessRoomReturn=false;var sudokuRoomReturn=false;var activeChessPuzzleId='';var puzzleSessions={};var lessonPracticeSessions={};var dailyChessPuzzleId='';var selectedSquare='';var stockfishWorker=null;var stockfishReady=null;var stockfishPending=null;var botThinkingKey='';var selectedUno='';var selectedColor='أحمر';var selectedSudokuCell=-1;var sudokuPencilMode=false;var sudokuNotes={};var drawing=false;var drawColor='#202635';var drawSize=5;var polling=0;var matchPolling=0;var matchTicket=null;var sudokuFriendInviteRoom='';var sudokuFriendInviteUrl='';var matchConfirmTimer=0;var matchConfirmInterval=0;var matchGeneration=0;var toastTimer=0;var paintBusy=false;var drawHue=212;var drawLight=42;var lastSignature='';var lastPlayerCount=0;var lastPlayerSignature='';
+var roomId=params.get('room')||(sharedRoom&&sharedRoom[1])||'';var activeRoomGame=(sharedRoom&&sharedRoom[2])||params.get('game')||'';var roomToken='';var roomData=null;var setupGame='';var chessIntroRoomId='';var chessIntroTimer=0;var chessIntroTick=0;var chessHistoryFilter='all';var chessHistoryExpanded=false;var chessChatExpanded=null;var chessChatUnread=false;var chessChatTrackedRoom='';var chessChatSeenMessages=Object.create(null);var chessHomeActive=false;var chessLandingTab='home';var chessRoomReturn=false;var sudokuRoomReturn=false;var activeChessPuzzleId='';var puzzleSessions={};var lessonPracticeSessions={};var dailyChessPuzzleId='';var selectedSquare='';var stockfishWorker=null;var stockfishReady=null;var stockfishPending=null;var botThinkingKey='';var selectedUno='';var selectedColor='أحمر';var selectedSudokuCell=-1;var sudokuPencilMode=false;var sudokuNotes={};var drawing=false;var drawColor='#202635';var drawSize=5;var polling=0;var matchPolling=0;var matchTicket=null;var sudokuFriendInviteRoom='';var sudokuFriendInviteUrl='';var matchConfirmTimer=0;var matchConfirmInterval=0;var matchGeneration=0;var toastTimer=0;var paintBusy=false;var drawHue=212;var drawLight=42;var pollingMs=0;var publicRoomsTimer=0;var drawRoomVisible=true;var lastSignature='';var lastPlayerCount=0;var lastPlayerSignature='';
 var $=function(id){return document.getElementById(id)};
 document.addEventListener('click',function(event){var tab=event.target.closest('.tab[data-tab]');if(tab){document.querySelectorAll('.tab[data-tab]').forEach(function(item){item.classList.toggle('active',item===tab)});$('gamesPanel').classList.toggle('hide',tab.dataset.tab!=='games');$('accountPanel').classList.toggle('hide',tab.dataset.tab!=='account');syncTelegramNavigation();return}var card=event.target.closest('.game-card[data-game]');if(card){event.preventDefault();launchGame(card.dataset.game)}});
 document.addEventListener('click',function(event){var filter=event.target.closest('[data-chess-history-filter]');if(filter){chessHistoryFilter=filter.dataset.chessHistoryFilter;chessHistoryExpanded=false;renderChessHistory();return}if(event.target.closest('#chessHistoryMore')){chessHistoryExpanded=!chessHistoryExpanded;renderChessHistory();return}if(event.target.closest('#chessAppearanceButton')){setChessMoreSettings(true);return}});
@@ -683,9 +709,42 @@ function applyRoomTheme(){if(!roomData)return;var prefs={chess:'chessTheme',sudo
 function bindPreferences(root){root.querySelectorAll('[data-pref]').forEach(function(el){var key='cg-'+el.dataset.pref;var saved=localStorage.getItem(key);if(saved)el.value=saved;el.onchange=function(){localStorage.setItem(key,el.value);if(roomData)applyRoomTheme();else $('gameSetupPage').dataset.theme=el.value}})}
 function openGamePage(game){if(game==='chess'){window.location.assign(new URL('/chess',location.origin).toString());return}if(game==='sudoku'){window.location.assign(new URL('/sudoku',location.origin).toString());return}var titles={chess:'شطرنج',sudoku:'سودوكو',uno:'أونو',gartic:'لعبة الرسم',poker:'بوكر تكساس'};var copy={chess:'اختار طريقة اللعب وحدد مستوى الخصم إذا اخترت البوت.',sudoku:'اختار اللعب الفردي أو سباقاً، ثم حدد مستوى اللغز.',uno:'اضبط عدد المقاعد وأنشئ غرفة خاصة لدعوة أصدقائك.',gartic:'حدد سعة الغرفة ووقت الجولة قبل إرسال الدعوة.',poker:'اضبط عدد المقاعد والرقائق الافتراضية للطاولة.'};setupGame=game;$('gameSetupPage').dataset.game=game;$('setupTitle').textContent=titles[game];$('setupCopy').textContent=copy[game];$('setupPlayerName').innerHTML=safe(accountName)+creatorBadgeMarkup();$('setupCountryMeta').innerHTML=countryFlag(chessCountryCode())+' '+safe(chessCountryLabel(chessCountryCode()));$('setupPlayerLevel').textContent=game==='chess'?digit(chessElo())+' ELO':'ملفي';if(tgUser&&tgUser.photo_url){$('setupAvatar').src=tgUser.photo_url;$('setupAvatar').hidden=false}else $('setupAvatar').hidden=true;$('gameProfileCard').innerHTML=profileCardMarkup(game);var html='';
 if(game==='uno')html='<h2>إعدادات الطاولة</h2><div class="setup-fields"><div><label class="field-label" for="capacity">عدد اللاعبين</label><select id="capacity" class="setup-select"><option value="2">لاعبان</option><option value="3">3 لاعبين</option><option value="4" selected>4 لاعبين</option></select></div><div><label class="field-label" for="unoTheme">نمط الأوراق</label><select id="unoTheme" class="setup-select" data-pref="unoTheme"><option value="classic">كلاسيكي</option><option value="pop">ألوان زاهية</option><option value="midnight">ليلي</option></select></div></div><div class="setup-actions"><button class="setup-action" data-action="friend"><strong>أنشئ غرفة أونو</strong><small>بعد إنشاء الغرفة، شارك رابطها حتى ينضم أصدقاؤك.</small></button></div>';
-else if(game==='gartic')html='<header class="draw-lobby-heading"><span class="draw-brand">CODE GAMES · لعبة الرسم</span><h1 class="draw-ribbon">لعبة الرسم</h1><p>ارسم، خمّن، والعب ويا أصدقائك</p></header><div class="draw-lobby-grid"><section aria-labelledby="drawCreateTitle"><h2 id="drawCreateTitle">غرفة جديدة</h2><p class="draw-section-copy">اضبط الجولة وشارك الدعوة</p>'+drawPlayerAvatar(getPhotoUrl(),accountName,'lobby-avatar')+'<div class="draw-fields"><div><label class="field-label" id="capacityLabel">عدد اللاعبين</label><div class="draw-select" data-draw-select="capacity" data-value="16"><button type="button" id="capacityTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="capacityLabel capacityValue"><span class="draw-select-value" id="capacityValue">16 لاعباً</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="capacityMenu" role="listbox" aria-labelledby="capacityLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="2" aria-selected="false"><span>لاعبان</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="4" aria-selected="false"><span>4 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="6" aria-selected="false"><span>6 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="8" aria-selected="false"><span>8 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="12" aria-selected="false"><span>12 لاعباً</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="16" aria-selected="true"><span>16 لاعباً</span><i aria-hidden="true">✓</i></div></div></div></div><div><label class="field-label" id="roundSecondsLabel">وقت الرسم لكل جولة</label><div class="draw-select" data-draw-select="roundSeconds" data-value="75"><button type="button" id="roundSecondsTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="roundSecondsLabel roundSecondsValue"><span class="draw-select-value" id="roundSecondsValue">75 ثانية</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="roundSecondsMenu" role="listbox" aria-labelledby="roundSecondsLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="30" aria-selected="false"><span>30 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="45" aria-selected="false"><span>45 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="75" aria-selected="true"><span>75 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="90" aria-selected="false"><span>90 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="120" aria-selected="false"><span>دقيقتان</span><i aria-hidden="true">✓</i></div></div></div></div><div><label class="field-label" id="drawTargetScoreLabel">نقاط الفوز</label><div class="draw-select" data-draw-select="drawTargetScore" data-value="100"><button type="button" id="drawTargetScoreTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="drawTargetScoreLabel drawTargetScoreValue"><span class="draw-select-value" id="drawTargetScoreValue">100 نقطة</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="drawTargetScoreMenu" role="listbox" aria-labelledby="drawTargetScoreLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="100" aria-selected="true"><span>100 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="120" aria-selected="false"><span>120 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="140" aria-selected="false"><span>140 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="160" aria-selected="false"><span>160 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="180" aria-selected="false"><span>180 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="200" aria-selected="false"><span>200 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="225" aria-selected="false"><span>225 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="250" aria-selected="false"><span>250 نقطة</span><i aria-hidden="true">✓</i></div></div></div></div><button type="button" class="draw-action" data-action="friend"><span aria-hidden="true">✎</span> أنشئ غرفة</button></section><section aria-labelledby="drawJoinTitle"><h2 id="drawJoinTitle">انضم لأصدقائك</h2><p class="draw-section-copy">عندك رمز غرفة؟ اكتبه هنا</p><div class="draw-join-icon" aria-hidden="true">✉</div><label class="field-label" for="drawRoomCode">رمز الغرفة</label><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="مثلاً ABC234DEF567"><button type="button" id="drawJoinButton" class="draw-action join"><span aria-hidden="true">↗</span> انضم للغرفة</button><div class="draw-how"><strong>شلون نلعب؟</strong><ol><li>أنشئ غرفة وشارك الدعوة.</li><li>بكل جولة لاعب يرسم كلمة.</li><li>خمّن بسرعة واجمع النقاط.</li></ol></div></section></div>';
+else if(game==='gartic')html='<header class="draw-lobby-heading"><span class="draw-brand">CODE GAMES · لعبة الرسم</span><h1 class="draw-ribbon">لعبة الرسم</h1><p>ارسم، خمّن، والعب ويا أصدقائك</p></header><div class="draw-lobby-grid"><section aria-labelledby="drawCreateTitle"><h2 id="drawCreateTitle">غرفة جديدة</h2><p class="draw-section-copy">اضبط الجولة وشارك الدعوة</p>'+drawPlayerAvatar(getPhotoUrl(),accountName,'lobby-avatar')+'<div class="draw-fields"><div><label class="field-label" id="capacityLabel">عدد اللاعبين</label><div class="draw-select" data-draw-select="capacity" data-value="16"><button type="button" id="capacityTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="capacityLabel capacityValue"><span class="draw-select-value" id="capacityValue">16 لاعباً</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="capacityMenu" role="listbox" aria-labelledby="capacityLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="2" aria-selected="false"><span>لاعبان</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="4" aria-selected="false"><span>4 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="6" aria-selected="false"><span>6 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="8" aria-selected="false"><span>8 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="12" aria-selected="false"><span>12 لاعباً</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="16" aria-selected="true"><span>16 لاعباً</span><i aria-hidden="true">✓</i></div></div></div></div><div><label class="field-label" id="roundSecondsLabel">وقت الرسم لكل جولة</label><div class="draw-select" data-draw-select="roundSeconds" data-value="75"><button type="button" id="roundSecondsTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="roundSecondsLabel roundSecondsValue"><span class="draw-select-value" id="roundSecondsValue">75 ثانية</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="roundSecondsMenu" role="listbox" aria-labelledby="roundSecondsLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="30" aria-selected="false"><span>30 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="45" aria-selected="false"><span>45 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="75" aria-selected="true"><span>75 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="90" aria-selected="false"><span>90 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="120" aria-selected="false"><span>دقيقتان</span><i aria-hidden="true">✓</i></div></div></div></div><div><label class="field-label" id="drawTargetScoreLabel">نقاط الفوز</label><div class="draw-select" data-draw-select="drawTargetScore" data-value="100"><button type="button" id="drawTargetScoreTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="drawTargetScoreLabel drawTargetScoreValue"><span class="draw-select-value" id="drawTargetScoreValue">100 نقطة</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="drawTargetScoreMenu" role="listbox" aria-labelledby="drawTargetScoreLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="100" aria-selected="true"><span>100 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="120" aria-selected="false"><span>120 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="140" aria-selected="false"><span>140 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="160" aria-selected="false"><span>160 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="180" aria-selected="false"><span>180 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="200" aria-selected="false"><span>200 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="225" aria-selected="false"><span>225 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="250" aria-selected="false"><span>250 نقطة</span><i aria-hidden="true">✓</i></div></div></div></div><label class="draw-toggle" for="drawRoomVisible"><input type="checkbox" id="drawRoomVisible" checked><span class="draw-toggle-track" aria-hidden="true"><i></i></span><span class="draw-toggle-copy"><strong>الغرفة مرئية للجميع</strong><small id="drawRoomVisibleHint">تظهر بقائمة الغرف المتاحة، وأي أحد يكدر يدخلها</small></span></label><button type="button" class="draw-action" data-action="friend"><span aria-hidden="true">✎</span> أنشئ غرفة</button></section><section aria-labelledby="drawJoinTitle"><h2 id="drawJoinTitle">انضم لأصدقائك</h2><p class="draw-section-copy">عندك رمز غرفة؟ اكتبه هنا</p><div class="draw-join-icon" aria-hidden="true">✉</div><label class="field-label" for="drawRoomCode">رمز الغرفة</label><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="مثلاً ABC234DEF567"><button type="button" id="drawJoinButton" class="draw-action join"><span aria-hidden="true">↗</span> انضم للغرفة</button><div class="draw-how"><strong>شلون نلعب؟</strong><ol><li>أنشئ غرفة وشارك الدعوة.</li><li>بكل جولة لاعب يرسم كلمة.</li><li>خمّن بسرعة واجمع النقاط.</li></ol></div></section><section class="draw-public" aria-labelledby="drawPublicTitle"><div class="draw-public-head"><h2 id="drawPublicTitle">الغرف المتاحة</h2><button type="button" id="drawPublicRefresh" class="draw-refresh" aria-label="تحديث قائمة الغرف">↻ تحديث</button></div><p class="draw-section-copy">غرف مفتوحة تقدر تدخلها بضغطة — والغرف المخفية تحتاج رمزها.</p><div id="drawPublicList" class="draw-public-list" aria-live="polite"><p class="draw-public-empty">جاري تحميل الغرف…</p></div></section></div>';
 else html='<h2>إعدادات الطاولة</h2><div class="setup-fields"><div><label class="field-label" for="capacity">عدد اللاعبين</label><select id="capacity" class="setup-select"><option value="2">لاعبان</option><option value="4">4 لاعبين</option><option value="6" selected>6 لاعبين</option></select></div><div><label class="field-label" for="startingChips">رقائق البداية</label><select id="startingChips" class="setup-select"><option value="500">500</option><option value="1000" selected>1000</option><option value="2000">2000</option></select></div><div><label class="field-label" for="pokerTheme">لون الطاولة</label><select id="pokerTheme" class="setup-select" data-pref="pokerTheme"><option value="felt">لباد أخضر</option><option value="blue">أزرق</option><option value="red">أحمر</option><option value="night">داكن</option></select></div></div><div class="notice">اللعب ودي برقائق افتراضية فقط؛ ماكو أموال حقيقية.</div><div class="setup-actions"><button class="setup-action" data-action="friend"><strong>أنشئ طاولة بوكر</strong><small>شارك رابطها مع أصدقائك للانضمام.</small></button></div>';
-$('gameOptions').innerHTML=html;initDrawSelects($('gameOptions'));bindPreferences($('gameOptions'));$('gameOptions').querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{if(game==='uno')createRoom(game,{capacity:Number($('capacity').value)});else if(game==='gartic'){var target=Number(drawSelectValue('drawTargetScore'));if(!Number.isInteger(target)||target<100){toast('اختار نقاط الفوز من القائمة');return}createRoom(game,{capacity:Number(drawSelectValue('capacity')),roundSeconds:Number(drawSelectValue('roundSeconds')),targetScore:target})}else createRoom(game,{capacity:Number($('capacity').value),startingChips:Number($('startingChips').value)})});if(game==='gartic'){$('drawJoinButton').onclick=function(){var code=$('drawRoomCode').value.trim().toUpperCase();if(!/^[A-Z0-9]{12}$/.test(code)){toast('اكتب رمز غرفة صحيح');return}joinRoom(code)};$('drawRoomCode').onkeydown=function(event){if(event.key==='Enter')$('drawJoinButton').click()}}setPage(false)}
+$('gameOptions').innerHTML=html;initDrawSelects($('gameOptions'));bindPreferences($('gameOptions'));$('gameOptions').querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{if(game==='uno')createRoom(game,{capacity:Number($('capacity').value)});else if(game==='gartic'){var target=Number(drawSelectValue('drawTargetScore'));if(!Number.isInteger(target)||target<100){toast('اختار نقاط الفوز من القائمة');return}createRoom(game,{capacity:Number(drawSelectValue('capacity')),roundSeconds:Number(drawSelectValue('roundSeconds')),targetScore:target,visible:!($('drawRoomVisible')&&!$('drawRoomVisible').checked)})}else createRoom(game,{capacity:Number($('capacity').value),startingChips:Number($('startingChips').value)})});if(game==='gartic'){$('drawJoinButton').onclick=function(){var code=$('drawRoomCode').value.trim().toUpperCase();if(!/^[A-Z0-9]{12}$/.test(code)){toast('اكتب رمز غرفة صحيح');return}joinRoom(code)};$('drawRoomCode').onkeydown=function(event){if(event.key==='Enter')$('drawJoinButton').click()};var vis=$('drawRoomVisible');if(vis)vis.onchange=function(){var hint=$('drawRoomVisibleHint');if(hint)hint.textContent=vis.checked?'تظهر بقائمة الغرف المتاحة، وأي أحد يكدر يدخلها':'مخفية — ما تظهر بالقائمة، وتدخلها بالرمز بس'};var refreshButton=$('drawPublicRefresh');if(refreshButton)refreshButton.onclick=function(){loadPublicRooms(true)};loadPublicRooms()}setPage(false)}
+function drawRoomCardMarkup(room){
+  var photo=room.hostPhoto?'<img src="'+safe(room.hostPhoto)+'" alt="" onerror="this.remove()">':'<span>'+safe(String(room.hostName||'ل').trim().charAt(0)||'ل')+'</span>';
+  return '<article class="draw-public-room" data-room-id="'+safe(room.id)+'">'
+    +'<span class="draw-public-avatar">'+photo+countryFlag(room.hostCountry||'IQ')+'</span>'
+    +'<span class="draw-public-copy"><strong>'+safe(room.hostName||'لاعب')+(room.hostIsCreator?verifiedBadgeMarkup():'')+'</strong>'
+    +'<small><span dir="ltr">'+digit(room.players)+' / '+digit(room.capacity)+'</span> لاعبين · '+digit(room.targetScore)+' نقطة · '+digit(room.roundSeconds)+' ثانية</small></span>'
+    +'<button type="button" class="button primary draw-public-join" data-join-room="'+safe(room.id)+'">دخول</button></article>';
+}
+async function loadPublicRooms(force){
+  var list=$('drawPublicList');
+  if(!list||$('gameSetupPage').dataset.game!=='gartic')return;
+  if(list.dataset.loading==='1')return;
+  list.dataset.loading='1';
+  try{
+    var response=await fetch('/api/interactive/rooms?game=gartic',{cache:'no-store'});
+    var data=await response.json();
+    var rooms=Array.isArray(data.rooms)?data.rooms:[];
+    var mine=roomId||'';
+    rooms=rooms.filter(function(room){return room.id!==mine});
+    list.innerHTML=rooms.length
+      ? rooms.map(drawRoomCardMarkup).join('')
+      : '<p class="draw-public-empty">ماكو غرف مفتوحة هسه — أنشئ غرفة أو اكتب رمز صديقك.</p>';
+    list.querySelectorAll('[data-join-room]').forEach(function(button){
+      button.onclick=function(){var code=String(button.dataset.joinRoom||'').toUpperCase();if(!code)return;button.disabled=true;joinRoom(code)};
+    });
+  }catch(error){
+    list.innerHTML='<p class="draw-public-empty">تعذر تحميل الغرف — جرّب زر التحديث.</p>';
+  }finally{
+    delete list.dataset.loading;
+    clearTimeout(publicRoomsTimer);
+    publicRoomsTimer=setTimeout(function(){loadPublicRooms()},8000);
+  }
+}
 function closeMode(){clearTimeout(chessIntroTimer);clearInterval(chessIntroTick);$('modeOverlay').dataset.locked='';$('modeDialog').className='mode-dialog';$('modeOverlay').classList.remove('show');}
 function sudokuMatchAvatar(photoUrl,name,cls){var initial=safe(String(name||'ل').trim().charAt(0)||'ل');return '<span class="sudoku-match-avatar '+cls+'">'+initial+(photoUrl?'<img src="'+safe(photoUrl)+'" alt="" onerror="this.remove()">':'')+'</span>'}
 function showChessMatchIntro(room,state){var own=(room.players||[]).find(function(player){return player.seat===room.playerSeat})||room.players[0]||{},opponent=(room.players||[]).find(function(player){return player.seat!==room.playerSeat})||room.players[1]||{};function card(player,label){var photo=player.photoUrl?'<img src="'+safe(player.photoUrl)+'" alt="" onerror="this.remove()">':player.bot?'<img src="/code-games-avatar.jpg" alt="">':safe(String(player.name||'ل').trim().charAt(0)||'ل');return '<article class="chess-intro-player"><span class="chess-intro-avatar">'+photo+'</span><strong>'+countryFlag(player.countryCode||chessCountryCode())+' '+safe(player.name||label)+'</strong><small>'+label+' · '+(player.seat===0?'الأبيض':'الأسود')+(player.elo?' · '+digit(player.elo)+' ELO':'')+'</small></article>'}var end=Date.now()+2600;$('modeTitle').textContent='المباراة راح تبدي';$('modeCopy').textContent='تعرفوا على بعض، أول نقلة بعد لحظات.';$('modeOptions').innerHTML='<div class="chess-intro-players">'+card(own,'أنت')+'<span class="chess-intro-vs">ضد</span>'+card(opponent,'خصمك')+'</div><div class="chess-intro-count" id="chessIntroCount">3</div>';$('modeDialog').className='mode-dialog chess-intro-dialog';$('modeOverlay').dataset.locked='true';$('modeOverlay').classList.add('show');function tick(){var left=Math.max(0,end-Date.now());var count=Math.max(0,Math.ceil(left/1000));var node=$('chessIntroCount');if(node)node.textContent=digit(count||1);if(left<=0)closeMode()}tick();chessIntroTick=setInterval(tick,120);chessIntroTimer=setTimeout(closeMode,end-Date.now())}
@@ -705,9 +764,10 @@ async function cancelMatch(){if(!matchTicket)return;var ticket=matchTicket;refun
 function renderJoinFailure(message,code){return '<section class="room-card draw-join-failure"><h2>ما گدرنا نفتح الغرفة</h2><p>'+safe(message)+'</p>'+'<p class="draw-join-hint">'+(code==='room-missing'||code==='room-expired'?'الغرفة القديمة ما عادت موجودة — اطلب من صاحبها يرسل دعوة جديدة، أو اكتب رمز الغرفة الجديد هنا.':code==='room-full'?'الغرفة مكتملة هسه — انتظر يطلع أحد أو اطلب غرفة جديدة.':code==='game-started'?'المباراة بدأت بهذي الغرفة — بلعبة الرسم تكدر ترجع بنفس الرمز، بغيرها انتظر مباراة جديدة.':'تأكد من الرمز أو اطلب دعوة جديدة من صاحب الغرفة.')+'</p>'+'<label class="field-label" for="retryRoomCode">رمز الغرفة</label><div class="draw-join-retry"><input id="retryRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="ABC234DEF567"><button type="button" class="button primary" id="retryRoomButton">جرّب مرة ثانية</button></div>'+'<button type="button" class="button" id="backToGamesButton">ارجع لقائمة الألعاب</button></section>'}
 async function joinRoom(id){roomId=id.toUpperCase();setupGame='';setPage(true);await creatorProfileReady;$('roomContent').innerHTML='<div class="loading">جاري فتح الغرفة…</div>';var old=localStorage.getItem(roomTokenKey(roomId))||'',data=null,lastError=null;for(var attempt=0;attempt<3;attempt++){try{data=await api('/api/interactive/rooms/'+encodeURIComponent(roomId),'POST',{action:'join',name:getName(),photoUrl:getPhotoUrl(),token:old,elo:chessElo(),countryCode:dataGameCountryCode(),isBotCreator:!!isBotCreator});lastError=null;break}catch(joinError){lastError=joinError;if(joinError.code!=='room-missing'||attempt===2)break;await new Promise(function(resolve){setTimeout(resolve,700*(attempt+1))})}}try{if(lastError)throw lastError;roomToken=data.token;localStorage.setItem(roomTokenKey(roomId),roomToken);recordGameOpen(data.room.game,roomId,{category:data.state?.mode==='friend'?'friend':'battle',difficulty:data.state?.difficulty});history.replaceState({},'',location.pathname+'?room='+encodeURIComponent(roomId)+'&game='+encodeURIComponent(data.room.game));applyRoom(data);toast('دخلت الغرفة');startPolling()}catch(e){clearInterval(polling);polling=0;roomToken='';localStorage.removeItem(roomTokenKey(roomId));$('roomTitle').textContent='تعذر فتح الغرفة';$('roomSubtitle').textContent='الدعوة ما عادت صالحة';$('roomContent').innerHTML=renderJoinFailure(e.message,e.code||'');var retry=$('retryRoomCode'),retryButton=$('retryRoomButton');if(retryButton)retryButton.onclick=function(){var code=String(retry.value||'').trim().toUpperCase();if(!/^[A-Z0-9]{12}$/.test(code)){toast('اكتب رمز غرفة صحيح');return}joinRoom(code)};if(retry)retry.onkeydown=function(event){if(event.key==='Enter')retryButton.click()};var back=$('backToGamesButton');if(back)back.onclick=function(){history.replaceState({},'',location.pathname);roomId='';setPage(false)}}}
 var pollFailures=0,pollToastAt=0,rejoinTried=false;
-async function pollRoom(){if(!roomId||!roomToken)return;try{var data=await api('/api/interactive/rooms/'+encodeURIComponent(roomId));pollFailures=0;rejoinTried=false;applyRoom(data)}catch(e){pollFailures++;if(Date.now()-pollToastAt>9000){pollToastAt=Date.now();toast(e.message)}if(e.status===403&&!rejoinTried){rejoinTried=true;joinRoom(roomId);return}if(pollFailures>=10&&(e.code==='room-missing'||e.code==='room-expired')){clearInterval(polling);polling=0}}}
+async function pollRoom(){if(!roomId||!roomToken)return;try{var data=await api('/api/interactive/rooms/'+encodeURIComponent(roomId));pollFailures=0;rejoinTried=false;applyRoom(data);if(polling&&pollDelay()!==pollingMs)startPolling()}catch(e){pollFailures++;if(Date.now()-pollToastAt>9000){pollToastAt=Date.now();toast(e.message)}if(e.status===403&&!rejoinTried){rejoinTried=true;joinRoom(roomId);return}if(pollFailures>=10&&(e.code==='room-missing'||e.code==='room-expired')){clearInterval(polling);polling=0}}}
 document.addEventListener('visibilitychange',function(){if(!document.hidden&&roomId&&roomToken&&!polling)startPolling()});
-function startPolling(){clearInterval(polling);polling=setInterval(pollRoom,800)}
+function pollDelay(){return activeRoomGame==='gartic'&&roomData&&roomData.room&&roomData.room.status==='playing'?300:800}
+function startPolling(){clearInterval(polling);pollingMs=pollDelay();polling=setInterval(pollRoom,pollingMs)}
 async function act(action,extra={}){if(!roomData)return;try{var data=await api('/api/interactive/rooms/'+encodeURIComponent(roomId),'POST',{action,token:roomToken,...extra});applyRoom(data)}catch(e){toast(e.message)}}
 function applyRoom(data){
   roomData=data;
@@ -922,7 +982,12 @@ function drawShapePath(ctx,stroke){
   if(!pts.length)return;
   var w=ctx.canvas.width,h=ctx.canvas.height,a=pts[0],b=pts[pts.length-1];
   var x1=a[0]*w,y1=a[1]*h,x2=b[0]*w,y2=b[1]*h;
-  if(kind==='pen'||kind==='eraser'){ctx.beginPath();pts.forEach(function(p,i){var x=p[0]*w,y=p[1]*h;if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke();return}
+  if(kind==='pen'||kind==='eraser'){
+    if(pts.length<2||(Math.abs(x1-x2)<0.6&&Math.abs(y1-y2)<0.6)){ctx.beginPath();ctx.arc(x1,y1,Math.max(0.6,ctx.lineWidth/2),0,Math.PI*2);ctx.fill();return}
+    ctx.beginPath();ctx.moveTo(x1,y1);
+    // Smooth the polyline with midpoints so a fast hand still looks round.
+    for(var i=1;i<pts.length-1;i++){var cx=pts[i][0]*w,cy=pts[i][1]*h,nx=(pts[i][0]+pts[i+1][0])/2*w,ny=(pts[i][1]+pts[i+1][1])/2*h;ctx.quadraticCurveTo(cx,cy,nx,ny)}
+    ctx.lineTo(x2,y2);ctx.stroke();return}
   ctx.beginPath();
   if(kind==='line'){ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();return}
   if(kind==='rect'||kind==='rect-fill'){ctx.rect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1));if(kind==='rect-fill')ctx.fill();else ctx.stroke();return}
@@ -945,20 +1010,62 @@ function wireCanvas(s){
     if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh;return true}
     return false;
   }
-  function paint(preview){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);strokes.forEach(function(st){drawShapePath(ctx,st)});if(preview)drawShapePath(ctx,preview)}
+  // Everything already committed lives on a cached layer; each animation frame just
+  // blits it and paints the live stroke, so drawing stays smooth on a phone.
+  var base=document.createElement('canvas');
+  function rebuildBase(){
+    if(base.width!==canvas.width||base.height!==canvas.height){base.width=canvas.width;base.height=canvas.height}
+    var bx=base.getContext('2d');
+    bx.fillStyle='#fff';bx.fillRect(0,0,base.width,base.height);
+    strokes.forEach(function(st){drawShapePath(bx,st)});
+  }
+  function paint(preview){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(base,0,0);
+    if(preview)drawShapePath(ctx,preview);
+  }
   fitCanvas();
+  rebuildBase();
   paint(null);
   if(!window._drawFitBound){window._drawFitBound=true;window.addEventListener('resize',function(){if(roomData&&roomData.room&&roomData.room.game==='gartic'&&roomData.state)wireCanvas(roomData.state)})}
   // The wrapper can change size without a window resize (tool rail, fonts, safe area):
   // resize the bitmap to the new box instead of stretching the old one.
   if(typeof ResizeObserver!=='undefined'&&!canvas.__drawObserver){canvas.__drawObserver=new ResizeObserver(function(){if(fitCanvas())paint(null)})}
   if(canvas.__drawObserver)canvas.__drawObserver.observe(canvas.parentElement||canvas);
+  canvas.__drawRepaint=function(){rebuildBase();paint(null)};
   var canDraw=!!s.isDrawer&&(s.phase||'')==='drawing';
   var wheel=$('drawColorWheel'),colorPop=$('drawColorPop');
   var paintWheel=function(){if(wheel)wheel.style.setProperty('--pick',drawColor);if(light)light.style.setProperty('--hue',String(drawHue));var preview=$('drawColorPreview');if(preview)preview.style.background=drawColor;var hex=$('drawColorHex');if(hex)hex.textContent=drawColor};
   var markPalette=function(active){$('roomContent').querySelectorAll('.palette-color').forEach(function(x){x.classList.toggle('active',active?x===active:false)})};
   $('roomContent').querySelectorAll('.palette-color[data-color]').forEach(function(b){b.classList.toggle('active',b.dataset.color===drawColor);b.onclick=function(){drawColor=b.dataset.color;markPalette(b);paintWheel()}});
-  if(wheel&&colorPop){wheel.onclick=function(){var open=colorPop.classList.toggle('open');wheel.setAttribute('aria-expanded',String(open))}}
+  // The rail clips its overflow, so the picker is a fixed layer placed next to the
+  // wheel on open (and kept inside the screen on every size).
+  function placeColorPop(){
+    if(!wheel||!colorPop||!colorPop.classList.contains('open'))return;
+    var box=wheel.getBoundingClientRect(),popW=colorPop.offsetWidth||212,popH=colorPop.offsetHeight||150;
+    var left=box.right+10;
+    if(left+popW>window.innerWidth-8)left=Math.max(8,box.left-popW-10);
+    var top=Math.max(8,Math.min(box.top,window.innerHeight-popH-8));
+    colorPop.style.left=Math.round(left)+'px';colorPop.style.top=Math.round(top)+'px';
+  }
+  function closeColorPop(){if(!colorPop||!colorPop.classList.contains('open'))return;colorPop.classList.remove('open');if(wheel)wheel.setAttribute('aria-expanded','false')}
+  if(wheel&&colorPop){
+    wheel.onclick=function(event){
+      event.stopPropagation();
+      var open=!colorPop.classList.contains('open');
+      colorPop.classList.toggle('open',open);
+      wheel.setAttribute('aria-expanded',String(open));
+      if(open){paintWheel();placeColorPop();colorPop.querySelector('input')?.focus({preventScroll:true})}
+    };
+    colorPop.onclick=function(event){event.stopPropagation()};
+    if(!window._drawWheelBound){
+      window._drawWheelBound=true;
+      document.addEventListener('pointerdown',function(event){var node=$('drawColorPop');if(!node||!node.classList.contains('open'))return;if(node.contains(event.target))return;var btn=$('drawColorWheel');if(btn&&btn.contains(event.target))return;node.classList.remove('open');if(btn)btn.setAttribute('aria-expanded','false')},true);
+      document.addEventListener('keydown',function(event){if(event.key==='Escape'){var node=$('drawColorPop');if(node&&node.classList.contains('open')){node.classList.remove('open');var btn=$('drawColorWheel');if(btn)btn.setAttribute('aria-expanded','false')}}});
+      window.addEventListener('resize',function(){var node=$('drawColorPop');if(node&&node.classList.contains('open')&&window._drawPlaceColorPop)window._drawPlaceColorPop()});
+    }
+    window._drawPlaceColorPop=placeColorPop;
+  }
   var hue=$('drawHue'),light=$('drawLight');
   var applyWheel=function(){drawHue=Math.max(0,Math.min(360,Number(hue&&hue.value)||0));drawLight=Math.max(10,Math.min(90,Number(light&&light.value)||50));drawColor=drawHslToHex(drawHue,drawLight);markPalette(null);paintWheel()};
   if(hue)hue.oninput=applyWheel;
@@ -967,17 +1074,72 @@ function wireCanvas(s){
   var size=$('drawSizeRange');if(size){size.oninput=function(){drawSize=Math.max(2,Math.min(40,Number(size.value)||5));var label=$('drawSizeLabel');if(label)label.textContent=String(drawSize)}}
   $('roomContent').querySelectorAll('[data-redo]').forEach(function(b){b.onclick=function(){var st=redoStack.pop();if(st)act('stroke',{points:st.points,color:st.color,size:st.size,kind:st.kind||'pen'})}});
   $('roomContent').querySelectorAll('.draw-word-choice').forEach(function(b){b.onclick=function(){act('choose-word',{word:b.dataset.word})}});
-  $('roomContent').querySelectorAll('.draw-clear').forEach(function(b){b.onclick=function(){strokes.length=0;paint(null)}});
+  $('roomContent').querySelectorAll('.draw-clear').forEach(function(b){b.onclick=function(){strokes.length=0;rebuildBase();paint(null)}});
   var form=$('guessForm');if(form)form.onsubmit=function(e){e.preventDefault();sendGuess()};
   var drawChatForm=$('drawChatForm');if(drawChatForm)drawChatForm.onsubmit=function(e){e.preventDefault();var input=$('drawChatInput'),text=input.value.trim();if(!text)return;input.value='';act('draw-chat',{text:text})};
   if(!canDraw)return;
-  var start=null,drawingNow=false,preview=null;
+  var start=null,drawingNow=false,preview=null,liveId='',lastLive=0,liveTimer=0,frame=0;
   function pos(e){var rect=canvas.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height))]}
-  canvas.onpointerdown=function(e){if(!canDraw)return;drawingNow=true;paintBusy=true;canvas.setPointerCapture(e.pointerId);start=pos(e);preview={points:[start,start],color:drawTool==='eraser'?'#ffffff':drawColor,size:drawSize,kind:drawTool};paint(preview)};
-  canvas.onpointermove=function(e){if(!drawingNow)return;var p=pos(e);if(drawTool==='pen'||drawTool==='eraser'){preview.points.push(p);paint(preview)}else{preview.points=[start,p];paint(preview)}};
+  function schedulePaint(){if(frame)return;frame=(window.requestAnimationFrame||function(cb){return setTimeout(cb,16)})(function(){frame=0;paint(preview)})}
   // Long strokes get thinned out, never chopped: the last point always survives.
-  var compress=function(points){var max=420;if(points.length<=max)return points;var out=[],step=points.length/max;for(var i=0;i<points.length;i+=step)out.push(points[Math.floor(i)]);out.push(points[points.length-1]);return out};
-  var finish=async function(){if(!drawingNow)return;drawingNow=false;var stroke=preview;preview=null;paintBusy=false;if(stroke&&stroke.points.length>1){var pts=compress(stroke.points);await act('stroke',{points:pts,color:stroke.color,size:stroke.size,kind:stroke.kind,customColor:DRAW_PALETTE_UI.indexOf(stroke.color)<0})}await pollRoom()};
+  var compress=function(points){var max=600;if(points.length<=max)return points;var out=[],step=points.length/max;for(var i=0;i<points.length;i+=step)out.push(points[Math.floor(i)]);out.push(points[points.length-1]);return out};
+  function postStroke(action,body){
+    if(!roomId||!roomToken)return Promise.resolve();
+    return fetch('/api/interactive/rooms/'+encodeURIComponent(roomId),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action,token:roomToken,...body}),cache:'no-store'}).catch(function(){});
+  }
+  // While the finger is down everybody else receives the stroke as it grows, so the
+  // drawing shows up live instead of arriving as one chunk when the pen lifts.
+  function sendLive(force){
+    if(!preview||!preview.points.length)return;
+    var now=Date.now();
+    if(!force&&now-lastLive<240){if(!liveTimer)liveTimer=setTimeout(function(){liveTimer=0;sendLive(false)},240);return}
+    lastLive=now;
+    if(liveTimer){clearTimeout(liveTimer);liveTimer=0}
+    postStroke('stroke-live',{id:liveId,points:preview.points.slice(-600),color:preview.color,size:preview.size,kind:preview.kind,customColor:DRAW_PALETTE_UI.indexOf(preview.color)<0});
+  }
+  canvas.onpointerdown=function(e){
+    if(!canDraw)return;
+    if(e.preventDefault)e.preventDefault();
+    drawingNow=true;paintBusy=true;
+    try{canvas.setPointerCapture(e.pointerId)}catch(error){}
+    start=pos(e);liveId='s'+Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36);
+    lastLive=0;
+    preview={id:liveId,points:[start],color:drawTool==='eraser'?'#ffffff':drawColor,size:drawSize,kind:drawTool};
+    paint(preview);sendLive(true);
+  };
+  canvas.onpointermove=function(e){
+    if(!drawingNow||!preview)return;
+    if(e.preventDefault)e.preventDefault();
+    if(drawTool==='pen'||drawTool==='eraser'){
+      var raw=e.getCoalescedEvents?e.getCoalescedEvents():null;
+      var list=raw&&raw.length?raw:[e];
+      for(var i=0;i<list.length;i++){
+        var p=pos(list[i]),last=preview.points[preview.points.length-1];
+        if(Math.abs(p[0]-last[0])<0.0009&&Math.abs(p[1]-last[1])<0.0009)continue;
+        preview.points.push(p);
+      }
+      if(preview.points.length>900)preview.points=compress(preview.points);
+    }else{
+      preview.points=[start,pos(e)];
+    }
+    schedulePaint();sendLive(false);
+  };
+  var finish=async function(){
+    if(!drawingNow)return;
+    drawingNow=false;
+    if(liveTimer){clearTimeout(liveTimer);liveTimer=0}
+    var stroke=preview;preview=null;
+    if(stroke&&stroke.points.length){
+      // A tap is a dot: send the point twice so a single tap leaves a mark.
+      var pts=stroke.points.length<2?[stroke.points[0],stroke.points[0]]:compress(stroke.points);
+      var committed={id:liveId,points:pts,color:stroke.color,size:stroke.size,kind:stroke.kind};
+      strokes.push(committed);
+      rebuildBase();paint(null);
+      await postStroke('stroke',{id:liveId,points:pts,color:stroke.color,size:stroke.size,kind:stroke.kind,customColor:DRAW_PALETTE_UI.indexOf(stroke.color)<0});
+    }
+    paintBusy=false;
+    await pollRoom();
+  };
   canvas.onpointerup=finish;canvas.onpointercancel=finish;canvas.__drawFinish=finish;
   if(!window._drawUpBound){window._drawUpBound=true;window.addEventListener('pointerup',function(){var node=$('drawCanvas');if(node&&typeof node.__drawFinish==='function')node.__drawFinish()})}
 

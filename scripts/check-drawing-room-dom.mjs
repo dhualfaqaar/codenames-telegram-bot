@@ -66,6 +66,13 @@ try {
   const guest = makeClient('سارة');
   const third = makeClient('علي');
   await waitFor(() => host.document.querySelector('#drawCreateTitle'), 'host lobby');
+  // The create card offers a visibility switch, and the lobby browses open rooms.
+  const visibility = host.document.querySelector('#drawRoomVisible');
+  assert.ok(visibility, 'the create card has a visibility switch');
+  assert.equal(visibility.checked, true, 'rooms start visible');
+  assert.match(host.document.querySelector('.draw-toggle-copy').textContent, /مرئية/);
+  assert.ok(host.document.querySelector('#drawPublicList'), 'the lobby lists open rooms');
+  assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
   click(host, '[data-action="friend"]');
   await waitFor(() => host.document.querySelector('.draw-room'), 'host room');
   const roomId = await waitFor(() => roomOf(host), 'room code');
@@ -112,7 +119,13 @@ try {
   assert.equal(host.document.querySelectorAll('.draw-tool svg').length, 1);
   assert.equal(host.document.querySelector('#drawColorPop').classList.contains('open'), false);
   click(host, '.draw-color-wheel');
-  assert.equal(host.document.querySelector('#drawColorPop').classList.contains('open'), true, 'the wheel expands');
+  const colorPop = host.document.querySelector('#drawColorPop');
+  assert.equal(colorPop.classList.contains('open'), true, 'the wheel expands');
+  // A fixed layer, so the scrolling tool rail cannot clip it away.
+  assert.equal(colorPop.style.position, '', 'position comes from the stylesheet');
+  assert.match(colorPop.style.left, /^\d+px$/, 'the panel is placed next to the wheel');
+  assert.match(colorPop.style.top, /^\d+px$/, 'the panel stays inside the screen');
+  assert.match(String(html), /\.draw-color-pop\{position:fixed/, 'the picker is a fixed layer');
   const hue = host.document.querySelector('#drawHue');
   hue.value = '130';
   hue.dispatchEvent(new host.Event('input', { bubbles: true }));
@@ -157,6 +170,23 @@ try {
   // One tap wipes every stroke on the board.
   click(host, '.draw-clear');
   await waitFor(async () => (await state(guest, roomId)).state.strokes.length === 0, 'clear wipes the whole board');
+  // A tap without any movement still leaves a mark.
+  canvas.onpointerdown({ clientX: 200, clientY: 200, pointerId: 1 });
+  canvas.onpointerup({ clientX: 200, clientY: 200, pointerId: 1 });
+  await waitFor(async () => {
+    const board = (await state(guest, roomId)).state.strokes;
+    return board.length === 1 && board[0].points.length === 2 && board[0].points[0][0] === board[0].points[1][0];
+  }, 'a tap leaves a dot');
+  // While the pen is down the guessers already see the stroke growing.
+  canvas.onpointerdown({ clientX: 260, clientY: 220, pointerId: 2 });
+  canvas.onpointermove({ clientX: 300, clientY: 260, pointerId: 2 });
+  await waitFor(async () => (await state(guest, roomId)).state.strokes.some(stroke => stroke.live), 'the live stroke reaches the guessers', 6000);
+  canvas.onpointermove({ clientX: 360, clientY: 300, pointerId: 2 });
+  canvas.onpointerup({ clientX: 360, clientY: 300, pointerId: 2 });
+  await waitFor(async () => {
+    const board = (await state(guest, roomId)).state.strokes;
+    return board.length === 2 && board.every(stroke => !stroke.live);
+  }, 'lifting the pen commits the stroke');
 
   submit(guest, '#drawChatForm', '#drawChatInput', 'مرحبا بالجميع');
   await waitFor(() => /مرحبا بالجميع/.test(third.document.querySelector('.draw-logs-card').textContent), 'chat shows in the log card');
@@ -194,8 +224,36 @@ try {
   await waitFor(() => host.document.querySelectorAll('.draw-player-row:not(.empty)').length === 3, 'the host sees the friend come back');
   assert.match(host.document.querySelector('.draw-logs-card').textContent, /علي انضم/);
   assert.ok(returning.document.querySelector('#drawCanvas'), 'the rejoined friend gets the board');
+  // Open rooms are discoverable: a new visitor finds the room in the lobby and joins
+  // it with one tap, while a hidden room only works through its code.
+  const host2 = makeClient('منشئ');
+  await waitFor(() => host2.document.querySelector('#drawCreateTitle'), 'second lobby');
+  click(host2, '[data-action="friend"]');
+  await waitFor(() => host2.document.querySelector('.draw-room'), 'second room');
+  const room2 = await waitFor(() => roomOf(host2), 'second room code');
+  const visitor = makeClient('زائر');
+  await waitFor(() => visitor.document.querySelector('#drawPublicList'), 'visitor lobby');
+  await waitFor(() => visitor.document.querySelector(`[data-join-room="${room2}"]`), 'the open room is listed', 15000);
+  assert.match(visitor.document.querySelector(`[data-join-room="${room2}"]`).closest('.draw-public-room').textContent, /منشئ/);
+  click(visitor, `[data-join-room="${room2}"]`);
+  await waitFor(() => visitor.document.querySelector('.draw-room'), 'joined from the list');
+  assert.equal(roomOf(visitor), room2, 'the listing joins the right room');
+
+  const hiddenHost = makeClient('مخفي');
+  await waitFor(() => hiddenHost.document.querySelector('#drawCreateTitle'), 'hidden lobby');
+  const hiddenSwitch = hiddenHost.document.querySelector('#drawRoomVisible');
+  hiddenSwitch.checked = false;
+  hiddenSwitch.dispatchEvent(new hiddenHost.Event('change', { bubbles: true }));
+  assert.match(hiddenHost.document.querySelector('#drawRoomVisibleHint').textContent, /مخفية/);
+  click(hiddenHost, '[data-action="friend"]');
+  await waitFor(() => hiddenHost.document.querySelector('.draw-room'), 'hidden room');
+  const hiddenCode = await waitFor(() => roomOf(hiddenHost), 'hidden room code');
+  const listed = await (await fetch(`${base}/api/interactive/rooms?game=gartic`)).json();
+  assert.ok(!listed.rooms.some(room => room.id === hiddenCode), 'the hidden room never shows in the browser');
+  const byCode = await fetch(`${base}/api/interactive/rooms/${hiddenCode}`, { headers: { Authorization: `Bearer ${hiddenHost.localStorage.getItem(`cg-room-token-${hiddenCode}`)}` } });
+  assert.equal(byCode.status, 200, 'the hidden room still opens with its code');
   assert.deepEqual(errors, []);
-  console.log('Drawing room DOM flow passed: words, tools, shapes, colour wheel, clear-all, logs, chat, hint, automatic next round, leaving and rejoining with the same code.');
+  console.log('Drawing room DOM flow passed: words, tools, shapes, colour wheel (opens as a fixed panel), clear-all, dots, live strokes, logs, chat, hint, automatic next round, leaving/rejoining by code and the public room browser.');
 } finally {
   for (const dom of windows) dom.window.close();
 }

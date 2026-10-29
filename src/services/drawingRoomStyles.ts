@@ -91,7 +91,8 @@ body:has(#gameApp[data-page="room"][data-game="gartic"]){display:flex!important;
 #roomPage[data-game="gartic"] .draw-color-wheel{position:relative;display:grid;place-items:center;width:46px;height:46px;padding:0;border:1px solid #ffffff44;border-radius:50%;cursor:pointer;background:conic-gradient(#f43f5e,#f59e0b,#84cc16,#06b6d4,#3b82f6,#a855f7,#f43f5e);box-shadow:0 2px 8px #061a2e55}
 #roomPage[data-game="gartic"] .draw-color-wheel span{display:block;width:24px;height:24px;border-radius:50%;background:var(--pick,#202635);border:2px solid #fff;box-shadow:0 0 0 1px #0d2740}
 #roomPage[data-game="gartic"] .draw-color-wheel[aria-expanded="true"]{box-shadow:0 0 0 2px #ffe066}
-#roomPage[data-game="gartic"] .draw-color-pop{position:absolute;z-index:9;top:10px;left:calc(100% + 8px);display:none;width:196px;padding:10px;gap:8px;border:1px solid #1d4a80;border-radius:14px;background:linear-gradient(180deg,#164a80,#123a66);box-shadow:0 10px 26px #061a2e66;direction:ltr}
+/* The tool rail clips overflow, so the picker lives on its own fixed layer. */
+#roomPage[data-game="gartic"] .draw-color-pop{position:fixed;z-index:60;top:0;left:0;display:none;width:212px;padding:10px;gap:8px;border:1px solid #1d4a80;border-radius:14px;background:linear-gradient(180deg,#164a80,#123a66);box-shadow:0 14px 34px #061a2e99;direction:ltr}
 #roomPage[data-game="gartic"] .draw-color-pop.open{display:grid}
 #roomPage[data-game="gartic"] .draw-color-preview{height:34px;border-radius:9px;border:1px solid #ffffff55}
 #roomPage[data-game="gartic"] .draw-gradient{display:block;width:100%}
@@ -151,7 +152,7 @@ body:has(#gameApp[data-page="room"][data-game="gartic"]){display:flex!important;
   #roomPage[data-game="gartic"] .draw-room-tools{flex-direction:row;flex-wrap:wrap;justify-content:center;width:auto;max-height:none;gap:10px;padding:10px}
   #roomPage[data-game="gartic"] .draw-tool-group{grid-auto-flow:column;grid-auto-columns:max-content;grid-template-columns:none;gap:6px}
   #roomPage[data-game="gartic"] .draw-tool{width:44px;height:42px;font-size:20px}
-  #roomPage[data-game="gartic"] .draw-color-pop{position:fixed;left:50%;top:auto;bottom:24px;transform:translateX(-50%);width:min(280px,86vw)}
+  #roomPage[data-game="gartic"] .draw-color-pop{width:min(268px,88vw)}
   #roomPage[data-game="gartic"] .draw-color-wheel{width:44px;height:44px}
   #roomPage[data-game="gartic"] .draw-history .draw-tool:last-child{width:44px}
   #roomPage[data-game="gartic"] .draw-history .draw-tool:last-child{grid-column:auto}

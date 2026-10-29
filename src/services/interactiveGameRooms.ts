@@ -17,6 +17,8 @@ type Room = {
   host: string;
   players: RoomPlayer[];
   capacity?: number;
+  /** Public rooms show up in the lobby browser; hidden ones need the room code. */
+  visible?: boolean;
   gameState: any;
 };
 
@@ -26,6 +28,8 @@ export interface RoomStorage {
 }
 
 const ROOM_KEY = (id: string) => `interactive-room:${id}`;
+const LOBBY_KEY = (game: string) => `interactive-lobby:${game}`;
+const LOBBY_MAX = 40;
 const TICKET_KEY = (id: string) => `interactive-match:${id}`;
 const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
 const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000;
@@ -193,12 +197,19 @@ export class InteractiveGameRooms {
         room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
       }
       if (game === 'poker') room.gameState.startingChips = startingChips;
-      if (game === 'gartic') { room.gameState.roundDurationMs = roundDurationMs; room.gameState.targetScore = Math.max(100, Math.min(10000, Math.round(Number(body?.targetScore) || 500))); }
+      if (game === 'gartic') {
+        room.gameState.roundDurationMs = roundDurationMs;
+        room.gameState.targetScore = Math.max(100, Math.min(10000, Math.round(Number(body?.targetScore) || 500)));
+        // Public rooms can be discovered in the lobby; hidden ones only via code.
+        room.visible = body?.visible !== false;
+      }
       if (botTrainer) { room.gameState.botElo = botElo; room.gameState.botTrainerId = botTrainer.id; room.gameState.botStyle = botTrainer.style; room.gameState.mode = 'bot'; this.startGame(room); }
       await this.save(room);
+      if (room.game === 'gartic') await this.syncLobby(room);
       return this.jsonFor(room, player.token, 201);
     }
 
+    if (!match[1] && request.method === 'GET') return this.listPublicRooms(new URL(request.url));
     const id = match[1]?.toUpperCase();
     if (!id) return Response.json({ error: 'معرّف الغرفة مطلوب' }, { status: 400 });
     const room = await this.load(id);
@@ -271,6 +282,7 @@ export class InteractiveGameRooms {
       if (room.game === 'gartic') { room.gameState.logs ||= []; room.gameState.logs.push({ text: lateDrawJoin ? `${player.name} انضم وسط المباراة` : `${player.name} انضم`, kind: 'join', at: Date.now() }); room.gameState.logs = room.gameState.logs.slice(-40); }
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
       await this.save(room);
+      if (room.game === 'gartic') await this.syncLobby(room);
       return this.jsonFor(room, player.token);
     }
 
@@ -279,10 +291,12 @@ export class InteractiveGameRooms {
     this.startChessClockAfterIntro(room);
     if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); return this.jsonFor(room, player.token); }
     this.tickDraw(room);
+    const wasStatus = room.status, wasPlayers = room.players.length;
     const result = this.act(room, player, action, body || {});
     if (result) return Response.json({ error: result }, { status: 400 });
     room.updatedAt = Date.now();
     await this.save(room);
+    if (room.game === 'gartic' && (wasStatus !== room.status || wasPlayers !== room.players.length || action === 'start' || action === 'leave')) await this.syncLobby(room);
     return this.jsonFor(room, player.token);
   }
 
@@ -745,18 +759,32 @@ export class InteractiveGameRooms {
       return null;
     }
     if (room.status !== 'playing') return 'ابدأوا الجولة أولاً';
-    if (action === 'stroke') {
+    if (action === 'stroke' || action === 'stroke-live') {
       if (seat !== s.drawer) return 'الرسم للرسام وحده';
       if ((s.phase || 'drawing') !== 'drawing') return 'وقت الرسم ما بدأ';
       if (Date.now() > s.deadline || s.roundResult) return 'انتهى وقت الرسم';
+      const live = action === 'stroke-live';
       const kind = DRAW_SHAPE_KINDS.includes(String(body.kind || '')) ? String(body.kind) : 'pen';
-      const limit = kind === 'pen' || kind === 'eraser' ? 600 : 2;
-      const points = Array.isArray(body.points) ? body.points.slice(0, limit).map((p: any) => [Math.max(0,Math.min(1,Number(p?.[0])||0)),Math.max(0,Math.min(1,Number(p?.[1])||0))]) : [];
-      if (points.length < 2) return 'الخط يحتاج نقطتين';
-      if (s.strokes.length >= 160) s.strokes.shift();
+      const limit = kind === 'pen' || kind === 'eraser' ? (live ? 600 : 900) : 2;
+      const points = Array.isArray(body.points) ? body.points.slice(0, limit).map((p: any) => [Math.max(0,Math.min(1,Number(p?.[0])||0)), Math.max(0,Math.min(1,Number(p?.[1])||0))]) : [];
+      // A tap is a dot: a single point is stored twice so everything can render it.
+      const dot = points.length === 1 ? [points[0], points[0]] : points;
+      if (!dot.length) return live ? null : 'الخط يحتاج نقطتين';
       const picked = String(body.color || '').toLowerCase();
       const color = kind === 'eraser' ? '#ffffff' : (/^#[0-9a-f]{6}$/.test(picked) && (DRAW_PALETTE.includes(picked) || DRAW_COLORS.includes(picked) || Boolean(body.customColor)) ? picked : '#1f2937');
-      s.strokes.push({ points, color, size: Math.max(2, Math.min(40, Number(body.size) || 5)), kind }); return null;
+      const size = Math.max(2, Math.min(40, Number(body.size) || 5));
+      const strokeId = String(body.id || '').slice(0, 40);
+      if (strokeId) {
+        // One stroke in progress keeps a single slot: live frames replace it and the
+        // committed stroke takes the same slot, so everybody watches it grow in place.
+        const at = s.strokes.findIndex((stroke: any) => stroke && stroke.id === strokeId);
+        const next = { id: strokeId, points: dot, color, size, kind, ...(live ? { live: true } : {}) };
+        if (at >= 0) s.strokes[at] = next;
+        else { if (s.strokes.length >= 200) s.strokes.shift(); s.strokes.push(next); }
+        return null;
+      }
+      if (s.strokes.length >= 200) s.strokes.shift();
+      s.strokes.push({ points: dot, color, size, kind }); return null;
     }
     if (action === 'undo-stroke') { if (seat !== s.drawer) return 'الرسام وحده يرجّع آخر خط'; if ((s.phase || 'drawing') !== 'drawing' || s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes.pop(); return null; }
     if (action === 'clear') { if (seat !== s.drawer) return 'الرسام وحده يمسح اللوحة'; if ((s.phase || 'drawing') !== 'drawing' || s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes = []; return null; }
@@ -954,6 +982,48 @@ export class InteractiveGameRooms {
     return Response.json({ ticket: { id: ticket.id, game: ticket.game, status: ticket.status, roomId: ticket.roomId, roomToken: ticket.status === 'matched' ? ticket.roomToken : '', name: ticket.name, elo: ticket.elo, countryCode: ticket.countryCode || 'IQ', photoUrl: ticket.photoUrl || '', difficulty: ticket.difficulty, opponentName: ticket.opponentName || '', opponentElo: ticket.opponentElo || 0, opponentPhotoUrl: ticket.opponentPhotoUrl || '', opponentCountryCode: ticket.opponentCountryCode || 'IQ', opponentIsBotCreator: Boolean(ticket.opponentIsBotCreator), createdAt: ticket.createdAt }, secret: status === 201 ? ticket.secret : undefined }, { status, headers: { 'Cache-Control': 'no-store' } });
   }
 
+  /** Keeps the public-lobby index in step with a room's real state. */
+  private async syncLobby(room: Room): Promise<void> {
+    const key = LOBBY_KEY(room.game);
+    const stored = await this.storage.get<any[]>(key);
+    const entries = Array.isArray(stored) ? stored.filter(entry => entry && typeof entry.id === 'string' && entry.id !== room.id) : [];
+    const host = room.players.find(item => item.token === room.host) || room.players[0];
+    const open = room.visible !== false && room.status === 'waiting' && room.players.length > 0;
+    if (open) entries.push({
+      id: room.id, hostName: host?.name || '', hostCountry: host?.countryCode || 'IQ', hostPhoto: host?.photoUrl || '',
+      hostIsCreator: Boolean(host?.isBotCreator), players: room.players.length,
+      capacity: room.capacity || room.players.length, targetScore: Math.max(100, Number(room.gameState?.targetScore) || 500),
+      roundSeconds: Math.max(30, Math.round((Number(room.gameState?.roundDurationMs) || 75_000) / 1000)), at: Date.now(),
+    });
+    const fresh = entries.filter(entry => Date.now() - Number(entry.at || 0) < ROOM_IDLE_TTL_MS).slice(-LOBBY_MAX);
+    await this.storage.put(key, fresh);
+  }
+
+  /** Public rooms for the lobby browser; stale and non-waiting entries are dropped. */
+  private async listPublicRooms(url: URL): Promise<Response> {
+    const game = String(url.searchParams.get('game') || 'gartic') as InteractiveGameId;
+    if (!Object.hasOwn(GAME_NAMES, game)) return Response.json({ error: 'اللعبة غير معروفة' }, { status: 400 });
+    const stored = await this.storage.get<any[]>(LOBBY_KEY(game));
+    const entries = Array.isArray(stored) ? stored : [];
+    const rooms: any[] = [];
+    for (const entry of entries.slice(-LOBBY_MAX)) {
+      const room = await this.load(String(entry.id || '')).catch(() => undefined);
+      if (!room) continue;
+      if (Date.now() - room.updatedAt > ROOM_IDLE_TTL_MS) continue;
+      if (room.visible === false || room.status !== 'waiting' || !room.players.length) continue;
+      const host = room.players.find(item => item.token === room.host) || room.players[0];
+      rooms.push({
+        id: room.id, hostName: host?.name || '', hostCountry: host?.countryCode || 'IQ', hostPhoto: host?.photoUrl || '',
+        hostIsCreator: Boolean(host?.isBotCreator), players: room.players.length,
+        capacity: room.capacity || room.players.length, targetScore: Math.max(100, Number(room.gameState?.targetScore) || 500),
+        roundSeconds: Math.max(30, Math.round((Number(room.gameState?.roundDurationMs) || 75_000) / 1000)),
+        createdAt: room.createdAt,
+      });
+    }
+    rooms.sort((a, b) => b.players - a.players || b.createdAt - a.createdAt);
+    return Response.json({ rooms, total: rooms.length }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   private async load(id: string): Promise<Room | undefined> { return await this.storage.get<Room>(ROOM_KEY(id)); }
   private async save(room: Room): Promise<void> { await this.storage.put(ROOM_KEY(room.id), room); }
   private jsonFor(room: Room, token: string, status = 200): Response {
@@ -1014,7 +1084,7 @@ export class InteractiveGameRooms {
       state.winners = (s.winners || []).map((token:string)=>room.players.findIndex(p=>p.token===token)).filter((i:number)=>i>=0);
       state.betAmounts = room.players.map(p=>s.bets[p.token]||0);
     }
-    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,countryCode:p.countryCode||'IQ',photoUrl:p.photoUrl||'',trainerId:p.trainerId||'',eloChange:room.gameState.eloChanges?.[p.token] ?? 0,isBotCreator:Boolean(p.isBotCreator),bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
+    return Response.json({ room: { id:room.id,game:room.game,gameName:GAME_NAMES[room.game],status:room.status,visible:room.visible !== false,isHost:token===room.host,playerSeat:seat,players:room.players.map((p,i)=>({name:p.name,seat:i,host:p.token===room.host,chips:p.chips,elo:p.elo,countryCode:p.countryCode||'IQ',photoUrl:p.photoUrl||'',trainerId:p.trainerId||'',eloChange:room.gameState.eloChanges?.[p.token] ?? 0,isBotCreator:Boolean(p.isBotCreator),bot:Boolean(p.bot)})),capacity:room.capacity || room.players.length,createdAt:room.createdAt }, token:own?.token || '', state }, { status, headers: { 'Cache-Control':'no-store' } });
   }
 }
 
