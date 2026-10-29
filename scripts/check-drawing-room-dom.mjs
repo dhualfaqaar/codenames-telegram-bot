@@ -73,6 +73,16 @@ try {
   assert.match(host.document.querySelector('.draw-toggle-copy').textContent, /مرئية/);
   assert.ok(host.document.querySelector('#drawPublicList'), 'the lobby lists open rooms');
   assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
+  // The lobby is a gartic-style hub: play, rooms, create — one panel at a time.
+  assert.ok(host.document.querySelector('#drawQuickPlay'), 'the lobby has a play button');
+  assert.equal(host.document.querySelector('#drawRoomsPanel').hidden, true, 'the rooms panel starts closed');
+  click(host, '#drawOpenRooms');
+  assert.equal(host.document.querySelector('#drawRoomsPanel').hidden, false, 'the rooms button opens the room list');
+  click(host, '#drawOpenCreate');
+  assert.equal(host.document.querySelector('#drawCreatePanel').hidden, false, 'the create button opens the setup');
+  assert.equal(host.document.querySelector('#drawRoomsPanel').hidden, true, 'only one panel is open');
+  click(host, '#drawOpenCreate');
+  assert.equal(host.document.querySelector('#drawCreatePanel').hidden, true, 'tapping create again returns to the hub');
   click(host, '[data-action="friend"]');
   await waitFor(() => host.document.querySelector('.draw-room'), 'host room');
   const roomId = await waitFor(() => roomOf(host), 'room code');
@@ -247,6 +257,13 @@ try {
   click(visitor, `[data-join-room="${room2}"]`);
   await waitFor(() => visitor.document.querySelector('.draw-room'), 'joined from the list');
   assert.equal(roomOf(visitor), room2, 'the listing joins the right room');
+
+  // «العب» drops a newcomer into an existing open room in one tap.
+  const quick = makeClient('سريع');
+  await waitFor(() => quick.document.querySelector('#drawQuickPlay'), 'quick play lobby');
+  click(quick, '#drawQuickPlay');
+  await waitFor(() => quick.document.querySelector('.draw-room'), 'quick play joins a room');
+  assert.match(roomOf(quick) || '', /^[A-Z0-9]{12}$/, 'play lands in a real room');
 
   const hiddenHost = makeClient('مخفي');
   await waitFor(() => hiddenHost.document.querySelector('#drawCreateTitle'), 'hidden lobby');
