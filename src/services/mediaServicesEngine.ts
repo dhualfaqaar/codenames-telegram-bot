@@ -5,6 +5,19 @@
  *   3) 📥 التحميل المباشر من السوشيال ميديا (تيك توك، إنستغرام، بنترست، يوتيوب) بدون وسطاء محجوبين
  */
 
+import {
+  boundedFetch,
+  withTimeout,
+  raceProviders,
+  providerHealth,
+  summarizeFailures,
+  MEDIA_STEP_TIMEOUT_MS,
+  MEDIA_TOTAL_BUDGET_MS,
+  MEDIA_PROBE_TIMEOUT_MS,
+  MEDIA_ENGINE_BUILD,
+  type ProviderAttempt
+} from './mediaResilience';
+
 // =====================================================================
 // 1) 🤫 نظام الهمسات السرية (Whispers)
 // =====================================================================
@@ -315,7 +328,7 @@ async function probeMediaStreamOrBytes(
 ): Promise<ProbedMediaResult | null> {
   const MAX_TG_BYTES = 49 * 1024 * 1024;
   try {
-    const r = await fetch(url, {
+    const r = await boundedFetch(url, {
       redirect: 'follow',
       headers: {
         'User-Agent': BROWSER_UA,
@@ -441,7 +454,7 @@ async function getSoundCloudClientId(): Promise<string | null> {
 
   const probeClientId = async (cid: string): Promise<boolean> => {
     try {
-      const r = await fetch(`https://api-v2.soundcloud.com/tracks/293?client_id=${encodeURIComponent(cid)}`, {
+      const r = await boundedFetch(`https://api-v2.soundcloud.com/tracks/293?client_id=${encodeURIComponent(cid)}`, {
         headers: {
           'User-Agent': BROWSER_UA,
           Origin: 'https://w.soundcloud.com',
@@ -463,7 +476,7 @@ async function getSoundCloudClientId(): Promise<string | null> {
 
   for (const pageUrl of pageTargets) {
     try {
-      const resp = await fetch(pageUrl, {
+      const resp = await boundedFetch(pageUrl, {
         headers: {
           'User-Agent': BROWSER_UA,
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -487,7 +500,7 @@ async function getSoundCloudClientId(): Promise<string | null> {
         html.match(/https:\/\/(?:widget|a-v2|m)\.sndcdn\.com\/[^\s"'<>]+\.js/g) || [];
       for (const scriptUrl of scripts.slice(-8).reverse()) {
         try {
-          const sResp = await fetch(scriptUrl, { headers: { 'User-Agent': BROWSER_UA } });
+          const sResp = await boundedFetch(scriptUrl, { headers: { 'User-Agent': BROWSER_UA } });
           if (!sResp.ok) continue;
           const js = await sResp.text();
           const candidates = Array.from(
@@ -526,7 +539,7 @@ async function searchSoundCloudSongs(query: string, limit = 5): Promise<SongSear
     const url =
       `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}` +
       `&client_id=${encodeURIComponent(clientId)}&limit=${Math.max(12, limit * 3)}`;
-    const res = await fetch(url, {
+    const res = await boundedFetch(url, {
       headers: {
         'User-Agent': BROWSER_UA,
         Origin: 'https://soundcloud.com',
@@ -579,7 +592,7 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
   if (!clientId) return null;
 
   try {
-    const infoRes = await fetch(
+    const infoRes = await boundedFetch(
       `https://api-v2.soundcloud.com/tracks/${encodeURIComponent(trackId)}?client_id=${encodeURIComponent(clientId)}`,
       {
         headers: {
@@ -600,7 +613,7 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
       ) || transcodings.find(t => t?.format?.protocol === 'progressive');
 
     if (progMp3?.url) {
-      const sRes = await fetch(
+      const sRes = await boundedFetch(
         `${progMp3.url}${progMp3.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`,
         { headers: { 'User-Agent': BROWSER_UA } }
       );
@@ -631,7 +644,7 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
     for (const hlsEntry of hlsCandidates) {
       if (!hlsEntry?.url) continue;
       const mimeStr = String(hlsEntry?.format?.mime_type || '').toLowerCase();
-      const sRes = await fetch(
+      const sRes = await boundedFetch(
         `${hlsEntry.url}${hlsEntry.url.includes('?') ? '&' : '?'}client_id=${encodeURIComponent(clientId)}`,
         { headers: { 'User-Agent': BROWSER_UA } }
       );
@@ -639,7 +652,7 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
       const sj: any = await sRes.json();
       if (!sj?.url) continue;
 
-      const m3uRes = await fetch(String(sj.url), { headers: { 'User-Agent': BROWSER_UA } });
+      const m3uRes = await boundedFetch(String(sj.url), { headers: { 'User-Agent': BROWSER_UA } });
       if (!m3uRes.ok) continue;
       const m3uText = await m3uRes.text();
 
@@ -665,7 +678,7 @@ async function resolveSoundCloudAudio(trackId: string): Promise<ResolvedAudioPay
           const batch = allUrls.slice(i, i + batchSize);
           const buffers = await Promise.all(
             batch.map(async u => {
-              const r = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
+              const r = await boundedFetch(u, { headers: { 'User-Agent': BROWSER_UA } });
               if (!r.ok) throw new Error('seg_failed');
               return new Uint8Array(await r.arrayBuffer());
             })
@@ -691,7 +704,7 @@ async function getYouTubeVisitorData(): Promise<string> {
     return cachedVisitorData.id;
   }
   try {
-    const res = await fetch('https://www.youtube.com/sw.js_data', {
+    const res = await boundedFetch('https://www.youtube.com/sw.js_data', {
       headers: { 'User-Agent': BROWSER_UA }
     });
     if (res.ok) {
@@ -742,7 +755,7 @@ async function extractViaSavetubeCloud(
 
   const cdns: string[] = [];
   try {
-    const cdnRes = await fetch('https://media.savetube.me/api/random-cdn', {
+    const cdnRes = await boundedFetch('https://media.savetube.me/api/random-cdn', {
       headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
     });
     if (cdnRes.ok) {
@@ -760,7 +773,7 @@ async function extractViaSavetubeCloud(
 
   for (const cdn of cdns.slice(0, 3)) {
     try {
-      const infoRes = await fetch(`https://${cdn}/v2/info`, {
+      const infoRes = await boundedFetch(`https://${cdn}/v2/info`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -790,7 +803,7 @@ async function extractViaSavetubeCloud(
       // ترتيب تنازلي ذكي: إذا كانت 360p أكبر من 49MB نحفظ رابطها المباشر الكامل ونفحص 240p ثم 144p لرفع نسخة تعمل داخل تيليجرام أيضاً!
       const qualities = customQualities || (mode === 'audio' ? ['128'] : ['360', '240', '144']);
       for (const q of qualities) {
-        const dlRes = await fetch(`https://${cdn}/download`, {
+        const dlRes = await boundedFetch(`https://${cdn}/download`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -851,7 +864,7 @@ async function extractViaOceanSaverCloud(
     const startUrl =
       `https://p.oceansaver.in/ajax/download.php?copyright=0&format=${fmt}` +
       `&url=${encodeURIComponent(ytUrl)}&api=dfcb6d76f2f6a9894gjkege8a4ab232222`;
-    const r = await fetch(startUrl, {
+    const r = await boundedFetch(startUrl, {
       headers: {
         'User-Agent': BROWSER_UA,
         Accept: 'application/json',
@@ -865,7 +878,7 @@ async function extractViaOceanSaverCloud(
 
     for (let poll = 0; poll < 9; poll++) {
       await new Promise(res => setTimeout(res, poll === 0 ? 500 : 900));
-      const pr = await fetch(`https://p.oceansaver.in/ajax/progress.php?id=${encodeURIComponent(String(jobId))}`, {
+      const pr = await boundedFetch(`https://p.oceansaver.in/ajax/progress.php?id=${encodeURIComponent(String(jobId))}`, {
         headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
       });
       if (!pr.ok) continue;
@@ -975,7 +988,7 @@ async function extractViaYouTubeNative(
                 ? '85'
                 : '101';
 
-      const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      const playerRes = await boundedFetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1024,7 +1037,7 @@ async function extractViaYouTubeNative(
         const hlsMaster = String(pJson?.streamingData?.hlsManifestUrl || '');
         if (hlsMaster.startsWith('http')) {
           try {
-            const masterRes = await fetch(hlsMaster, { headers: { 'User-Agent': profile.ua } });
+            const masterRes = await boundedFetch(hlsMaster, { headers: { 'User-Agent': profile.ua } });
             if (masterRes.ok) {
               const masterTxt = await masterRes.text();
               const variantUrls = masterTxt
@@ -1033,7 +1046,7 @@ async function extractViaYouTubeNative(
                 .filter(l => l.startsWith('http'));
               const chosenVariant = variantUrls[Math.floor(variantUrls.length / 2)] || variantUrls[0];
               if (chosenVariant) {
-                const plRes = await fetch(chosenVariant, { headers: { 'User-Agent': profile.ua } });
+                const plRes = await boundedFetch(chosenVariant, { headers: { 'User-Agent': profile.ua } });
                 if (plRes.ok) {
                   const plTxt = await plRes.text();
                   const segs = plTxt
@@ -1047,7 +1060,7 @@ async function extractViaYouTubeNative(
                       const batch = segs.slice(i, i + 9);
                       const bufs = await Promise.all(
                         batch.map(async u => {
-                          const r = await fetch(u, { headers: { 'User-Agent': profile.ua } });
+                          const r = await boundedFetch(u, { headers: { 'User-Agent': profile.ua } });
                           if (!r.ok) throw new Error('seg_err');
                           return new Uint8Array(await r.arrayBuffer());
                         })
@@ -1081,7 +1094,7 @@ async function extractViaYouTubeNative(
   ];
   for (const pNode of pipedNodes) {
     try {
-      const pRes = await fetch(`${pNode}/streams/${encodeURIComponent(videoId)}`, {
+      const pRes = await boundedFetch(`${pNode}/streams/${encodeURIComponent(videoId)}`, {
         headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
       });
       if (!pRes.ok) continue;
@@ -1119,7 +1132,7 @@ async function extractViaYouTubeNative(
   ];
   for (const node of invidiousNodes) {
     try {
-      const apiRes = await fetch(`${node}/api/v1/videos/${videoId}`, {
+      const apiRes = await boundedFetch(`${node}/api/v1/videos/${videoId}`, {
         headers: { 'User-Agent': BROWSER_UA }
       });
       if (!apiRes.ok) continue;
@@ -1191,7 +1204,7 @@ async function searchYouTubeSongs(query: string, limit = 5): Promise<SongSearchH
   };
 
   try {
-    const apiRes = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+    const apiRes = await boundedFetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
       body: JSON.stringify({
@@ -1208,7 +1221,7 @@ async function searchYouTubeSongs(query: string, limit = 5): Promise<SongSearchH
   }
 
   try {
-    const res = await fetch(
+    const res = await boundedFetch(
       `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=ar`,
       { headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8' } }
     );
@@ -1235,7 +1248,7 @@ async function searchSaavnSongs(query: string, limit = 5): Promise<SongSearchHit
   ];
   for (const ep of endpoints) {
     try {
-      const r = await fetch(ep, { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' } });
+      const r = await boundedFetch(ep, { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' } });
       if (!r.ok) continue;
       const j: any = await r.json();
       const results: any[] = j?.data?.results || j?.results || [];
@@ -1276,7 +1289,7 @@ async function searchSaavnSongs(query: string, limit = 5): Promise<SongSearchHit
 /** محرك Hearthis.at العام المفتوح للبث الصوتي المباشر بصيغة MP3 كاملة بدون أي حظر IP */
 async function searchHearthisSongs(query: string, limit = 4): Promise<SongSearchHit[]> {
   try {
-    const r = await fetch(
+    const r = await boundedFetch(
       `https://api-v2.hearthis.at/search/?t=${encodeURIComponent(query)}&page=1&count=${limit}`,
       { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' } }
     );
@@ -1450,6 +1463,14 @@ export interface SocialDownloadResult {
   title?: string;
   videoId?: string;
   error?: string;
+  /** Which mirrors were tried and whether the failure was infrastructure-side. */
+  diagnostics?: {
+    serviceDown: boolean;
+    providers: string[];
+    kinds: string[];
+    elapsedMs: number;
+    timedOut: boolean;
+  };
 }
 
 export function socialPlatformLabel(platform: SocialPlatform): string {
@@ -1487,7 +1508,7 @@ async function fetchWithCookieChain(initialUrl: string, ua = BROWSER_UA): Promis
     };
     if (cookieHeader) headers.Cookie = cookieHeader;
 
-    const res = await fetch(currentUrl, { redirect: 'manual', headers });
+    const res = await boundedFetch(currentUrl, { redirect: 'manual', headers });
 
     // استخراج Set-Cookie في بيئة Cloudflare Workers
     const rawCookies: string[] =
@@ -1522,8 +1543,9 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   let awemeId = url.match(/\/(?:video|photo)\/(\d{15,22})/)?.[1] || '';
 
   // الطبقة 1: السحب المباشر من صفحة TikTok الرسمية مع حفظ الكوكيز (tt_chain_token) + استخراج الفيديو الأصلي بدون علامة مائية!
+  // سلسلة الكوكيز قد تقفز 6 مرات، فنسقّفها: إذا حجب تيك توك الـ Worker ننتقل للمرايا فوراً بدل حرق الميزانية.
   try {
-    const chain = await fetchWithCookieChain(url, BROWSER_UA);
+    const chain = await withTimeout(() => fetchWithCookieChain(url, BROWSER_UA), 7_000, 'tiktok:page');
     if (chain) {
       resolvedUrl = chain.finalUrl || url;
       if (!awemeId) {
@@ -1582,7 +1604,8 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
     // ننتقل للطبقة التالية
   }
 
-  // الطبقة 2: واجهات العرض المباشر المخصصة لبوتات تيليجرام (tnktok / vxtiktok / tiktxk — بدون حاجة لكوكيز!)
+  // الطبقتان 2 و3 معاً: مرايا العرض العامة وواجهة تطبيق تيك توك تعطي نفس المنشور،
+  // فتُجرّب كلها بنفس اللحظة وأول إجابة مفحوصة تفوز — بدل 6 انتظارات متتالية.
   try {
     const pathPart = (() => {
       try {
@@ -1592,80 +1615,80 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
         return '';
       }
     })();
+    const mirrors: Array<{ name: string; run: () => Promise<SocialDownloadResult | null> }> = [];
     if (pathPart && pathPart.length > 2) {
       for (const proxyHost of ['tnktok.com', 'vxtiktok.com', 'tiktxk.com']) {
-        try {
-          const r = await fetch(`https://${proxyHost}${pathPart}`, {
-            headers: { 'User-Agent': TG_BOT_UA },
-            redirect: 'follow'
-          });
-          if (!r.ok) continue;
-          const html = await r.text();
-          const vidUrl =
-            html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
-            html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
-          if (vidUrl && vidUrl.startsWith('http')) {
+        mirrors.push({
+          name: proxyHost,
+          run: async () => {
+            const r = await boundedFetch(`https://${proxyHost}${pathPart}`, {
+              headers: { 'User-Agent': TG_BOT_UA },
+              redirect: 'follow'
+            });
+            if (!r.ok) return null;
+            const html = await r.text();
+            const vidUrl =
+              html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
+              html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
+            if (!vidUrl || !vidUrl.startsWith('http')) return null;
             const cleanVid = vidUrl.replace(/&amp;/g, '&');
             const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 2000);
-            if (verified) {
-              return {
-                ok: true,
-                items: [{ kind: 'video', url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
-              };
-            }
+            if (!verified) return null;
+            return {
+              ok: true,
+              items: [{ kind: 'video' as const, url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+            };
           }
-        } catch {
-          continue;
-        }
+        });
       }
+    }
+    if (awemeId) {
+      for (const host of [
+        'https://api16-normal-c-alisg.tiktokv.com',
+        'https://api16-normal-c-useast1a.tiktokv.com',
+        'https://api22-normal-c-alisg.tiktokv.com'
+      ]) {
+        mirrors.push({
+          name: host,
+          run: async () => {
+            const apiUrl =
+              `${host}/aweme/v1/feed/?aweme_id=${awemeId}&version_name=26.2.0&version_code=262018` +
+              `&build_number=26.2.0&manifest_version_code=262018&update_version_code=262018&openudid=7154829104829104&uuid=3849201948201948`;
+            const r = await boundedFetch(apiUrl, {
+              headers: { 'User-Agent': 'TikTok 26.2.0 rv:262018 (iPhone; iOS 16.5; ar_IQ) Cronet' }
+            });
+            if (!r.ok) return null;
+            const j: any = await r.json();
+            const aweme = (j?.aweme_list || []).find((a: any) => String(a?.aweme_id) === awemeId) || j?.aweme_list?.[0];
+            if (!aweme) return null;
+            const imgs: any[] = aweme?.image_post_info?.images || [];
+            if (imgs.length > 0) {
+              const items = imgs
+                .map(im => im?.display_image?.url_list?.[0])
+                .filter(Boolean)
+                .map((u: string) => ({ kind: 'photo' as const, url: u }));
+              if (items.length) return { ok: true, title: aweme.desc || '', items };
+              return null;
+            }
+            const vUrl = aweme?.video?.play_addr?.url_list?.[0] || aweme?.video?.play_addr?.url_list?.[1];
+            if (!vUrl) return null;
+            return { ok: true, title: aweme.desc || '', items: [{ kind: 'video' as const, url: String(vUrl) }] };
+          }
+        });
+      }
+    }
+    if (mirrors.length) {
+      const raced = await raceProviders<SocialDownloadResult>(mirrors);
+      if (raced.value) return raced.value;
     }
   } catch {
     // ننتقل للطبقة التالية
   }
 
-  // الطبقة 3: واجهة تطبيق TikTok Mobile الرسمية (tiktokv.com)
-  if (awemeId) {
-    const mobileHosts = [
-      'https://api16-normal-c-alisg.tiktokv.com',
-      'https://api16-normal-c-useast1a.tiktokv.com',
-      'https://api22-normal-c-alisg.tiktokv.com'
-    ];
-    for (const host of mobileHosts) {
-      try {
-        const apiUrl =
-          `${host}/aweme/v1/feed/?aweme_id=${awemeId}&version_name=26.2.0&version_code=262018` +
-          `&build_number=26.2.0&manifest_version_code=262018&update_version_code=262018&openudid=7154829104829104&uuid=3849201948201948`;
-        const r = await fetch(apiUrl, {
-          headers: { 'User-Agent': 'TikTok 26.2.0 rv:262018 (iPhone; iOS 16.5; ar_IQ) Cronet' }
-        });
-        if (!r.ok) continue;
-        const j: any = await r.json();
-        const aweme = (j?.aweme_list || []).find((a: any) => String(a?.aweme_id) === awemeId) || j?.aweme_list?.[0];
-        if (!aweme) continue;
-
-        const imgs: any[] = aweme?.image_post_info?.images || [];
-        if (imgs.length > 0) {
-          const items = imgs
-            .map(im => im?.display_image?.url_list?.[0])
-            .filter(Boolean)
-            .map((u: string) => ({ kind: 'photo' as const, url: u }));
-          if (items.length) return { ok: true, title: aweme.desc || '', items };
-        }
-
-        const vUrl = aweme?.video?.play_addr?.url_list?.[0];
-        if (vUrl) {
-          return { ok: true, title: aweme.desc || '', items: [{ kind: 'video', url: String(vUrl) }] };
-        }
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  // الطبقة 4: TikWM كاحتياط إضافي أخير
+  // الطبقة 3: TikWM كاحتياط إضافي أخير
   try {
     const form = new URLSearchParams({ url: resolvedUrl, hd: '1' });
-    const res = await fetch('https://www.tikwm.com/api/', {
+    const res = await boundedFetch('https://www.tikwm.com/api/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': BROWSER_UA },
       body: form.toString()
@@ -1691,10 +1714,78 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور تيك توك — تأكد أن المنشور عام وصحيح.' };
 }
 
+/** Merges Pinterest's HLS segments into one MP4 buffer (bounded, bail out on long playlists). */
+async function mergePinterestHls(hlsPin: string, ua: string): Promise<DownloadedMediaItem | null> {
+  const mRes = await boundedFetch(hlsPin, { headers: { 'User-Agent': ua } });
+  if (!mRes.ok) return null;
+  const mTxt = await mRes.text();
+  const subPlaylists = mTxt
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'))
+    .map(l => (l.startsWith('http') ? l : new URL(l, hlsPin).toString()));
+  const targetPl = subPlaylists.some(u => u.includes('.m3u8')) ? subPlaylists.filter(u => u.includes('.m3u8')).pop()! : hlsPin;
+  const segPlTxt =
+    targetPl === hlsPin ? mTxt : await (await boundedFetch(targetPl, { headers: { 'User-Agent': ua } })).text();
+  const segUrls = segPlTxt
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'))
+    .map(l => (l.startsWith('http') ? l : new URL(l, targetPl).toString()));
+  if (!segUrls.length || segUrls.length > 45) return null;
+
+  const chunks: Uint8Array[] = [];
+  for (let i = 0; i < segUrls.length; i += 10) {
+    const batch = segUrls.slice(i, i + 10);
+    const bufs = await Promise.all(
+      batch.map(async u => {
+        const sr = await boundedFetch(u, { headers: { 'User-Agent': ua } });
+        if (!sr.ok) throw new Error('pin_seg_err');
+        return new Uint8Array(await sr.arrayBuffer());
+      })
+    );
+    chunks.push(...bufs);
+  }
+  const merged = concatUint8Arrays(chunks);
+  if (merged.byteLength <= 10_000 || merged.byteLength > 48 * 1024 * 1024) return null;
+  return { kind: 'video', url: hlsPin, bytes: merged, headers: { 'User-Agent': ua } };
+}
+
 /** 📌 تحميل من بنترست (يستخرج وسائط المنشور الحقيقية حصراً عبر بصمة المنشور نفسه دون التقاط صور واجهة بنترست الخلفية أبداً!) */
 async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
   try {
-    const chain = await fetchWithCookieChain(url, BROWSER_UA);
+    // The cookie chain and a plain browser request fail for different reasons
+    // (cookies, redirects, soft blocks), so both run at once and the first real
+    // page wins instead of waiting for a blocked hop to time out.
+    const pinPageHeaders: Record<string, string> = {
+      'User-Agent': BROWSER_UA,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
+    };
+    const racedPage = await raceProviders<{ finalUrl: string; html: string }>(
+      [
+        {
+          name: 'pinterest:cookie-chain',
+          run: async () => {
+            const chain = await fetchWithCookieChain(url, BROWSER_UA);
+            if (!chain?.html || chain.html.length < 4000) return null;
+            return { finalUrl: chain.finalUrl || url, html: chain.html };
+          }
+        },
+        {
+          name: 'pinterest:plain-page',
+          run: async () => {
+            const r = await boundedFetch(url, { redirect: 'follow', headers: pinPageHeaders });
+            if (!r.ok) return null;
+            const html = await r.text();
+            if (html.length < 4000) return null;
+            return { finalUrl: (r as any).url || url, html };
+          }
+        }
+      ],
+      { timeoutMs: 12_000 }
+    );
+    const chain = racedPage.value;
     let finalUrl = chain?.finalUrl || url;
     let rawHtml = chain?.html || '';
 
@@ -1735,53 +1826,14 @@ async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
       const hlsPin = html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s<>\\]+\.m3u8/i)?.[0];
       if (hlsPin) {
         try {
-          const mRes = await fetch(hlsPin, { headers: { 'User-Agent': BROWSER_UA } });
-          if (mRes.ok) {
-            const mTxt = await mRes.text();
-            const subPlaylists = mTxt
-              .split(/\r?\n/)
-              .map(l => l.trim())
-              .filter(l => l && !l.startsWith('#'))
-              .map(l => (l.startsWith('http') ? l : new URL(l, hlsPin).toString()));
-            const targetPl = subPlaylists.some(u => u.includes('.m3u8'))
-              ? subPlaylists.filter(u => u.includes('.m3u8')).pop()!
-              : hlsPin;
-            const segPlTxt =
-              targetPl === hlsPin
-                ? mTxt
-                : await (await fetch(targetPl, { headers: { 'User-Agent': BROWSER_UA } })).text();
-            const segUrls = segPlTxt
-              .split(/\r?\n/)
-              .map(l => l.trim())
-              .filter(l => l && !l.startsWith('#'))
-              .map(l => (l.startsWith('http') ? l : new URL(l, targetPl).toString()));
-            if (segUrls.length > 0 && segUrls.length <= 45) {
-              const chunks: Uint8Array[] = [];
-              for (let i = 0; i < segUrls.length; i += 10) {
-                const batch = segUrls.slice(i, i + 10);
-                const bufs = await Promise.all(
-                  batch.map(async u => {
-                    const sr = await fetch(u, { headers: { 'User-Agent': BROWSER_UA } });
-                    if (!sr.ok) throw new Error('pin_seg_err');
-                    return new Uint8Array(await sr.arrayBuffer());
-                  })
-                );
-                chunks.push(...bufs);
-              }
-              const merged = concatUint8Arrays(chunks);
-              if (merged.byteLength > 10_000 && merged.byteLength <= 48 * 1024 * 1024) {
-                return {
-                  ok: true,
-                  items: [{ kind: 'video', url: hlsPin, bytes: merged, headers: { 'User-Agent': BROWSER_UA } }]
-                };
-              }
-            }
-          }
+          // Segment merging is many small requests: cap the whole job so a slow CDN
+          // cannot eat the entire download budget.
+          const hlsResult = await withTimeout(() => mergePinterestHls(hlsPin, BROWSER_UA), 14_000, 'pinterest:hls');
+          if (hlsResult) return { ok: true, items: [hlsResult] };
         } catch {
           // ننتقل لفحص صورة المنشور
         }
       }
-
       // 2) استخراج صورة المنشور الحقيقية حصراً عبر وسم المنشور نفسه (og:image / twitter:image) ثم ترقية نفس البصمة فقط إلى originals!
       // ⚠️ ممنوع تماماً التقاط أول رابط originals عشوائي بالصفحة لأن بنترست يضع صورة خلفية متدرجة ملونة بأعلى الصفحة!
       const pinMetaImg =
@@ -1828,6 +1880,29 @@ async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
     // ignore
   }
 
+  // Last resort: public oEmbed gives the pin's own cover image even when the
+  // HTML page is a soft-blocked shell.
+  try {
+    const oembed = await boundedFetch(`https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`, {
+      headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
+    }, 6_000);
+    if (oembed.ok) {
+      const meta: any = await oembed.json();
+      const cover = String(meta?.thumbnail_url || '');
+      if (cover.startsWith('http')) {
+        const upgraded = cover.replace(/\/(?:236x|474x|564x|736x)\//, '/originals/');
+        for (const candidate of Array.from(new Set([upgraded, cover]))) {
+          const verified = await tryFetchMediaBytes(candidate, { 'User-Agent': BROWSER_UA }, 3_000);
+          if (verified) {
+            return { ok: true, items: [{ kind: 'photo', url: candidate, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }] };
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   return { ok: false, items: [], error: '⚠️ تعذّر استخراج المنشور من بنترست — تأكد من إرسال رابط المنشور الصحيح.' };
 }
 
@@ -1845,8 +1920,10 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
     }
   }
 
-  const scMatch = String(targetUrl).match(/instagram\.com\/(?:[^/?#]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
-  const shortcode = scMatch ? scMatch[1] : '';
+  const scMatch = String(targetUrl).match(/instagram\.com\/(?:[^/?#]+\/)?(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
+  const shortcode = scMatch ? scMatch[2] : '';
+  // المرايا تفصل بين الريل والصورة، فنبني نفس نوع المسار اللي أرسله المستخدم.
+  const igPathKind = scMatch && /^(reel|reels|tv)$/i.test(scMatch[1]) ? 'reel' : 'p';
   if (!shortcode) {
     return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط منشور أو ريلز إنستغرام صحيح.' };
   }
@@ -1917,7 +1994,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   // الطبقة 2: صفحة التضمين الرسمية Embed (تعمل بدون تسجيل دخول على جميع المنشورات العامة!)
   for (const embPath of [`https://www.instagram.com/p/${shortcode}/embed/captioned/`, `https://www.instagram.com/reel/${shortcode}/embed/`]) {
     try {
-      const emb = await fetch(embPath, {
+      const emb = await boundedFetch(embPath, {
         headers: {
           'User-Agent': MOBILE_SAFARI_UA,
           Accept: 'text/html,application/xhtml+xml',
@@ -1993,7 +2070,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
       };
       if (liveCookies) gqlHeaders.Cookie = liveCookies;
 
-      const r = await fetch(gqlEndpoint, {
+      const r = await boundedFetch(gqlEndpoint, {
         method: 'POST',
         headers: gqlHeaders,
         body: form.toString()
@@ -2032,44 +2109,38 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   }
 
   // الطبقة 4: وسطاء العرض المخصصة لبوتات تيليجرام مع فحص البايتات الفعلي إلزامياً (لا يُقبل أي رابط وهمي!)
-  for (const host of ['instagramez.com', 'kkinstagram.com', 'vxinstagram.com', 'eeinstagram.com', 'ddinstagram.com']) {
-    try {
-      const r = await fetch(`https://${host}/reel/${shortcode}`, {
-        headers: { 'User-Agent': TG_BOT_UA },
-        redirect: 'follow'
-      });
-      if (!r.ok) continue;
-      const html = await r.text();
-      const vidUrl =
-        html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
-        html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
-      if (vidUrl && vidUrl.startsWith('http')) {
-        const cleanVid = vidUrl.replace(/&amp;/g, '&');
-        const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 4_000);
-        if (verified) {
-          return {
-            ok: true,
-            items: [{ kind: 'video', url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
-          };
+  // The view mirrors all read the same public post: race them, verified bytes only.
+  const racedIg = await raceProviders<DownloadedMediaItem>(
+    ['instagramez.com', 'kkinstagram.com', 'vxinstagram.com', 'eeinstagram.com', 'ddinstagram.com'].map(host => ({
+      name: host,
+      run: async () => {
+        const r = await boundedFetch(`https://${host}/${igPathKind}/${shortcode}`, {
+          headers: { 'User-Agent': TG_BOT_UA },
+          redirect: 'follow'
+        });
+        if (!r.ok) return null;
+        const html = await r.text();
+        const vidUrl =
+          html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
+          html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
+        if (vidUrl && vidUrl.startsWith('http')) {
+          const cleanVid = vidUrl.replace(/&amp;/g, '&');
+          const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 4000);
+          if (verified) return { kind: 'video' as const, url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } };
         }
-      }
-      const imgUrl =
-        html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
-        html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
-      if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('logo')) {
-        const cleanImg = imgUrl.replace(/&amp;/g, '&');
-        const verified = await tryFetchMediaBytes(cleanImg, { 'User-Agent': BROWSER_UA }, 3_000);
-        if (verified) {
-          return {
-            ok: true,
-            items: [{ kind: 'photo', url: cleanImg, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
-          };
+        const imgUrl =
+          html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
+          html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
+        if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('logo')) {
+          const cleanImg = imgUrl.replace(/&amp;/g, '&');
+          const verified = await tryFetchMediaBytes(cleanImg, { 'User-Agent': BROWSER_UA }, 3000);
+          if (verified) return { kind: 'photo' as const, url: cleanImg, bytes: verified, headers: { 'User-Agent': BROWSER_UA } };
         }
+        return null;
       }
-    } catch {
-      continue;
-    }
-  }
+    }))
+  );
+  if (racedIg.value) return { ok: true, items: [racedIg.value] };
 
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
 }
@@ -2081,81 +2152,8 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
     return { ok: false, items: [], error: '⚠️ تأكد من إرسال رابط يوتيوب أو Shorts صحيح.' };
   }
 
-  // الطبقة 1 (الأسرع والأضمن على Cloudflare Workers): Savetube Cloud CDN — يدعم حتى الفيديوهات الأكبر من 50MB!
-  const savetube = await extractViaSavetubeCloud(vid, 'video');
-  if (savetube?.bytes || savetube?.oversized) {
-    return {
-      ok: true,
-      videoId: vid,
-      title: savetube.title,
-      items: [
-        {
-          kind: 'video',
-          url: savetube.url,
-          bytes: savetube.bytes,
-          oversized: savetube.oversized,
-          sizeMB: savetube.sizeMB,
-          quality: savetube.quality,
-          headers: { 'User-Agent': BROWSER_UA }
-        }
-      ]
-    };
-  }
-
-  // الطبقة 2: OceanSaver Cloud Transcoder — يدعم حتى الفيديوهات الأكبر من 50MB!
-  const ocean = await extractViaOceanSaverCloud(vid, 'video');
-  if (ocean?.bytes || ocean?.oversized) {
-    return {
-      ok: true,
-      videoId: vid,
-      title: ocean.title,
-      items: [
-        {
-          kind: 'video',
-          url: ocean.url,
-          bytes: ocean.bytes,
-          oversized: ocean.oversized,
-          sizeMB: ocean.sizeMB,
-          quality: ocean.quality,
-          headers: { 'User-Agent': BROWSER_UA }
-        }
-      ]
-    };
-  }
-
-  // الطبقة 3: البث الممرّر عبر بروكسي Invidious المحلي (&local=true يتجاوز قفل ip= الخاص بـ googlevideo تماماً!)
-  const invLocalHosts = [
-    'https://inv.nadeko.net',
-    'https://invidious.nerdvpn.de',
-    'https://invidious.jing.rocks',
-    'https://yewtu.be'
-  ];
-  for (const host of invLocalHosts) {
-    try {
-      const proxiedUrl = `${host}/latest_version?id=${encodeURIComponent(vid)}&itag=18&local=true`;
-      const probed = await probeMediaStreamOrBytes(proxiedUrl, { 'User-Agent': BROWSER_UA }, 10_000);
-      if (probed?.bytes || probed?.oversized) {
-        return {
-          ok: true,
-          videoId: vid,
-          items: [
-            {
-              kind: 'video',
-              url: probed.directUrl,
-              bytes: probed.bytes,
-              oversized: probed.oversized,
-              sizeMB: probed.sizeMB,
-              headers: { 'User-Agent': BROWSER_UA }
-            }
-          ]
-        };
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  // الطبقة 4: العملاء الأصليون (ANDROID_TESTSUITE + TVHTML5_SIMPLY_EMBEDDED + ANDROID_VR + IOS HLS + Piped)
+  // الطبقة 1: العملاء الأصليون (ANDROID_TESTSUITE / TVHTML5 / IOS) — الطريق الرسمي:
+  // أسرع وأخف من أي وسيط، ويفشل خلال ثانية أو ثانيتين إذا حجب يوتيوب عنوان الـ Worker.
   const native = await extractViaYouTubeNative(vid, 'video');
   if (native?.bytes) {
     return {
@@ -2172,59 +2170,108 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
     };
   }
 
+  // الطبقة 2: وسيطان سحابيان مستقلان — يُجرّبان سوية لأن أحدهما قد يكون معطلاً،
+  // ولا معنى لانتظار ميت قبل تجربة الحي.
+  type CloudItem = Awaited<ReturnType<typeof extractViaSavetubeCloud>>;
+  const racedCloud = await raceProviders<NonNullable<CloudItem>>([
+    { name: 'savetube', run: async () => (await extractViaSavetubeCloud(vid, 'video')) as NonNullable<CloudItem> },
+    { name: 'oceansaver', run: async () => (await extractViaOceanSaverCloud(vid, 'video')) as NonNullable<CloudItem> }
+  ]);
+  const cloud = racedCloud.value;
+  if (cloud && (cloud.bytes || cloud.oversized)) {
+    return {
+      ok: true,
+      videoId: vid,
+      title: cloud.title,
+      items: [
+        {
+          kind: 'video',
+          url: cloud.url,
+          bytes: cloud.bytes,
+          oversized: cloud.oversized,
+          sizeMB: cloud.sizeMB,
+          quality: cloud.quality,
+          headers: { 'User-Agent': BROWSER_UA }
+        }
+      ]
+    };
+  }
+
+  // الطبقة 3: البث الممرّر عبر بروكسي Invidious المحلي (&local=true يتجاوز قفل ip= الخاص بـ googlevideo تماماً!)
+  const invLocalHosts = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.jing.rocks',
+    'https://yewtu.be'
+  ];
+  // The instances mirror the same stream, so they run together and the first good one wins.
+  const racedInvidious = await raceProviders<DownloadedMediaItem>(
+    invLocalHosts.map(host => ({
+      name: host,
+      run: async () => {
+        const proxiedUrl = `${host}/latest_version?id=${encodeURIComponent(vid)}&itag=18&local=true`;
+        const probed = await probeMediaStreamOrBytes(proxiedUrl, { 'User-Agent': BROWSER_UA }, 10_000);
+        if (!(probed?.bytes || probed?.oversized)) return null;
+        return {
+          kind: 'video' as const,
+          url: probed.directUrl,
+          bytes: probed.bytes,
+          oversized: probed.oversized,
+          sizeMB: probed.sizeMB,
+          headers: { 'User-Agent': BROWSER_UA }
+        };
+      }
+    }))
+  );
+  if (racedInvidious.value) return { ok: true, videoId: vid, items: [racedInvidious.value] };
+
   // الطبقة 5: عقد Cobalt السحابية كخط دفاع خامس مع دعم الأحجام الأكبر من 50MB
   const cobaltNodes = [
     'https://cobalt-api.kwiatekmiki.com',
     'https://cobalt-backend.canine.tools',
     'https://capi.3kh0.net'
   ];
-  for (const node of cobaltNodes) {
-    try {
-      const r = await fetch(node, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': BROWSER_UA
-        },
-        body: JSON.stringify({
-          url: `https://www.youtube.com/watch?v=${vid}`,
-          videoQuality: '480',
-          filenameStyle: 'basic'
-        })
-      });
-      if (!r.ok) continue;
-      const j: any = await r.json();
-      const dlUrl = j?.url;
-      if (dlUrl && String(dlUrl).startsWith('http')) {
+  const racedCobalt = await raceProviders<DownloadedMediaItem>(
+    cobaltNodes.map(node => ({
+      name: node,
+      run: async () => {
+        const r = await boundedFetch(node, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'User-Agent': BROWSER_UA
+          },
+          body: JSON.stringify({
+            url: `https://www.youtube.com/watch?v=${vid}`,
+            videoQuality: '480',
+            filenameStyle: 'basic'
+          })
+        });
+        if (!r.ok) return null;
+        const j: any = await r.json();
+        const dlUrl = j?.url;
+        if (!dlUrl || !String(dlUrl).startsWith('http')) return null;
         const probed = await probeMediaStreamOrBytes(String(dlUrl), { 'User-Agent': BROWSER_UA }, 10_000);
-        if (probed?.bytes || probed?.oversized) {
-          return {
-            ok: true,
-            videoId: vid,
-            items: [
-              {
-                kind: 'video',
-                url: probed.directUrl,
-                bytes: probed.bytes,
-                oversized: probed.oversized,
-                sizeMB: probed.sizeMB,
-                headers: { 'User-Agent': BROWSER_UA }
-              }
-            ]
-          };
-        }
+        if (!(probed?.bytes || probed?.oversized)) return null;
+        return {
+          kind: 'video' as const,
+          url: probed.directUrl,
+          bytes: probed.bytes,
+          oversized: probed.oversized,
+          sizeMB: probed.sizeMB,
+          headers: { 'User-Agent': BROWSER_UA }
+        };
       }
-    } catch {
-      continue;
-    }
-  }
+    }))
+  );
+  if (racedCobalt.value) return { ok: true, videoId: vid, items: [racedCobalt.value] };
 
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل الفيديو من يوتيوب — تأكد أن الفيديو عام ثم حاول مجدداً.' };
 }
 
 /** استخراج النسخة عالية الدقة (1080p / 720p HD) لزر «🎬 تحميل بدقة عالية HD» حتى لو تجاوزت 50MB */
-export async function extractYouTubeHighDefinition(videoId: string): Promise<SocialDownloadResult> {
+async function extractHighDefinitionAttempt(videoId: string): Promise<SocialDownloadResult> {
   const savetubeHd = await extractViaSavetubeCloud(videoId, 'video', ['1080', '720', '480']);
   if (savetubeHd?.bytes || savetubeHd?.oversized) {
     return {
@@ -2274,19 +2321,125 @@ export async function extractYouTubeHighDefinition(videoId: string): Promise<Soc
   };
 }
 
+/**
+ * HD is the least reliable path (both cloud transcoders cap at 720/1080 and one
+ * of them is usually down), so it gets the same hard budget as a normal download.
+ */
+export async function extractYouTubeHighDefinition(videoId: string): Promise<SocialDownloadResult> {
+  const started = Date.now();
+  try {
+    const result = await withTimeout(() => extractHighDefinitionAttempt(videoId), MEDIA_TOTAL_BUDGET_MS, 'yt:hd');
+    if (result.ok) return result;
+    const summary = summarizeFailures(attemptsSince(started), 'يوتيوب HD');
+    return { ...result, error: summary.serviceDown ? summary.text : result.error || summary.text };
+  } catch (error: any) {
+    const summary = summarizeFailures(attemptsSince(started), 'يوتيوب HD');
+    return {
+      ok: false,
+      items: [],
+      error:
+        error?.code === 'timeout'
+          ? '⚠️ النسخة عالية الدقة تأخذ وقت طويل هالوقت — جرّب زر HD مرة ثانية أو نزّل النسخة العادية.'
+          : summary.text
+    };
+  }
+}
+
+/** Runs one platform's downloader; kept separate so the budget wrapper stays tiny. */
+function runPlatformDownload(platform: SocialPlatform, url: string): Promise<SocialDownloadResult> {
+  switch (platform) {
+    case 'tt':
+      return downloadTikTok(url);
+    case 'pin':
+      return downloadPinterest(url);
+    case 'ig':
+      return downloadInstagram(url);
+    case 'yt':
+      return downloadYouTube(url);
+  }
+}
+
+/** Attempts made since `since`, so a failure can explain itself. */
+function attemptsSince(since: number): ProviderAttempt[] {
+  return providerHealth
+    .snapshot()
+    .filter(entry => entry.lastFailureAt >= since || entry.lastSuccessAt >= since)
+    .map(entry => ({
+      provider: entry.provider,
+      ok: entry.lastSuccessAt >= entry.lastFailureAt,
+      ms: 0,
+      at: Math.max(entry.lastSuccessAt, entry.lastFailureAt),
+      reason: entry.lastReason
+    }));
+}
+
+function plainPlatformLabel(platform: SocialPlatform): string {
+  return socialPlatformLabel(platform).replace(/^[^\p{L}]+/u, '').trim();
+}
+
+/**
+ * Downloads one public post, with a hard time budget: the mirrors are third-party
+ * services, so a dead one must never hang the bot or be blamed on the user's link.
+ */
 export async function downloadFromPlatform(platform: SocialPlatform, rawInput: string): Promise<SocialDownloadResult> {
   const extracted = extractFirstUrl(rawInput);
   if (!extracted) {
     return { ok: false, items: [], error: '⚠️ يرجى إرسال رابط صحيح يبدأ بـ https://' };
   }
-  switch (platform) {
-    case 'tt':
-      return downloadTikTok(extracted);
-    case 'pin':
-      return downloadPinterest(extracted);
-    case 'ig':
-      return downloadInstagram(extracted);
-    case 'yt':
-      return downloadYouTube(extracted);
+  const label = plainPlatformLabel(platform);
+  const started = Date.now();
+  let result: SocialDownloadResult;
+  let timedOut = false;
+  try {
+    result = await withTimeout(() => runPlatformDownload(platform, extracted), MEDIA_TOTAL_BUDGET_MS, `download:${platform}`);
+  } catch (error: any) {
+    timedOut = error?.code === 'timeout';
+    const attempts = attemptsSince(started);
+    const summary = summarizeFailures(attempts, label);
+    return {
+      ok: false,
+      items: [],
+      error: timedOut
+        ? `⚠️ خدمة التحميل من ${label} بطيئة جداً هالوقت — جرّب مرة ثانية أو منصة ثانية.`
+        : summary.text,
+      diagnostics: {
+        serviceDown: timedOut || summary.serviceDown,
+        providers: summary.providers,
+        kinds: summary.kinds,
+        elapsedMs: Date.now() - started,
+        timedOut
+      }
+    };
   }
+  if (result.ok) return result;
+
+  // A plain "make sure it is public" hides a broken mirror: say what really failed.
+  const attempts = attemptsSince(started);
+  const summary = summarizeFailures(attempts, label);
+  return {
+    ...result,
+    error: summary.serviceDown ? summary.text : result.error || summary.text,
+    diagnostics: {
+      serviceDown: summary.serviceDown,
+      providers: summary.providers,
+      kinds: summary.kinds,
+      elapsedMs: Date.now() - started,
+      timedOut
+    }
+  };
 }
+
+/** Health of every mirror the downloaders touched (for /dlstatus and diagnostics). */
+export function mediaProviderReport(now = Date.now()) {
+  return providerHealth.snapshot(now).map(entry => ({
+    ...entry,
+    status: entry.coolingDown ? 'متعطلة مؤقتاً' : entry.consecutiveFailures > 0 ? 'متذبذبة' : entry.ok > 0 ? 'شغّالة' : 'ما مستخدمة'
+  }));
+}
+
+/** Resets mirror health; used by tests and by /dlstatus reset. */
+export function resetMediaProviders(): void {
+  providerHealth.reset();
+}
+
+export { MEDIA_ENGINE_BUILD, MEDIA_PROBE_TIMEOUT_MS, MEDIA_STEP_TIMEOUT_MS, MEDIA_TOTAL_BUDGET_MS };

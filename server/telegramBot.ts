@@ -1109,6 +1109,8 @@ export class TelegramBotManager {
   private pendingSocialDl: Map<string, MS.SocialPlatform> = new Map();
   private seenUpdateIds: Set<number> = new Set();
   private activeSocialDownloads: Set<string> = new Set();
+  /** آخر رابط فشل تحميله لكل مستخدم — زر «جرّب مرة ثانية» يعيد نفس المحاولة بلا كتابة الرابط. */
+  private lastSocialAttempt: Map<string, { platform: MS.SocialPlatform; url: string }> = new Map();
   private mediaSessionMsgs: Map<string, number[]> = new Map();
   private activeDownloadSlots: number = 0;
   private waitingDownloadResolvers: Array<() => void> = [];
@@ -2413,6 +2415,31 @@ export class TelegramBotManager {
     const senderName = sender ? (sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '')) : 'مجهول';
 
     const isStartCommand = /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
+
+    // 🩺 حالة مزوّدي التحميل — للمالك فقط، تبيّن أي مرآة متعطلة فعلاً.
+    const isDlStatus = /^\/dlstatus(?:@\w+)?(?:\s|$)/i.test(text);
+    if (isDlStatus) {
+      if (!sender || !this.isOwner(sender.id)) return;
+      const SEP = '━━━━━━━━━━━━━━━━━━━';
+      const report = MS.mediaProviderReport();
+      const lines = report.length
+        ? report
+            .slice(0, 30)
+            .map(entry => {
+              const tail = entry.lastReason ? ` — ${entry.lastReason}` : '';
+              return `• ${this.mdSafe(entry.provider)}: ${entry.status} (✅ ${entry.ok} / ❌ ${entry.failed})${this.mdSafe(tail)}`;
+            })
+            .join('\n')
+        : '_ما انسجّل أي محاولة بعد — أرسل رابط من إحدى المنصات أولاً._';
+      await this.sendMessage(
+        chatId,
+        `🩺 *حالة مزوّدي التحميل*\n${SEP}\n` +
+          `🧩 نسخة المحرك: ${MS.MEDIA_ENGINE_BUILD}\n${SEP}\n${lines}\n\n` +
+          `⏱️ مهلة الخطوة ${Math.round(MS.MEDIA_STEP_TIMEOUT_MS / 1000)} ثانية، والسقف الكلي ${Math.round(MS.MEDIA_TOTAL_BUDGET_MS / 1000)} ثانية.`
+      );
+      return;
+    }
+
     if (sender && !this.isOwner(sender.id) && message.chat.type === 'private') {
       if (!(await this.hasRequiredChannelMembership(String(sender.id), isStartCommand))) {
         await this.sendSubscriptionPrompt(chatId);
@@ -8410,6 +8437,20 @@ export class TelegramBotManager {
       return;
     }
 
+    // ── إعادة محاولة آخر رابط فشل (بدل ما يكتبه المستخدم مرة ثانية) ──
+    if (data === 'dlretry') {
+      const last = this.lastSocialAttempt.get(userId);
+      if (!last) {
+        await this.answerCallbackQuery(cb.id, 'أرسل الرابط مرة ثانية.', true);
+        return;
+      }
+      if (messageId) await this.deleteMessage(chatId, messageId);
+      await this.answerCallbackQuery(cb.id, '🔄 جاري إعادة المحاولة...');
+      this.pendingSocialDl.set(userId, last.platform);
+      await this.handleSocialDownloadInput(userId, last.url);
+      return;
+    }
+
     // ── اختيار منصة التحميل ──
     if (data.startsWith('dl:')) {
       const platform = data.slice(3) as MS.SocialPlatform;
@@ -9824,15 +9865,19 @@ export class TelegramBotManager {
 
     await this.acquireDownloadSlot();
     try {
+      this.lastSocialAttempt.set(userId, { platform, url: rawUrl });
       const result = await MS.downloadFromPlatform(platform, rawUrl);
       if (!result.ok || !result.items.length) {
         const errText = result.error || '⚠️ تعذّر تحميل هذا الرابط — تأكد أنه رابط منشور عام وصحيح.';
+        // Instead of making the user paste the link again, offer an explicit retry.
+        const failKb: any[][] = [
+          [{ text: '🔁 جرّب مرة ثانية', callback_data: 'dlretry' }],
+          [{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]
+        ];
         if (statusMsgId) {
-          await this.editMessageText(userId, statusMsgId, errText, [
-            [{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]
-          ]);
+          await this.editMessageText(userId, statusMsgId, errText, failKb);
         } else {
-          await this.sendMessage(userId, errText, [[{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]]);
+          await this.sendMessage(userId, errText, failKb);
         }
         return;
       }
@@ -9900,8 +9945,11 @@ export class TelegramBotManager {
         await this.editMessageText(
           userId,
           statusMsgId,
-          '⚠️ تعذّر استلام الملف من المصدر حالياً — حاول مرة أخرى بعد لحظات.',
-          [[{ text: '🔙 رجوع', callback_data: 'svc:dl' }]]
+          '⚠️ خدمة الملف نفسها ما استجابت هالوقت — جرّب مرة ثانية بعد لحظات.',
+          [
+            [{ text: '🔁 جرّب مرة ثانية', callback_data: 'dlretry' }],
+            [{ text: '🔙 رجوع', callback_data: 'svc:dl' }]
+          ]
         );
       }
     } finally {

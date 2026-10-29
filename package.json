@@ -19,7 +19,8 @@
     "test:responsive:browser": "node scripts/check-responsive-browser.mjs",
     "test:drawing:browser": "node scripts/check-drawing-room-browser.mjs",
     "test:drawing": "tsx scripts/check-drawing-scoring.ts",
-    "test:drawing:dom": "node scripts/check-drawing-room-dom.mjs"
+    "test:drawing:dom": "node scripts/check-drawing-room-dom.mjs",
+    "test:media": "tsx scripts/check-media-downloads.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
