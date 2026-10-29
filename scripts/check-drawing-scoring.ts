@@ -296,6 +296,11 @@ assert.ok(lobbyHtml.includes('id="drawCreateOptions"'), 'the room options are co
 assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the open room list lives inside the rooms screen');
 assert.ok(lobbyHtml.indexOf('id="drawRoomsView"') < lobbyHtml.indexOf('id="drawPublicList"'), 'the list is inside the rooms screen');
 assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the room is opened from inside the rooms screen');
+assert.ok(lobbyHtml.includes('id="drawRoomsPlay"'), 'the rooms screen has its own play button');
+assert.ok(/id="drawRoomsPlay"[^>]*disabled/.test(lobbyHtml), 'the rooms play button starts locked');
+assert.ok(lobbyHtml.includes('id="drawRoomsBack"'), 'the rooms screen can go back');
+assert.ok(lobbyHtml.includes('draw-room-card'), 'open rooms render as pickable cards');
+assert.ok(lobbyHtml.indexOf('id="drawLobbyMain"') < lobbyHtml.indexOf('id="drawRoomsView"'), 'the rooms screen is its own screen');
 assert.ok(!lobbyHtml.includes('draw-hub'), 'no hub screen replaced the lobby');
 
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');
