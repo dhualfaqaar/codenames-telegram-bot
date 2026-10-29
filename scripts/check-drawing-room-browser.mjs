@@ -165,6 +165,23 @@ try {
   assert.ok(playLayout.feed.top >= playLayout.board.bottom - 2, 'answers sit under the board');
   assert.ok(playLayout.tools.right <= playLayout.board.left + 2, 'the tool rail sits left of the board');
   assert.ok(playLayout.logs.bottom <= playLayout.viewport, 'the log card is visible without scrolling');
+  // Nothing in the room may need a page scroll: the board, the tool rail and both
+  // cards all have to fit the viewport (inner lists scroll, the page does not).
+  for (const [label, page] of [['host', host], ['guest', guest]]) {
+    const fit = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollHeight, viewport: window.innerHeight,
+      body: document.body.scrollHeight, doc: document.documentElement.clientHeight,
+      canvas: document.querySelector('#drawCanvas').getBoundingClientRect().toJSON(),
+      wrap: document.querySelector('.draw-canvas-wrap').getBoundingClientRect().toJSON(),
+      logs: document.querySelector('.draw-logs-card').getBoundingClientRect().toJSON(),
+      feed: document.querySelector('.draw-feed-card').getBoundingClientRect().toJSON(),
+      players: document.querySelector('.draw-room-players').getBoundingClientRect().toJSON(),
+    }));
+    assert.ok(fit.scroll <= fit.viewport + 2, `${label}: the room fits one screen (${fit.scroll} <= ${fit.viewport})`);
+    assert.ok(fit.feed.bottom <= fit.viewport + 1 && fit.logs.bottom <= fit.viewport + 1, `${label}: guesses and log are above the fold`);
+    assert.ok(fit.players.bottom <= fit.viewport + 1, `${label}: the player column is fully visible`);
+    assert.ok(Math.abs(fit.canvas.width - fit.wrap.width) <= 2 && Math.abs(fit.canvas.height - fit.wrap.height) <= 2, `${label}: the board fills its frame exactly`);
+  }
   assert.equal(await host.locator('.draw-tool[data-tool]').count(), 8);
   assert.equal(await host.locator('.palette-color').count(), 20);
   assert.equal(await guest.locator('.draw-tool').count(), 0, 'guessers get no drawing tools');
