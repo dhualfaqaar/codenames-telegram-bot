@@ -12,10 +12,12 @@
  */
 
 /** Bumped with every media reliability release so /dlstatus proves what is live. */
-export const MEDIA_ENGINE_BUILD = '2026-10-30-media-race-v20';
+export const MEDIA_ENGINE_BUILD = '2026-10-30-media-shortlinks-v21';
 export const MEDIA_STEP_TIMEOUT_MS = 9_000;
 export const MEDIA_PROBE_TIMEOUT_MS = 6_000;
-export const MEDIA_TOTAL_BUDGET_MS = 26_000;
+export const MEDIA_TOTAL_BUDGET_MS = 34_000;
+/** Media files are big: a 20MB MP4 legitimately needs more than a JSON call. */
+export const MEDIA_STREAM_TIMEOUT_MS = 20_000;
 export const MEDIA_RACE_TIMEOUT_MS = 12_000;
 export const PROVIDER_FAILURE_THRESHOLD = 3;
 export const PROVIDER_COOLDOWN_MS = 10 * 60_000;

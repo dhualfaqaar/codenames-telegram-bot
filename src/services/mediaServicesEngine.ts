@@ -14,6 +14,7 @@ import {
   MEDIA_STEP_TIMEOUT_MS,
   MEDIA_TOTAL_BUDGET_MS,
   MEDIA_PROBE_TIMEOUT_MS,
+  MEDIA_STREAM_TIMEOUT_MS,
   MEDIA_ENGINE_BUILD,
   type ProviderAttempt
 } from './mediaResilience';
@@ -328,13 +329,15 @@ async function probeMediaStreamOrBytes(
 ): Promise<ProbedMediaResult | null> {
   const MAX_TG_BYTES = 49 * 1024 * 1024;
   try {
+    // A 20MB video is not a JSON call: give the bytes their own deadline, or a
+    // perfectly healthy CDN looks "dead" just because it is slow.
     const r = await boundedFetch(url, {
       redirect: 'follow',
       headers: {
         'User-Agent': BROWSER_UA,
         ...(headers || {})
       }
-    });
+    }, MEDIA_STREAM_TIMEOUT_MS);
     if (!r.ok) {
       await r.body?.cancel().catch(() => undefined);
       return null;
@@ -954,6 +957,80 @@ const YT_NATIVE_CLIENTS: YTClientProfile[] = [
   }
 ];
 
+/** Pulls one embedded `ytInitialPlayerResponse` object out of a YouTube page. */
+function extractPlayerResponseFromHtml(html: string): any | null {
+  const marker = html.indexOf('ytInitialPlayerResponse');
+  if (marker < 0) return null;
+  const braceStart = html.indexOf('{', marker);
+  if (braceStart < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = braceStart; i < html.length && i < braceStart + 4_000_000; i += 1) {
+    const ch = html[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(braceStart, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Last-resort YouTube path that does not need any third party: the public embed
+ * page embeds the same player response the API returns. Datacenter IPs often get
+ * a bot check here too, but when it works it is the fastest source available.
+ */
+async function extractViaYouTubeEmbedPage(
+  videoId: string,
+  mode: 'audio' | 'video'
+): Promise<{ url: string; bytes?: Uint8Array; ua: string; ext: 'm4a' | 'mp4' } | null> {
+  for (const pageUrl of [`https://www.youtube.com/embed/${videoId}`, `https://www.youtube.com/watch?v=${videoId}`]) {
+    try {
+      const res = await boundedFetch(pageUrl, {
+        headers: {
+          'User-Agent': BROWSER_UA,
+          'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
+        }
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const player = extractPlayerResponseFromHtml(html);
+      if (!player) continue;
+      if (String(player?.playabilityStatus?.status || '') !== 'OK') continue;
+      const muxed: any[] = player?.streamingData?.formats || [];
+      const adaptive: any[] = player?.streamingData?.adaptiveFormats || [];
+      const candidates =
+        mode === 'audio'
+          ? adaptive.filter(f => String(f.mimeType || '').startsWith('audio/') && f.url)
+          : [...muxed.filter(f => f.itag === 18 && f.url), ...muxed.filter(f => f.url)];
+      for (const format of candidates.slice(0, 3)) {
+        const verified = await tryFetchMediaBytes(String(format.url), { 'User-Agent': BROWSER_UA }, 10_000);
+        if (verified) {
+          return { url: String(format.url), bytes: verified, ua: BROWSER_UA, ext: mode === 'audio' ? 'm4a' : 'mp4' };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 /** استخراج دفق الصوت أو الفيديو من YouTube Innertube مع إرفاق الـ User-Agent المطابق تماماً لتجنب خطأ 403 */
 async function extractViaYouTubeNative(
   videoId: string,
@@ -1085,6 +1162,10 @@ async function extractViaYouTubeNative(
     }
   }
 
+  // صفحة التضمين العامة — بدون وسيط خارجي (قد تنجح وقت يفشل نداء innertube)
+  const embedPage = await extractViaYouTubeEmbedPage(videoId, mode);
+  if (embedPage?.bytes) return embedPage;
+
   // بدائل Piped الموزّعة (تمرّر الصوت الحقيقي عبر بروكسيات خارج داتاسنتر Cloudflare مع فحص البايتات الفعلي!)
   const pipedNodes = [
     'https://api.piped.private.coffee',
@@ -1128,7 +1209,8 @@ async function extractViaYouTubeNative(
   const invidiousNodes = [
     'https://inv.nadeko.net',
     'https://invidious.nerdvpn.de',
-    'https://invidious.privacyredirect.com'
+    'https://invidious.tiekoetter.com',
+    'https://yt.chocolatemoo53.com'
   ];
   for (const node of invidiousNodes) {
     try {
@@ -1538,14 +1620,76 @@ async function fetchWithCookieChain(initialUrl: string, ua = BROWSER_UA): Promis
 }
 
 /** 🎵 تحميل من تيك توك بدون علامة مائية (5 طبقات مستقلة غير محجوبة من Cloudflare) */
+/** Telegram (and users' phones) add a stray `www.` to short hosts; m./vt./vm.
+ * all point at the same post, so normalise before asking any provider. */
+function normalizeTikTokUrl(raw: string): string {
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'www.vt.tiktok.com') parsed.hostname = 'vt.tiktok.com';
+    else if (host === 'www.vm.tiktok.com') parsed.hostname = 'vm.tiktok.com';
+    else if (host === 'm.tiktok.com' || host === 'www.m.tiktok.com') parsed.hostname = 'www.tiktok.com';
+    else if (host === 'tiktok.com') parsed.hostname = 'www.tiktok.com';
+    return parsed.toString();
+  } catch {
+    return raw;
+  }
+}
+
+const TIKTOK_ID_RE = /\/(?:video|photo|v)\/(\d{15,22})/;
+
+/**
+ * Short links (vt. / vm. / /t/) carry no video id, and every reliable provider —
+ * the app feed especially — is addressed by that id. Follow the redirect chain
+ * with a small bounded budget and hand back the canonical URL.
+ */
+async function resolveTikTokShortLink(raw: string): Promise<{ url: string; awemeId: string } | null> {
+  let current = raw;
+  for (let hop = 0; hop < 4; hop += 1) {
+    const direct = String(current).match(TIKTOK_ID_RE)?.[1];
+    if (direct) return { url: current, awemeId: direct };
+    let location = '';
+    try {
+      const r = await boundedFetch(current, {
+        redirect: 'manual',
+        headers: {
+          'User-Agent': BROWSER_UA,
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8'
+        }
+      }, 5_000);
+      location = r.headers.get('location') || '';
+      await r.body?.cancel().catch(() => undefined);
+    } catch {
+      return null;
+    }
+    if (!location) return null;
+    current = location.startsWith('http') ? location : new URL(location, current).toString();
+    const id = String(current).match(TIKTOK_ID_RE)?.[1];
+    if (id) return { url: current, awemeId: id };
+  }
+  return null;
+}
+
 async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
-  let resolvedUrl = url;
-  let awemeId = url.match(/\/(?:video|photo)\/(\d{15,22})/)?.[1] || '';
+  const normalized = normalizeTikTokUrl(url);
+  let resolvedUrl = normalized;
+  let awemeId = normalized.match(TIKTOK_ID_RE)?.[1] || '';
+
+  // A short link has no id: resolve it first, otherwise the app feed — our most
+  // reliable layer — cannot even be asked, and the mirrors get a dead path.
+  if (!awemeId) {
+    const short = await resolveTikTokShortLink(normalized).catch(() => null);
+    if (short) {
+      resolvedUrl = short.url;
+      awemeId = short.awemeId;
+    }
+  }
 
   // الطبقة 1: السحب المباشر من صفحة TikTok الرسمية مع حفظ الكوكيز (tt_chain_token) + استخراج الفيديو الأصلي بدون علامة مائية!
   // سلسلة الكوكيز قد تقفز 6 مرات، فنسقّفها: إذا حجب تيك توك الـ Worker ننتقل للمرايا فوراً بدل حرق الميزانية.
   try {
-    const chain = await withTimeout(() => fetchWithCookieChain(url, BROWSER_UA), 7_000, 'tiktok:page');
+    const chain = await withTimeout(() => fetchWithCookieChain(resolvedUrl, BROWSER_UA), 7_000, 'tiktok:page');
     if (chain) {
       resolvedUrl = chain.finalUrl || url;
       if (!awemeId) {
@@ -2198,11 +2342,13 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   }
 
   // الطبقة 3: البث الممرّر عبر بروكسي Invidious المحلي (&local=true يتجاوز قفل ip= الخاص بـ googlevideo تماماً!)
+  // From the official iv-org/documentation instance list (they must score 90%+
+  // uptime to be listed), freshest first.
   const invLocalHosts = [
     'https://inv.nadeko.net',
     'https://invidious.nerdvpn.de',
-    'https://invidious.jing.rocks',
-    'https://yewtu.be'
+    'https://invidious.tiekoetter.com',
+    'https://yt.chocolatemoo53.com'
   ];
   // The instances mirror the same stream, so they run together and the first good one wins.
   const racedInvidious = await raceProviders<DownloadedMediaItem>(
@@ -2226,10 +2372,15 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
   if (racedInvidious.value) return { ok: true, videoId: vid, items: [racedInvidious.value] };
 
   // الطبقة 5: عقد Cobalt السحابية كخط دفاع خامس مع دعم الأحجام الأكبر من 50MB
+  // Community instances tracked by cobalt.directory (they are tested for API
+  // support before being listed). Dead ones get parked by the health registry.
   const cobaltNodes = [
-    'https://cobalt-api.kwiatekmiki.com',
-    'https://cobalt-backend.canine.tools',
-    'https://capi.3kh0.net'
+    'https://subito-c.meowing.de',
+    'https://nuko-c.meowing.de',
+    'https://cobalt-api.clxxped.lol',
+    'https://nachos.imput.net',
+    'https://sunny.imput.net',
+    'https://cobalt-api.kwiatekmiki.com'
   ];
   const racedCobalt = await raceProviders<DownloadedMediaItem>(
     cobaltNodes.map(node => ({
@@ -2250,7 +2401,14 @@ async function downloadYouTube(url: string): Promise<SocialDownloadResult> {
         });
         if (!r.ok) return null;
         const j: any = await r.json();
-        const dlUrl = j?.url;
+        // cobalt v10 answers with a status: tunnel (proxied stream), redirect
+        // (direct CDN link) or picker (an array of candidates).
+        const status = String(j?.status || '');
+        const picked =
+          status === 'picker'
+            ? j?.picker?.find((item: any) => item?.type === 'video') || j?.picker?.[0]
+            : null;
+        const dlUrl = picked?.url || j?.url;
         if (!dlUrl || !String(dlUrl).startsWith('http')) return null;
         const probed = await probeMediaStreamOrBytes(String(dlUrl), { 'User-Agent': BROWSER_UA }, 10_000);
         if (!(probed?.bytes || probed?.oversized)) return null;
@@ -2442,4 +2600,10 @@ export function resetMediaProviders(): void {
   providerHealth.reset();
 }
 
-export { MEDIA_ENGINE_BUILD, MEDIA_PROBE_TIMEOUT_MS, MEDIA_STEP_TIMEOUT_MS, MEDIA_TOTAL_BUDGET_MS };
+export {
+  MEDIA_ENGINE_BUILD,
+  MEDIA_PROBE_TIMEOUT_MS,
+  MEDIA_STEP_TIMEOUT_MS,
+  MEDIA_STREAM_TIMEOUT_MS,
+  MEDIA_TOTAL_BUDGET_MS
+};
