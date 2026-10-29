@@ -16,6 +16,9 @@ import {
   MEDIA_PROBE_TIMEOUT_MS,
   MEDIA_STREAM_TIMEOUT_MS,
   MEDIA_ENGINE_BUILD,
+  traceReset,
+  traceSnapshot,
+  type TraceEntry,
   type ProviderAttempt
 } from './mediaResilience';
 
@@ -1552,6 +1555,8 @@ export interface SocialDownloadResult {
     kinds: string[];
     elapsedMs: number;
     timedOut: boolean;
+    /** Every network call this download made, so an owner can see the real cause. */
+    trace?: TraceEntry[];
   };
 }
 
@@ -1785,6 +1790,43 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
           }
         });
       }
+    }
+    // TikTok's own embed page is served to datacenter IPs far more often than the
+    // main site, and it carries the same play/download addresses as the app feed.
+    if (awemeId) {
+      mirrors.push({
+        name: 'tiktok:embed',
+        run: async () => {
+          const r = await boundedFetch(`https://www.tiktok.com/embed/v2/${awemeId}`, {
+            headers: {
+              'User-Agent': BROWSER_UA,
+              Referer: 'https://www.tiktok.com/',
+              'Accept-Language': 'en-US,en;q=0.9'
+            }
+          });
+          if (!r.ok) return null;
+          const html = await r.text();
+          const raw =
+            html.match(/"playAddr"\s*:\s*"([^"]+)"/)?.[1] ||
+            html.match(/"play_addr"\s*:\s*\{"url_list"\s*:\s*\["([^"]+)"/)?.[1] ||
+            html.match(/"downloadAddr"\s*:\s*"([^"]+)"/)?.[1] ||
+            '';
+          const mediaUrl = raw.replace(/\\u002F/gi, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+          if (!mediaUrl.startsWith('http')) return null;
+          const verified = await tryFetchMediaBytes(
+            mediaUrl,
+            { 'User-Agent': BROWSER_UA, Referer: 'https://www.tiktok.com/' },
+            4_000
+          );
+          if (!verified) return null;
+          return {
+            ok: true,
+            items: [
+              { kind: 'video' as const, url: mediaUrl, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }
+            ]
+          };
+        }
+      });
     }
     if (awemeId) {
       for (const host of [
@@ -2253,9 +2295,49 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
   }
 
   // الطبقة 4: وسطاء العرض المخصصة لبوتات تيليجرام مع فحص البايتات الفعلي إلزامياً (لا يُقبل أي رابط وهمي!)
+  // Instagram's own embed page is public (that is how blogs embed posts) and is
+  // not subject to the login wall that blocks the normal page.
+  const igMirrors: Array<{ name: string; run: () => Promise<DownloadedMediaItem | null> }> = [
+    {
+      name: 'instagram:embed',
+      run: async () => {
+        const r = await boundedFetch(`https://www.instagram.com/${igPathKind}/${shortcode}/embed/captioned/`, {
+          headers: {
+            'User-Agent': BROWSER_UA,
+            'Accept-Language': 'en-US,en;q=0.9',
+            Referer: 'https://www.instagram.com/'
+          }
+        });
+        if (!r.ok) return null;
+        const html = await r.text();
+        const videoUrl =
+          html.match(/"video_url"\s*:\s*"([^"]+)"/)?.[1] ||
+          html.match(/video_url\s*[:=]\s*["']([^"']+)["']/)?.[1] ||
+          '';
+        const cleanVideo = videoUrl.replace(/\\u002F/gi, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+        if (cleanVideo.startsWith('http')) {
+          const verified = await tryFetchMediaBytes(cleanVideo, { 'User-Agent': BROWSER_UA }, 4_000);
+          if (verified) {
+            return { kind: 'video' as const, url: cleanVideo, bytes: verified, headers: { 'User-Agent': BROWSER_UA } };
+          }
+        }
+        const displayUrl = html.match(/"display_url"\s*:\s*"([^"]+)"/)?.[1] || '';
+        const cleanPhoto = displayUrl.replace(/\\u002F/gi, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+        if (cleanPhoto.startsWith('http')) {
+          const verified = await tryFetchMediaBytes(cleanPhoto, { 'User-Agent': BROWSER_UA }, 3_000);
+          if (verified) {
+            return { kind: 'photo' as const, url: cleanPhoto, bytes: verified, headers: { 'User-Agent': BROWSER_UA } };
+          }
+        }
+        return null;
+      }
+    }
+  ];
+
   // The view mirrors all read the same public post: race them, verified bytes only.
-  const racedIg = await raceProviders<DownloadedMediaItem>(
-    ['instagramez.com', 'kkinstagram.com', 'vxinstagram.com', 'eeinstagram.com', 'ddinstagram.com'].map(host => ({
+  const racedIg = await raceProviders<DownloadedMediaItem>([
+    ...igMirrors,
+    ...['instagramez.com', 'kkinstagram.com', 'vxinstagram.com', 'eeinstagram.com', 'ddinstagram.com'].map(host => ({
       name: host,
       run: async () => {
         const r = await boundedFetch(`https://${host}/${igPathKind}/${shortcode}`, {
@@ -2283,7 +2365,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         return null;
       }
     }))
-  );
+  ]);
   if (racedIg.value) return { ok: true, items: [racedIg.value] };
 
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور إنستغرام — تأكد أن الحساب عام والرابط صحيح.' };
@@ -2546,6 +2628,7 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
   }
   const label = plainPlatformLabel(platform);
   const started = Date.now();
+  traceReset();
   let result: SocialDownloadResult;
   let timedOut = false;
   try {
@@ -2565,7 +2648,8 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
         providers: summary.providers,
         kinds: summary.kinds,
         elapsedMs: Date.now() - started,
-        timedOut
+        timedOut,
+        trace: traceSnapshot()
       }
     };
   }
@@ -2582,9 +2666,32 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
       providers: summary.providers,
       kinds: summary.kinds,
       elapsedMs: Date.now() - started,
-      timedOut
+      timedOut,
+      trace: traceSnapshot()
     }
   };
+}
+
+/** One download together with the exact list of hosts it talked to (owner tools). */
+export async function diagnoseDownload(platform: SocialPlatform, rawInput: string) {
+  const started = Date.now();
+  const result = await downloadFromPlatform(platform, rawInput);
+  return {
+    result,
+    elapsedMs: Date.now() - started,
+    build: MEDIA_ENGINE_BUILD,
+    trace: traceSnapshot()
+  };
+}
+
+/** Guesses the platform of a pasted link so /dltest can be a one-argument command. */
+export function detectPlatformFromUrl(raw: string): SocialPlatform | null {
+  const text = String(raw || '').toLowerCase();
+  if (/tiktok\.com/.test(text)) return 'tt';
+  if (/instagram\.com|instagr\.am/.test(text)) return 'ig';
+  if (/pinterest\.|pin\.it/.test(text)) return 'pin';
+  if (/youtube\.com|youtu\.be/.test(text)) return 'yt';
+  return null;
 }
 
 /** Health of every mirror the downloaders touched (for /dlstatus and diagnostics). */
