@@ -221,4 +221,49 @@ assert.equal(lobby.rooms.find((entry:any)=>entry.id===publicRoom.room.id).player
 await post(publicRoom.room.id,{action:'start',token:publicRoom.token});
 lobby=await (await rooms.handle(new Request('https://test/api/interactive/rooms?game=gartic'))).json() as any;
 assert.ok(!lobby.rooms.some((entry:any)=>entry.id===publicRoom.room.id),'a started room leaves the browser');
-console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots and the public lobby passed.');
+// The artist gets ten seconds; if they never pick, the turn moves on by itself and
+// nobody draws on their behalf.
+const c10=await (await post('',{game:'gartic',name:'متردد',capacity:6})).json() as any;
+const p1=(await (await post(c10.room.id,{action:'join',name:'أول'})).json() as any).token;
+const p2=(await (await post(c10.room.id,{action:'join',name:'ثاني'})).json() as any).token;
+await post(c10.room.id,{action:'start',token:c10.token});
+const firstPick=await view(c10.room.id,c10.token);
+assert.equal(firstPick.state.phase,'choosing');
+assert.equal(firstPick.state.roundLeft>7&&firstPick.state.roundLeft<=10,true,'the artist has ten seconds to choose');
+const waiting=await storage.get<any>('interactive-room:'+c10.room.id);
+waiting.gameState.choiceDeadline=Date.now()-1;await storage.put('interactive-room:'+c10.room.id,waiting);
+const afterSkip=await view(c10.room.id,p1);
+assert.equal(afterSkip.state.phase,'choosing','a new choice window opens for the next artist');
+assert.notEqual(afterSkip.state.drawerSeat,0,'the pencil moves to the next player');
+assert.equal(afterSkip.state.word,'','nothing is drawn on the artist behalf');
+assert.match(JSON.stringify(afterSkip.state.logs),/ما اختار كلمة/);
+assert.equal(afterSkip.state.round,2);
+const nextArtist=[c10.token,p1,p2][afterSkip.state.drawerSeat];
+assert.ok(nextArtist,'the next artist is a real player');
+assert.equal((await view(c10.room.id,nextArtist)).state.wordChoices.length,2,'the next artist gets the word choices');
+// Empty seats are not players: a stale pencil lands back on a real seat with choices.
+const c11=await (await post('',{game:'gartic',name:'مقاعد',capacity:6})).json() as any;
+const q1=(await (await post(c11.room.id,{action:'join',name:'باقي'})).json() as any).token;
+await post(c11.room.id,{action:'start',token:c11.token});
+const stale=await storage.get<any>('interactive-room:'+c11.room.id);
+stale.gameState.drawer=5;await storage.put('interactive-room:'+c11.room.id,stale);
+const fixed=await view(c11.room.id,q1);
+assert.equal(fixed.state.drawerSeat,0,'the pencil returns to a real seat');
+assert.ok(fixed.state.wordChoices.length===0||fixed.state.wordChoices.length===2);
+const seatOwner=await view(c11.room.id,c11.token);
+assert.equal(seatOwner.state.phase,'choosing');
+assert.equal(seatOwner.state.wordChoices.length,2,'the real drawer always gets choices');
+// The answer is never announced at the end of a round.
+const c12=await (await post('',{game:'gartic',name:'سر',capacity:4})).json() as any;
+const r1=(await (await post(c12.room.id,{action:'join',name:'مخمّن'})).json() as any).token;
+await post(c12.room.id,{action:'start',token:c12.token});
+const secretWord=(await view(c12.room.id,c12.token)).state.wordChoices[0];
+await post(c12.room.id,{action:'choose-word',token:c12.token,word:secretWord});
+await post(c12.room.id,{action:'skip',token:c12.token});
+const ended=await view(c12.room.id,r1);
+assert.equal(ended.state.phase,'reveal');
+assert.equal(ended.state.word,'','the word is cleared from the view');
+assert.ok(!JSON.stringify(ended.state.logs).includes(secretWord),'the log never prints the answer');
+assert.ok(!ended.state.guesses.some((guess:any)=>guess.reveal),'no answer row reaches the guessers');
+assert.ok(!JSON.stringify(ended.state).includes(secretWord),'the answer is not in the payload');
+console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');

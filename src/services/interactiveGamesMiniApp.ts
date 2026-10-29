@@ -977,7 +977,7 @@ function renderGartic(r,s){
   var rows=ordered.map(function(entry){var p=entry.player,score=entry.score,drawer=active&&Number(s.round)>0&&p.seat===Number(s.drawerSeat);var correct=guesses.some(function(g){return g.correct&&g.seat===p.seat});return '<div class="draw-player-row'+(drawer?' drawing':'')+'">'+playerAvatarFlag(drawPlayerAvatar(p.photoUrl,p.name,''),p.bot?'':p.countryCode||'IQ')+'<span class="draw-player-copy"><strong>'+safe(p.name||'لاعب')+(p.seat===r.playerSeat?' · أنت':'')+((p.isBotCreator||(p.seat===r.playerSeat&&isBotCreator))?verifiedBadgeMarkup():'')+'</strong><small>'+digit(score)+' نقطة</small></span><span class="draw-player-state">'+(drawer?'✏️':correct?'✓':'')+'</span></div>'});
   if(waiting){var empties=Math.max(0,Math.min(Number(r.capacity)||0,8)-(r.players||[]).length);for(var e=0;e<empties;e++)rows.push('<div class="draw-player-row empty"><span class="draw-account-avatar">?</span><span class="draw-player-copy"><strong>فارغ</strong><small>بانتظار لاعب</small></span></div>')}
   var current=waiting?'بانتظار اللاعبين':finished?'انتهت المباراة':reveal?(s.roundResult||'انتهت الجولة'):choosing?'اختيار الكلمة':'جولة '+digit(s.round||1);
-  var feed=guesses.map(function(g){if(g.reveal)return '<div class="draw-guess-reveal">الجواب كان: <b>'+safe(g.text)+'</b></div>';return '<div class="guess-entry '+(g.correct?'correct':g.near?'near':'')+'"><b>'+safe(g.name)+':</b> '+safe(g.text)+'</div>'}).join('')||'<div class="draw-empty">'+(waiting?'تظهر التخمينات هنا بعد بدء اللعبة.':'التخمينات تظهر هنا.')+'</div>';
+  var feed=guesses.filter(function(g){return !g.reveal}).map(function(g){return '<div class="guess-entry '+(g.correct?'correct':g.near?'near':'')+'"><b>'+safe(g.name)+':</b> '+safe(g.text)+'</div>'}).join('')||'<div class="draw-empty">'+(waiting?'تظهر التخمينات هنا بعد بدء اللعبة.':'التخمينات تظهر هنا.')+'</div>';
   var guessForm=drawing&&!s.isDrawer&&!s.hasGuessed?'<form id="guessForm" class="guess-form"><input id="guessInput" class="guess-input" maxlength="60" autocomplete="off" placeholder="اكتب تخمينك هنا…" aria-label="تخمينك"><button class="button primary" type="submit">خمّن</button></form>':'';
   var actions=waiting?(r.isHost&&r.players.length>=2?'<button class="button primary" data-action="start">ابدأ اللعبة</button>':'<span class="draw-room-status">'+(r.isHost?'تحتاج لاعبين اثنين على الأقل.':'ننتظر صاحب الغرفة يبدأ اللعبة.')+'</span>'):'';
   var wordBar='';
@@ -985,13 +985,19 @@ function renderGartic(r,s){
     if(s.isDrawer)wordBar='<div class="draw-word-bar"><button type="button" class="draw-word-btn" data-action="hint" '+(Number(s.hintsLeft)>0&&drawing?'':'disabled')+'>تلميح</button><strong class="draw-word">'+safe(s.word||(choosing?'؟':''))+'</strong><button type="button" class="draw-word-btn" data-action="skip" '+(drawing||choosing?'':'disabled')+'>تخطي</button></div>';
     else wordBar='<div class="draw-word-bar guesser"><span class="draw-word">'+safe((s.masked||'').replace(/ /g,'  '))+'</span></div>';
   }
-  var chooseCard=choosing&&s.isDrawer?'<div class="draw-choose"><h3>دورك! اختار كلمة ترسمها</h3><div class="draw-choose-options">'+(s.wordChoices||[]).map(function(w,i){return (i?'<span class="draw-or">أو</span>':'')+'<button type="button" class="draw-word-choice" data-word="'+safe(w)+'"><b>'+safe(w)+'</b><span>✏️ ارسم</span></button>'}).join('')+'</div><small class="draw-choose-timer">'+digit(s.roundLeft||0)+' ثانية للاختيار</small></div>':'';
+  var choices=s.wordChoices||[];
+  var chooseCard='';
+  if(choosing&&s.isDrawer){
+    chooseCard=choices.length
+      ? '<div class="draw-choose"><h3>دورك! اختار كلمة ترسمها</h3><div class="draw-choose-options">'+choices.map(function(w,i){return (i?'<span class="draw-or">أو</span>':'')+'<button type="button" class="draw-word-choice" data-word="'+safe(w)+'"><b>'+safe(w)+'</b><span>✏️ ارسم</span></button>'}).join('')+'</div><small class="draw-choose-timer">باقي <b dir="ltr">'+digit(s.roundLeft||0)+'</b> ثانية — إذا ما اخترت ينتقل الدور للي بعدك</small></div>'
+      : '<div class="draw-choose"><h3>انتهى وقت الاختيار</h3><div class="draw-choose-options"><small class="draw-choose-timer">ينتقل الدور تلقائياً للاعب اللي بعدك.</small></div></div>';
+  }
   var overlay='';
   if(waiting)overlay='<div class="draw-wait-overlay"><strong>بانتظار اللاعبين</strong><span>شارك الدعوة أو رمز الغرفة ويّا أصدقائك.</span></div>';
   else if(finished&&s.matchOver)overlay=drawPodiumMarkup(r,s,ranking);
   else if(finished)overlay='<div class="draw-wait-overlay reveal"><strong>انتهت المباراة</strong><span>شوفوا الترتيب بقائمة اللاعبين.</span></div>';
-  else if(choosing&&!s.isDrawer)overlay='<div class="draw-wait-overlay"><strong>'+safe(s.drawerName||'لاعب')+' يختار كلمة…</strong><span>انتظر لحظات تبدأ الجولة.</span></div>';
-  else if(reveal)overlay='<div class="draw-wait-overlay reveal"><strong>'+safe(s.roundResult||'انتهت الجولة')+'</strong><span>'+(s.word?'الجواب: '+safe(s.word):'')+'</span></div>';
+  else if(choosing&&!s.isDrawer)overlay='<div class="draw-wait-overlay"><strong>'+safe(s.drawerName||'لاعب')+' يختار كلمة…</strong><span>باقي <b dir="ltr">'+digit(s.roundLeft||0)+'</b> ثانية للاختيار.</span></div>';
+  else if(reveal)overlay='<div class="draw-wait-overlay reveal"><strong>'+safe(s.roundResult||'انتهت الجولة')+'</strong><span>الجولة الجديدة تبدأ بعد لحظات.</span></div>';
   var tools=s.isDrawer&&drawing?'<div class="draw-room-tools" data-tools="on">'+drawToolsMarkup()+'</div>':'';
   var duration=Math.max(1,(Number(s.roundDurationMs)||75000)/1000),progress=drawing?Math.max(0,Math.min(100,(Number(s.roundLeft)||0)/duration*100)):choosing?Math.max(0,Math.min(100,(Number(s.roundLeft)||0)/20*100)):0;
   var timer='<div class="draw-room-timer"><span id="roundTimer" dir="ltr">'+digit(s.roundLeft||0)+'</span><small class="draw-unit">ثانية</small><div class="timer-track"><i id="drawTimeProgress" style="width:'+progress+'%"></i></div><small>'+digit(s.targetScore||500)+' نقطة للفوز</small></div>';
