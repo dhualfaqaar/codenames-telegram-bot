@@ -271,13 +271,27 @@ try {
   const visitor = makeClient('زائر');
   await waitFor(() => visitor.document.querySelector('#drawQuickPlay'), 'visitor lobby');
   await openRooms(visitor);
-  await waitFor(() => visitor.document.querySelector(`[data-join-room="${room2}"]`), 'the open room is listed', 15000);
-  assert.match(visitor.document.querySelector(`[data-join-room="${room2}"]`).closest('.draw-public-room').textContent, /منشئ/);
-  click(visitor, `[data-join-room="${room2}"]`);
-  await waitFor(() => visitor.document.querySelector('.draw-room'), 'joined from the list');
-  assert.equal(roomOf(visitor), room2, 'the listing joins the right room');
+  assert.equal(visitor.document.querySelector('#drawLobbyMain').hidden, true, 'the rooms screen replaces the lobby');
+  assert.equal(visitor.document.querySelector('#drawRoomsPlay').disabled, true, 'play stays locked until a room is picked');
+  const card = await waitFor(() => visitor.document.querySelector(`[data-room-id="${room2}"]`), 'the open room is listed', 15000);
+  assert.match(card.textContent, /منشئ/);
+  // Picking a room unlocks the play button, and only then does it join.
+  click(visitor, `[data-room-id="${room2}"]`);
+  await waitFor(() => visitor.document.querySelector(`[data-room-id="${room2}"]`).getAttribute('aria-pressed') === 'true', 'the room is selected');
+  assert.equal(visitor.document.querySelector('#drawRoomsPlay').disabled, false, 'play unlocks with a selection');
+  click(visitor, '#drawRoomsPlay');
+  await waitFor(() => visitor.document.querySelector('.draw-room'), 'joined from the picked room');
+  assert.equal(roomOf(visitor), room2, 'the picked room is the one joined');
 
   // «العب» drops a newcomer into an existing open room in one tap.
+  const back = makeClient('رجوع');
+  await waitFor(() => back.document.querySelector('#drawOpenRooms'), 'back lobby');
+  click(back, '#drawOpenRooms');
+  await waitFor(() => !back.document.querySelector('#drawRoomsView').hidden, 'rooms open for back');
+  click(back, '#drawRoomsBack');
+  await waitFor(() => back.document.querySelector('#drawRoomsView').hidden, 'rooms closed again');
+  assert.equal(back.document.querySelector('#drawLobbyMain').hidden, false, 'the lobby comes back');
+
   const quick = makeClient('سريع');
   await waitFor(() => quick.document.querySelector('#drawQuickPlay'), 'quick play lobby');
   click(quick, '#drawQuickPlay');
