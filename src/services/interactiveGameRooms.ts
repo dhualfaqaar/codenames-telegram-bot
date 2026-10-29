@@ -255,13 +255,20 @@ export class InteractiveGameRooms {
         if (changed) { room.updatedAt = Date.now(); await this.save(room); }
         return this.jsonFor(room, prior.token);
       }
-      if (room.status !== 'waiting') return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه' }, { status: 409 });
+      // Drawing rooms stay open to newcomers: someone who left (or was pruned) can come
+      // back with the same code while the match runs, and a fresh match is always joinable.
+      const lateDrawJoin = room.game === 'gartic' && room.status !== 'waiting';
+      if (room.status !== 'waiting' && !lateDrawJoin) return Response.json({ error: 'اللعبة بدأت، ما نكدر نضيف لاعبين هسه', code: 'game-started' }, { status: 409 });
       const max = room.capacity || (room.game === 'chess' || room.game === 'sudoku' ? 2 : room.game === 'uno' ? 4 : room.game === 'gartic' ? 16 : 6);
-      if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة' }, { status: 409 });
+      if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة — جرّب غرفة جديدة أو انتظر يطلع أحد', code: 'room-full' }, { status: 409 });
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), countryCode: cleanCountryCode(body.countryCode), joinedAt: Date.now(), ...(body.isBotCreator === true ? { isBotCreator: true } : {}), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 200))) } : {}) };
       room.players.push(player);
+      if (!room.players.some(item => item.token === room.host)) room.host = room.players[0].token;
+      // A room that ended (or was drained) must not trap the code: reopen the lobby,
+      // while a match that is still running just takes the player on board.
+      if (room.game === 'gartic' && room.status === 'finished' && !(room.gameState.matchOver && Number(room.gameState.autoNextAt) > Date.now())) this.reopenDrawRoom(room);
       room.updatedAt = Date.now();
-      if (room.game === 'gartic') { room.gameState.logs ||= []; room.gameState.logs.push({ text: `${player.name} انضم`, kind: 'join', at: Date.now() }); room.gameState.logs = room.gameState.logs.slice(-40); }
+      if (room.game === 'gartic') { room.gameState.logs ||= []; room.gameState.logs.push({ text: lateDrawJoin ? `${player.name} انضم وسط المباراة` : `${player.name} انضم`, kind: 'join', at: Date.now() }); room.gameState.logs = room.gameState.logs.slice(-40); }
       if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
       await this.save(room);
       return this.jsonFor(room, player.token);
@@ -574,6 +581,17 @@ export class InteractiveGameRooms {
     return drawn;
   }
   private advanceUno(room: Room, steps: number): void { room.gameState.turn = nextIndex(room.gameState.turn, room.players.length, room.gameState.direction * steps); }
+
+  /** Puts a dead-ended drawing room back in the lobby so its old code is usable again. */
+  private reopenDrawRoom(room: Room): void {
+    const s = room.gameState;
+    s.phase = 'waiting'; s.round = 0; s.word = ''; s.wordChoices = [];
+    s.strokes = []; s.guesses = []; s.correctPlayers = []; s.scores = {};
+    s.roundResult = ''; s.autoNextAt = 0; s.matchOver = false;
+    s.deadline = 0; s.choiceDeadline = 0; s.hintsUsed = 0; s.revealed = 0;
+    room.status = 'waiting';
+    this.pushDrawLog(room, 'الغرفة رجعت جاهزة — ابدأوا مباراة جديدة', 'info');
+  }
 
   /** Removes one drawing-room player, logs the departure and keeps the round sane. */
   private dropDrawPlayer(room: Room, index: number): void {

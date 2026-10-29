@@ -177,8 +177,19 @@ try {
   await waitFor(() => host.document.querySelectorAll('.draw-player-row:not(.empty)').length === 2, 'the host sees the player leave');
   assert.match(host.document.querySelector('.draw-logs-card').textContent, /علي غادر/);
   assert.doesNotMatch(host.document.querySelector('.draw-room-players').textContent, /علي/);
+  // The same room code still works for the friend who walked out: he lands back in
+  // the running match instead of getting "the room can't be opened".
+  const returning = makeClient('علي');
+  await waitFor(() => returning.document.querySelector('#drawRoomCode'), 'returning lobby');
+  returning.document.querySelector('#drawRoomCode').value = roomId;
+  click(returning, '#drawJoinButton');
+  await waitFor(() => returning.document.querySelector('.draw-room'), 'rejoined room');
+  assert.equal(returning.document.querySelector('.draw-join-failure'), null, 'the old code is not refused');
+  await waitFor(() => host.document.querySelectorAll('.draw-player-row:not(.empty)').length === 3, 'the host sees the friend come back');
+  assert.match(host.document.querySelector('.draw-logs-card').textContent, /علي انضم/);
+  assert.ok(returning.document.querySelector('#drawCanvas'), 'the rejoined friend gets the board');
   assert.deepEqual(errors, []);
-  console.log('Drawing room DOM flow passed: words, tools, shapes, logs, chat, hint and automatic next round.');
+  console.log('Drawing room DOM flow passed: words, tools, shapes, colour wheel, clear-all, logs, chat, hint, automatic next round, leaving and rejoining with the same code.');
 } finally {
   for (const dom of windows) dom.window.close();
 }
