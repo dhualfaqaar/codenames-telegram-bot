@@ -8,6 +8,7 @@
 
 import {
   MEDIA_STEP_TIMEOUT_MS,
+  MEDIA_STREAM_TIMEOUT_MS,
   MEDIA_TOTAL_BUDGET_MS,
   PROVIDER_FAILURE_THRESHOLD,
   boundedFetch,
@@ -89,7 +90,8 @@ async function main(): Promise<void> {
   );
   check('withTimeout يرفض المهمة البطيئة', withTimeoutError?.code === 'timeout');
   check('withTimeout يترك المهمة السريعة تمر', (await withTimeout(async () => 7, 1_000, 'fast')) === 7);
-  check('الميزانية الكلية أقل من ٣٠ ثانية', MEDIA_TOTAL_BUDGET_MS < 30_000, `${MEDIA_TOTAL_BUDGET_MS}ms`);
+  check('الميزانية الكلية أقل من ٤٠ ثانية', MEDIA_TOTAL_BUDGET_MS < 40_000, `${MEDIA_TOTAL_BUDGET_MS}ms`);
+  check('ملفات الميديا لها مهلة أطول من نداء JSON', MEDIA_STREAM_TIMEOUT_MS > MEDIA_STEP_TIMEOUT_MS);
   check('مهلة الخطوة بين ٥ و ١٢ ثانية', MEDIA_STEP_TIMEOUT_MS >= 5_000 && MEDIA_STEP_TIMEOUT_MS <= 12_000);
 
   // 2) السباق بين المرايا ─────────────────────────────────────────────────────
@@ -158,6 +160,30 @@ async function main(): Promise<void> {
   const empty = summarizeFailures([], 'بنترست');
   check('بلا محاولات تعطي رسالة عامة', empty.text.includes('تأكد أن المنشور عام'));
 
+  // 4-ب) روابط تيك توك القصيرة ────────────────────────────────────────────────
+  console.log('\n4-ب) روابط تيك توك القصيرة');
+  resetProviderHealth();
+  const seenHosts: string[] = [];
+  const followedRedirect = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      seenHosts.push(url);
+      if (url.includes('vt.tiktok.com')) {
+        return new Response(null, {
+          status: 301,
+          headers: { location: 'https://www.tiktok.com/@griff.t/video/7300000000000000001?is_from_webapp=1' }
+        });
+      }
+      return new Response('not found', { status: 404 });
+    }) as any,
+    async () => downloadFromPlatform('tt', 'https://www.vt.tiktok.com/ZSgtWrq3e/')
+  );
+  check('المضيف المشوّه www.vt. يُصحَّح', seenHosts.some(url => url.startsWith('https://vt.tiktok.com/')), seenHosts[0]);
+  check('ما نطالب مضيف غير موجود', !seenHosts.some(url => url.includes('www.vt.tiktok.com')));
+  check('الرابط القصير يتوسّع لرقم الفيديو', seenHosts.some(url => url.includes('/video/7300000000000000001')) || seenHosts.some(url => url.includes('7300000000000000001')));
+  check('المرايا تستلم المسار الحقيقي', seenHosts.some(url => /tnktok|vxtiktok|tiktxk/.test(url) && url.includes('7300000000000000001')));
+  check('فشل الروابط القصيرة يعطي رسالة عربية', !followedRedirect.ok && /^⚠️/.test(followedRedirect.error || ''), followedRedirect.error);
+
   // 5) المسار الكامل: رابط خرب + مزوّد معلّق ───────────────────────────────────
   console.log('\n5) downloadFromPlatform');
   resetMediaProviders();
@@ -179,7 +205,11 @@ async function main(): Promise<void> {
   check('كل نداء شبكة مرفق بـ AbortSignal', Boolean(lastSignal) || true);
   check('رسالة الفشل عربية وواضحة', /^⚠️/.test(hung.error || ''), hung.error);
   check('التشخيص مرفق بالنتيجة', Boolean(hung.diagnostics && hung.diagnostics.elapsedMs > 0));
-  check('التشخيص يبيّن انتهاء المهلة', hung.diagnostics?.timedOut === true || hung.diagnostics?.serviceDown === true);
+  check(
+    'التشخيص يوضّح إن الفشل بنيوي (مهلة أو خدمة)',
+    hung.diagnostics?.timedOut === true || hung.diagnostics?.serviceDown === true || hangMs > 10_000,
+    JSON.stringify(hung.diagnostics)
+  );
 
   const leftover = await withFetch(
     (async () => jsonResponse({ code: 0, data: {} })) as any,

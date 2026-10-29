@@ -9868,7 +9868,17 @@ export class TelegramBotManager {
       this.lastSocialAttempt.set(userId, { platform, url: rawUrl });
       const result = await MS.downloadFromPlatform(platform, rawUrl);
       if (!result.ok || !result.items.length) {
-        const errText = result.error || '⚠️ تعذّر تحميل هذا الرابط — تأكد أنه رابط منشور عام وصحيح.';
+        const baseErr = result.error || '⚠️ تعذّر تحميل هذا الرابط — تأكد أنه رابط منشور عام وصحيح.';
+        // للمالك فقط: سطر تشخيص يبيّن أي مزوّد فشل ولأي سبب، بدل التخمين.
+        let errText = baseErr;
+        if (this.isOwner(Number(userId))) {
+          const failing = MS
+            .mediaProviderReport()
+            .filter(entry => entry.consecutiveFailures > 0 || entry.coolingDown)
+            .slice(0, 4)
+            .map(entry => `${entry.provider}=${entry.lastReason || 'فشل'}`);
+          if (failing.length) errText += `\n\n🔍 _تشخيص: ${this.mdSafe(failing.join(' · '))}_`;
+        }
         // Instead of making the user paste the link again, offer an explicit retry.
         const failKb: any[][] = [
           [{ text: '🔁 جرّب مرة ثانية', callback_data: 'dlretry' }],
