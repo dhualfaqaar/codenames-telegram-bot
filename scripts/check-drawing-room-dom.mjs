@@ -101,6 +101,11 @@ try {
   assert.equal(choices.length, 2, 'the artist picks between two words');
   assert.equal(await guest.document.querySelectorAll('.draw-word-choice').length, 0, 'suggestions stay private');
   assert.match(guest.document.querySelector('.draw-wait-overlay').textContent, /يختار كلمة/);
+  // The ten second window is spelled out on both sides, so a missed card never looks
+  // like a broken board.
+  assert.match(guest.document.querySelector('.draw-wait-overlay').textContent, /ثانية/);
+  assert.match(host.document.querySelector('.draw-choose-timer').textContent, /باقي/);
+  assert.match(host.document.querySelector('.draw-choose-timer').textContent, /ينتقل الدور/);
   assert.equal((await state(host, roomId)).state.phase, 'choosing');
   assert.equal((await state(guest, roomId)).state.wordChoices.length, 0);
 
@@ -199,7 +204,11 @@ try {
   const drawer = (await state(host, roomId)).state.drawer;
   submit(third, '#guessForm', '#guessInput', word);
   await waitFor(async () => (await state(host, roomId)).state.phase === 'reveal', 'reveal phase');
-  await waitFor(() => /الجواب/.test(host.document.querySelector('.draw-logs-card').textContent), 'the answer is logged');
+  // The answer is never published: no reveal line in the guesses or the log.
+  const afterRound = `${host.document.querySelector('.draw-logs-card').textContent} ${host.document.querySelector('.draw-feed-card').textContent}`;
+  assert.doesNotMatch(afterRound, /الجواب/, 'the word is not announced when the round ends');
+  assert.doesNotMatch(host.document.querySelector('.draw-canvas-wrap').textContent, new RegExp(word), 'the board overlay keeps the answer hidden');
+  assert.equal(host.document.querySelectorAll('.draw-guess-reveal').length, 0, 'no answer row is rendered');
   // The next round starts on its own and the pencil moves to the next player.
   await waitFor(async () => { const view = await state(host, roomId); return view.state.round > round && view.state.phase !== 'reveal'; }, 'auto next round', 20000);
   const nextView = await state(host, roomId);

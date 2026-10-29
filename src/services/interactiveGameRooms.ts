@@ -39,7 +39,7 @@ const ROOM_IDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ROOM_TOUCH_MS = 60_000;
 // Drawing rounds: the artist picks one of two words, draws, then the round is
 // revealed briefly before the next artist starts automatically.
-const DRAW_CHOICE_MS = 20_000;
+const DRAW_CHOICE_MS = 10_000;
 const DRAW_REVEAL_MS = 5_000;
 const DRAW_MAX_HINTS = 2;
 // After the winner podium the room restarts a fresh match on its own.
@@ -658,9 +658,11 @@ export class InteractiveGameRooms {
 
   private startDrawRound(room: Room, index: number): void {
     const s = room.gameState;
+    // Empty seats are not players: the pencil only ever lands on somebody who is here.
     const count = room.players.length;
-    s.round = index + 1;
-    s.drawer = count ? index % count : 0;
+    s.round = Math.max(1, Math.floor(Number(index) || 0) + 1);
+    s.drawer = count ? ((Math.floor(Number(index) || 0) % count) + count) % count : 0;
+    if (!room.players[s.drawer]) s.drawer = 0;
     s.phase = 'choosing';
     s.wordChoices = drawWordChoices(2);
     s.word = '';
@@ -692,12 +694,32 @@ export class InteractiveGameRooms {
     s.roundResult = reason;
     s.autoNextAt = Date.now() + DRAW_REVEAL_MS;
     s.deadline = Date.now();
-    if (s.word) {
-      this.pushDrawLog(room, `الجواب كان: ${s.word}`, 'answer');
-      s.guesses ||= [];
-      s.guesses.push({ name: 'الجواب', seat: null, text: s.word, correct: false, reveal: true });
-      if (s.guesses.length > 60) s.guesses = s.guesses.slice(-60);
+    // The answer stays between the artist and whoever guessed it: no reveal line.
+    s.word = '';
+  }
+
+  /** The artist ran out of time: log it and hand the pencil to the next real player. */
+  private passDrawChoice(room: Room): void {
+    const s = room.gameState;
+    const artist = room.players[s.drawer];
+    if (artist) this.pushDrawLog(room, `${artist.name} ما اختار كلمة — الدور على اللاعب اللي بعده`, 'info');
+    if (room.players.length < 2) {
+      room.status = 'finished'; s.phase = 'reveal'; s.revealed = 0;
+      s.roundResult = 'ما بقى غير لاعب واحد'; s.autoNextAt = 0; s.word = '';
+      return;
     }
+    this.startDrawRound(room, Number(s.round) || 0);
+  }
+
+  /** Keeps the pencil on a real seat even when seats changed between polls. */
+  private normalizeDrawDrawer(room: Room): boolean {
+    const s = room.gameState;
+    if (room.game !== 'gartic' || !room.players.length) return false;
+    if (room.players[s.drawer]) return false;
+    s.drawer = 0;
+    // A fresh pencil needs a fresh choice window, otherwise the round starts for nobody.
+    if ((s.phase || '') === 'choosing') { s.wordChoices = drawWordChoices(2); s.choiceDeadline = Date.now() + DRAW_CHOICE_MS; s.word = ''; }
+    return true;
   }
 
   private tickDraw(room: Room, now = Date.now()): boolean {
@@ -712,9 +734,11 @@ export class InteractiveGameRooms {
     }
     if (room.status !== 'playing') return false;
     if (!s.round) return false;
+    if (this.normalizeDrawDrawer(room)) return true;
     const phase = s.phase || 'drawing';
     if (phase === 'choosing' && now > (Number(s.choiceDeadline) || 0)) {
-      this.beginDrawing(room, (s.wordChoices || [])[0] || DRAW_WORDS[0]);
+      // Nobody chose in time: the turn moves on instead of drawing on their behalf.
+      this.passDrawChoice(room);
       return true;
     }
     if (phase === 'drawing' && now > Number(s.deadline || 0)) { this.endDrawRound(room, 'انتهى الوقت'); return true; }
