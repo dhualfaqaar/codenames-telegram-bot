@@ -942,6 +942,31 @@ function drawToolsMarkup(){
   var clearIcon='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9.5 7V4.8h5V7M6.4 7l.9 12.4h9.4L17.6 7M10.2 10.6v6.2M13.8 10.6v6.2"/></svg>';
   return pairs+'<div class="draw-tool-group draw-history"><button type="button" class="draw-tool" data-action="undo-stroke" title="تراجع" aria-label="تراجع"><span class="draw-tool-glyph">↶</span></button><button type="button" class="draw-tool" data-redo="1" title="إعادة" aria-label="إعادة"><span class="draw-tool-glyph">↷</span></button><button type="button" class="draw-tool draw-clear" data-action="clear" title="مسح كل الرسم" aria-label="مسح كل الرسم">'+clearIcon+'</button></div>'+'<div class="palette-grid">'+palette+'</div>'+'<button type="button" class="draw-color-wheel" id="drawColorWheel" style="--pick:'+drawColor+'" title="دائرة الألوان والتدرج" aria-label="دائرة الألوان والتدرج" aria-expanded="false"><span></span></button>'+'<div class="draw-color-pop" id="drawColorPop"><div class="draw-color-preview" id="drawColorPreview" style="background:'+drawColor+'"></div><label class="draw-gradient hue"><input type="range" id="drawHue" min="0" max="360" step="1" value="'+drawHue+'" aria-label="درجة اللون"></label><label class="draw-gradient light"><input type="range" id="drawLight" min="10" max="90" step="1" value="'+drawLight+'" aria-label="تفتيح اللون"></label><span class="draw-color-hex" id="drawColorHex" dir="ltr">'+drawColor+'</span></div>'+'<label class="draw-size"><input type="range" id="drawSizeRange" min="2" max="40" step="1" value="'+drawSize+'" aria-label="حجم الفرشاة"><span id="drawSizeLabel" dir="ltr">'+drawSize+'</span></label>';
 }
+function drawPodiumMarkup(r,s,ranking){
+  var TOTAL=10;
+  var ordered=ranking.slice().sort(function(a,b){return b.score-a.score||a.index-b.index});
+  function slot(entry,place){
+    if(!entry)return '<div class="draw-podium-slot place-'+place+' is-empty" aria-hidden="true"><span class="draw-podium-stand"></span></div>';
+    var player=entry.player,you=player.seat===r.playerSeat;
+    return '<div class="draw-podium-slot place-'+place+(you?' is-you':'')+'" data-place="'+place+'" data-name="'+safe(player.name||'لاعب')+'">'
+      +'<span class="draw-podium-crown" aria-hidden="true">'+(place===1?'🌿🌿':'')+'</span>'
+      +'<span class="draw-podium-face">'+playerAvatarFlag(drawPlayerAvatar(player.photoUrl,player.name,'draw-podium-avatar'),player.bot?'':player.countryCode||'IQ')+'<span class="draw-podium-medal" aria-hidden="true"><b dir="ltr">'+digit(ordered.indexOf(entry)+1)+'</b></span></span>'
+      +'<strong class="draw-podium-name">'+safe(player.name||'لاعب')+((player.isBotCreator||(you&&isBotCreator))?verifiedBadgeMarkup():'')+(you?'<i class="draw-podium-you">أنت</i>':'')+'</strong>'
+      +'<small class="draw-podium-score">'+digit(entry.score)+' نقطة</small>'
+      +'</div>';
+  }
+  var rest=ordered.slice(3);
+  var restLine=rest.length?'<div class="draw-podium-rest">'+rest.map(function(entry,i){return digit(i+4)+'. '+safe(entry.player.name||'لاعب')+' — '+digit(entry.score)+' نقطة'}).join(' · ')+'</div>':'';
+  var left=Math.max(0,Math.ceil(Number(s.nextMatchIn)||0));
+  var percent=TOTAL>0?Math.max(0,Math.min(100,left/TOTAL*100)):0;
+  return '<div class="draw-podium" role="status" aria-live="polite">'
+    +'<div class="draw-podium-head"><strong>انتهت المباراة</strong><span>الفائزون</span></div>'
+    +'<div class="draw-podium-stage">'+slot(ordered[1],2)+slot(ordered[0],1)+slot(ordered[2],3)+'</div>'
+    +restLine
+    +'<div class="draw-podium-count"><div class="draw-podium-bar"><i style="width:'+percent+'%" data-left="'+left+'"></i></div>'
+    +'<small class="draw-podium-next">'+(left>0?'مباراة جديدة تبدأ تلقائياً بعد <b dir="ltr">'+digit(left)+'</b> ثانية':'مباراة جديدة تبدأ هسه…')+'</small></div>'
+    +'</div>';
+}
 function renderGartic(r,s){
   var waiting=r.status==='waiting',finished=r.status==='finished',active=r.status==='playing';
   var phase=s.phase||(active?'drawing':waiting?'waiting':finished?'finished':'waiting');
@@ -963,13 +988,14 @@ function renderGartic(r,s){
   var chooseCard=choosing&&s.isDrawer?'<div class="draw-choose"><h3>دورك! اختار كلمة ترسمها</h3><div class="draw-choose-options">'+(s.wordChoices||[]).map(function(w,i){return (i?'<span class="draw-or">أو</span>':'')+'<button type="button" class="draw-word-choice" data-word="'+safe(w)+'"><b>'+safe(w)+'</b><span>✏️ ارسم</span></button>'}).join('')+'</div><small class="draw-choose-timer">'+digit(s.roundLeft||0)+' ثانية للاختيار</small></div>':'';
   var overlay='';
   if(waiting)overlay='<div class="draw-wait-overlay"><strong>بانتظار اللاعبين</strong><span>شارك الدعوة أو رمز الغرفة ويّا أصدقائك.</span></div>';
-  else if(finished)overlay='<div class="draw-wait-overlay reveal"><strong>🏆 انتهت المباراة</strong><span>'+(Math.ceil(Number(s.nextMatchIn)||0)>0?'مباراة جديدة تبدأ تلقائياً بعد '+digit(Math.ceil(Number(s.nextMatchIn)||0))+' ثانية':'جاري تجهيز مباراة جديدة…')+'</span></div>';
+  else if(finished&&s.matchOver)overlay=drawPodiumMarkup(r,s,ranking);
+  else if(finished)overlay='<div class="draw-wait-overlay reveal"><strong>انتهت المباراة</strong><span>شوفوا الترتيب بقائمة اللاعبين.</span></div>';
   else if(choosing&&!s.isDrawer)overlay='<div class="draw-wait-overlay"><strong>'+safe(s.drawerName||'لاعب')+' يختار كلمة…</strong><span>انتظر لحظات تبدأ الجولة.</span></div>';
   else if(reveal)overlay='<div class="draw-wait-overlay reveal"><strong>'+safe(s.roundResult||'انتهت الجولة')+'</strong><span>'+(s.word?'الجواب: '+safe(s.word):'')+'</span></div>';
   var tools=s.isDrawer&&drawing?'<div class="draw-room-tools" data-tools="on">'+drawToolsMarkup()+'</div>':'';
   var duration=Math.max(1,(Number(s.roundDurationMs)||75000)/1000),progress=drawing?Math.max(0,Math.min(100,(Number(s.roundLeft)||0)/duration*100)):choosing?Math.max(0,Math.min(100,(Number(s.roundLeft)||0)/20*100)):0;
   var timer='<div class="draw-room-timer"><span id="roundTimer" dir="ltr">'+digit(s.roundLeft||0)+'</span><small class="draw-unit">ثانية</small><div class="timer-track"><i id="drawTimeProgress" style="width:'+progress+'%"></i></div><small>'+digit(s.targetScore||500)+' نقطة للفوز</small></div>';
-  var standings=finished?'<section class="draw-standings"><h2>🏆 ترتيب المباراة</h2>'+ranking.slice().sort(function(a,b){return b.score-a.score||a.index-b.index}).map(function(entry,i){var place=i>0&&entry.score===ranking.slice().sort(function(a,b){return b.score-a.score})[i-1].score?i:i+1;return '<div class="draw-standing"><b>'+digit(place)+(i>0&&entry.score===ranking.slice().sort(function(a,b){return b.score-a.score})[i-1].score?' · تعادل':'')+'</b>'+playerAvatarFlag(drawPlayerAvatar(entry.player.photoUrl,entry.player.name,''),entry.player.bot?'':entry.player.countryCode||'IQ')+'<strong>'+safe(entry.player.name)+((entry.player.isBotCreator||(entry.player.seat===r.playerSeat&&isBotCreator))?verifiedBadgeMarkup():'')+'</strong><span>'+digit(entry.score)+' نقطة</span></div>'}).join('')+(finished?'<div class="draw-standings-note">'+(Math.ceil(Number(s.nextMatchIn)||0)>0?'مباراة جديدة تبدأ تلقائياً بعد <b dir="ltr">'+digit(Math.ceil(Number(s.nextMatchIn)||0))+'</b> ثانية':'مباراة جديدة تبدأ هسه…')+'</div>':'')+'</section>':'';
+  var standings='';
   var chatForm=active&&!s.isDrawer?'<form id="drawChatForm" class="guess-form chat-form"><input id="drawChatInput" class="guess-input" maxlength="240" autocomplete="off" placeholder="اكتب رسالة…" aria-label="رسالة للمخمّنين"><button class="button primary" type="submit">إرسال</button></form>':'';
   var answerCard='<section class="draw-feed-card"><div class="draw-feed-title">التخمينات</div><div class="draw-room-feed" id="guessFeed" aria-live="polite">'+feed+'</div>'+guessForm+(actions?'<div class="draw-room-actions">'+actions+'</div>':'')+'</section>';
   var logCard='<section class="draw-logs-card'+(s.isDrawer?' drawer-view':'')+'"><div class="draw-feed-title">السجل</div><div class="draw-room-feed draw-log-feed" id="drawLogFeed" aria-live="polite">'+drawLogFeed(s)+'</div>'+(s.isDrawer?'<div class="draw-drawer-note">الشات للمخمّنين — أنت ترسم.</div>':chatForm)+'</section>';
