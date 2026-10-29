@@ -105,6 +105,25 @@ try {
   assert.equal((await state(guest, roomId)).state.word, '', 'the word never reaches the guessers');
 
   assert.equal(host.document.querySelectorAll('.draw-tool[data-tool]').length, 8);
+  // The colour wheel expands into a live gradient picker, and the clear button
+  // wears the same line-art icon set as the other tools.
+  assert.ok(host.document.querySelector('.draw-color-wheel'), 'the artist gets the colour wheel');
+  assert.ok(host.document.querySelector('.draw-clear svg'), 'clear-all uses the shared line-art icon');
+  assert.equal(host.document.querySelectorAll('.draw-tool svg').length, 1);
+  assert.equal(host.document.querySelector('#drawColorPop').classList.contains('open'), false);
+  click(host, '.draw-color-wheel');
+  assert.equal(host.document.querySelector('#drawColorPop').classList.contains('open'), true, 'the wheel expands');
+  const hue = host.document.querySelector('#drawHue');
+  hue.value = '130';
+  hue.dispatchEvent(new host.Event('input', { bubbles: true }));
+  assert.match(host.document.querySelector('#drawColorWheel').style.getPropertyValue('--pick'), /^#[0-9a-f]{6}$/, 'the gradient picker yields a real colour');
+  assert.match(host.document.querySelector('#drawColorHex').textContent.trim(), /^#[0-9a-f]{6}$/);
+  // The board is measured from its wrapper and the leftover screen height, not
+  // squeezed into a letterboxed inner box.
+  const sizedCanvas = host.document.querySelector('#drawCanvas');
+  assert.match(sizedCanvas.style.width, /^\d+px$/, 'canvas width comes from the wrapper');
+  assert.match(sizedCanvas.style.height, /^\d+px$/, 'canvas height comes from the space left on screen');
+  assert.match(String(html), /#roomPage\[data-game="gartic"\] \.draw-canvas\{[^}]*aspect-ratio:auto/, 'the room board drops the fixed aspect ratio so it cannot letterbox');
   assert.equal(host.document.querySelectorAll('.palette-color').length, 20);
   assert.equal(guest.document.querySelectorAll('.draw-tool').length, 0);
   assert.equal(host.document.querySelectorAll('.draw-feed-card').length, 1);
@@ -129,6 +148,9 @@ try {
   await waitFor(async () => (await state(guest, roomId)).state.strokes.length === 2, 'shape stroke saved');
   const strokes = (await state(guest, roomId)).state.strokes;
   assert.equal(strokes[1].kind, 'rect-fill');
+  // One tap wipes every stroke on the board.
+  click(host, '.draw-clear');
+  await waitFor(async () => (await state(guest, roomId)).state.strokes.length === 0, 'clear wipes the whole board');
 
   submit(guest, '#drawChatForm', '#drawChatInput', 'مرحبا بالجميع');
   await waitFor(() => /مرحبا بالجميع/.test(third.document.querySelector('.draw-logs-card').textContent), 'chat shows in the log card');

@@ -30,6 +30,18 @@ const drawingView=await view(id,host);
 assert.equal(drawingView.state.phase,'drawing');
 assert.equal(drawingView.state.word,choosing.state.wordChoices[1]);
 assert.equal((await view(id,one)).state.word,'');
+// Long freehand strokes keep every point: a hand-drawn circle must not be clipped.
+const longPoints=Array.from({length:300},(_,i)=>[i/300,0.5+Math.sin(i/18)/4]);
+assert.equal((await post(id,{action:'stroke',token:host,points:longPoints,color:'#3b82f6',size:6,kind:'pen'})).status,200);
+assert.equal((await storage.get<any>('interactive-room:'+id)).gameState.strokes[0].points.length,300);
+// Wheel colours outside the fixed palette are accepted, junk colours still fall back.
+assert.equal((await post(id,{action:'stroke',token:host,points:[[0.1,0.1],[0.4,0.6]],color:'#8f3a2f',size:8,kind:'pen',customColor:true})).status,200);
+assert.equal((await storage.get<any>('interactive-room:'+id)).gameState.strokes[1].color,'#8f3a2f');
+await post(id,{action:'stroke',token:host,points:[[0.1,0.1],[0.2,0.2]],color:'red',size:5,kind:'pen'});
+assert.equal((await storage.get<any>('interactive-room:'+id)).gameState.strokes[2].color,'#1f2937');
+// The clear button wipes the whole board in one go.
+assert.equal((await post(id,{action:'clear',token:host})).status,200);
+assert.equal((await storage.get<any>('interactive-room:'+id)).gameState.strokes.length,0);
 const saved = await storage.get<any>('interactive-room:'+id);
 saved.gameState.word='مدرسة'; await storage.put('interactive-room:'+id,saved);
 assert.equal(drawGuessKind('مدرسه','مدرسة'),'near');
@@ -52,11 +64,11 @@ assert.equal((await view(id,host)).state.drawChat.length,0);
 await post(id,{action:'guess',token:one,text:'مدرسة'});
 let v=await view(id,two);
 assert.equal(v.room.status,'playing');assert.equal(v.state.roundResult,'');assert.equal(v.state.word,'');
-assert.equal(v.state.scores[0].score,25);const initial=v.state.scores[1].score;
+assert.equal(v.state.scores[0].score,12);const initial=v.state.scores[1].score;
 assert.notEqual((await post(id,{action:'guess',token:one,text:'مدرسة'})).status,200);
 v=await view(id,two);assert.equal(v.state.scores[1].score,initial);
 await post(id,{action:'guess',token:two,text:'مدرسة'});
-v=await view(id,two);assert.equal(v.state.scores[0].score,50);assert.match(v.state.roundResult,/كل/);
+v=await view(id,two);assert.equal(v.state.scores[0].score,24);assert.match(v.state.roundResult,/كل/);
 await post(id,{action:'start-round',token:two});v=await view(id,one);
 assert.equal(v.state.round,2);assert.equal(v.state.drawer,1);assert.equal(v.state.phase,'choosing');assert.equal(v.state.wordChoices.length,2);assert.equal(v.state.word,'');
 await post(id,{action:'choose-word',token:one,word:v.state.wordChoices[0]});
@@ -71,9 +83,21 @@ v=await view(id,two);assert.equal(v.state.phase,'reveal');assert.match(v.state.r
 await post(id,{action:'start-round',token:host});v=await view(id,host);
 assert.equal(v.state.round,3);assert.equal(v.state.drawer,2);assert.equal(v.state.phase,'choosing');
 await post(id,{action:'choose-word',token:host,word:v.state.wordChoices[0]});
-const tie=await storage.get<any>('interactive-room:'+id);tie.gameState.word='مدرسة';tie.gameState.phase='drawing';tie.gameState.roundResult='';tie.gameState.autoNextAt=0;tie.gameState.targetScore=100;tie.gameState.scores[two]=75;tie.gameState.scores[host]=90;tie.gameState.deadline=Date.now()+1000;await storage.put('interactive-room:'+id,tie);
-await post(id,{action:'guess',token:host,text:'مدرسة'});v=await view(id,host);assert.equal(v.room.status,'finished');assert.equal(v.state.scores[0].score,100);assert.equal(v.state.scores[2].score,100);assert.equal(v.state.word,'');
+const tie=await storage.get<any>('interactive-room:'+id);tie.gameState.word='مدرسة';tie.gameState.phase='drawing';tie.gameState.roundResult='';tie.gameState.autoNextAt=0;tie.gameState.matchOver=false;tie.gameState.targetScore=100;tie.gameState.scores[two]=75;tie.gameState.scores[host]=94;tie.gameState.deadline=Date.now()+1000;await storage.put('interactive-room:'+id,tie);
+await post(id,{action:'guess',token:host,text:'مدرسة'});v=await view(id,host);assert.equal(v.room.status,'finished');assert.equal(v.state.scores[0].score,100);assert.equal(v.state.scores[2].score,87);assert.equal(v.state.word,'');
+assert.equal(v.state.matchOver,true,'the podium is up');
+assert.ok(v.state.nextMatchIn>0&&v.state.nextMatchIn<=10,'a fresh match is counted down');
 assert.notEqual((await post(id,{action:'start-round',token:host})).status,200);
+// After the podium countdown the room opens a brand new match on its own.
+const podium=await storage.get<any>('interactive-room:'+id);
+podium.gameState.autoNextAt=Date.now()-10;await storage.put('interactive-room:'+id,podium);
+const restarted=await view(id,host);
+assert.equal(restarted.room.status,'playing','the match restarts by itself');
+assert.equal(restarted.state.round,1);
+assert.equal(restarted.state.phase,'choosing');
+assert.equal(restarted.state.matchOver,false);
+assert.ok(restarted.state.scores.every((entry:any)=>entry.score===0),'scores reset for the new match');
+assert.match(JSON.stringify(restarted.state.logs),/مباراة جديدة/);
 // If the drawer leaves mid-round, no successor inherits the secret word.
 const c2=await (await post('',{game:'gartic',name:'مغادر',capacity:4})).json() as any;
 const a=(await (await post(c2.room.id,{action:'join',name:'باقي'})).json() as any).token;

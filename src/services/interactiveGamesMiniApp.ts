@@ -540,7 +540,7 @@ var tgUser=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user;
 var params=new URLSearchParams(location.search);var standaloneGame=({ '/chess':'chess','/uno':'uno','/gartic':'gartic','/poker':'poker' })[location.pathname.replace(/\/$/,'')]||'';var standaloneChess=standaloneGame==='chess';if(standaloneChess)document.body.classList.add('standalone-chess');
 var startParam=params.get('tgWebAppStartParam')||params.get('startapp')||(tg&&tg.initDataUnsafe&&tg.initDataUnsafe.start_param)||'';
 var sharedRoom=(/^room_([A-Z0-9]+)_(chess|uno|gartic|poker|sudoku)$/i).exec(startParam);
-var roomId=params.get('room')||(sharedRoom&&sharedRoom[1])||'';var activeRoomGame=(sharedRoom&&sharedRoom[2])||params.get('game')||'';var roomToken='';var roomData=null;var setupGame='';var chessIntroRoomId='';var chessIntroTimer=0;var chessIntroTick=0;var chessHistoryFilter='all';var chessHistoryExpanded=false;var chessChatExpanded=null;var chessChatUnread=false;var chessChatTrackedRoom='';var chessChatSeenMessages=Object.create(null);var chessHomeActive=false;var chessLandingTab='home';var chessRoomReturn=false;var sudokuRoomReturn=false;var activeChessPuzzleId='';var puzzleSessions={};var lessonPracticeSessions={};var dailyChessPuzzleId='';var selectedSquare='';var stockfishWorker=null;var stockfishReady=null;var stockfishPending=null;var botThinkingKey='';var selectedUno='';var selectedColor='أحمر';var selectedSudokuCell=-1;var sudokuPencilMode=false;var sudokuNotes={};var drawing=false;var drawColor='#202635';var drawSize=5;var polling=0;var matchPolling=0;var matchTicket=null;var sudokuFriendInviteRoom='';var sudokuFriendInviteUrl='';var matchConfirmTimer=0;var matchConfirmInterval=0;var matchGeneration=0;var toastTimer=0;var paintBusy=false;var lastSignature='';var lastPlayerCount=0;var lastPlayerSignature='';
+var roomId=params.get('room')||(sharedRoom&&sharedRoom[1])||'';var activeRoomGame=(sharedRoom&&sharedRoom[2])||params.get('game')||'';var roomToken='';var roomData=null;var setupGame='';var chessIntroRoomId='';var chessIntroTimer=0;var chessIntroTick=0;var chessHistoryFilter='all';var chessHistoryExpanded=false;var chessChatExpanded=null;var chessChatUnread=false;var chessChatTrackedRoom='';var chessChatSeenMessages=Object.create(null);var chessHomeActive=false;var chessLandingTab='home';var chessRoomReturn=false;var sudokuRoomReturn=false;var activeChessPuzzleId='';var puzzleSessions={};var lessonPracticeSessions={};var dailyChessPuzzleId='';var selectedSquare='';var stockfishWorker=null;var stockfishReady=null;var stockfishPending=null;var botThinkingKey='';var selectedUno='';var selectedColor='أحمر';var selectedSudokuCell=-1;var sudokuPencilMode=false;var sudokuNotes={};var drawing=false;var drawColor='#202635';var drawSize=5;var polling=0;var matchPolling=0;var matchTicket=null;var sudokuFriendInviteRoom='';var sudokuFriendInviteUrl='';var matchConfirmTimer=0;var matchConfirmInterval=0;var matchGeneration=0;var toastTimer=0;var paintBusy=false;var drawHue=212;var drawLight=42;var lastSignature='';var lastPlayerCount=0;var lastPlayerSignature='';
 var $=function(id){return document.getElementById(id)};
 document.addEventListener('click',function(event){var tab=event.target.closest('.tab[data-tab]');if(tab){document.querySelectorAll('.tab[data-tab]').forEach(function(item){item.classList.toggle('active',item===tab)});$('gamesPanel').classList.toggle('hide',tab.dataset.tab!=='games');$('accountPanel').classList.toggle('hide',tab.dataset.tab!=='account');syncTelegramNavigation();return}var card=event.target.closest('.game-card[data-game]');if(card){event.preventDefault();launchGame(card.dataset.game)}});
 document.addEventListener('click',function(event){var filter=event.target.closest('[data-chess-history-filter]');if(filter){chessHistoryFilter=filter.dataset.chessHistoryFilter;chessHistoryExpanded=false;renderChessHistory();return}if(event.target.closest('#chessHistoryMore')){chessHistoryExpanded=!chessHistoryExpanded;renderChessHistory();return}if(event.target.closest('#chessAppearanceButton')){setChessMoreSettings(true);return}});
@@ -868,12 +868,19 @@ function drawLogFeed(s){
   if(!items.length)return '<span class="draw-empty">بعد ماكو رسائل.</span>';
   return items.map(function(item){var icon=item.kind==='join'?'＋':item.kind==='left'?'−':item.kind==='answer'?'✏️':item.kind==='turn'?'⏱':item.kind==='chat'?'💬':'ℹ';return '<div class="draw-log-entry '+item.kind+'"><i>'+icon+'</i>'+(item.name?'<b>'+safe(item.name)+':</b> ':'')+safe(item.text)+'</div>'}).join('');
 }
+function drawHslToHex(h,l){
+  function hex(n){var v=Math.max(0,Math.min(255,Math.round(n))).toString(16);return v.length<2?'0'+v:v}
+  var c=(1-Math.abs(2*l/100-1))*0.86,x=c*(1-Math.abs((h/60)%2-1)),m=l/100-c/2,r=0,g=0,b=0;
+  if(h<60){r=c;g=x}else if(h<120){r=x;g=c}else if(h<180){g=c;b=x}else if(h<240){g=x;b=c}else if(h<300){r=x;b=c}else{r=c;b=x}
+  return '#'+hex((r+m)*255)+hex((g+m)*255)+hex((b+m)*255);
+}
 function drawToolsMarkup(){
-  var toolButton=function(t){return '<button type="button" class="draw-tool'+(drawTool===t[0]?' active':'')+'" data-tool="'+t[0]+'" title="'+t[2]+'" aria-label="'+t[2]+'">'+t[1]+'</button>'};
+  var toolButton=function(t){return '<button type="button" class="draw-tool'+(drawTool===t[0]?' active':'')+'" data-tool="'+t[0]+'" title="'+t[2]+'" aria-label="'+t[2]+'"><span class="draw-tool-glyph">'+t[1]+'</span></button>'};
   var pairs='';
   for(var g=0;g<DRAW_TOOLS.length;g+=2)pairs+='<div class="draw-tool-group">'+toolButton(DRAW_TOOLS[g])+(DRAW_TOOLS[g+1]?toolButton(DRAW_TOOLS[g+1]):'')+'</div>';
   var palette=DRAW_PALETTE_UI.map(function(color){return '<button type="button" class="palette-color'+(drawColor===color?' active':'')+'" data-color="'+color+'" style="--swatch:'+color+'" aria-label="لون '+color+'"></button>'}).join('');
-  return pairs+'<div class="draw-tool-group draw-history"><button type="button" class="draw-tool" data-action="undo-stroke" title="تراجع">↶</button><button type="button" class="draw-tool" data-redo="1" title="إعادة">↷</button><button type="button" class="draw-tool" data-action="clear" title="مسح اللوحة">🗑</button></div><div class="palette-grid">'+palette+'</div><label class="draw-size"><input type="range" id="drawSizeRange" min="2" max="40" step="1" value="'+drawSize+'" aria-label="حجم الفرشاة"><span id="drawSizeLabel" dir="ltr">'+drawSize+'</span></label>';
+  var clearIcon='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9.5 7V4.8h5V7M6.4 7l.9 12.4h9.4L17.6 7M10.2 10.6v6.2M13.8 10.6v6.2"/></svg>';
+  return pairs+'<div class="draw-tool-group draw-history"><button type="button" class="draw-tool" data-action="undo-stroke" title="تراجع" aria-label="تراجع"><span class="draw-tool-glyph">↶</span></button><button type="button" class="draw-tool" data-redo="1" title="إعادة" aria-label="إعادة"><span class="draw-tool-glyph">↷</span></button><button type="button" class="draw-tool draw-clear" data-action="clear" title="مسح كل الرسم" aria-label="مسح كل الرسم">'+clearIcon+'</button></div>'+'<div class="palette-grid">'+palette+'</div>'+'<button type="button" class="draw-color-wheel" id="drawColorWheel" style="--pick:'+drawColor+'" title="دائرة الألوان والتدرج" aria-label="دائرة الألوان والتدرج" aria-expanded="false"><span></span></button>'+'<div class="draw-color-pop" id="drawColorPop"><div class="draw-color-preview" id="drawColorPreview" style="background:'+drawColor+'"></div><label class="draw-gradient hue"><input type="range" id="drawHue" min="0" max="360" step="1" value="'+drawHue+'" aria-label="درجة اللون"></label><label class="draw-gradient light"><input type="range" id="drawLight" min="10" max="90" step="1" value="'+drawLight+'" aria-label="تفتيح اللون"></label><span class="draw-color-hex" id="drawColorHex" dir="ltr">'+drawColor+'</span></div>'+'<label class="draw-size"><input type="range" id="drawSizeRange" min="2" max="40" step="1" value="'+drawSize+'" aria-label="حجم الفرشاة"><span id="drawSizeLabel" dir="ltr">'+drawSize+'</span></label>';
 }
 function renderGartic(r,s){
   var waiting=r.status==='waiting',finished=r.status==='finished',active=r.status==='playing';
@@ -896,13 +903,13 @@ function renderGartic(r,s){
   var chooseCard=choosing&&s.isDrawer?'<div class="draw-choose"><h3>دورك! اختار كلمة ترسمها</h3><div class="draw-choose-options">'+(s.wordChoices||[]).map(function(w,i){return (i?'<span class="draw-or">أو</span>':'')+'<button type="button" class="draw-word-choice" data-word="'+safe(w)+'"><b>'+safe(w)+'</b><span>✏️ ارسم</span></button>'}).join('')+'</div><small class="draw-choose-timer">'+digit(s.roundLeft||0)+' ثانية للاختيار</small></div>':'';
   var overlay='';
   if(waiting)overlay='<div class="draw-wait-overlay"><strong>بانتظار اللاعبين</strong><span>شارك الدعوة أو رمز الغرفة ويّا أصدقائك.</span></div>';
-  else if(finished)overlay='<div class="draw-wait-overlay"><strong>انتهت المباراة</strong><span>شوفوا الترتيب بقائمة اللاعبين.</span></div>';
+  else if(finished)overlay='<div class="draw-wait-overlay reveal"><strong>🏆 انتهت المباراة</strong><span>'+(Math.ceil(Number(s.nextMatchIn)||0)>0?'مباراة جديدة تبدأ تلقائياً بعد '+digit(Math.ceil(Number(s.nextMatchIn)||0))+' ثانية':'جاري تجهيز مباراة جديدة…')+'</span></div>';
   else if(choosing&&!s.isDrawer)overlay='<div class="draw-wait-overlay"><strong>'+safe(s.drawerName||'لاعب')+' يختار كلمة…</strong><span>انتظر لحظات تبدأ الجولة.</span></div>';
   else if(reveal)overlay='<div class="draw-wait-overlay reveal"><strong>'+safe(s.roundResult||'انتهت الجولة')+'</strong><span>'+(s.word?'الجواب: '+safe(s.word):'')+'</span></div>';
   var tools=s.isDrawer&&drawing?'<div class="draw-room-tools" data-tools="on">'+drawToolsMarkup()+'</div>':'';
   var duration=Math.max(1,(Number(s.roundDurationMs)||75000)/1000),progress=drawing?Math.max(0,Math.min(100,(Number(s.roundLeft)||0)/duration*100)):choosing?Math.max(0,Math.min(100,(Number(s.roundLeft)||0)/20*100)):0;
   var timer='<div class="draw-room-timer"><span id="roundTimer" dir="ltr">'+digit(s.roundLeft||0)+'</span><small class="draw-unit">ثانية</small><div class="timer-track"><i id="drawTimeProgress" style="width:'+progress+'%"></i></div><small>'+digit(s.targetScore||500)+' نقطة للفوز</small></div>';
-  var standings=finished?'<section class="draw-standings"><h2>🏆 ترتيب المباراة</h2>'+ranking.slice().sort(function(a,b){return b.score-a.score||a.index-b.index}).map(function(entry,i){var place=i>0&&entry.score===ranking.slice().sort(function(a,b){return b.score-a.score})[i-1].score?i:i+1;return '<div class="draw-standing"><b>'+digit(place)+(i>0&&entry.score===ranking.slice().sort(function(a,b){return b.score-a.score})[i-1].score?' · تعادل':'')+'</b>'+playerAvatarFlag(drawPlayerAvatar(entry.player.photoUrl,entry.player.name,''),entry.player.bot?'':entry.player.countryCode||'IQ')+'<strong>'+safe(entry.player.name)+((entry.player.isBotCreator||(entry.player.seat===r.playerSeat&&isBotCreator))?verifiedBadgeMarkup():'')+'</strong><span>'+digit(entry.score)+' نقطة</span></div>'}).join('')+'</section>':'';
+  var standings=finished?'<section class="draw-standings"><h2>🏆 ترتيب المباراة</h2>'+ranking.slice().sort(function(a,b){return b.score-a.score||a.index-b.index}).map(function(entry,i){var place=i>0&&entry.score===ranking.slice().sort(function(a,b){return b.score-a.score})[i-1].score?i:i+1;return '<div class="draw-standing"><b>'+digit(place)+(i>0&&entry.score===ranking.slice().sort(function(a,b){return b.score-a.score})[i-1].score?' · تعادل':'')+'</b>'+playerAvatarFlag(drawPlayerAvatar(entry.player.photoUrl,entry.player.name,''),entry.player.bot?'':entry.player.countryCode||'IQ')+'<strong>'+safe(entry.player.name)+((entry.player.isBotCreator||(entry.player.seat===r.playerSeat&&isBotCreator))?verifiedBadgeMarkup():'')+'</strong><span>'+digit(entry.score)+' نقطة</span></div>'}).join('')+(finished?'<div class="draw-standings-note">'+(Math.ceil(Number(s.nextMatchIn)||0)>0?'مباراة جديدة تبدأ تلقائياً بعد <b dir="ltr">'+digit(Math.ceil(Number(s.nextMatchIn)||0))+'</b> ثانية':'مباراة جديدة تبدأ هسه…')+'</div>':'')+'</section>':'';
   var chatForm=active&&!s.isDrawer?'<form id="drawChatForm" class="guess-form chat-form"><input id="drawChatInput" class="guess-input" maxlength="240" autocomplete="off" placeholder="اكتب رسالة…" aria-label="رسالة للمخمّنين"><button class="button primary" type="submit">إرسال</button></form>':'';
   var answerCard='<section class="draw-feed-card"><div class="draw-feed-title">التخمينات</div><div class="draw-room-feed" id="guessFeed" aria-live="polite">'+feed+'</div>'+guessForm+(actions?'<div class="draw-room-actions">'+actions+'</div>':'')+'</section>';
   var logCard='<section class="draw-logs-card'+(s.isDrawer?' drawer-view':'')+'"><div class="draw-feed-title">السجل</div><div class="draw-room-feed draw-log-feed" id="drawLogFeed" aria-live="polite">'+drawLogFeed(s)+'</div>'+(s.isDrawer?'<div class="draw-drawer-note">الشات للمخمّنين — أنت ترسم.</div>':chatForm)+'</section>';
@@ -928,16 +935,33 @@ function wireCanvas(s){
   if(window._drawTurnKey!==turnKey){window._drawTurnKey=turnKey;redoStack=[]}
   var ctx=canvas.getContext('2d');
   var strokes=(s.strokes||[]);
-  // Size the canvas from the space it really has, then render at device pixels so
-  // strokes stay crisp instead of being stretched from a fixed 900x580 bitmap.
+  // The board fills its own wrapper edge to edge: no dead white margin and no
+  // letterboxing, so every pixel of the visible board accepts strokes.
   function fitCanvas(){
-    var wrap=canvas.parentElement||canvas,available=Math.max(160,(wrap.clientWidth||900)-2),ratio=900/580;
-    var budget=window.innerWidth<900?Math.max(190,Math.round(window.innerHeight*0.45)):Math.max(240,window.innerHeight-400);
-    var w=available,h=w/ratio;
-    if(h>budget){h=budget;w=h*ratio}
-    w=Math.round(w);h=Math.round(h);
-    canvas.style.width=w+'px';canvas.style.height=h+'px';
-    var dpr=Math.min(2,window.devicePixelRatio||1),bw=Math.round(w*dpr),bh=Math.round(h*dpr);
+    var wrap=canvas.parentElement||canvas;
+    var width=Math.max(180,Math.round((wrap.clientWidth||900)-2));
+    var height;
+    if(window.innerWidth<900){
+      height=Math.max(200,Math.round(window.innerHeight*0.5));
+    }else{
+      var room=canvas.closest?canvas.closest('.draw-room'):null;
+      var board=canvas.closest?canvas.closest('.draw-room-board'):null;
+      var bottom=room?room.querySelector('.draw-room-bottom'):null;
+      var top=board?Math.max(0,board.getBoundingClientRect().top):0;
+      var chrome=board?Math.max(0,board.offsetHeight-canvas.offsetHeight):0;
+      var bottomHeight=bottom?bottom.getBoundingClientRect().height:0;
+      // The tool rail is capped to the same screen budget so it can never push the
+      // chat and log cards past the bottom of the screen.
+      var rail=room?room.querySelector('.draw-room-tools'):null;
+      if(rail)rail.style.maxHeight=Math.max(300,Math.round(window.innerHeight-top-12))+'px';
+      var railHeight=rail?rail.getBoundingClientRect().height:0;
+      height=Math.round(window.innerHeight-top-chrome-bottomHeight-18);
+      var stacked=chrome+height+bottomHeight;
+      if(railHeight&&railHeight>stacked)height-=railHeight-stacked;
+      height=Math.max(200,height);
+    }
+    canvas.style.width=width+'px';canvas.style.height=height+'px';
+    var dpr=Math.min(2,window.devicePixelRatio||1),bw=Math.round(width*dpr),bh=Math.round(height*dpr);
     if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh;return true}
     return false;
   }
@@ -946,11 +970,20 @@ function wireCanvas(s){
   paint(null);
   if(!window._drawFitBound){window._drawFitBound=true;window.addEventListener('resize',function(){if(roomData&&roomData.room&&roomData.room.game==='gartic'&&roomData.state)wireCanvas(roomData.state)})}
   var canDraw=!!s.isDrawer&&(s.phase||'')==='drawing';
-  $('roomContent').querySelectorAll('.palette-color[data-color]').forEach(function(b){b.classList.toggle('active',b.dataset.color===drawColor);b.onclick=function(){drawColor=b.dataset.color;$('roomContent').querySelectorAll('.palette-color').forEach(function(x){x.classList.toggle('active',x===b)})}});
+  var wheel=$('drawColorWheel'),colorPop=$('drawColorPop');
+  var paintWheel=function(){if(wheel)wheel.style.setProperty('--pick',drawColor);if(light)light.style.setProperty('--hue',String(drawHue));var preview=$('drawColorPreview');if(preview)preview.style.background=drawColor;var hex=$('drawColorHex');if(hex)hex.textContent=drawColor};
+  var markPalette=function(active){$('roomContent').querySelectorAll('.palette-color').forEach(function(x){x.classList.toggle('active',active?x===active:false)})};
+  $('roomContent').querySelectorAll('.palette-color[data-color]').forEach(function(b){b.classList.toggle('active',b.dataset.color===drawColor);b.onclick=function(){drawColor=b.dataset.color;markPalette(b);paintWheel()}});
+  if(wheel&&colorPop){wheel.onclick=function(){var open=colorPop.classList.toggle('open');wheel.setAttribute('aria-expanded',String(open))}}
+  var hue=$('drawHue'),light=$('drawLight');
+  var applyWheel=function(){drawHue=Math.max(0,Math.min(360,Number(hue&&hue.value)||0));drawLight=Math.max(10,Math.min(90,Number(light&&light.value)||50));drawColor=drawHslToHex(drawHue,drawLight);markPalette(null);paintWheel()};
+  if(hue)hue.oninput=applyWheel;
+  if(light)light.oninput=applyWheel;
   $('roomContent').querySelectorAll('.draw-tool[data-tool]').forEach(function(b){b.onclick=function(){drawTool=b.dataset.tool;$('roomContent').querySelectorAll('.draw-tool[data-tool]').forEach(function(x){x.classList.toggle('active',x===b)})}});
   var size=$('drawSizeRange');if(size){size.oninput=function(){drawSize=Math.max(2,Math.min(40,Number(size.value)||5));var label=$('drawSizeLabel');if(label)label.textContent=String(drawSize)}}
   $('roomContent').querySelectorAll('[data-redo]').forEach(function(b){b.onclick=function(){var st=redoStack.pop();if(st)act('stroke',{points:st.points,color:st.color,size:st.size,kind:st.kind||'pen'})}});
   $('roomContent').querySelectorAll('.draw-word-choice').forEach(function(b){b.onclick=function(){act('choose-word',{word:b.dataset.word})}});
+  $('roomContent').querySelectorAll('.draw-clear').forEach(function(b){b.onclick=function(){strokes.length=0;paint(null)}});
   var form=$('guessForm');if(form)form.onsubmit=function(e){e.preventDefault();sendGuess()};
   var drawChatForm=$('drawChatForm');if(drawChatForm)drawChatForm.onsubmit=function(e){e.preventDefault();var input=$('drawChatInput'),text=input.value.trim();if(!text)return;input.value='';act('draw-chat',{text:text})};
   if(!canDraw)return;
@@ -958,8 +991,11 @@ function wireCanvas(s){
   function pos(e){var rect=canvas.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height))]}
   canvas.onpointerdown=function(e){if(!canDraw)return;drawingNow=true;paintBusy=true;canvas.setPointerCapture(e.pointerId);start=pos(e);preview={points:[start,start],color:drawTool==='eraser'?'#ffffff':drawColor,size:drawSize,kind:drawTool};paint(preview)};
   canvas.onpointermove=function(e){if(!drawingNow)return;var p=pos(e);if(drawTool==='pen'||drawTool==='eraser'){preview.points.push(p);paint(preview)}else{preview.points=[start,p];paint(preview)}};
-  var finish=async function(){if(!drawingNow)return;drawingNow=false;var stroke=preview;preview=null;paintBusy=false;if(stroke&&stroke.points.length>1){if(stroke.points.length>120)stroke.points=stroke.points.slice(0,120);await act('stroke',{points:stroke.points,color:stroke.color,size:stroke.size,kind:stroke.kind})}await pollRoom()};
-  canvas.onpointerup=finish;canvas.onpointercancel=finish;canvas.onpointerleave=finish;
+  // Long strokes get thinned out, never chopped: the last point always survives.
+  var compress=function(points){var max=420;if(points.length<=max)return points;var out=[],step=points.length/max;for(var i=0;i<points.length;i+=step)out.push(points[Math.floor(i)]);out.push(points[points.length-1]);return out};
+  var finish=async function(){if(!drawingNow)return;drawingNow=false;var stroke=preview;preview=null;paintBusy=false;if(stroke&&stroke.points.length>1){var pts=compress(stroke.points);await act('stroke',{points:pts,color:stroke.color,size:stroke.size,kind:stroke.kind,customColor:DRAW_PALETTE_UI.indexOf(stroke.color)<0})}await pollRoom()};
+  canvas.onpointerup=finish;canvas.onpointercancel=finish;canvas.__drawFinish=finish;
+  if(!window._drawUpBound){window._drawUpBound=true;window.addEventListener('pointerup',function(){var node=$('drawCanvas');if(node&&typeof node.__drawFinish==='function')node.__drawFinish()})}
 
 }
 function sendGuess(){var input=$('guessInput');if(!input||!input.value.trim())return;var text=input.value.trim();input.value='';act('guess',{text})}
