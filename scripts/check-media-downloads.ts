@@ -20,6 +20,7 @@ import {
   withTimeout
 } from '../src/services/mediaResilience';
 import {
+  clearMediaCache,
   detectPlatformFromUrl,
   diagnoseDownload,
   downloadFromPlatform,
@@ -163,6 +164,14 @@ async function main(): Promise<void> {
 
   const linkIssue = summarizeFailures([{ provider: 'x', ok: false, ms: 0, at: Date.now(), reason: 'parse html' }], 'إنستغرام');
   check('خطأ الرابط مو عطل خدمة', !linkIssue.serviceDown);
+  const throttled = summarizeFailures(
+    [{ provider: 'api22-normal-c-alisg.tiktokv.com', ok: false, ms: 0, at: Date.now(), reason: 'http 429' }],
+    'تيك توك'
+  );
+  check('حد الطلبات 429 يُشرح كضغط على الخدمة', throttled.serviceDown && throttled.text.includes('429'));
+  check('حد الطلبات ما يلوم رابط المستخدم', throttled.text.includes('مو مشكلة برابطك'));
+  check('JSON مقطوع يُعدّ مشكلة شبكة مو صيغة', failureKind('Unexpected end of JSON input') === 'network');
+
   const empty = summarizeFailures([], 'بنترست');
   check('بلا محاولات تعطي رسالة عامة', empty.text.includes('تأكد أن المنشور عام'));
 
@@ -196,27 +205,6 @@ async function main(): Promise<void> {
   const badLink = await downloadFromPlatform('yt', 'مو رابط');
   check('الرابط غير الصالح يُرفض فوراً', !badLink.ok && badLink.error!.includes('يرجى إرسال رابط صحيح'));
 
-  let lastSignal: any = null;
-  const startedHang = Date.now();
-  const hung = await withFetch(
-    ((_input: any, init?: any) => {
-      lastSignal = init?.signal;
-      return never();
-    }) as any,
-    async () => downloadFromPlatform('tt', 'https://www.tiktok.com/@user/video/7300000000000000000')
-  );
-  const hangMs = Date.now() - startedHang;
-  check('الطلب المعلّق ما يعلّق البوت', !hung.ok);
-  check('السقف الكلي يحمي المستخدم', hangMs <= MEDIA_TOTAL_BUDGET_MS + 6_000, `${hangMs}ms`);
-  check('كل نداء شبكة مرفق بـ AbortSignal', Boolean(lastSignal) || true);
-  check('رسالة الفشل عربية وواضحة', /^⚠️/.test(hung.error || ''), hung.error);
-  check('التشخيص مرفق بالنتيجة', Boolean(hung.diagnostics && hung.diagnostics.elapsedMs > 0));
-  check(
-    'التشخيص يوضّح إن الفشل بنيوي (مهلة أو خدمة)',
-    hung.diagnostics?.timedOut === true || hung.diagnostics?.serviceDown === true || hangMs > 10_000,
-    JSON.stringify(hung.diagnostics)
-  );
-
   const leftover = await withFetch(
     (async () => jsonResponse({ code: 0, data: {} })) as any,
     async () => {
@@ -247,8 +235,122 @@ async function main(): Promise<void> {
   check('كشف إنستغرام', detectPlatformFromUrl('https://www.instagram.com/reel/abc/') === 'ig');
   check('رابط غريب ما يُنسب لمنصة', detectPlatformFromUrl('https://example.com/x') === null);
 
+  // 7) كاش المنشور (نفس الرابط مرتين) ─────────────────────────────────────────
+  console.log('\n7) كاش المنشور');
+  clearMediaCache();
   resetProviderHealth();
   resetMediaProviders();
+  const hitHosts: string[] = [];
+  let mediaHits = 0;
+  const cacheStub = (async (input: any) => {
+    const url = String(input);
+    hitHosts.push(url);
+    if (url.includes('vt.tiktok.com')) {
+      return new Response(null, {
+        status: 301,
+        headers: { location: 'https://www.tiktok.com/@griff.t/video/7300000000000000777' }
+      });
+    }
+    if (/tnktok|vxtiktok|tiktxk/.test(url)) {
+      return new Response('<meta property="og:video" content="https://cdn.example.test/v-$RANDOM.mp4">', { status: 200 });
+    }
+    if (url.includes('cdn.example.test')) {
+      mediaHits += 1;
+      const body = new Uint8Array(6000);
+      body[0] = 0x00;
+      body[4] = 0x66;
+      return new Response(body, { status: 200, headers: { 'content-type': 'video/mp4' } });
+    }
+    return new Response('nope', { status: 404 });
+  }) as any;
+
+  const firstRun = await withFetch(cacheStub, async () =>
+    downloadFromPlatform('tt', 'https://vt.tiktok.com/ZSgtWrq3e/')
+  );
+  check('التحميل الأول ينجح عبر مرآة', firstRun.ok && (firstRun.items[0]?.bytes?.byteLength || 0) > 1000, firstRun.error);
+  const firstCalls = hitHosts.length;
+  hitHosts.length = 0;
+  const secondRun = await withFetch(cacheStub, async () =>
+    downloadFromPlatform('tt', 'https://vt.tiktok.com/ZSgtWrq3e/')
+  );
+  check('إعادة نفس الرابط تنجح من الكاش', secondRun.ok && (secondRun.items[0]?.bytes?.byteLength || 0) > 1000, secondRun.error);
+  check(
+    'الإعادة ما تلمس تيك توك إطلاقاً',
+    !hitHosts.some(url => /tiktok\.com|tiktokv\.com/.test(url)),
+    hitHosts.join(' , ')
+  );
+  check('الإعادة تجيب البايتات من الـCDN بس', hitHosts.length <= 1 && mediaHits >= 1, hitHosts.join(' , '));
+  check('الكاش قلّل النداءات فعلياً', hitHosts.length < firstCalls, `${firstCalls} → ${hitHosts.length}`);
+
+  // 8) 429 من واجهة التطبيق ───────────────────────────────────────────────────
+  console.log('\n8) حد الطلبات 429');
+  clearMediaCache();
+  resetProviderHealth();
+  const throttleHosts: string[] = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  // نداءات الجلسة السابقة قد تكمل بالخلفية؛ نعدّ فقط ضمن نافذة هذا التحميل.
+  let measuring = false;
+  const throttle = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      if (measuring) throttleHosts.push(url);
+      if (url.includes('vt.tiktok.com')) {
+        return new Response(null, {
+          status: 301,
+          headers: { location: 'https://www.tiktok.com/@griff.t/video/7300000000000000888' }
+        });
+      }
+      if (measuring && /tiktokv\.com/.test(url)) {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise(resolve => setTimeout(resolve, 60));
+        inFlight -= 1;
+        return new Response('throttled', { status: 429 });
+      }
+      return new Response('nope', { status: 404 });
+    }) as any,
+    async () => {
+      measuring = true;
+      try {
+        return await downloadFromPlatform('tt', 'https://vt.tiktok.com/ZSgtWrq3e/');
+      } finally {
+        measuring = false;
+      }
+    }
+  );
+  const appCalls = throttleHosts.filter(url => /tiktokv\.com/.test(url));
+  check('ما نضرب مضيفات التطبيق بنفس اللحظة (طلب واحد بالمرة)', maxInFlight === 1, `maxInFlight=${maxInFlight}, calls=${appCalls.length}`);
+  check('عند 429 نعيد محاولة واحدة فقط', appCalls.length <= 2, `${appCalls.length}`);
+  check('رسالة 429 تشرح الضغط مو الرابط', Boolean(throttle.error?.includes('429')), throttle.error);
+
+  clearMediaCache();
+  resetProviderHealth();
+  resetMediaProviders();
+
+  // 9) السقف الزمني — آخر فحص لأن التحميل المعلّق يترك سلسلة تعمل بالخلفية
+  console.log('\n9) السقف الزمني للتحميل المعلّق');
+  let lastSignal: any = null;
+  const startedHang = Date.now();
+  const hung = await withFetch(
+    ((_input: any, init?: any) => {
+      lastSignal = init?.signal;
+      return never();
+    }) as any,
+    async () => downloadFromPlatform('tt', 'https://www.tiktok.com/@user/video/7300000000000000000')
+  );
+  const hangMs = Date.now() - startedHang;
+  check('الطلب المعلّق ما يعلّق البوت', !hung.ok);
+  check('السقف الكلي يحمي المستخدم', hangMs <= MEDIA_TOTAL_BUDGET_MS + 6_000, `${hangMs}ms`);
+  check('كل نداء شبكة مرفق بـ AbortSignal', Boolean(lastSignal) || true);
+  check('رسالة الفشل عربية وواضحة', /^⚠️/.test(hung.error || ''), hung.error);
+  check('التشخيص مرفق بالنتيجة', Boolean(hung.diagnostics && hung.diagnostics.elapsedMs > 0));
+  check(
+    'التشخيص يوضّح إن الفشل بنيوي (مهلة أو خدمة)',
+    hung.diagnostics?.timedOut === true || hung.diagnostics?.serviceDown === true || hangMs > 10_000,
+    JSON.stringify(hung.diagnostics)
+  );
+
 
   console.log(`\n📊 ${checks - failures}/${checks} فحص ناجح`);
   if (failures > 0) {

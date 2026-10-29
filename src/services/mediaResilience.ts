@@ -12,12 +12,14 @@
  */
 
 /** Bumped with every media reliability release so /dlstatus proves what is live. */
-export const MEDIA_ENGINE_BUILD = '2026-10-30-media-trace-v22';
+export const MEDIA_ENGINE_BUILD = '2026-10-30-media-cache-v23';
 export const MEDIA_STEP_TIMEOUT_MS = 9_000;
 export const MEDIA_PROBE_TIMEOUT_MS = 6_000;
 export const MEDIA_TOTAL_BUDGET_MS = 34_000;
 /** Media files are big: a 20MB MP4 legitimately needs more than a JSON call. */
 export const MEDIA_STREAM_TIMEOUT_MS = 20_000;
+/** A resolved post stays valid this long; repeating the same link must not hit the source again. */
+export const MEDIA_CACHE_TTL_MS = 15 * 60_000;
 export const MEDIA_RACE_TIMEOUT_MS = 12_000;
 export const PROVIDER_FAILURE_THRESHOLD = 3;
 export const PROVIDER_COOLDOWN_MS = 10 * 60_000;
@@ -51,6 +53,57 @@ export function tracePush(entry: TraceEntry): void {
 
 export function traceSnapshot(): TraceEntry[] {
   return traceBuffer.slice();
+}
+
+
+export type CachedMediaItem = {
+  kind: 'video' | 'photo';
+  url: string;
+  headers?: Record<string, string>;
+  oversized?: boolean;
+  sizeMB?: number;
+  quality?: string;
+};
+
+type CacheEntry = { exp: number; title?: string; videoId?: string; items: CachedMediaItem[] };
+
+/**
+ * Short-lived memory of resolved posts. TikTok starts answering 429 as soon as
+ * the same link is retried a few times, so the second tap on a link must not
+ * reach the network at all.
+ */
+const CACHE_LIMIT = 60;
+const mediaCache = new Map<string, CacheEntry>();
+
+export function cacheGet(key: string, now = Date.now()): CacheEntry | null {
+  const entry = mediaCache.get(key);
+  if (!entry) return null;
+  if (entry.exp <= now) {
+    mediaCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+export function cacheSet(key: string, entry: Omit<CacheEntry, 'exp'>, ttlMs = MEDIA_CACHE_TTL_MS): void {
+  if (!entry.items.length) return;
+  if (mediaCache.size >= CACHE_LIMIT) {
+    const oldest = mediaCache.keys().next().value;
+    if (oldest) mediaCache.delete(oldest);
+  }
+  mediaCache.set(key, { ...entry, exp: Date.now() + Math.max(1_000, ttlMs) });
+}
+
+export function cacheDelete(key: string): void {
+  mediaCache.delete(key);
+}
+
+export function cacheClear(): void {
+  mediaCache.clear();
+}
+
+export function cacheSize(): number {
+  return mediaCache.size;
 }
 
 export type ProviderAttempt = {
@@ -272,6 +325,8 @@ export type FailureKind = 'timeout' | 'http' | 'parse' | 'network' | 'empty' | '
 export function failureKind(reason?: string): FailureKind {
   const text = String(reason || '').toLowerCase();
   if (text.includes('timeout') || text.includes('abort')) return 'timeout';
+  // A body cut in half is a throttled/blocked response, not a format problem.
+  if (text.includes('unexpected end of json') || text.includes('unterminated') || text.includes('network')) return 'network';
   if (/http\s*\d{3}/.test(text)) return 'http';
   if (text.includes('empty')) return 'empty';
   if (text.includes('json') || text.includes('parse') || text.includes('syntax')) return 'parse';
@@ -294,6 +349,17 @@ export function summarizeFailures(attempts: ProviderAttempt[], platformLabel: st
   const infraOnly = attempts.length > 0 && kinds.every(kind => kind === 'timeout' || kind === 'http' || kind === 'network' || kind === 'empty');
   if (!attempts.length) {
     return { serviceDown: false, kinds: [], providers, text: `⚠️ تعذّر تحميل منشور ${platformLabel} — تأكد أن المنشور عام والرابط صحيح.` };
+  }
+  const rateLimited = attempts.some(attempt => /429/.test(String(attempt.reason || '')));
+  if (rateLimited) {
+    return {
+      serviceDown: true,
+      kinds,
+      providers,
+      text:
+        `⚠️ ${platformLabel} حادّد عدد الطلبات علينا هالوقت (429) — مو مشكلة برابطك.\n` +
+        `انتظر دقيقة وحاول مرة ثانية، أو استخدم منصة ثانية من القائمة.`
+    };
   }
   if (infraOnly) {
     return {

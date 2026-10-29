@@ -16,6 +16,11 @@ import {
   MEDIA_PROBE_TIMEOUT_MS,
   MEDIA_STREAM_TIMEOUT_MS,
   MEDIA_ENGINE_BUILD,
+  MEDIA_CACHE_TTL_MS,
+  cacheClear,
+  cacheDelete,
+  cacheGet,
+  cacheSet,
   traceReset,
   traceSnapshot,
   type TraceEntry,
@@ -1676,6 +1681,71 @@ async function resolveTikTokShortLink(raw: string): Promise<{ url: string; aweme
   return null;
 }
 
+const TIKTOK_APP_HOSTS = [
+  'https://api16-normal-c-alisg.tiktokv.com',
+  'https://api16-normal-c-useast1a.tiktokv.com',
+  'https://api22-normal-c-alisg.tiktokv.com'
+];
+
+const TIKTOK_APP_UA = 'TikTok 26.2.0 rv:262018 (iPhone; iOS 16.5; ar_IQ) Cronet';
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function tiktokFeedResult(json: any, awemeId: string): SocialDownloadResult | null {
+  const aweme = (json?.aweme_list || []).find((a: any) => String(a?.aweme_id) === awemeId) || json?.aweme_list?.[0];
+  if (!aweme) return null;
+  const images: any[] = aweme?.image_post_info?.images || [];
+  if (images.length > 0) {
+    const items = images
+      .map(img => img?.display_image?.url_list?.[0])
+      .filter(Boolean)
+      .map((url: string) => ({ kind: 'photo' as const, url }));
+    return items.length ? { ok: true, title: aweme.desc || '', items } : null;
+  }
+  const videoUrl = aweme?.video?.play_addr?.url_list?.[0] || aweme?.video?.play_addr?.url_list?.[1];
+  if (!videoUrl) return null;
+  return { ok: true, title: aweme.desc || '', items: [{ kind: 'video' as const, url: String(videoUrl) }] };
+}
+
+/**
+ * One request at a time to TikTok's app API. The app hosts share a single rate
+ * limit per IP, so firing three in parallel is what produced the 429s; a
+ * throttled host is skipped on the retry instead of being hit again.
+ */
+async function fetchTikTokAppFeed(awemeId: string): Promise<SocialDownloadResult | null> {
+  const ordered = providerHealth.order(TIKTOK_APP_HOSTS.map(host => ({ name: host }))).map(item => item.name);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (const host of ordered) {
+      if (providerHealth.coolingDown(host)) continue;
+      const apiUrl =
+        `${host}/aweme/v1/feed/?aweme_id=${awemeId}&version_name=26.2.0&version_code=262018` +
+        `&build_number=26.2.0&manifest_version_code=262018&update_version_code=262018&openudid=7154829104829104&uuid=3849201948201948`;
+      try {
+        const r = await boundedFetch(apiUrl, { headers: { 'User-Agent': TIKTOK_APP_UA } });
+        if (r.status === 429) {
+          providerHealth.record(host, false, 'http 429');
+          await r.body?.cancel().catch(() => undefined);
+          // Back off before touching another host: they share the same quota.
+          if (attempt === 0) await sleep(900);
+          break;
+        }
+        if (!r.ok) {
+          await r.body?.cancel().catch(() => undefined);
+          continue;
+        }
+        const parsed = tiktokFeedResult(await r.json(), awemeId);
+        if (parsed) return parsed;
+      } catch {
+        // truncated/blocked body: same quota problem, treat it as throttling
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
 async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   const normalized = normalizeTikTokUrl(url);
   let resolvedUrl = normalized;
@@ -1828,44 +1898,15 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
         }
       });
     }
-    if (awemeId) {
-      for (const host of [
-        'https://api16-normal-c-alisg.tiktokv.com',
-        'https://api16-normal-c-useast1a.tiktokv.com',
-        'https://api22-normal-c-alisg.tiktokv.com'
-      ]) {
-        mirrors.push({
-          name: host,
-          run: async () => {
-            const apiUrl =
-              `${host}/aweme/v1/feed/?aweme_id=${awemeId}&version_name=26.2.0&version_code=262018` +
-              `&build_number=26.2.0&manifest_version_code=262018&update_version_code=262018&openudid=7154829104829104&uuid=3849201948201948`;
-            const r = await boundedFetch(apiUrl, {
-              headers: { 'User-Agent': 'TikTok 26.2.0 rv:262018 (iPhone; iOS 16.5; ar_IQ) Cronet' }
-            });
-            if (!r.ok) return null;
-            const j: any = await r.json();
-            const aweme = (j?.aweme_list || []).find((a: any) => String(a?.aweme_id) === awemeId) || j?.aweme_list?.[0];
-            if (!aweme) return null;
-            const imgs: any[] = aweme?.image_post_info?.images || [];
-            if (imgs.length > 0) {
-              const items = imgs
-                .map(im => im?.display_image?.url_list?.[0])
-                .filter(Boolean)
-                .map((u: string) => ({ kind: 'photo' as const, url: u }));
-              if (items.length) return { ok: true, title: aweme.desc || '', items };
-              return null;
-            }
-            const vUrl = aweme?.video?.play_addr?.url_list?.[0] || aweme?.video?.play_addr?.url_list?.[1];
-            if (!vUrl) return null;
-            return { ok: true, title: aweme.desc || '', items: [{ kind: 'video' as const, url: String(vUrl) }] };
-          }
-        });
-      }
-    }
     if (mirrors.length) {
       const raced = await raceProviders<SocialDownloadResult>(mirrors);
       if (raced.value) return raced.value;
+    }
+    // واجهة التطبيق تُجرَّب وحدها بعد المرايا: إطلاق 3 مضيفات بنفس اللحظة هو
+    // السبب المباشر لخطأ 429 اللي كان يمنع التحميل بشكل متقطّع.
+    if (awemeId) {
+      const appFeed = await fetchTikTokAppFeed(awemeId);
+      if (appFeed) return appFeed;
     }
   } catch {
     // ننتقل للطبقة التالية
@@ -2585,6 +2626,38 @@ export async function extractYouTubeHighDefinition(videoId: string): Promise<Soc
   }
 }
 
+/** Same post reached through different tracking links must share one cache slot. */
+function cacheKeyFor(platform: SocialPlatform, rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const path = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+    return `${platform}:${host}${path}`;
+  } catch {
+    return `${platform}:${String(rawUrl).trim().toLowerCase()}`;
+  }
+}
+
+/**
+ * Rebuilds a cached post: the media links are reused, but the bytes are fetched
+ * again (the caller empties them after sending), so nothing stale is delivered.
+ */
+async function reviveCachedResult(
+  entry: { title?: string; videoId?: string; items: Array<Omit<DownloadedMediaItem, 'bytes'>> }
+): Promise<SocialDownloadResult | null> {
+  const items: DownloadedMediaItem[] = [];
+  for (const item of entry.items) {
+    if (item.oversized) {
+      items.push({ ...item });
+      continue;
+    }
+    const bytes = await tryFetchMediaBytes(item.url, item.headers, 3_000);
+    if (!bytes) return null;
+    items.push({ ...item, bytes });
+  }
+  return items.length ? { ok: true, items, title: entry.title, videoId: entry.videoId } : null;
+}
+
 /** Runs one platform's downloader; kept separate so the budget wrapper stays tiny. */
 function runPlatformDownload(platform: SocialPlatform, url: string): Promise<SocialDownloadResult> {
   switch (platform) {
@@ -2629,6 +2702,17 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
   const label = plainPlatformLabel(platform);
   const started = Date.now();
   traceReset();
+
+  // Repeating the same link is the normal case (a retry tap, a friend asking for
+  // the same video): serve it from memory and never touch TikTok's quota again.
+  const cacheKey = cacheKeyFor(platform, extracted);
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    const revived = await reviveCachedResult(cached).catch(() => null);
+    if (revived) return revived;
+    cacheDelete(cacheKey);
+  }
+
   let result: SocialDownloadResult;
   let timedOut = false;
   try {
@@ -2653,7 +2737,14 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
       }
     };
   }
-  if (result.ok) return result;
+  if (result.ok) {
+    cacheSet(cacheKey, {
+      title: result.title,
+      videoId: result.videoId,
+      items: result.items.map(({ bytes: _bytes, ...rest }) => rest)
+    });
+    return result;
+  }
 
   // A plain "make sure it is public" hides a broken mirror: say what really failed.
   const attempts = attemptsSince(started);
@@ -2692,6 +2783,11 @@ export function detectPlatformFromUrl(raw: string): SocialPlatform | null {
   if (/pinterest\.|pin\.it/.test(text)) return 'pin';
   if (/youtube\.com|youtu\.be/.test(text)) return 'yt';
   return null;
+}
+
+/** Empties the short-lived post memory (used by the diagnostics script). */
+export function clearMediaCache(): void {
+  cacheClear();
 }
 
 /** Health of every mirror the downloaders touched (for /dlstatus and diagnostics). */
