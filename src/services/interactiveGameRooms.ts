@@ -38,6 +38,8 @@ const ROOM_TOUCH_MS = 60_000;
 const DRAW_CHOICE_MS = 20_000;
 const DRAW_REVEAL_MS = 5_000;
 const DRAW_MAX_HINTS = 2;
+// After the winner podium the room restarts a fresh match on its own.
+const DRAW_MATCH_OVER_MS = 10_000;
 // A player who stops polling for this long is considered gone (app killed, lost network).
 const DRAW_PRESENCE_MS = 45_000;
 const DRAW_PRESENCE_TOUCH_MS = 15_000;
@@ -612,6 +614,16 @@ export class InteractiveGameRooms {
     s.logs ||= []; s.logs.push({ text, kind, at: Date.now() }); s.logs = s.logs.slice(-40);
   }
 
+  private startDrawMatch(room: Room): void {
+    const s = room.gameState;
+    s.matchOver = false;
+    s.scores = {};
+    s.strokes = []; s.guesses = []; s.correctPlayers = []; s.logs = [];
+    s.round = 0; s.roundResult = ''; s.autoNextAt = 0; s.phase = 'waiting';
+    this.pushDrawLog(room, 'مباراة جديدة — بالتوفيق للجميع', 'end');
+    this.startDrawRound(room, 0);
+  }
+
   private startDrawRound(room: Room, index: number): void {
     const s = room.gameState;
     const count = room.players.length;
@@ -657,8 +669,16 @@ export class InteractiveGameRooms {
   }
 
   private tickDraw(room: Room, now = Date.now()): boolean {
-    if (room.game !== 'gartic' || room.status !== 'playing') return false;
+    if (room.game !== 'gartic') return false;
     const s = room.gameState;
+    if (room.status === 'finished') {
+      // The podium is showing: count it down and then open a brand new match.
+      if (!s.matchOver || !(Number(s.autoNextAt) > 0) || now < Number(s.autoNextAt)) return false;
+      if (room.players.length < 2) return false;
+      this.startDrawMatch(room);
+      return true;
+    }
+    if (room.status !== 'playing') return false;
     if (!s.round) return false;
     const phase = s.phase || 'drawing';
     if (phase === 'choosing' && now > (Number(s.choiceDeadline) || 0)) {
@@ -712,11 +732,12 @@ export class InteractiveGameRooms {
       if ((s.phase || 'drawing') !== 'drawing') return 'وقت الرسم ما بدأ';
       if (Date.now() > s.deadline || s.roundResult) return 'انتهى وقت الرسم';
       const kind = DRAW_SHAPE_KINDS.includes(String(body.kind || '')) ? String(body.kind) : 'pen';
-      const limit = kind === 'pen' || kind === 'eraser' ? 120 : 2;
+      const limit = kind === 'pen' || kind === 'eraser' ? 600 : 2;
       const points = Array.isArray(body.points) ? body.points.slice(0, limit).map((p: any) => [Math.max(0,Math.min(1,Number(p?.[0])||0)),Math.max(0,Math.min(1,Number(p?.[1])||0))]) : [];
       if (points.length < 2) return 'الخط يحتاج نقطتين';
       if (s.strokes.length >= 160) s.strokes.shift();
-      const color = kind === 'eraser' ? '#ffffff' : (DRAW_PALETTE.includes(body.color) || DRAW_COLORS.includes(body.color) ? body.color : '#1f2937');
+      const picked = String(body.color || '').toLowerCase();
+      const color = kind === 'eraser' ? '#ffffff' : (/^#[0-9a-f]{6}$/.test(picked) && (DRAW_PALETTE.includes(picked) || DRAW_COLORS.includes(picked) || Boolean(body.customColor)) ? picked : '#1f2937');
       s.strokes.push({ points, color, size: Math.max(2, Math.min(40, Number(body.size) || 5)), kind }); return null;
     }
     if (action === 'undo-stroke') { if (seat !== s.drawer) return 'الرسام وحده يرجّع آخر خط'; if ((s.phase || 'drawing') !== 'drawing' || s.roundResult || Date.now() > s.deadline) return 'انتهى وقت الرسم'; s.strokes.pop(); return null; }
@@ -743,11 +764,11 @@ export class InteractiveGameRooms {
         s.correctPlayers.push(player.token);
         const duration = Number(s.roundDurationMs) || 75_000;
         const remaining = Math.max(0, s.deadline - Date.now());
-        s.scores[player.token] = (s.scores[player.token] || 0) + Math.max(10, Math.ceil(100 * remaining / duration));
+        s.scores[player.token] = (s.scores[player.token] || 0) + Math.max(6, Math.ceil(45 * remaining / duration));
         const artist = room.players[s.drawer];
-        if (artist) s.scores[artist.token] = (s.scores[artist.token] || 0) + 25;
+        if (artist) s.scores[artist.token] = (s.scores[artist.token] || 0) + 12;
         const target = Math.max(100, Number(s.targetScore) || 500);
-        if (room.players.some(p => (s.scores[p.token] || 0) >= target)) { room.status = 'finished'; s.phase = 'reveal'; s.autoNextAt = 0; s.roundResult = 'وصل لاعب للهدف — انتهت المباراة'; this.pushDrawLog(room, 'انتهت المباراة — وصل لاعب للهدف', 'end'); }
+        if (room.players.some(p => (s.scores[p.token] || 0) >= target)) { room.status = 'finished'; s.phase = 'reveal'; s.matchOver = true; s.autoNextAt = Date.now() + DRAW_MATCH_OVER_MS; s.roundResult = 'وصل لاعب للهدف — انتهت المباراة'; this.pushDrawLog(room, 'انتهت المباراة — وصل لاعب للهدف', 'end'); this.pushDrawLog(room, 'مباراة جديدة تبدأ تلقائياً بعد لحظات', 'end'); }
         else if (room.players.filter(p => p.token !== artist?.token).every(p => s.correctPlayers.includes(p.token))) this.endDrawRound(room, 'كل المخمّنين جاوبوا صح');
       } else if (normalizeDrawGuess(guess).includes(normalizeDrawGuess(s.word))) {
         // A longer wrong guess can contain the answer; never broadcast it.
@@ -965,6 +986,8 @@ export class InteractiveGameRooms {
       state.targetScore = Math.max(100, Number(s.targetScore)||500);
       const leftMs = phase === 'choosing' ? Number(s.choiceDeadline||0) - Date.now() : phase === 'drawing' ? Number(s.deadline||0) - Date.now() : 0;
       state.roundLeft = Math.max(0, Math.ceil(leftMs / 1000));
+      state.matchOver = Boolean(s.matchOver) && room.status === 'finished';
+      state.nextMatchIn = state.matchOver ? Math.max(0, Math.ceil(((Number(s.autoNextAt) || 0) - Date.now()) / 1000)) : 0;
     } else if (room.game === 'poker') {
       state.hand = s.revealed ? s.holes[token] || [] : own ? s.holes[token] || [] : [];
       state.hands = room.players.map(p=>({name:p.name,chips:p.chips||0,folded:s.folded.includes(p.token),cards:s.revealed?s.holes[p.token]||[]:p.token===token?s.holes[p.token]||[]:[]}));
