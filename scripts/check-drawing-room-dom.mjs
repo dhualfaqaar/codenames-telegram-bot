@@ -73,16 +73,12 @@ try {
   assert.match(host.document.querySelector('.draw-toggle-copy').textContent, /مرئية/);
   assert.ok(host.document.querySelector('#drawPublicList'), 'the lobby lists open rooms');
   assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
-  // The lobby is a gartic-style hub: play, rooms, create — one panel at a time.
+  // The original lobby layout stays, with play and rooms shortcuts next to it.
+  assert.ok(host.document.querySelector('.draw-lobby-grid'), 'the lobby keeps its two-column layout');
   assert.ok(host.document.querySelector('#drawQuickPlay'), 'the lobby has a play button');
-  assert.equal(host.document.querySelector('#drawRoomsPanel').hidden, true, 'the rooms panel starts closed');
-  click(host, '#drawOpenRooms');
-  assert.equal(host.document.querySelector('#drawRoomsPanel').hidden, false, 'the rooms button opens the room list');
-  click(host, '#drawOpenCreate');
-  assert.equal(host.document.querySelector('#drawCreatePanel').hidden, false, 'the create button opens the setup');
-  assert.equal(host.document.querySelector('#drawRoomsPanel').hidden, true, 'only one panel is open');
-  click(host, '#drawOpenCreate');
-  assert.equal(host.document.querySelector('#drawCreatePanel').hidden, true, 'tapping create again returns to the hub');
+  assert.ok(host.document.querySelector('#drawOpenRooms'), 'the lobby has a rooms shortcut');
+  assert.ok(host.document.querySelector('[data-action="friend"]'), 'the create button is still there');
+  assert.equal(host.document.querySelector('.draw-hub'), null, 'no hub screen replaced the lobby');
   click(host, '[data-action="friend"]');
   await waitFor(() => host.document.querySelector('.draw-room'), 'host room');
   const roomId = await waitFor(() => roomOf(host), 'room code');

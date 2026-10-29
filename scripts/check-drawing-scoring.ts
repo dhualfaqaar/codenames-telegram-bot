@@ -279,11 +279,13 @@ for (const game of ['', 'gartic']) {
     assert.doesNotThrow(() => new Function(script), `inline script parses for "${game}"`);
   }
 }
-// The lobby offers the three gartic-style entry points: play, rooms, create.
+// The lobby keeps its original layout, with a play and a rooms shortcut added
+// next to the create button (no separate screens).
+assert.ok(lobbyHtml.includes('class="draw-lobby-grid"'), 'the lobby keeps its two-column layout');
 assert.ok(lobbyHtml.includes('id="drawQuickPlay"'), 'the play button exists');
 assert.ok(lobbyHtml.includes('id="drawOpenRooms"'), 'the rooms button exists');
-assert.ok(lobbyHtml.includes('id="drawOpenCreate"'), 'the create button exists');
-assert.ok(lobbyHtml.includes('id="drawRoomsPanel"'), 'the rooms panel exists');
-assert.ok(lobbyHtml.includes('id="drawCreatePanel"'), 'the create panel exists');
+assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the open rooms list is on the same page');
+assert.ok(lobbyHtml.includes('data-action="friend"'), 'the create button is unchanged');
+assert.ok(!lobbyHtml.includes('draw-hub'), 'no hub screen replaced the lobby');
 
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');
