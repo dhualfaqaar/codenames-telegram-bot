@@ -55,6 +55,22 @@ const click = (win, selector) => {
   element.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 };
 const roomOf = win => new URLSearchParams(win.location.search).get('room');
+// The lobby only carries «العب» and «الغرف»; the room list, joining by code and
+// creating a room all live inside the rooms screen, whose options start folded.
+const openRooms = async win => {
+  await waitFor(() => win.document.querySelector('#drawOpenRooms'), 'rooms button');
+  if (win.document.querySelector('#drawRoomsView').hidden) click(win, '#drawOpenRooms');
+  await waitFor(() => !win.document.querySelector('#drawRoomsView').hidden, 'rooms screen open');
+};
+const openCreateOptions = async win => {
+  await openRooms(win);
+  if (win.document.querySelector('#drawCreateOptions').hidden) click(win, '#drawCreateToggle');
+  await waitFor(() => !win.document.querySelector('#drawCreateOptions').hidden, 'room options open');
+};
+const createRoomFromLobby = async win => {
+  await openCreateOptions(win);
+  click(win, '[data-action="friend"]');
+};
 const state = async (win, id) => (await fetch(`${base}/api/interactive/rooms/${id}`, { headers: { Authorization: `Bearer ${win.localStorage.getItem(`cg-room-token-${id}`)}` } })).json();
 const submit = (win, formSelector, inputSelector, value) => {
   win.document.querySelector(inputSelector).value = value;
@@ -65,26 +81,30 @@ try {
   const host = makeClient('أحمد');
   const guest = makeClient('سارة');
   const third = makeClient('علي');
-  await waitFor(() => host.document.querySelector('#drawCreateTitle'), 'host lobby');
-  // The create card offers a visibility switch, and the lobby browses open rooms.
+  await waitFor(() => host.document.querySelector('#drawQuickPlay'), 'host lobby');
+  // The lobby is just play + rooms, and the rooms screen starts closed.
+  assert.equal(host.document.querySelector('#drawQuickPlay').textContent.trim(), 'العب', 'the play button has no icon');
+  assert.equal(host.document.querySelector('#drawOpenRooms').textContent.trim(), 'الغرف', 'the rooms button has no icon');
+  assert.equal(host.document.querySelector('#drawRoomsView').hidden, true, 'the rooms screen starts closed');
+  assert.equal(host.document.querySelector('#drawCreateOptions').hidden, true, 'the room options start folded');
+  assert.ok(host.document.querySelector('#drawRoomsView').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside the rooms screen');
+  await openRooms(host);
+  assert.ok(host.document.querySelector('#drawPublicList'), 'the rooms screen lists open rooms');
+  assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
+  assert.ok(host.document.querySelector('#drawRoomCode'), 'the rooms screen joins by code');
+  assert.equal(host.document.querySelector('#drawCreateOptions').hidden, true, 'options stay folded until asked');
+  await openCreateOptions(host);
   const visibility = host.document.querySelector('#drawRoomVisible');
   assert.ok(visibility, 'the create card has a visibility switch');
   assert.equal(visibility.checked, true, 'rooms start visible');
   assert.match(host.document.querySelector('.draw-toggle-copy').textContent, /مرئية/);
-  assert.ok(host.document.querySelector('#drawPublicList'), 'the lobby lists open rooms');
-  assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
-  // The original lobby layout stays, with play and rooms shortcuts next to it.
-  assert.ok(host.document.querySelector('.draw-lobby-grid'), 'the lobby keeps its two-column layout');
-  assert.ok(host.document.querySelector('#drawQuickPlay'), 'the lobby has a play button');
-  assert.ok(host.document.querySelector('#drawOpenRooms'), 'the lobby has a rooms shortcut');
-  assert.ok(host.document.querySelector('[data-action="friend"]'), 'the create button is still there');
-  assert.equal(host.document.querySelector('.draw-hub'), null, 'no hub screen replaced the lobby');
   click(host, '[data-action="friend"]');
   await waitFor(() => host.document.querySelector('.draw-room'), 'host room');
   const roomId = await waitFor(() => roomOf(host), 'room code');
   assert.match(roomId, /^[A-Z0-9]{12}$/);
   for (const win of [guest, third]) {
-    await waitFor(() => win.document.querySelector('#drawRoomCode'), 'guest lobby');
+    await waitFor(() => win.document.querySelector('#drawQuickPlay'), 'guest lobby');
+    await openRooms(win);
     win.document.querySelector('#drawRoomCode').value = roomId;
     click(win, '#drawJoinButton');
     await waitFor(() => win.document.querySelector('.draw-room'), 'guest room');
@@ -231,7 +251,8 @@ try {
   // The same room code still works for the friend who walked out: he lands back in
   // the running match instead of getting "the room can't be opened".
   const returning = makeClient('علي');
-  await waitFor(() => returning.document.querySelector('#drawRoomCode'), 'returning lobby');
+  await waitFor(() => returning.document.querySelector('#drawQuickPlay'), 'returning lobby');
+  await openRooms(returning);
   returning.document.querySelector('#drawRoomCode').value = roomId;
   click(returning, '#drawJoinButton');
   await waitFor(() => returning.document.querySelector('.draw-room'), 'rejoined room');
@@ -242,12 +263,13 @@ try {
   // Open rooms are discoverable: a new visitor finds the room in the lobby and joins
   // it with one tap, while a hidden room only works through its code.
   const host2 = makeClient('منشئ');
-  await waitFor(() => host2.document.querySelector('#drawCreateTitle'), 'second lobby');
-  click(host2, '[data-action="friend"]');
+  await waitFor(() => host2.document.querySelector('#drawQuickPlay'), 'second lobby');
+  await createRoomFromLobby(host2);
   await waitFor(() => host2.document.querySelector('.draw-room'), 'second room');
   const room2 = await waitFor(() => roomOf(host2), 'second room code');
   const visitor = makeClient('زائر');
-  await waitFor(() => visitor.document.querySelector('#drawPublicList'), 'visitor lobby');
+  await waitFor(() => visitor.document.querySelector('#drawQuickPlay'), 'visitor lobby');
+  await openRooms(visitor);
   await waitFor(() => visitor.document.querySelector(`[data-join-room="${room2}"]`), 'the open room is listed', 15000);
   assert.match(visitor.document.querySelector(`[data-join-room="${room2}"]`).closest('.draw-public-room').textContent, /منشئ/);
   click(visitor, `[data-join-room="${room2}"]`);
@@ -262,7 +284,8 @@ try {
   assert.match(roomOf(quick) || '', /^[A-Z0-9]{12}$/, 'play lands in a real room');
 
   const hiddenHost = makeClient('مخفي');
-  await waitFor(() => hiddenHost.document.querySelector('#drawCreateTitle'), 'hidden lobby');
+  await waitFor(() => hiddenHost.document.querySelector('#drawQuickPlay'), 'hidden lobby');
+  await openCreateOptions(hiddenHost);
   const hiddenSwitch = hiddenHost.document.querySelector('#drawRoomVisible');
   hiddenSwitch.checked = false;
   hiddenSwitch.dispatchEvent(new hiddenHost.Event('change', { bubbles: true }));

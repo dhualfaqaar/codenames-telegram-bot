@@ -279,13 +279,20 @@ for (const game of ['', 'gartic']) {
     assert.doesNotThrow(() => new Function(script), `inline script parses for "${game}"`);
   }
 }
-// The lobby keeps its original layout, with a play and a rooms shortcut added
-// next to the create button (no separate screens).
-assert.ok(lobbyHtml.includes('class="draw-lobby-grid"'), 'the lobby keeps its two-column layout');
-assert.ok(lobbyHtml.includes('id="drawQuickPlay"'), 'the play button exists');
+// The lobby is one screen with two plain buttons: play, and rooms. Everything
+// about rooms (the open room list, joining by code and creating a room) lives
+// behind the rooms button, and the room options only unfold after «أنشئ غرفة».
+assert.ok(lobbyHtml.includes('class="draw-lobby-main"'), 'the lobby has its own button stack');
+assert.ok(lobbyHtml.includes('id="drawQuickPlay">العب<'), 'the play button is labelled without an icon');
 assert.ok(lobbyHtml.includes('id="drawOpenRooms"'), 'the rooms button exists');
-assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the open rooms list is on the same page');
-assert.ok(lobbyHtml.includes('data-action="friend"'), 'the create button is unchanged');
+assert.ok(!lobbyHtml.includes('▶'), 'the play button carries no triangle icon');
+assert.ok(!lobbyHtml.includes('\u{1F6AA}'), 'the rooms button carries no door icon');
+assert.ok(lobbyHtml.includes('id="drawRoomsView"'), 'the rooms screen exists');
+assert.ok(lobbyHtml.includes('id="drawCreateToggle"'), 'the create button lives inside the rooms screen');
+assert.ok(lobbyHtml.includes('id="drawCreateOptions"'), 'the room options are collapsible');
+assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the open room list lives inside the rooms screen');
+assert.ok(lobbyHtml.indexOf('id="drawRoomsView"') < lobbyHtml.indexOf('id="drawPublicList"'), 'the list is inside the rooms screen');
+assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the room is opened from inside the rooms screen');
 assert.ok(!lobbyHtml.includes('draw-hub'), 'no hub screen replaced the lobby');
 
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');
