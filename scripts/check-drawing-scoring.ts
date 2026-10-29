@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { InteractiveGameRooms, MemoryRoomStorage, drawGuessKind } from '../src/services/interactiveGameRooms';
+import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 
 const storage = new MemoryRoomStorage();
 const rooms = new InteractiveGameRooms(storage);
@@ -266,4 +267,23 @@ assert.equal(ended.state.word,'','the word is cleared from the view');
 assert.ok(!JSON.stringify(ended.state.logs).includes(secretWord),'the log never prints the answer');
 assert.ok(!ended.state.guesses.some((guess:any)=>guess.reveal),'no answer row reaches the guessers');
 assert.ok(!JSON.stringify(ended.state).includes(secretWord),'the answer is not in the payload');
+// The lobby ships as one inline script: a single broken quote there kills the
+// whole page, so parse it here instead of finding out from the Mini App.
+const lobbyHtml = interactiveGamesMiniAppHtml('gartic');
+assert.ok(lobbyHtml.includes('\u2067') || lobbyHtml.length > 1000, 'the lobby html renders');
+for (const game of ['', 'gartic']) {
+  const page = interactiveGamesMiniAppHtml(game);
+  const scripts = [...page.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]).filter(Boolean);
+  assert.ok(scripts.length > 0, `inline script exists for "${game}"`);
+  for (const script of scripts) {
+    assert.doesNotThrow(() => new Function(script), `inline script parses for "${game}"`);
+  }
+}
+// The lobby offers the three gartic-style entry points: play, rooms, create.
+assert.ok(lobbyHtml.includes('id="drawQuickPlay"'), 'the play button exists');
+assert.ok(lobbyHtml.includes('id="drawOpenRooms"'), 'the rooms button exists');
+assert.ok(lobbyHtml.includes('id="drawOpenCreate"'), 'the create button exists');
+assert.ok(lobbyHtml.includes('id="drawRoomsPanel"'), 'the rooms panel exists');
+assert.ok(lobbyHtml.includes('id="drawCreatePanel"'), 'the create panel exists');
+
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');
