@@ -252,8 +252,94 @@ try {
   assert.ok(!listed.rooms.some(room => room.id === hiddenCode), 'the hidden room never shows in the browser');
   const byCode = await fetch(`${base}/api/interactive/rooms/${hiddenCode}`, { headers: { Authorization: `Bearer ${hiddenHost.localStorage.getItem(`cg-room-token-${hiddenCode}`)}` } });
   assert.equal(byCode.status, 200, 'the hidden room still opens with its code');
+  // Play the match out on the board: once someone reaches the target score the
+  // winners podium takes over the canvas, counts down and then a new match starts.
+  {
+    const seats = [host, guest, returning];
+    const playRound = async () => {
+      const picker = await waitFor(() => seats.find(win => win.document.querySelector('.draw-word-choice')), 'a drawer gets the word card', 20000);
+      click(picker, '.draw-word-choice');
+      await waitFor(async () => (await state(picker, roomId)).state.phase === 'drawing', 'the round starts drawing', 15000);
+      const secret = (await state(picker, roomId)).state.word;
+      assert.ok(secret && secret !== '؟', 'the drawer receives the real word');
+      const guessers = seats.filter(win => win !== picker);
+      for (const guesser of guessers) {
+        await waitFor(() => guesser.document.querySelector('#guessForm'), 'guesser form', 10000);
+        submit(guesser, '#guessForm', '#guessInput', secret);
+      }
+      await waitFor(async () => {
+        const view = await state(host, roomId);
+        return view.room.status === 'finished' || view.state.phase === 'reveal';
+      }, 'round resolved', 15000);
+      return (await state(host, roomId)).room.status;
+    };
+    let status = (await state(host, roomId)).room.status;
+    for (let round = 0; round < 6 && status !== 'finished'; round++) status = await playRound();
+    assert.equal(status, 'finished', 'the match ends when a player reaches the target score');
+    const podium = await waitFor(() => host.document.querySelector('.draw-podium'), 'the winners podium takes over the board', 15000);
+    assert.ok(podium.closest('.draw-canvas-wrap'), 'the podium sits on top of the drawing board');
+    assert.match(podium.textContent, /انتهت المباراة/);
+    assert.match(podium.textContent, /الفائزون/);
+    assert.deepEqual([...podium.querySelectorAll('.draw-podium-slot[data-place]')].map(slot => Number(slot.dataset.place)), [2, 1, 3], 'the steps are ordered 2-1-3');
+    assert.equal(podium.querySelectorAll('.draw-podium-medal').length, 3, 'every step wears a medal');
+    assert.match(podium.textContent, /نقطة/, 'scores are shown on the podium');
+    assert.equal(host.document.querySelector('.draw-standings'), null, 'the old bottom standings card is gone');
+    const bar = podium.querySelector('.draw-podium-bar i');
+    assert.match(bar.getAttribute('style'), /width:\d/, 'the countdown bar is filled');
+    assert.match(podium.textContent, /مباراة جديدة تبدأ/);
+    // The podium is temporary: after its countdown a brand new match starts.
+    await waitFor(async () => (await state(host, roomId)).room.status === 'playing', 'the next match starts by itself', 20000);
+    await waitFor(() => host.document.querySelector('.draw-podium') === null, 'the podium disappears', 15000);
+    const fresh = await state(host, roomId);
+    assert.equal(fresh.state.round, 1, 'the new match restarts from round one');
+    assert.ok(fresh.state.scores.every(entry => entry.score === 0), 'the new match starts from zero');
+  }
+  // The winners podium is the real shipped renderer: pull it out of the page and
+  // run it with stubs, so the 2-1-3 stage, medals and the countdown are verified.
+  {
+    const source = html.slice(html.indexOf('function drawPodiumMarkup('));
+    let depth = 0, end = 0;
+    for (let i = source.indexOf('{'); i < source.length; i++) {
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
+    }
+    const code = source.slice(0, end);
+    assert.ok(code.length > 100 && code.includes('draw-podium-stage'), 'the podium renderer ships with the app');
+    const stubs = {
+      safe: value => String(value ?? ''),
+      digit: value => String(value),
+      isBotCreator: false,
+      playerAvatarFlag: (avatar) => avatar,
+      drawPlayerAvatar: (photo, name, extra) => `<span class="${extra}">${name}</span>`,
+      verifiedBadgeMarkup: () => '<i class="creator-verified-badge"></i>',
+    };
+    const run = new Function('safe', 'digit', 'isBotCreator', 'playerAvatarFlag', 'drawPlayerAvatar', 'verifiedBadgeMarkup', `${code}; return drawPodiumMarkup;`);
+    const renderPodium = run(stubs.safe, stubs.digit, stubs.isBotCreator, stubs.playerAvatarFlag, stubs.drawPlayerAvatar, stubs.verifiedBadgeMarkup);
+    const ranking = [
+      { player: { name: 'دي', seat: 0, countryCode: 'IQ' }, score: 40, index: 0 },
+      { player: { name: 'رامي', seat: 1, countryCode: 'IQ' }, score: 123, index: 1 },
+      { player: { name: 'سارة', seat: 2, countryCode: 'IQ' }, score: 18, index: 2 },
+    ];
+    const podium = renderPodium({ playerSeat: 1, players: ranking.map(entry => entry.player) }, { nextMatchIn: 7, targetScore: 100 }, ranking);
+    const stageOrder = [...podium.matchAll(/data-place="(\d)"/g)].map(match => Number(match[1]));
+    assert.deepEqual(stageOrder, [2, 1, 3], 'the stage is ordered second, first, third like Gartic');
+    assert.match(podium, /class="draw-podium-slot place-1[^"]*"[\s\S]*?123 نقطة/, 'the winner is centred with their score');
+    assert.match(podium, /رامي/, 'the winner name is shown');
+    assert.match(podium, /data-place="2"[\s\S]*?دي/, 'the runner-up sits on the left');
+    assert.match(podium, /data-place="3"[\s\S]*?سارة/, 'the third place sits on the right');
+    assert.match(podium, /draw-podium-you/, 'the viewer is marked on their own step');
+    assert.match(podium, /width:70%/, 'the countdown bar starts from the remaining seconds');
+    assert.match(podium, /بعد <b dir="ltr">7<\/b> ثانية/, 'the countdown text counts down');
+    assert.doesNotMatch(podium, /draw-standings/, 'the old bottom card is gone');
+    assert.equal(html.includes('<section class="draw-standings"'), false, 'no duplicated standings card is shipped');
+    // More than three players keep the extra ranks in one line under the stage.
+    const crowd = [...ranking, { player: { name: 'علي', seat: 3, countryCode: 'IQ' }, score: 5, index: 3 }];
+    const wide = renderPodium({ playerSeat: 1, players: crowd.map(entry => entry.player) }, { nextMatchIn: 0, targetScore: 100 }, crowd);
+    assert.match(wide, /draw-podium-rest[\s\S]*4\. علي/, 'extra players are listed by rank');
+    assert.match(wide, /تبدأ هسه/, 'a zero countdown reads as starting now');
+  }
   assert.deepEqual(errors, []);
-  console.log('Drawing room DOM flow passed: words, tools, shapes, colour wheel (opens as a fixed panel), clear-all, dots, live strokes, logs, chat, hint, automatic next round, leaving/rejoining by code and the public room browser.');
+  console.log('Drawing room DOM flow passed: words, tools, shapes, colour wheel (opens as a fixed panel), clear-all, dots, live strokes, logs, chat, hint, automatic next round, leaving/rejoining by code, the public room browser and the timed winners podium.');
 } finally {
   for (const dom of windows) dom.window.close();
 }
