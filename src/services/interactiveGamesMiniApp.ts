@@ -448,7 +448,7 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 .draw-lobby-heading .draw-brand{display:block;margin-bottom:10px;color:#3674c8;font-size:12px;font-weight:900;letter-spacing:.05em}
 .draw-ribbon{position:relative;display:inline-block;min-width:min(290px,100%);margin:0;padding:9px 32px;background:#1685ed;border:3px solid #103757;border-radius:9px;box-shadow:0 4px 0 #0c2c4d;color:#ffdc55!important;font-size:clamp(23px,3vw,30px)!important;line-height:1.3;text-shadow:1px 2px #104273}
 .draw-lobby-heading p{margin:12px 0 0;color:#647b90;font-size:14px;font-weight:650}
-.draw-lobby-main{display:grid;gap:12px;max-width:460px;margin:0 auto;padding:0 clamp(16px,4vw,32px)}
+.draw-lobby-main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:640px;margin:0 auto;padding:0 clamp(16px,4vw,32px)}
 .draw-lobby-main .draw-action{margin:0!important}
 .draw-rooms-view{max-width:900px;margin:4px auto 0}
 .draw-rooms-view[hidden]{display:none}
@@ -719,6 +719,9 @@ else if(game==='gartic')html='<header class="draw-lobby-heading"><span class="dr
 +'<button type="button" class="draw-action" id="drawOpenRooms" aria-expanded="false" aria-controls="drawRoomsView">الغرف</button>'
 +'</div>'
 +'<div class="draw-rooms-view" id="drawRoomsView" hidden>'
++'<section aria-labelledby="drawJoinTitle">'
++'<h2 id="drawJoinTitle">انضم لأصدقائك</h2><p class="draw-section-copy">عندك رمز غرفة؟ اكتبه هنا</p><div class="draw-join-icon" aria-hidden="true">✉</div><label class="field-label" for="drawRoomCode">رمز الغرفة</label><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="مثلاً ABC234DEF567"><button type="button" id="drawJoinButton" class="draw-action join"><span aria-hidden="true">↗</span> انضم للغرفة</button><div class="draw-how"><strong>شلون نلعب؟</strong><ol><li>أنشئ غرفة وشارك الدعوة.</li><li>بكل جولة لاعب يرسم كلمة.</li><li>خمّن بسرعة واجمع النقاط.</li></ol></div>'
++'</section>'
 +'<section aria-labelledby="drawCreateTitle">'
 +'<h2 id="drawCreateTitle">غرفة جديدة</h2>'
 +'<p class="draw-section-copy">اضبط إعدادات الجولة، وبعدها افتح الغرفة</p>'
@@ -735,9 +738,6 @@ else if(game==='gartic')html='<header class="draw-lobby-heading"><span class="dr
 +'<button type="button" id="drawPublicRefresh" class="draw-refresh" aria-label="تحديث قائمة الغرف">↻ تحديث</button></div>'
 +'<p class="draw-section-copy">غرف مفتوحة تقدر تدخلها بضغطة — والغرف المخفية تحتاج رمزها.</p>'
 +'<div id="drawPublicList" class="draw-public-list" aria-live="polite"><p class="draw-public-empty">جاري تحميل الغرف…</p></div>'
-+'</section>'
-+'<section aria-labelledby="drawJoinTitle">'
-+'<h2 id="drawJoinTitle">انضم لأصدقائك</h2><p class="draw-section-copy">عندك رمز غرفة؟ اكتبه هنا</p><div class="draw-join-icon" aria-hidden="true">✉</div><label class="field-label" for="drawRoomCode">رمز الغرفة</label><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="مثلاً ABC234DEF567"><button type="button" id="drawJoinButton" class="draw-action join"><span aria-hidden="true">↗</span> انضم للغرفة</button><div class="draw-how"><strong>شلون نلعب؟</strong><ol><li>أنشئ غرفة وشارك الدعوة.</li><li>بكل جولة لاعب يرسم كلمة.</li><li>خمّن بسرعة واجمع النقاط.</li></ol></div>'
 +'</section>'
 +'</div>';
 else html='<h2>إعدادات الطاولة</h2><div class="setup-fields"><div><label class="field-label" for="capacity">عدد اللاعبين</label><select id="capacity" class="setup-select"><option value="2">لاعبان</option><option value="4">4 لاعبين</option><option value="6" selected>6 لاعبين</option></select></div><div><label class="field-label" for="startingChips">رقائق البداية</label><select id="startingChips" class="setup-select"><option value="500">500</option><option value="1000" selected>1000</option><option value="2000">2000</option></select></div><div><label class="field-label" for="pokerTheme">لون الطاولة</label><select id="pokerTheme" class="setup-select" data-pref="pokerTheme"><option value="felt">لباد أخضر</option><option value="blue">أزرق</option><option value="red">أحمر</option><option value="night">داكن</option></select></div></div><div class="notice">اللعب ودي برقائق افتراضية فقط؛ ماكو أموال حقيقية.</div><div class="setup-actions"><button class="setup-action" data-action="friend"><strong>أنشئ طاولة بوكر</strong><small>شارك رابطها مع أصدقائك للانضمام.</small></button></div>';
