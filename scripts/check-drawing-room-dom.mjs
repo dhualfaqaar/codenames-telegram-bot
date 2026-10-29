@@ -87,11 +87,14 @@ try {
   assert.equal(host.document.querySelector('#drawOpenRooms').textContent.trim(), 'الغرف', 'the rooms button has no icon');
   assert.equal(host.document.querySelector('#drawRoomsView').hidden, true, 'the rooms screen starts closed');
   assert.equal(host.document.querySelector('#drawCreateOptions').hidden, true, 'the room options start folded');
-  assert.ok(host.document.querySelector('#drawRoomsView').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside the rooms screen');
+  assert.ok(host.document.querySelector('#drawRoomCode'), 'the lobby carries the empty room code field');
+  assert.equal(host.document.querySelector('#drawRoomsView').contains(host.document.querySelector('#drawRoomCode')), false, 'the code field is not hidden behind the rooms button');
+  assert.ok(host.document.querySelector('.draw-lobby-play').contains(host.document.querySelector('#drawQuickPlay')), 'the play button sits in the lobby grid');
+  assert.ok(host.document.querySelector('.draw-lobby-play').querySelector('.draw-account-avatar'), 'the player photo sits above the buttons');
   await openRooms(host);
   assert.ok(host.document.querySelector('#drawPublicList'), 'the rooms screen lists open rooms');
   assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
-  assert.ok(host.document.querySelector('#drawRoomCode'), 'the rooms screen joins by code');
+  assert.ok(host.document.querySelector('#drawRoomsView').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside the rooms screen');
   assert.equal(host.document.querySelector('#drawCreateOptions').hidden, true, 'options stay folded until asked');
   await openCreateOptions(host);
   const visibility = host.document.querySelector('#drawRoomVisible');
@@ -103,8 +106,7 @@ try {
   const roomId = await waitFor(() => roomOf(host), 'room code');
   assert.match(roomId, /^[A-Z0-9]{12}$/);
   for (const win of [guest, third]) {
-    await waitFor(() => win.document.querySelector('#drawQuickPlay'), 'guest lobby');
-    await openRooms(win);
+    await waitFor(() => win.document.querySelector('#drawRoomCode'), 'guest lobby');
     win.document.querySelector('#drawRoomCode').value = roomId;
     click(win, '#drawJoinButton');
     await waitFor(() => win.document.querySelector('.draw-room'), 'guest room');
@@ -251,8 +253,7 @@ try {
   // The same room code still works for the friend who walked out: he lands back in
   // the running match instead of getting "the room can't be opened".
   const returning = makeClient('علي');
-  await waitFor(() => returning.document.querySelector('#drawQuickPlay'), 'returning lobby');
-  await openRooms(returning);
+  await waitFor(() => returning.document.querySelector('#drawRoomCode'), 'returning lobby');
   returning.document.querySelector('#drawRoomCode').value = roomId;
   click(returning, '#drawJoinButton');
   await waitFor(() => returning.document.querySelector('.draw-room'), 'rejoined room');
