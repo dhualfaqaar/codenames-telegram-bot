@@ -121,9 +121,15 @@ try {
   // The board is measured from its wrapper and the leftover screen height, not
   // squeezed into a letterboxed inner box.
   const sizedCanvas = host.document.querySelector('#drawCanvas');
-  assert.match(sizedCanvas.style.width, /^\d+px$/, 'canvas width comes from the wrapper');
-  assert.match(sizedCanvas.style.height, /^\d+px$/, 'canvas height comes from the space left on screen');
-  assert.match(String(html), /#roomPage\[data-game="gartic"\] \.draw-canvas\{[^}]*aspect-ratio:auto/, 'the room board drops the fixed aspect ratio so it cannot letterbox');
+  assert.ok(sizedCanvas.width > 0 && sizedCanvas.height > 0, 'the bitmap is sized to the real board box');
+  // One-screen layout: the room owns the viewport, the cards take the leftover
+  // height and their lists scroll inside instead of pushing the page down.
+  assert.match(String(html), /#roomPage\[data-game="gartic"\] \.draw-canvas\{[^}]*position:absolute[^}]*aspect-ratio:auto/, 'the board fills its frame exactly');
+  assert.match(String(html), /body:has\(#gameApp\[data-page="room"\]\[data-game="gartic"\]\)\{[^}]*overflow:hidden/, 'the page itself never scrolls during play');
+  assert.match(String(html), /#roomPage\[data-game="gartic"\] \.draw-room\{[^}]*overflow:hidden/, 'the room grid is clamped to the screen');
+  assert.match(String(html), /#roomPage\[data-game="gartic"\] \.draw-room-feed\{[^}]*flex:1 1 auto/, 'feeds grow with the card instead of a fixed height');
+  assert.doesNotMatch(String(html), /\.draw-room-feed\{height:clamp\(84px/, 'the feed is not pinned to a small fixed height');
+  assert.match(String(html), /#roomPage\[data-game="gartic"\] \.draw-player-list\{[^}]*flex:1 1 auto/, 'the player list fills the column and scrolls on its own');
   assert.equal(host.document.querySelectorAll('.palette-color').length, 20);
   assert.equal(guest.document.querySelectorAll('.draw-tool').length, 0);
   assert.equal(host.document.querySelectorAll('.draw-feed-card').length, 1);

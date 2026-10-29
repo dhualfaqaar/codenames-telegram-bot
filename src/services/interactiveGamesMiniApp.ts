@@ -935,32 +935,12 @@ function wireCanvas(s){
   if(window._drawTurnKey!==turnKey){window._drawTurnKey=turnKey;redoStack=[]}
   var ctx=canvas.getContext('2d');
   var strokes=(s.strokes||[]);
-  // The board fills its own wrapper edge to edge: no dead white margin and no
-  // letterboxing, so every pixel of the visible board accepts strokes.
+  // CSS owns the visible surface (absolute fill inside the wrapper); here we only
+  // match the bitmap to it at device resolution so strokes stay crisp.
   function fitCanvas(){
     var wrap=canvas.parentElement||canvas;
-    var width=Math.max(180,Math.round((wrap.clientWidth||900)-2));
-    var height;
-    if(window.innerWidth<900){
-      height=Math.max(200,Math.round(window.innerHeight*0.5));
-    }else{
-      var room=canvas.closest?canvas.closest('.draw-room'):null;
-      var board=canvas.closest?canvas.closest('.draw-room-board'):null;
-      var bottom=room?room.querySelector('.draw-room-bottom'):null;
-      var top=board?Math.max(0,board.getBoundingClientRect().top):0;
-      var chrome=board?Math.max(0,board.offsetHeight-canvas.offsetHeight):0;
-      var bottomHeight=bottom?bottom.getBoundingClientRect().height:0;
-      // The tool rail is capped to the same screen budget so it can never push the
-      // chat and log cards past the bottom of the screen.
-      var rail=room?room.querySelector('.draw-room-tools'):null;
-      if(rail)rail.style.maxHeight=Math.max(300,Math.round(window.innerHeight-top-12))+'px';
-      var railHeight=rail?rail.getBoundingClientRect().height:0;
-      height=Math.round(window.innerHeight-top-chrome-bottomHeight-18);
-      var stacked=chrome+height+bottomHeight;
-      if(railHeight&&railHeight>stacked)height-=railHeight-stacked;
-      height=Math.max(200,height);
-    }
-    canvas.style.width=width+'px';canvas.style.height=height+'px';
+    var width=Math.max(160,Math.round(wrap.clientWidth||window.innerWidth||900));
+    var height=Math.max(160,Math.round(wrap.clientHeight||window.innerHeight||580));
     var dpr=Math.min(2,window.devicePixelRatio||1),bw=Math.round(width*dpr),bh=Math.round(height*dpr);
     if(canvas.width!==bw||canvas.height!==bh){canvas.width=bw;canvas.height=bh;return true}
     return false;
@@ -969,6 +949,10 @@ function wireCanvas(s){
   fitCanvas();
   paint(null);
   if(!window._drawFitBound){window._drawFitBound=true;window.addEventListener('resize',function(){if(roomData&&roomData.room&&roomData.room.game==='gartic'&&roomData.state)wireCanvas(roomData.state)})}
+  // The wrapper can change size without a window resize (tool rail, fonts, safe area):
+  // resize the bitmap to the new box instead of stretching the old one.
+  if(typeof ResizeObserver!=='undefined'&&!canvas.__drawObserver){canvas.__drawObserver=new ResizeObserver(function(){if(fitCanvas())paint(null)})}
+  if(canvas.__drawObserver)canvas.__drawObserver.observe(canvas.parentElement||canvas);
   var canDraw=!!s.isDrawer&&(s.phase||'')==='drawing';
   var wheel=$('drawColorWheel'),colorPop=$('drawColorPop');
   var paintWheel=function(){if(wheel)wheel.style.setProperty('--pick',drawColor);if(light)light.style.setProperty('--hue',String(drawHue));var preview=$('drawColorPreview');if(preview)preview.style.background=drawColor;var hex=$('drawColorHex');if(hex)hex.textContent=drawColor};
