@@ -279,21 +279,21 @@ for (const game of ['', 'gartic']) {
     assert.doesNotThrow(() => new Function(script), `inline script parses for "${game}"`);
   }
 }
-// The lobby is one screen with two plain buttons: play, and rooms. Everything
-// about rooms (the open room list, joining by code and creating a room) lives
-// behind the rooms button, and the room options only unfold after «أنشئ غرفة».
-assert.ok(lobbyHtml.includes('class="draw-lobby-main"'), 'the lobby has its own button stack');
+// The lobby keeps its original two columns: the player photo above the play and
+// rooms buttons on one side, and the empty room code field on the other. The
+// room options and the open room list only show up behind the rooms button.
+assert.ok(lobbyHtml.includes('class="draw-lobby-grid"'), 'the lobby keeps its two columns');
 assert.ok(lobbyHtml.includes('id="drawQuickPlay">العب<'), 'the play button is labelled without an icon');
 assert.ok(lobbyHtml.includes('id="drawOpenRooms"'), 'the rooms button exists');
 assert.ok(!lobbyHtml.includes('▶'), 'the play button carries no triangle icon');
 assert.ok(!lobbyHtml.includes('\u{1F6AA}'), 'the rooms button carries no door icon');
+assert.ok(lobbyHtml.indexOf('class="draw-lobby-grid"') < lobbyHtml.indexOf('drawPlayerAvatar('), 'the player photo sits inside the lobby grid');
+assert.ok(lobbyHtml.indexOf('drawPlayerAvatar(') < lobbyHtml.indexOf('id="drawQuickPlay"'), 'the photo sits above the play and rooms buttons');
+assert.ok(lobbyHtml.indexOf('id="drawRoomCode"') < lobbyHtml.indexOf('id="drawRoomsView"'), 'the room code field is on the lobby screen');
 assert.ok(lobbyHtml.includes('id="drawRoomsView"'), 'the rooms screen exists');
 assert.ok(lobbyHtml.includes('id="drawCreateToggle"'), 'the create button lives inside the rooms screen');
 assert.ok(lobbyHtml.includes('id="drawCreateOptions"'), 'the room options are collapsible');
 assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the open room list lives inside the rooms screen');
-assert.ok(lobbyHtml.includes('id="drawRoomCode"'), 'the room code field lives inside the rooms screen');
-assert.ok(lobbyHtml.indexOf('id="drawRoomsView"') < lobbyHtml.indexOf('id="drawRoomCode"'), 'the code field sits inside the rooms screen');
-assert.ok(lobbyHtml.indexOf('id="drawRoomsView"') < lobbyHtml.indexOf('id="drawJoinTitle"'), 'joining by code is part of the rooms screen');
 assert.ok(lobbyHtml.indexOf('id="drawRoomsView"') < lobbyHtml.indexOf('id="drawPublicList"'), 'the list is inside the rooms screen');
 assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the room is opened from inside the rooms screen');
 assert.ok(!lobbyHtml.includes('draw-hub'), 'no hub screen replaced the lobby');
