@@ -19,7 +19,13 @@ import {
   summarizeFailures,
   withTimeout
 } from '../src/services/mediaResilience';
-import { downloadFromPlatform, mediaProviderReport, resetMediaProviders } from '../src/services/mediaServicesEngine';
+import {
+  detectPlatformFromUrl,
+  diagnoseDownload,
+  downloadFromPlatform,
+  mediaProviderReport,
+  resetMediaProviders
+} from '../src/services/mediaServicesEngine';
 
 let failures = 0;
 let checks = 0;
@@ -219,6 +225,27 @@ async function main(): Promise<void> {
     }
   );
   check('boundedFetch يرجّع استجابة سليمة', leftover === 200);
+
+  // 6) تشخيص /dltest ─────────────────────────────────────────────────────────
+  console.log('\n6) تشخيص /dltest');
+  resetMediaProviders();
+  const hostSeen: string[] = [];
+  const diag = await withFetch(
+    (async (input: any) => {
+      hostSeen.push(String(input));
+      return new Response('no', { status: 404 });
+    }) as any,
+    async () => diagnoseDownload('yt', 'https://youtu.be/dQw4w9WgXcQ')
+  );
+  check('التشخيص يرجّع نسخة المحرك', typeof diag.build === 'string' && diag.build.length > 4, diag.build);
+  check('التشخيص يسجّل نداءات الشبكة', diag.trace.length > 0, `${diag.trace.length}`);
+  check('كل نداء مسجّل بزمن ونتيجة', diag.trace.every(entry => entry.ms >= 0 && typeof entry.ok === 'boolean'));
+  check('النداء الفاشل يوضّح رمز HTTP', diag.trace.some(entry => !entry.ok && entry.status === 404), JSON.stringify(diag.trace[0] || {}));
+  check('التشخيص يبيّن الفشل النهائي', !diag.result.ok);
+  check('كشف المنصة من الرابط', detectPlatformFromUrl('https://vt.tiktok.com/ZSgtWrq3e/') === 'tt');
+  check('كشف يوتيوب من youtu.be', detectPlatformFromUrl('https://youtu.be/abc') === 'yt');
+  check('كشف إنستغرام', detectPlatformFromUrl('https://www.instagram.com/reel/abc/') === 'ig');
+  check('رابط غريب ما يُنسب لمنصة', detectPlatformFromUrl('https://example.com/x') === null);
 
   resetProviderHealth();
   resetMediaProviders();

@@ -2416,6 +2416,41 @@ export class TelegramBotManager {
 
     const isStartCommand = /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
 
+    // 🧪 /dltest <رابط> — تشخيص كامل: كل نداء شبكة، رمزه، وزمنه.
+    const isDlTest = /^\/dltest(?:@\w+)?(?:\s|$)/i.test(text);
+    if (isDlTest) {
+      if (!sender || !this.isOwner(sender.id)) return;
+      const SEP = '━━━━━━━━━━━━━━━━━━━';
+      const rest = text.replace(/^\/dltest(?:@\w+)?\s*/i, '').trim();
+      const firstUrl = MS.extractFirstUrl(rest) || '';
+      const platform = MS.detectPlatformFromUrl(rest) || (firstUrl ? MS.detectPlatformFromUrl(firstUrl) : null);
+      if (!firstUrl || !platform) {
+        await this.sendMessage(
+          chatId,
+          `🧪 *اختبار التحميل*\n${SEP}\nأرسل: \`/dltest <الرابط>\`\nمثال: \`/dltest https://youtu.be/xxxx\``
+        );
+        return;
+      }
+      const waitMsg = await this.sendMessage(chatId, '🧪 جاري فحص الطبقات... (قد يأخذ لحد ٣٤ ثانية)');
+      const diag = await MS.diagnoseDownload(platform, firstUrl);
+      const rows = diag.trace.slice(-18).map(entry => {
+        const status = entry.status ? `HTTP ${entry.status}` : 'بلا استجابة';
+        const size = entry.bytes ? ` · ${Math.round(entry.bytes / 1024)}KB` : '';
+        const reason = !entry.ok && entry.reason && !entry.status ? ` (${this.mdSafe(entry.reason)})` : '';
+        return `• ${this.mdSafe(entry.provider)} → ${this.mdSafe(status)}${size} · ${entry.ms}ms${reason}`;
+      });
+      const head =
+        `🧪 *فحص التحميل — ${MS.socialPlatformLabel(platform)}*\n${SEP}\n` +
+        `🧩 ${diag.build} · ⏱️ ${(diag.elapsedMs / 1000).toFixed(1)}s\n` +
+        `📊 النتيجة: ${diag.result.ok ? '✅ نجاح' : '❌ فشل'}\n${SEP}\n`;
+      const body = rows.length ? rows.join('\n') : '_ما صار أي نداء شبكة — الفشل قبل الاتصال._';
+      const tail = diag.result.ok ? '' : `\n${SEP}\n⚠️ ${this.mdSafe(diag.result.error || '')}`;
+      const report = `${head}${body}${tail}`.slice(0, 3900);
+      if (waitMsg?.result?.message_id) await this.editMessageText(chatId, waitMsg.result.message_id, report);
+      else await this.sendMessage(chatId, report);
+      return;
+    }
+
     // 🩺 حالة مزوّدي التحميل — للمالك فقط، تبيّن أي مرآة متعطلة فعلاً.
     const isDlStatus = /^\/dlstatus(?:@\w+)?(?:\s|$)/i.test(text);
     if (isDlStatus) {
@@ -9872,12 +9907,19 @@ export class TelegramBotManager {
         // للمالك فقط: سطر تشخيص يبيّن أي مزوّد فشل ولأي سبب، بدل التخمين.
         let errText = baseErr;
         if (this.isOwner(Number(userId))) {
-          const failing = MS
-            .mediaProviderReport()
-            .filter(entry => entry.consecutiveFailures > 0 || entry.coolingDown)
-            .slice(0, 4)
-            .map(entry => `${entry.provider}=${entry.lastReason || 'فشل'}`);
-          if (failing.length) errText += `\n\n🔍 _تشخيص: ${this.mdSafe(failing.join(' · '))}_`;
+          const trace = result.diagnostics?.trace || [];
+          const failing = trace
+            .filter(entry => !entry.ok)
+            .slice(-4)
+            .map(entry => `${entry.provider}=${entry.status ? `HTTP ${entry.status}` : entry.reason || 'فشل'}`);
+          // No failed call at all is itself the answer: nothing was even attempted,
+          // or every host answered 200 with useless content.
+          const verdict = failing.length
+            ? `فشل: ${failing.join(' · ')}`
+            : trace.length
+              ? `كل النداءات رجعت 200 بس بلا ميديا (${trace.length} نداء)`
+              : 'ما صار أي نداء شبكة';
+          errText += `\n\n🔍 _تشخيص: ${this.mdSafe(verdict)}_`;
         }
         // Instead of making the user paste the link again, offer an explicit retry.
         const failKb: any[][] = [

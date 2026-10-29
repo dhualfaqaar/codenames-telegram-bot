@@ -12,7 +12,7 @@
  */
 
 /** Bumped with every media reliability release so /dlstatus proves what is live. */
-export const MEDIA_ENGINE_BUILD = '2026-10-30-media-shortlinks-v21';
+export const MEDIA_ENGINE_BUILD = '2026-10-30-media-trace-v22';
 export const MEDIA_STEP_TIMEOUT_MS = 9_000;
 export const MEDIA_PROBE_TIMEOUT_MS = 6_000;
 export const MEDIA_TOTAL_BUDGET_MS = 34_000;
@@ -21,6 +21,37 @@ export const MEDIA_STREAM_TIMEOUT_MS = 20_000;
 export const MEDIA_RACE_TIMEOUT_MS = 12_000;
 export const PROVIDER_FAILURE_THRESHOLD = 3;
 export const PROVIDER_COOLDOWN_MS = 10 * 60_000;
+
+
+export type TraceEntry = {
+  provider: string;
+  ok: boolean;
+  status?: number;
+  ms: number;
+  reason?: string;
+  bytes?: number;
+  at: number;
+};
+
+/**
+ * Last few network calls of the current request, so `/dltest` can show what
+ * really happened inside the Worker instead of us guessing from the outside.
+ */
+const TRACE_LIMIT = 120;
+let traceBuffer: TraceEntry[] = [];
+
+export function traceReset(): void {
+  traceBuffer = [];
+}
+
+export function tracePush(entry: TraceEntry): void {
+  if (traceBuffer.length >= TRACE_LIMIT) traceBuffer.shift();
+  traceBuffer.push(entry);
+}
+
+export function traceSnapshot(): TraceEntry[] {
+  return traceBuffer.slice();
+}
 
 export type ProviderAttempt = {
   provider: string;
@@ -157,11 +188,23 @@ export async function boundedFetch(
     // 5xx / 429 mean the mirror is unhealthy, not that the link is wrong.
     const healthy = response.ok || (response.status !== 429 && response.status < 500);
     providerHealth.record(host, healthy, healthy ? undefined : `http ${response.status}`);
+    // Only failures are traced for successes we keep just the status: the point
+    // is to see which host breaks, not to log every byte.
+    tracePush({
+      provider: host,
+      ok: response.ok,
+      status: response.status,
+      ms: Date.now() - started,
+      reason: response.ok ? undefined : `http ${response.status}`,
+      bytes: Number(response.headers.get('content-length') || 0) || undefined,
+      at: Date.now()
+    });
     void started;
     return response;
   } catch (error: any) {
     const reason = error?.code === 'timeout' || error?.name === 'AbortError' ? 'timeout' : String(error?.message || error);
     providerHealth.record(host, false, reason);
+    tracePush({ provider: host, ok: false, ms: Date.now() - started, reason, at: Date.now() });
     throw error;
   } finally {
     clearTimeout(timer);
