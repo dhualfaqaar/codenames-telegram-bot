@@ -396,6 +396,21 @@ export class InteractiveGameRooms {
       else if (room.game === 'uno') this.startGame(room);
       return null;
     }
+    // A friend room that nobody joined within the countdown gets a bot so the
+    // game can actually start instead of waiting forever.
+    if (action === 'chess-bot-fill') {
+      if (room.game !== 'chess') return 'هذي مو غرفة شطرنج';
+      if (player.token !== room.host) return 'صاحب الغرفة وحده يكدر يبدأ';
+      if (room.status !== 'waiting') return 'اللعبة بدأت بالفعل';
+      if (room.players.length >= 2) return 'الغرفة مكتملة';
+      const trainer = getChessTrainer(undefined, Math.max(200, Number(player.elo) || 200));
+      room.players.push({ token: randomString(30), name: trainer.name, trainerId: trainer.id, elo: trainer.elo, bot: true, joinedAt: Date.now() });
+      room.gameState.mode = 'bot';
+      room.gameState.botElo = trainer.elo;
+      room.gameState.botTrainerId = trainer.id;
+      room.gameState.botStyle = trainer.style;
+      return null;
+    }
     if (room.status === 'finished') return 'انتهت اللعبة';
     if (room.game === 'chess') return this.chessAction(room, player, action, body);
     if (room.game === 'uno') return this.unoAction(room, player, action, body);
