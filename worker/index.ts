@@ -12,8 +12,10 @@ import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMin
 import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
 import { CHESS_HERO_JPG_BASE64, DRAWING_HERO_JPG_BASE64, SUDOKU_HERO_JPG_BASE64 } from '../src/assets/gameArtBase64';
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
+import { AmongUsRooms } from '../src/services/amongUsRooms';
+import { amongUsMiniAppHtml } from '../src/services/amongUsMiniApp';
 
-export const INTERACTIVE_APP_BUILD = '2026-11-08-vector-icons-v39';
+export const INTERACTIVE_APP_BUILD = '2026-11-08-amongus-v40';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -166,12 +168,14 @@ export class BotState {
   private readonly state: any;
   private readonly env: Env;
   private readonly interactiveRooms: InteractiveGameRooms;
+  private readonly amongUsRooms: AmongUsRooms;
   private bot: TelegramBotManager | null = null;
 
   constructor(state: any, env: Env) {
     this.state = state;
     this.env = env;
     this.interactiveRooms = new InteractiveGameRooms(state.storage);
+    this.amongUsRooms = new AmongUsRooms(state.storage);
   }
 
   private async getBot(): Promise<TelegramBotManager> {
@@ -232,6 +236,7 @@ export class BotState {
 
   async fetch(request: Request): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    if (pathname.startsWith('/api/amongus')) return this.amongUsRooms.handle(request);
     if (pathname.startsWith('/api/interactive/rooms') || pathname.startsWith('/api/interactive/matchmaking')) return this.interactiveRooms.handle(request);
     const bot = await this.getBot();
     if (pathname === '/interactive-config' && request.method === 'GET') return Response.json({ botUsername: await bot.getBotUsername() }, { headers: { 'Cache-Control': 'public, max-age=300' } });
@@ -357,6 +362,16 @@ export default {
       const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
       return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
     }
+    if (request.method === 'GET' && (requestUrl.pathname === '/amongus' || requestUrl.pathname === '/amongus/')) {
+      return new Response(amongUsMiniAppHtml(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, max-age=0, must-revalidate',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin'
+        }
+      });
+    }
     if (request.method === 'GET' && (requestUrl.pathname === '/sudoku' || requestUrl.pathname === '/sudoku/')) {
       return new Response(SUDOKU_MINI_APP_HTML, {
         headers: {
@@ -371,6 +386,11 @@ export default {
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
     if (requestUrl.pathname === '/api/interactive/config' && request.method === 'GET') return stub.fetch('https://bot.internal/interactive-config');
+    if (requestUrl.pathname.startsWith('/api/amongus')) {
+      const init: RequestInit = { method: request.method, headers: new Headers(request.headers) };
+      if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.text();
+      return stub.fetch(`https://bot.internal${requestUrl.pathname}${requestUrl.search}`, init);
+    }
     if (requestUrl.pathname.startsWith('/api/interactive/rooms') || requestUrl.pathname.startsWith('/api/interactive/matchmaking')) {
       const headers = new Headers(request.headers);
       headers.delete('content-length');
