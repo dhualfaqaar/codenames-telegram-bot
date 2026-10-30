@@ -48,12 +48,24 @@ const DRAW_MATCH_OVER_MS = 10_000;
 const DRAW_PRESENCE_MS = 45_000;
 const DRAW_PRESENCE_TOUCH_MS = 15_000;
 const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
-const DRAW_WORDS = ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'];
+const DRAW_WORD_LIBRARIES: Record<string, string[]> = {
+  ar: ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'],
+  en: ['palm tree','moon','bicycle','key','fish','house','sun','book','apple','cat','ship','clock','rain','airplane','chair','door','cup','bridge','shoe','umbrella','elephant','rose','train','bread','glasses','lamp','ball','tree','phone','fridge','turtle','river','mountain','balloon','mirror','bag','fan','island','bird','hourglass'],
+  tr: ['palmiye','ay','bisiklet','anahtar','balık','ev','güneş','kitap','elma','kedi','gemi','saat','yağmur','uçak','sandalye','kapı','fincan','köprü','ayakkabı','şemsiye','fil','gül','tren','ekmek','gözlük','lamba','top','ağaç','telefon','buzdolabı','kaplumbağa','nehir','dağ','balon','ayna','çanta','yelpaze','ada','kuş','kum saati'],
+  fr: ['palmier','lune','vélo','clé','poisson','maison','soleil','livre','pomme','chat','bateau','horloge','pluie','avion','chaise','porte','tasse','pont','chaussure','parapluie','éléphant','rose','train','pain','lunettes','lampe','ballon','arbre','téléphone','frigo','tortue','rivière','montagne','montgolfière','miroir','sac','éventail','île','oiseau','sablier'],
+  es: ['palmera','luna','bicicleta','llave','pez','casa','sol','libro','manzana','gato','barco','reloj','lluvia','avión','silla','puerta','taza','puente','zapato','paraguas','elefante','rosa','tren','pan','gafas','lámpara','pelota','árbol','teléfono','nevera','tortuga','río','montaña','globo','espejo','bolsa','ventilador','isla','pájaro','reloj de arena'],
+};
+export const DRAW_LANGUAGES = Object.keys(DRAW_WORD_LIBRARIES);
+export function cleanDrawLanguage(value: unknown): string {
+  const code = String(value || 'ar').trim().toLowerCase().slice(0, 2);
+  return Object.hasOwn(DRAW_WORD_LIBRARIES, code) ? code : 'ar';
+}
 const DRAW_COLORS = ['#202635','#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#ffffff'];
 const DRAW_PALETTE = ['#1f2937','#4b5563','#94a3b8','#e2e8f0','#ffffff','#d1d5db','#7dd3fc','#38bdf8','#0284c7','#0f766e','#22c55e','#84cc16','#facc15','#f59e0b','#f97316','#ef4444','#b91c1c','#a855f7','#ec4899','#fcd5b5'];
 const DRAW_SHAPE_KINDS = ['pen','eraser','line','rect','rect-fill','ellipse','ellipse-fill','diamond','diamond-fill'];
-function drawWordChoices(count = 2): string[] {
-  const pool = DRAW_WORDS.slice();
+function drawWordChoices(count = 2, language = 'ar'): string[] {
+  const library = DRAW_WORD_LIBRARIES[cleanDrawLanguage(language)] || DRAW_WORD_LIBRARIES.ar;
+  const pool = library.slice();
   const picked: string[] = [];
   while (picked.length < count && pool.length) picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   return picked;
@@ -103,8 +115,15 @@ function cleanPhotoUrl(value: unknown): string | undefined {
 export function normalizeDrawGuess(input: string): string {
   return String(input || '').normalize('NFKC').toLowerCase().replace(/[\u064b-\u065f\u0670\u0640\s\p{P}\p{S}]/gu, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي');
 }
-export function drawGuessKind(guess: string, answer: string): 'exact' | 'near' | 'wrong' {
-  const a = Array.from(normalizeDrawGuess(guess)), b = Array.from(normalizeDrawGuess(answer));
+// Latin-script rooms ignore case, accents and punctuation so "Cafe" still matches
+// "café", while a guess written in another script can never match an Arabic word.
+export function normalizeDrawGuessFor(guess: string, language = 'ar'): string {
+  const raw = String(guess || '');
+  if (cleanDrawLanguage(language) === 'ar') return normalizeDrawGuess(raw);
+  return raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+export function drawGuessKind(guess: string, answer: string, language = 'ar'): 'exact' | 'near' | 'wrong' {
+  const a = Array.from(normalizeDrawGuessFor(guess, language)), b = Array.from(normalizeDrawGuessFor(answer, language));
   if (!a.length || !b.length) return 'wrong';
   if (a.join('') === b.join('')) return 'exact';
   if (b.length < 3 || Math.abs(a.length - b.length) > 2) return 'wrong';
@@ -199,6 +218,7 @@ export class InteractiveGameRooms {
       if (game === 'poker') room.gameState.startingChips = startingChips;
       if (game === 'gartic') {
         room.gameState.roundDurationMs = roundDurationMs;
+        room.gameState.language = cleanDrawLanguage(body?.language);
         room.gameState.targetScore = Math.max(100, Math.min(10000, Math.round(Number(body?.targetScore) || 500)));
         // Public rooms can be discovered in the lobby; hidden ones only via code.
         room.visible = body?.visible !== false;
@@ -304,7 +324,7 @@ export class InteractiveGameRooms {
     switch (game) {
       case 'chess': return { fen: new Chess().fen(), turn: 'w', lastMove: '', result: '', clockMinutes: 5, clockInitialMs: 300_000, clocks: { w: 300_000, b: 300_000 }, clockStartedAt: 0, chat: [] };
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
-      case 'gartic': return { round: 0, drawer: 0, phase: 'waiting', word: '', wordChoices: [], strokes: [], guesses: [], drawChat: [], logs: [], correctPlayers: [], scores: {}, targetScore: 500, roundStartedAt: 0, deadline: 0, choiceDeadline: 0, autoNextAt: 0, revealed: 0, hintsUsed: 0, roundResult: '' };
+      case 'gartic': return { round: 0, drawer: 0, phase: 'waiting', word: '', wordChoices: [], strokes: [], guesses: [], drawChat: [], logs: [], correctPlayers: [], scores: {}, targetScore: 500, language: 'ar', roundStartedAt: 0, deadline: 0, choiceDeadline: 0, autoNextAt: 0, revealed: 0, hintsUsed: 0, roundResult: '' };
       case 'poker': return { phase: 'waiting', deck: [], community: [], holes: {}, dealer: 0, turn: 0, pot: 0, currentBet: 0, bets: {}, pending: [], folded: [], lastAction: '', result: '', winners: [], revealed: false, hand: 0, startingChips: 1000 };
       case 'sudoku': return { difficulty: 'easy', puzzle: [], solution: [], boards: {}, startedAt: 0, winner: '', result: '' };
     }
@@ -664,7 +684,7 @@ export class InteractiveGameRooms {
     s.drawer = count ? ((Math.floor(Number(index) || 0) % count) + count) % count : 0;
     if (!room.players[s.drawer]) s.drawer = 0;
     s.phase = 'choosing';
-    s.wordChoices = drawWordChoices(2);
+    s.wordChoices = drawWordChoices(2, room.gameState.language);
     s.word = '';
     s.strokes = []; s.guesses = []; s.drawChat = []; s.correctPlayers = [];
     s.revealed = 0; s.hintsUsed = 0;
@@ -718,7 +738,7 @@ export class InteractiveGameRooms {
     if (room.players[s.drawer]) return false;
     s.drawer = 0;
     // A fresh pencil needs a fresh choice window, otherwise the round starts for nobody.
-    if ((s.phase || '') === 'choosing') { s.wordChoices = drawWordChoices(2); s.choiceDeadline = Date.now() + DRAW_CHOICE_MS; s.word = ''; }
+    if ((s.phase || '') === 'choosing') { s.wordChoices = drawWordChoices(2, room.gameState.language); s.choiceDeadline = Date.now() + DRAW_CHOICE_MS; s.word = ''; }
     return true;
   }
 
@@ -816,10 +836,10 @@ export class InteractiveGameRooms {
       if (seat === s.drawer) return 'المحادثة للمخمّنين فقط';
       const text = String(body.text || '').trim().slice(0, 240); if (!text) return 'اكتب رسالتك';
       // Don't let the second chat accidentally disclose an active answer.
-      const answer = normalizeDrawGuess(s.word), message = normalizeDrawGuess(text);
+      const answer = normalizeDrawGuessFor(s.word, s.language), message = normalizeDrawGuessFor(text, s.language);
       const tokens = text.split(/[\s\p{P}\p{S}]+/u).filter(Boolean);
-      const hasNearWord = tokens.some(token => normalizeDrawGuess(token).length >= 3 && drawGuessKind(token, s.word) === 'near');
-      if (!s.roundResult && Date.now() <= s.deadline && answer.length > 0 && (message.includes(answer) || drawGuessKind(text, s.word) !== 'wrong' || hasNearWord)) return 'لا تكتب الإجابة أو شي قريب منها بالمحادثة';
+      const hasNearWord = tokens.some(token => normalizeDrawGuessFor(token, s.language).length >= 3 && drawGuessKind(token, s.word, s.language) === 'near');
+      if (!s.roundResult && Date.now() <= s.deadline && answer.length > 0 && (message.includes(answer) || drawGuessKind(text, s.word, s.language) !== 'wrong' || hasNearWord)) return 'لا تكتب الإجابة أو شي قريب منها بالمحادثة';
       s.drawChat ||= []; s.drawChat.push({ seat, name: player.name, text, at: Date.now() }); s.drawChat = s.drawChat.slice(-60); return null;
     }
     if (action === 'guess') {
@@ -827,7 +847,9 @@ export class InteractiveGameRooms {
       s.correctPlayers ||= [];
       if (s.correctPlayers.includes(player.token)) return 'خمّنت الإجابة بهاي الجولة';
       const guess = String(body.text || '').trim().slice(0, 60); if (!guess) return 'اكتب تخمينك';
-      const kind = drawGuessKind(guess, s.word);
+      s.language = cleanDrawLanguage(s.language);
+      if (s.language === 'ar' ? /[a-z]/i.test(guess) : /[\u0600-\u06ff]/.test(guess)) return s.language === 'ar' ? 'هالغرفة عربية — اكتب تخمينك بالعربي' : 'هالغرفة بلغة ثانية — اكتب تخمينك بحروف إنجليزية';
+      const kind = drawGuessKind(guess, s.word, s.language);
       if (kind === 'near') s.guesses.push({ name: player.name, seat, text: 'قريب من الإجابة ⚡', privateTo: player.token, correct: false });
       else if (kind === 'exact') {
         s.guesses.push({ name: player.name, seat, text: 'خمّنها صح', correct: true });
@@ -840,7 +862,7 @@ export class InteractiveGameRooms {
         const target = Math.max(100, Number(s.targetScore) || 500);
         if (room.players.some(p => (s.scores[p.token] || 0) >= target)) { room.status = 'finished'; s.phase = 'reveal'; s.matchOver = true; s.autoNextAt = Date.now() + DRAW_MATCH_OVER_MS; s.roundResult = 'وصل لاعب للهدف — انتهت المباراة'; this.pushDrawLog(room, 'انتهت المباراة — وصل لاعب للهدف', 'end'); this.pushDrawLog(room, 'مباراة جديدة تبدأ تلقائياً بعد لحظات', 'end'); }
         else if (room.players.filter(p => p.token !== artist?.token).every(p => s.correctPlayers.includes(p.token))) this.endDrawRound(room, 'كل المخمّنين جاوبوا صح');
-      } else if (normalizeDrawGuess(guess).includes(normalizeDrawGuess(s.word))) {
+      } else if (normalizeDrawGuessFor(guess, s.language).includes(normalizeDrawGuessFor(s.word, s.language))) {
         // A longer wrong guess can contain the answer; never broadcast it.
         s.guesses.push({ name: player.name, seat, text: 'تم إخفاء التخمين لأنه يتضمن الإجابة', privateTo: player.token, correct: false });
       } else s.guesses.push({ name: player.name, seat, text: guess, correct: false });
@@ -1017,7 +1039,8 @@ export class InteractiveGameRooms {
       id: room.id, hostName: host?.name || '', hostCountry: host?.countryCode || 'IQ', hostPhoto: host?.photoUrl || '',
       hostIsCreator: Boolean(host?.isBotCreator), players: room.players.length,
       capacity: room.capacity || room.players.length, targetScore: Math.max(100, Number(room.gameState?.targetScore) || 500),
-      roundSeconds: Math.max(30, Math.round((Number(room.gameState?.roundDurationMs) || 75_000) / 1000)), at: Date.now(),
+      roundSeconds: Math.max(30, Math.round((Number(room.gameState?.roundDurationMs) || 75_000) / 1000)),
+      language: cleanDrawLanguage(room.gameState?.language), at: Date.now(),
     });
     const fresh = entries.filter(entry => Date.now() - Number(entry.at || 0) < ROOM_IDLE_TTL_MS).slice(-LOBBY_MAX);
     await this.storage.put(key, fresh);
@@ -1041,6 +1064,7 @@ export class InteractiveGameRooms {
         hostIsCreator: Boolean(host?.isBotCreator), players: room.players.length,
         capacity: room.capacity || room.players.length, targetScore: Math.max(100, Number(room.gameState?.targetScore) || 500),
         roundSeconds: Math.max(30, Math.round((Number(room.gameState?.roundDurationMs) || 75_000) / 1000)),
+        language: cleanDrawLanguage(room.gameState?.language),
         createdAt: room.createdAt,
       });
     }
