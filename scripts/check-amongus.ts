@@ -113,6 +113,22 @@ check(
   ['auPlayDialog', 'auInvDialog', 'auShopDialog', 'auAccDialog', 'auSetDialog', 'auFriendsDialog'].every(id => html.includes(`id="${id}"`))
 );
 check('زر الإجراءات مرسوم لا إيموجي', html.includes('id="auPad"') && html.includes('roundRect'));
+check(
+  'الشخصيات مرسومة بحدود وملامح مثل اللعبة الأصلية',
+  html.includes('CREW_OUTLINE') &&
+    html.includes('function crewSvg(') &&
+    html.includes('viewBox="0 0 100 120"') &&
+    html.includes('function drawCrew(') &&
+    html.includes('function drawLeg(') &&
+    !html.includes('function spaceBean(')
+);
+check('ماكو دائرة فلوس داخل الفضاء', !html.includes('+1') && !html.includes('space.coins'));
+check(
+  'مربع الفضاء أفقي ويهيمن على الشاشة',
+  /\.space-box\{[^}]*aspect-ratio:16\/10/.test(html) &&
+    /\.space-box\{[^}]*height:100%/.test(html) &&
+    html.includes('height:min(54dvh,430px)')
+);
 
 check('الصفحة تشحن كانفس الخريطة', html.includes('id="auCanvas"') && html.includes('getContext(\'2d\')'));
 check('الصفحة فيها جويستيك تحكم', html.includes('id="auPad"') && html.includes('id="auStick"'));
