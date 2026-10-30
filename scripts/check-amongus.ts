@@ -110,7 +110,25 @@ check(
 );
 check(
   'كل أزرار القائمة تفتح شي حقيقي',
-  ['auPlayDialog', 'auInvDialog', 'auShopDialog', 'auAccDialog', 'auSetDialog', 'auFriendsDialog'].every(id => html.includes(`id="${id}"`))
+  ['auSpacePlay', 'auInvDialog', 'auShopDialog', 'auAccDialog', 'auSetDialog', 'auFriendsDialog'].every(id => html.includes(`id="${id}"`)) &&
+    !html.includes('auPlayDialog')
+);
+check(
+  'PLAY يفتح بطاقتين داخل مربع الفضاء نفسه',
+  html.includes('id="auSpaceBox"') &&
+    html.includes('class="space-play" id="auSpacePlay"') &&
+    html.includes('id="auCreate"') &&
+    html.includes('id="auFindCard"') &&
+    html.includes('>أنشئ غرفة<') &&
+    html.includes('>FIND GAME<') &&
+    html.includes('id="auPlayBack"')
+);
+check(
+  'بطاقات اللعب مرسومة SVG بلا صور خارجية',
+  (html.match(/class="sp-art"/g) || []).length === 2 &&
+    html.includes('id="auDoor"') &&
+    html.includes('id="auLapTop"') &&
+    !/<img\s/.test(html)
 );
 check('زر الإجراءات مرسوم لا إيموجي', html.includes('id="auPad"') && html.includes('roundRect'));
 check(

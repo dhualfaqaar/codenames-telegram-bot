@@ -79,10 +79,18 @@ assert.ok(!host.document.body.textContent.includes('NEWS'), 'بدون NEWS');
 assert.ok(!host.document.body.textContent.includes('CREDITS'), 'بدون CREDITS');
 assert.ok(host.document.getElementById('auSpace'), 'مربع الفضاء موجود');
 
-// PLAY opens the room dialog, INVENTORY opens the colour grid with ten colours.
+// PLAY swaps the space window into the two-card picker (create / find game).
 host.document.getElementById('auPlayBtn').click();
-assert.ok(host.document.getElementById('auPlayDialog').classList.contains('on'), 'PLAY يفتح نافذة اللعب');
-host.document.getElementById('auPlayClose').click();
+const playPanel = host.document.getElementById('auSpacePlay');
+assert.ok(playPanel.classList.contains('on'), 'PLAY يفتح شاشة اللعب داخل مربع الفضاء');
+assert.ok(host.document.getElementById('auSpaceBox').contains(playPanel), 'شاشة اللعب داخل المربع مو نافذة منفصلة');
+assert.ok(host.document.getElementById('auCreate'), 'بطاقة أنشئ غرفة موجودة');
+assert.ok(host.document.getElementById('auFindCard'), 'بطاقة FIND GAME موجودة');
+assert.ok(!host.document.getElementById('auJoinBox').classList.contains('on'), 'حقل الكود مخفي قبل ما تدوس FIND GAME');
+host.document.getElementById('auFindCard').click();
+assert.ok(host.document.getElementById('auJoinBox').classList.contains('on'), 'FIND GAME يفتح حقل الكود');
+host.document.getElementById('auPlayBack').click();
+assert.ok(!playPanel.classList.contains('on'), 'زر الرجوع يرجع للقائمة');
 host.document.getElementById('auInventoryBtn').click();
 assert.ok(host.document.getElementById('auInvDialog').classList.contains('on'), 'INVENTORY يفتح الخزانة');
 const colorButtons = host.document.querySelectorAll('#auColorGrid [data-color]');
@@ -106,6 +114,8 @@ assert.equal(host.document.getElementById('auCount').textContent, '1');
 const guests = [];
 for (let i = 0; i < 5; i += 1) {
   const guest = makeClient('لاعب' + i);
+  guest.document.getElementById('auPlayBtn').click();
+  guest.document.getElementById('auFindCard').click();
   guest.document.getElementById('auName').value = 'لاعب' + i;
   guest.document.getElementById('auCode').value = code;
   guest.document.getElementById('auJoin').click();
