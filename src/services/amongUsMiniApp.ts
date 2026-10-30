@@ -1,4 +1,5 @@
 import { AU_COLORS, AU_MAP } from './amongUsRooms';
+import { GAME_SFX_SCRIPT } from './gameSfx';
 
 /**
  * امونق اس — the standalone Among Us mini app.
@@ -23,6 +24,7 @@ export function amongUsMiniAppHtml(): string {
 <meta name="theme-color" content="#0a0e1f">
 <title>امونق اس</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>${GAME_SFX_SCRIPT}</script>
 <style>
 :root{
   color-scheme:dark;
@@ -656,7 +658,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <div class="dialog" style="direction:rtl">
     <h2>الإعدادات</h2>
     <p>إعدادات محلية على جهازك.</p>
-    <label class="switch"><input type="checkbox" id="auSoundToggle"><span>أصوات الأزرار والتنبيهات</span></label>
+    <label class="switch"><input type="checkbox" id="auSoundToggle"><span>أصوات اللعبة (قتل، أزرار، تنبيهات)</span></label>
+    <label class="switch"><input type="checkbox" id="auMusicToggle"><span>موسيقى خلفية خفيفة</span></label>
     <label class="switch"><input type="checkbox" id="auHintsToggle"><span>إظهار تلميحات المحطات</span></label>
     <button class="btn block red" id="auResetBtn" style="margin-top:14px"><span>امسح بياناتي المحلية</span></button>
     <button class="btn block dark" id="auSetClose" style="margin-top:10px"><span>رجوع</span></button>
@@ -694,7 +697,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <section id="auStage">
   <canvas id="auCanvas"></canvas>
   <div class="hud">
-    <div class="hud-top">
+    <div class="hud-top" id="auHudTop">
       <span class="badge" id="auRoleChip">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
         <span id="auRoleText">—</span>
@@ -1084,30 +1087,17 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!RARE[colorId]) return true;
     return profile.matches >= RARE[colorId];
   }
-  function beep(){
-    if (!profile.sound) return;
-    try {
-      var Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!beep.ctx) beep.ctx = new Ctx();
-      var osc = beep.ctx.createOscillator();
-      var gain = beep.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.value = 380;
-      gain.gain.value = 0.03;
-      osc.connect(gain);
-      gain.connect(beep.ctx.destination);
-      osc.start();
-      osc.stop(beep.ctx.currentTime + 0.05);
-    } catch (e) {}
+  /** Every sound is synthesised by the shared engine: no audio files. */
+  function sfx(name){
+    try { if (window.GameSfx && profile.sound) window.GameSfx.play(name); } catch (e) {}
   }
+  function beep(){ sfx('click'); }
   function setColor(colorId){
     if (!isUnlocked(colorId)) { toast('هذا اللون بعده مقفول — افتحه من المتجر'); return; }
     profile.color = colorId;
     storageSet('au-color', colorId);
     renderChip();
     renderColors();
-    beep();
   }
   function renderColors(){
     var grid = el('auColorGrid');
@@ -1158,7 +1148,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function openDialog(id){
     var node = el(id);
     if (node) node.classList.add('on');
-    beep();
   }
   function closeDialog(id){
     var node = el(id);
@@ -1201,7 +1190,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         roomDraft[node.getAttribute('data-key')] = Number(node.getAttribute('data-value'));
         if (roomDraft.impostors > Math.floor(roomDraft.maxPlayers / 3)) roomDraft.impostors = 0;
         renderRuleRows();
-        beep();
       });
     });
   }
@@ -1275,7 +1263,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     el('auJoinBox').classList.remove('on');
     showView('auViewPick');
     renderRuleRows();
-    beep();
   }
   function closePlay(){
     var panel = el('auSpacePlay');
@@ -1291,16 +1278,16 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     };
     el('auPlayBtn').addEventListener('click', openPlay);
     el('auPlayBack').addEventListener('click', closePlay);
-    el('auCreate').addEventListener('click', function(){ showView('auViewSettings'); renderRuleRows(); beep(); });
+    el('auCreate').addEventListener('click', function(){ showView('auViewSettings'); renderRuleRows(); });
     el('auSettingsBack').addEventListener('click', function(){ showView('auViewPick'); });
     el('auCreateRoom').addEventListener('click', createRoom);
-    el('auOnlineCard').addEventListener('click', function(){ beep(); openOnline(); });
+    el('auOnlineCard').addEventListener('click', function(){ openOnline(); });
     el('auOnlineBack').addEventListener('click', function(){ showView('auViewPick'); });
     el('auRefresh').addEventListener('click', loadRooms);
     el('auCodeCard').addEventListener('click', function(){
       var box = el('auJoinBox');
       box.classList.toggle('on');
-      if (box.classList.contains('on')) { beep(); el('auCode').focus(); }
+      if (box.classList.contains('on')) { el('auCode').focus(); }
       else el('auCode').value = '';
     });
     Object.keys(openers).forEach(function(buttonId){
@@ -1324,8 +1311,21 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     el('auSoundToggle').addEventListener('change', function(){
       profile.sound = el('auSoundToggle').checked;
       storageSet('au-sound', profile.sound ? '1' : '0');
-      beep();
+      try { window.GameSfx && window.GameSfx.setEnabled(profile.sound); } catch (e) {}
+      if (profile.sound) beep();
     });
+    var musicSwitch = el('auMusicToggle');
+    if (musicSwitch) {
+      musicSwitch.checked = window.GameSfx ? window.GameSfx.musicEnabled() : true;
+      musicSwitch.addEventListener('change', function(){
+        var on = musicSwitch.checked;
+        try {
+          if (window.GameSfx) window.GameSfx.music.setEnabled(on);
+          if (on && window.GameSfx) window.GameSfx.music.start();
+        } catch (e) {}
+        storageSet('au-music', on ? '1' : '0');
+      });
+    }
     el('auHintsToggle').checked = profile.hints;
     el('auHintsToggle').addEventListener('change', function(){
       profile.hints = el('auHintsToggle').checked;
@@ -1413,6 +1413,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   /* ---------- polling ---------- */
   function applyRoom(room){
     if (!room) return;
+    try { roomSounds(room); } catch (e) {}
     if (room.phase === 'ended') countMatch(room.code);
     AU.room = room;
     if (room.phase === 'lobby') {
@@ -1437,6 +1438,52 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       .catch(function(){});
   }
   setInterval(poll, 850);
+
+  /* ---------- sound: everything is synthesised, nothing is downloaded ---------- */
+  try {
+    if (window.GameSfx) {
+      window.GameSfx.setEnabled(profile.sound);
+      window.GameSfx.buttonSounds('click');
+      var hudTop = el('auHudTop');
+      if (hudTop) window.GameSfx.mountToggle({ container: '#auHudTop', inline: true, size: 34 });
+      window.GameSfx.music.start();
+    }
+  } catch (e) {}
+  window.addEventListener('pagehide', function(){ try { if (window.GameSfx) window.GameSfx.music.stop(); } catch (e) {} });
+
+  /* Sounds that belong to a game event rather than a tap. */
+  var soundSeen = { bodies: 0, progress: 0, phase: '', meeting: '', ended: false, alive: 0, sabotage: false, started: false };
+  function roomSounds(room){
+    if (!room) return;
+    var bodies = (room.bodies || []).length;
+    var progress = room.progress ? Number(room.progress.done || 0) : 0;
+    var alive = (room.players || []).filter(function(p){ return p.alive; }).length;
+    var meetingKey = room.meeting ? String(room.meeting.reason) + '@' + String(room.meeting.endsAt) : '';
+    if (!soundSeen.started) {
+      soundSeen.started = true;
+      soundSeen.bodies = bodies; soundSeen.progress = progress; soundSeen.alive = alive;
+      soundSeen.phase = room.phase; soundSeen.meeting = meetingKey; soundSeen.sabotage = Boolean(room.sabotage);
+      return;
+    }
+    if (bodies > soundSeen.bodies) sfx('kill');
+    if (progress > soundSeen.progress) sfx('task');
+    if (meetingKey && !soundSeen.meeting) sfx(room.meeting.reason === 'report' ? 'report' : 'alarm');
+    if (!meetingKey && soundSeen.meeting && room.lastMeeting && room.lastMeeting.ejectedName) sfx('eject');
+    if (room.sabotage && !soundSeen.sabotage) sfx('sabotage');
+    if (alive < soundSeen.alive && !(bodies > soundSeen.bodies)) sfx('death');
+    if (room.phase === 'ended' && !soundSeen.ended) {
+      soundSeen.ended = true;
+      var me = (room.players || []).filter(function(p){ return p.you; })[0];
+      var iWon = room.winner === 'impostors'
+        ? !!(me && me.role === 'impostor')
+        : !!(me && me.role !== 'impostor');
+      sfx(iWon ? 'win' : 'lose');
+      try { if (window.GameSfx) window.GameSfx.music.stop(); } catch (e) {}
+    }
+    soundSeen.bodies = bodies; soundSeen.progress = progress; soundSeen.alive = alive;
+    soundSeen.phase = room.phase; soundSeen.meeting = meetingKey;
+    soundSeen.sabotage = Boolean(room.sabotage);
+  }
 
   /* ---------- canvas world ---------- */
   var world = { x: 50, y: 17, ready:false, vx:0, vy:0, lastSent:0 };
@@ -1685,6 +1732,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     world.x = Math.max(1, Math.min(99, world.x + (vx / length) * speed / 60));
     world.y = Math.max(1, Math.min(99, world.y + (vy / length) * speed / 60));
     var now = Date.now();
+    if (now - (world.lastStep || 0) > 380) {
+      world.lastStep = now;
+      sfx('step');
+    }
     if (now - world.lastSent > 220) {
       world.lastSent = now;
       act('move', { x: world.x, y: world.y });
@@ -1792,7 +1843,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     act('kill', { target: target.player.token });
   });
   el('auReport').addEventListener('click', function(){ act('report'); });
-  el('auVent').addEventListener('click', function(){ act('vent'); });
+  el('auVent').addEventListener('click', function(){ sfx('vent'); act('vent'); });
   el('auEmergency').addEventListener('click', function(){ act('emergency'); });
   el('auSabotage').addEventListener('click', function(){ el('auSabDialog').classList.add('on'); });
   el('auSabClose').addEventListener('click', function(){ el('auSabDialog').classList.remove('on'); });
