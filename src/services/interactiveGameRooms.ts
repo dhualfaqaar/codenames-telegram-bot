@@ -213,6 +213,7 @@ export class InteractiveGameRooms {
         room.gameState.mode = body?.mode === 'bot' ? 'bot' : 'friend';
         room.gameState.clockMinutes = clockMinutes;
         room.gameState.clockInitialMs = clockMinutes * 60_000;
+        if (body?.manualStart === true) room.gameState.manualStart = true;
         room.gameState.clocks = { w: room.gameState.clockInitialMs, b: room.gameState.clockInitialMs };
       }
       if (game === 'poker') room.gameState.startingChips = startingChips;
@@ -300,7 +301,8 @@ export class InteractiveGameRooms {
       if (room.game === 'gartic' && room.status === 'finished' && !(room.gameState.matchOver && Number(room.gameState.autoNextAt) > Date.now())) this.reopenDrawRoom(room);
       room.updatedAt = Date.now();
       if (room.game === 'gartic') { room.gameState.logs ||= []; room.gameState.logs.push({ text: lateDrawJoin ? `${player.name} انضم وسط المباراة` : `${player.name} انضم`, kind: 'join', at: Date.now() }); room.gameState.logs = room.gameState.logs.slice(-40); }
-      if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2) this.startGame(room);
+      // Friend rooms wait for the host's countdown instead of starting on join.
+      if ((room.game === 'chess' || room.game === 'sudoku') && room.players.length >= 2 && !room.gameState.manualStart) this.startGame(room);
       await this.save(room);
       if (room.game === 'gartic') await this.syncLobby(room);
       return this.jsonFor(room, player.token);

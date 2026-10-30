@@ -342,6 +342,18 @@ body:has(#gameApp[data-page="room"][data-game="chess"]){background:radial-gradie
 .chess-intro-avatar img{width:100%;height:100%;object-fit:cover}
 .chess-intro-player strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px}
 .chess-intro-player small{color:#a9c2db;font-size:10px}
+.chess-friend-setup{display:grid;gap:10px}
+.chess-setup-label{color:#d0cec6;font-size:10px;font-weight:900}
+.chess-time-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.chess-time-card{display:grid;justify-items:center;gap:2px;padding:12px 4px;border:2px solid #41607f;border-radius:13px;background:#0f2740;color:#e8f1fb;font:inherit;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease}.chess-time-card:hover{border-color:#5b86ab}.chess-time-card:active{transform:scale(.96)}.chess-time-card.selected strong{color:#8fe0ff}
+.chess-time-card strong{font-size:19px;font-weight:900;line-height:1}
+.chess-time-card small{font-size:10px;color:#a9c2db}
+.chess-time-card.selected{border-color:#38bdf8;background:#123a57;color:#fff;box-shadow:0 0 0 3px #38bdf840}
+.chess-friend-box{display:grid;gap:10px}
+.chess-friend-status{margin:0;text-align:center;color:#cfe3f6;font-size:12px;font-weight:800}
+.chess-friend-extra{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chess-friend-loading{display:grid;justify-items:center;gap:12px;padding:18px 0;color:#cfe3f6;font-size:12px}
+.chess-friend-hold{display:grid;justify-items:center;gap:12px;padding:40px 16px;border:1px dashed #3c5a76;border-radius:16px;color:#9fb4c8;font-size:12px;text-align:center;background:#0b1c2e}
 .chess-friend-count{margin:12px auto 0;text-align:center;color:#ffd244;font-size:22px;font-weight:900}
 .chess-intro-player.waiting .chess-intro-avatar{color:#8899aa;background:#20304a}
 .chess-intro-vs{color:#f1cf63;font-size:12px;font-weight:950}
@@ -708,66 +720,106 @@ function chessFriendCard(player,label,placeholder){
   var photo=player.photoUrl?'<img src="'+safe(player.photoUrl)+'" alt="" onerror="this.remove()">':player.bot?'<img src="/code-games-avatar.jpg" alt="">':safe(String(player.name||'ل').trim().charAt(0)||'ل');
   return '<article class="chess-intro-player"><span class="chess-intro-avatar">'+photo+'</span><strong>'+countryFlag(player.countryCode||chessCountryCode())+' '+safe(player.name||'لاعب')+(player.isBotCreator?verifiedBadgeMarkup():'')+'</strong><small>'+safe(label)+(player.elo?' · '+digit(player.elo)+' ELO':'')+'</small></article>';
 }
+function resetChessFriendState(){
+  clearInterval(chessFriendTick);chessFriendTick=0;
+  chessFriendBox=false;chessFriendPending=false;chessFriendJoined=false;chessFriendStarted=false;chessFriendRoom='';
+}
+function chessFriendSeatMarkup(room){
+  var own=(room&&room.players||[]).find(function(player){return player.seat===room.playerSeat})||{name:accountName,photoUrl:getPhotoUrl(),countryCode:chessCountryCode(),elo:chessElo(),isBotCreator:isBotCreator};
+  var opponent=(room&&room.players||[]).find(function(player){return player.seat!==room.playerSeat});
+  return chessFriendCard(own,'أنت')+'<span class="chess-intro-vs">ضد</span>'+chessFriendCard(opponent,'خصمك','بانتظار صديقك');
+}
 function showChessFriendBox(roomId){
-  chessFriendBox=true;chessFriendRoom=roomId||'';chessFriendStarted=false;
+  chessFriendPending=false;chessFriendBox=true;chessFriendRoom=roomId||'';chessFriendStarted=false;chessFriendJoined=false;
+  clearInterval(chessFriendTick);
   $('modeTitle').textContent='العب مع صديق';
-  $('modeCopy').textContent='شارك الدعوة مع صديقك؛ إذا ما انضم خلال ٦ ثواني نبدأ ضد بوت.';
-  $('modeOptions').innerHTML='<div class="chess-intro-players" id="chessFriendPlayers">'+chessFriendCard({name:accountName,photoUrl:getPhotoUrl(),countryCode:chessCountryCode(),elo:chessElo(),isBotCreator:isBotCreator},'أنت')+'<span class="chess-intro-vs">ضد</span>'+chessFriendCard(null,'خصمك','بانتظار صديقك')+'</div><div class="chess-friend-count" id="chessFriendCount">٦</div><button class="button primary" id="chessFriendShare">مشاركة مع صديق</button>';
+  $('modeCopy').textContent='شارك الدعوة مع صديقك — العدّ التنازلي يبدأ أول ما ينضم.';
+  $('modeOptions').innerHTML='<div class="chess-friend-box"><div class="chess-intro-players" id="chessFriendPlayers">'+chessFriendSeatMarkup(roomData&&roomData.room)+'</div>'
+    +'<p class="chess-friend-status" id="chessFriendStatus">بانتظار انضمام صديقك…</p>'
+    +'<button class="button primary" id="chessFriendShare">مشاركة مع صديق</button>'
+    +'<div class="chess-friend-extra"><button class="button" id="chessFriendBot">العب ضد بوت</button><button class="button" id="chessFriendCancel">إلغاء</button></div></div>';
   $('modeOverlay').classList.add('show');
   var share=$('chessFriendShare');if(share)share.onclick=function(){inviteFriend()};
-  chessFriendLeft=6;
+  var bot=$('chessFriendBot');
+  if(bot)bot.onclick=function(){
+    if(chessFriendStarted)return;
+    chessFriendStarted=true;clearInterval(chessFriendTick);
+    var status=$('chessFriendStatus');if(status)status.textContent='انضم بوت — المباراة تبدأ الآن';
+    act('chess-bot-fill');
+    setTimeout(function(){startChessFriendGame()},450);
+  };
+  var cancel=$('chessFriendCancel');
+  if(cancel)cancel.onclick=function(){resetChessFriendState();closeMode();goHome()};
+}
+function syncChessFriendBox(r){
+  if(!r||r.id!==chessFriendRoom)return;
+  if(!(chessFriendBox||chessFriendPending))return;
+  if(r.status==='playing'){
+    if(chessFriendBox){resetChessFriendState();closeMode()}
+    return;
+  }
+  if(r.status!=='waiting')return;
+  var occupants=(r.players||[]).length;
+  var players=$('chessFriendPlayers');
+  if(players)players.innerHTML=chessFriendSeatMarkup(r);
+  if(occupants<2||chessFriendJoined)return;
+  // A friend is in the room: show who they are, then count six seconds down.
+  chessFriendJoined=true;chessFriendPending=false;
+  var status=$('chessFriendStatus');
+  if(status)status.textContent='انضم صديقك — المباراة تبدأ بعد';
+  var left=6;
   clearInterval(chessFriendTick);
   chessFriendTick=setInterval(function(){
-    if(!chessFriendBox){clearInterval(chessFriendTick);return}
-    chessFriendLeft-=1;
-    var count=$('chessFriendCount');if(count)count.textContent=digit(Math.max(0,chessFriendLeft));
-    if(chessFriendLeft>0)return;
+    if(!chessFriendBox||chessFriendStarted){clearInterval(chessFriendTick);return}
+    var label=$('chessFriendStatus');
+    if(left>0){
+      if(label)label.textContent='انضم صديقك — المباراة تبدأ بعد '+digit(left);
+      left-=1;
+      return;
+    }
     clearInterval(chessFriendTick);
     if(chessFriendStarted)return;
     chessFriendStarted=true;
-    startChessFriendGame(true);
+    startChessFriendGame();
   },1000);
 }
-function syncChessFriendBox(r){
-  if(!chessFriendBox||!r||r.id!==chessFriendRoom)return;
-  var opponent=(r.players||[]).find(function(player){return player.seat!==r.playerSeat});
-  if(!opponent||chessFriendStarted)return;
-  chessFriendStarted=true;
-  clearInterval(chessFriendTick);
-  var players=$('chessFriendPlayers');
-  if(players)players.innerHTML=chessFriendCard((r.players||[]).find(function(player){return player.seat===r.playerSeat})||{},'أنت')+'<span class="chess-intro-vs">ضد</span>'+chessFriendCard(opponent,'انضم');
-  var count=$('chessFriendCount');if(count)count.textContent='انضم صديقك';
-  startChessFriendGame(false);
+function startChessFriendGame(){
+  if(!chessFriendRoom)return;
+  act('start');
+  setTimeout(function(){resetChessFriendState();closeMode()},900);
 }
-function startChessFriendGame(withBot){
-  var id=chessFriendRoom;
-  if(!id)return;
-  var go=function(){
-    act('start');
-    setTimeout(function(){chessFriendBox=false;chessFriendRoom='';clearInterval(chessFriendTick);closeMode()},900);
-  };
-  if(withBot){
-    toast('ما انضم صديقك — بدينا ضد بوت');
-    act('chess-bot-fill');
-    setTimeout(go,400);
-    return;
-  }
-  go();
+function chessTimeCards(selected){
+  return '<div class="chess-time-grid">'+[5,10,15,20,30].map(function(minutes){
+    return '<button type="button" class="chess-time-card'+(minutes===selected?' selected':'')+'" data-chess-time="'+minutes+'"><strong>'+digit(minutes)+'</strong><small>دقائق</small></button>';
+  }).join('')+'</div>';
 }
 function openChessFriendMenu(){
-  $('modeTitle').textContent='العب مع صديق';$('modeCopy').textContent='اختار وقت المباراة وبعدها نجهّز غرفتك.';
-  $('modeOptions').innerHTML='<div class="chess-play-settings"><label>وقت المباراة<select id="chessFriendMinutes"><option value="5">5 دقائق</option><option value="10">10 دقائق</option><option value="15">15 دقيقة</option><option value="20">20 دقيقة</option><option value="30">30 دقيقة</option></select></label></div><button class="button primary chess-start-bot" id="createChessFriendRoom">أنشئ غرفة الصديق</button>';
-  $('chessFriendMinutes').value=String(chessClockChoice());$('modeOverlay').classList.add('show');
+  var chosen=chessClockChoice();
+  $('modeTitle').textContent='العب مع صديق';
+  $('modeCopy').textContent='اختار وقت المباراة، بعدها نفتح غرفة وتشاركها مع صديقك.';
+  $('modeOptions').innerHTML='<div class="chess-friend-setup"><span class="chess-setup-label">وقت المباراة</span>'+chessTimeCards(chosen)+'<button class="button primary chess-start-bot" id="createChessFriendRoom">افتح غرفة الصديق</button></div>';
+  $('modeOverlay').classList.add('show');
+  var selectedTime=chosen;
+  $('modeOptions').querySelectorAll('[data-chess-time]').forEach(function(button){
+    button.onclick=function(){
+      selectedTime=Number(button.dataset.chessTime)||15;
+      $('modeOptions').querySelectorAll('.chess-time-card').forEach(function(card){card.classList.toggle('selected',card===button)});
+    };
+  });
   $('createChessFriendRoom').onclick=function(){
-    var minutes=Number($('chessFriendMinutes').value)||15;
+    var minutes=selectedTime||15;
     localStorage.setItem('cg-chess-clock-minutes',String(minutes));
-    chessRoomReturn=chessHomeActive;chessHomeActive=false;closeMode();
-    createRoom('chess',{mode:'friend',clockMinutes:minutes,onCreated:function(id){showChessFriendBox(id)}});
+    chessRoomReturn=chessHomeActive;chessHomeActive=false;
+    chessFriendPending=true;
+    $('modeTitle').textContent='نجهّز غرفتك';
+    $('modeCopy').textContent='لحظات ونفتح الغرفة.';
+    $('modeOptions').innerHTML='<div class="chess-friend-loading"><span class="match-search-dots"><i></i><i></i><i></i></span><p>نجهّز غرفة الصديق…</p></div>';
+    createRoom('chess',{mode:'friend',clockMinutes:minutes,manualStart:true,onCreated:function(id){showChessFriendBox(id)}});
   };
 }
 function notifyChessForfeit(){if(!roomData||roomData.room.game!=='chess'||!['playing','waiting'].includes(roomData.room.status)||!roomToken)return;var opponent=(roomData.room.players||[]).find(function(player){return player.seat!==roomData.room.playerSeat});if(roomData.room.status==='playing'&&opponent?.bot)return;var body=JSON.stringify({action:'leave',token:roomToken});if(roomData.room.status==='playing')recordGameFinish('chess',roomData.room.id,false,{opponent:opponent?.name||'الخصم',opponentType:opponent?.bot?'bot':'player',result:'غادرت المباراة',winnerSeat:opponent?.seat});fetch('/api/interactive/rooms/'+encodeURIComponent(roomData.room.id),{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true,cache:'no-store'}).catch(function(){})}
 function notifyRoomLeave(){if(!roomData||!roomId||!roomToken)return;if(roomData.room.game==='chess')return;var id=roomId,body=JSON.stringify({action:'leave',token:roomToken});roomToken='';clearInterval(polling);polling=0;roomData=null;try{var url='/api/interactive/rooms/'+encodeURIComponent(id);if(navigator.sendBeacon&&typeof Blob!=='undefined'){navigator.sendBeacon(url,new Blob([body],{type:'application/json'}));return}fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true,cache:'no-store'}).catch(function(){})}catch(e){}}
-function goHome(){notifyChessForfeit();notifyRoomLeave();var returnToChess=chessRoomReturn,returnToSudoku=sudokuRoomReturn;document.body.classList.remove('sudoku-friend-waiting');clearInterval(polling);clearInterval(matchPolling);roomId='';roomToken='';roomData=null;$('roomContent').innerHTML='';activeRoomGame='';setupGame='';lastSignature='';lastPlayerSignature='';lastPlayerCount=0;chessRoomReturn=false;sudokuRoomReturn=false;if(returnToChess){chessHomeActive=true;chessLandingTab='home';history.replaceState({},'',location.pathname+'?game=chess');renderChessHome();setPage(false);return}if(returnToSudoku){location.href='/sudoku';return}chessHomeActive=false;history.replaceState({},'',location.pathname);setPage(false)}
+function goHome(){resetChessFriendState();notifyChessForfeit();notifyRoomLeave();var returnToChess=chessRoomReturn,returnToSudoku=sudokuRoomReturn;document.body.classList.remove('sudoku-friend-waiting');clearInterval(polling);clearInterval(matchPolling);roomId='';roomToken='';roomData=null;$('roomContent').innerHTML='';activeRoomGame='';setupGame='';lastSignature='';lastPlayerSignature='';lastPlayerCount=0;chessRoomReturn=false;sudokuRoomReturn=false;if(returnToChess){chessHomeActive=true;chessLandingTab='home';history.replaceState({},'',location.pathname+'?game=chess');renderChessHome();setPage(false);return}if(returnToSudoku){location.href='/sudoku';return}chessHomeActive=false;history.replaceState({},'',location.pathname);setPage(false)}
 function roomTokenKey(id){return 'cg-room-token-'+id}
 async function roomUrl(){if(!roomData)throw new Error('الغرفة غير جاهزة');var response=await fetch('/api/interactive/config',{cache:'no-store'}),config=await response.json().catch(function(){return {}}),username=String(config.botUsername||'').replace(/^@/,'');if(!response.ok||!username||!/^[A-Za-z0-9_]{5,32}$/.test(username))throw new Error('تعذر جلب رابط البوت حالياً');var payload='room_'+roomData.room.id+'_'+roomData.room.game;return 'https://t.me/'+username+'?start='+encodeURIComponent(payload)}
 function chessCountryCode(){var code=String(localStorage.getItem('cg-player-country')||localStorage.getItem('cg-sudoku-country')||localStorage.getItem('cg-chess-country')||'IQ').toUpperCase();return /^[A-Z]{2}$/.test(code)&&CHESS_COUNTRY_CODES.includes(code)?code:'IQ'}
@@ -921,7 +973,7 @@ async function loadPublicRooms(force){
     publicRoomsTimer=setTimeout(function(){loadPublicRooms()},4000);
   }
 }
-var chessFriendBox=false,chessFriendRoom='',chessFriendTick=0,chessFriendLeft=6,chessFriendStarted=false;
+var chessFriendBox=false,chessFriendRoom='',chessFriendTick=0,chessFriendPending=false,chessFriendJoined=false,chessFriendStarted=false;
 function closeMode(){clearTimeout(chessIntroTimer);clearInterval(chessIntroTick);$('modeOverlay').dataset.locked='';$('modeDialog').className='mode-dialog';$('modeOverlay').classList.remove('show');}
 function sudokuMatchAvatar(photoUrl,name,cls){var initial=safe(String(name||'ل').trim().charAt(0)||'ل');return '<span class="sudoku-match-avatar '+cls+'">'+initial+(photoUrl?'<img src="'+safe(photoUrl)+'" alt="" onerror="this.remove()">':'')+'</span>'}
 function showChessMatchIntro(room,state){var own=(room.players||[]).find(function(player){return player.seat===room.playerSeat})||room.players[0]||{},opponent=(room.players||[]).find(function(player){return player.seat!==room.playerSeat})||room.players[1]||{};function card(player,label){var photo=player.photoUrl?'<img src="'+safe(player.photoUrl)+'" alt="" onerror="this.remove()">':player.bot?'<img src="/code-games-avatar.jpg" alt="">':safe(String(player.name||'ل').trim().charAt(0)||'ل');return '<article class="chess-intro-player"><span class="chess-intro-avatar">'+photo+'</span><strong>'+countryFlag(player.countryCode||chessCountryCode())+' '+safe(player.name||label)+'</strong><small>'+label+' · '+(player.seat===0?'الأبيض':'الأسود')+(player.elo?' · '+digit(player.elo)+' ELO':'')+'</small></article>'}var end=Date.now()+2600;$('modeTitle').textContent='المباراة راح تبدي';$('modeCopy').textContent='تعرفوا على بعض، أول نقلة بعد لحظات.';$('modeOptions').innerHTML='<div class="chess-intro-players">'+card(own,'أنت')+'<span class="chess-intro-vs">ضد</span>'+card(opponent,'خصمك')+'</div><div class="chess-intro-count" id="chessIntroCount">3</div>';$('modeDialog').className='mode-dialog chess-intro-dialog';$('modeOverlay').dataset.locked='true';$('modeOverlay').classList.add('show');function tick(){var left=Math.max(0,end-Date.now());var count=Math.max(0,Math.ceil(left/1000));var node=$('chessIntroCount');if(node)node.textContent=digit(count||1);if(left<=0)closeMode()}tick();chessIntroTick=setInterval(tick,120);chessIntroTimer=setTimeout(closeMode,end-Date.now())}
@@ -1004,7 +1056,7 @@ function renderSudokuFriendWaiting(r){var player=r.players[0]||{},photo=player.p
 function waitingMarkup(r,s){var canStart=r.players.length>=2&&['uno','gartic','poker'].includes(r.game);var invite=canInvite(r,s);var min=r.game==='gartic'?'اجمعوا لاعبين اثنين على الأقل لبدء الرسم.':invite?'شارك رابط الدعوة فقط مع أصدقائك حتى ينضموا لنفس الغرفة.':'هذه الغرفة ما تحتاج رابط دعوة بهذا النمط؛ ننتظر اكتمال اللعب.';return '<section class="room-card"><h2>الغرفة جاهزة</h2><p class="subtle">'+min+'</p>'+(r.game==='gartic'?'<p class="subtle">رمز الغرفة: <strong dir="ltr">'+safe(r.id)+'</strong> — شاركه مع أصدقائك أو أرسل رابط الدعوة.</p>':'')+(canStart?'<button class="button primary" data-action="start">ابدأ اللعبة</button>':r.isHost?'<span class="subtle">'+(invite?'بانتظار صديقك…':'بانتظار الخصم…')+' قائمة اللاعبين تتحدّث تلقائياً.</span>':'<span class="subtle">وصلت للغرفة. ننتظر اكتمال اللاعبين.</span>')+'</section>'}
 function gameHud(r){var stats=getGameStats(r.game),me=(r.players||[]).find(function(player){return player.seat===r.playerSeat})||{};var labels={chess:'تصنيفك',sudoku:'ألغاز وسباقات',uno:'جلسات أونو',gartic:'جلسات رسم',poker:'طاولات لعب'};var personal=r.game==='chess'?digit(chessElo())+' ELO':digit(stats.matches)+' جلسة',flag=countryFlag(me.countryCode||chessCountryCode())+' ',avatar=me.photoUrl?'<img class="hud-player-photo" src="'+safe(me.photoUrl)+'" alt="" onerror="this.remove()">':'<span class="hud-player-avatar">'+safe(String(me.name||accountName).trim().charAt(0)||'ل')+'</span>';return '<section class="game-hud" data-game="'+safe(r.game)+'"><div class="hud-player">'+avatar+'<div><small>لاعب هذا الجهاز</small><strong>'+flag+safe(me.name||accountName)+creatorBadgeMarkup()+'</strong></div></div><div class="hud-stat"><small>'+labels[r.game]+'</small><strong>'+personal+'</strong></div><div class="hud-stat"><small>مرات لعبت</small><strong>'+digit(stats.matches)+'</strong></div><div class="hud-stat"><small>انتصارات</small><strong>'+digit(stats.wins)+'</strong></div></section>'}
 function canInvite(r,s){if(!r.isHost||r.status!=='waiting')return false;if(r.game==='chess')return s.mode!=='bot'&&s.mode!=='random';if(r.game==='sudoku')return s.mode==='friend';return ['uno','gartic','poker'].includes(r.game)}
-function renderGame(r,s){if(r.game==='chess')syncChessFriendBox(r);var chessChatButton=$('chessChatButton');if(chessChatButton){chessChatButton.hidden=!(r.game==='chess'&&r.status==='playing');chessChatButton.setAttribute('aria-expanded',String(chessChatExpanded===true));syncChessChatUnread();chessChatButton.onclick=toggleChessChat}var sudokuFriendWaiting=r.game==='sudoku'&&s.mode==='friend'&&r.status==='waiting';var html=r.game==='gartic'?renderGartic(r,s):gameHud(r)+renderPlayers(r,s);if(r.game==='gartic'){}else if(r.game==='sudoku'&&r.status==='playing'){html=renderSudoku(r,s)}else if(sudokuFriendWaiting){html=renderSudokuFriendWaiting(r)}else if(r.status==='waiting'){html+=waitingMarkup(r,s)}else if(r.game==='chess')html+=renderChess(r,s);else if(r.game==='sudoku')html+=renderSudoku(r,s);else if(r.game==='uno')html+=renderUno(r,s);else if(r.game==='gartic')html+=renderGartic(r,s);else if(r.game==='poker')html+=renderPoker(r,s);if(r.game!=='gartic'&&canInvite(r,s)&&!sudokuFriendWaiting)html+='<section class="room-card invite-line"><div><strong>دعوة إلى '+safe(r.gameName)+'</strong><small>رابط مباشر؛ يفتح لصديقك اللعبة والغرفة نفسها.</small></div><button class="button" data-action="invite">مشاركة الدعوة</button></section>';if(r.game!=='chess'&&r.game!=='gartic'&&!sudokuFriendWaiting)html+='<div class="chess-tools"></div>';$('roomContent').innerHTML=html;if(sudokuFriendWaiting)loadSudokuFriendInviteLink(r.id);bindPreferences($('roomContent'));applyRoomTheme();$('roomContent').querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>handleAction(button.dataset.action,button)));var chatForm=$('chessChatForm');if(chatForm)chatForm.onsubmit=function(event){event.preventDefault();var input=$('chessChatInput'),text=input.value.trim();if(!text)return;input.value='';act('chat',{text})};var chatLog=$('chessChatMessages');if(chatLog)chatLog.scrollTop=chatLog.scrollHeight;['guessFeed','drawLogFeed'].forEach(function(feedId){var feed=$(feedId);if(feed)feed.scrollTop=feed.scrollHeight});$('roomContent').querySelectorAll('[data-chess-chat-toggle]').forEach(function(button){button.onclick=toggleChessChat});syncChessLayout();if(r.game==='chess'&&r.status==='playing')wireChessBoard(r,s);if(r.game==='sudoku'&&r.status==='playing')wireSudoku(r,s);if(r.game==='gartic'&&r.status==='playing')wireCanvas(s);if(r.game==='uno')wireUno(s)}
+function renderGame(r,s){if(r.game==='chess')syncChessFriendBox(r);if(r.game==='chess'&&r.status==='waiting'&&(chessFriendBox||chessFriendPending||(s&&s.mode==='friend'))){$('roomContent').innerHTML='<section class="chess-friend-hold"><span class="match-search-dots"><i></i><i></i><i></i></span><p>الغرفة مفتوحة — ننتظر انضمام صديقك.</p></section>';return}var chessChatButton=$('chessChatButton');if(chessChatButton){chessChatButton.hidden=!(r.game==='chess'&&r.status==='playing');chessChatButton.setAttribute('aria-expanded',String(chessChatExpanded===true));syncChessChatUnread();chessChatButton.onclick=toggleChessChat}var sudokuFriendWaiting=r.game==='sudoku'&&s.mode==='friend'&&r.status==='waiting';var html=r.game==='gartic'?renderGartic(r,s):gameHud(r)+renderPlayers(r,s);if(r.game==='gartic'){}else if(r.game==='sudoku'&&r.status==='playing'){html=renderSudoku(r,s)}else if(sudokuFriendWaiting){html=renderSudokuFriendWaiting(r)}else if(r.status==='waiting'){html+=waitingMarkup(r,s)}else if(r.game==='chess')html+=renderChess(r,s);else if(r.game==='sudoku')html+=renderSudoku(r,s);else if(r.game==='uno')html+=renderUno(r,s);else if(r.game==='gartic')html+=renderGartic(r,s);else if(r.game==='poker')html+=renderPoker(r,s);if(r.game!=='gartic'&&canInvite(r,s)&&!sudokuFriendWaiting)html+='<section class="room-card invite-line"><div><strong>دعوة إلى '+safe(r.gameName)+'</strong><small>رابط مباشر؛ يفتح لصديقك اللعبة والغرفة نفسها.</small></div><button class="button" data-action="invite">مشاركة الدعوة</button></section>';if(r.game!=='chess'&&r.game!=='gartic'&&!sudokuFriendWaiting)html+='<div class="chess-tools"></div>';$('roomContent').innerHTML=html;if(sudokuFriendWaiting)loadSudokuFriendInviteLink(r.id);bindPreferences($('roomContent'));applyRoomTheme();$('roomContent').querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>handleAction(button.dataset.action,button)));var chatForm=$('chessChatForm');if(chatForm)chatForm.onsubmit=function(event){event.preventDefault();var input=$('chessChatInput'),text=input.value.trim();if(!text)return;input.value='';act('chat',{text})};var chatLog=$('chessChatMessages');if(chatLog)chatLog.scrollTop=chatLog.scrollHeight;['guessFeed','drawLogFeed'].forEach(function(feedId){var feed=$(feedId);if(feed)feed.scrollTop=feed.scrollHeight});$('roomContent').querySelectorAll('[data-chess-chat-toggle]').forEach(function(button){button.onclick=toggleChessChat});syncChessLayout();if(r.game==='chess'&&r.status==='playing')wireChessBoard(r,s);if(r.game==='sudoku'&&r.status==='playing')wireSudoku(r,s);if(r.game==='gartic'&&r.status==='playing')wireCanvas(s);if(r.game==='uno')wireUno(s)}
 function toggleChessChat(){var panel=$('roomContent').querySelector('.chess-chat-panel'),side=$('roomContent').querySelector('.chess-side-panel');if(!panel||!side)return;chessChatExpanded=panel.classList.contains('collapsed');if(chessChatExpanded)markChessChatRead();panel.classList.toggle('collapsed',!chessChatExpanded);side.classList.toggle('open',chessChatExpanded);$('roomContent').querySelectorAll('[data-chess-chat-toggle]').forEach(function(button){button.setAttribute('aria-expanded',String(chessChatExpanded));button.textContent=chessChatExpanded?'إغلاق':'فتح المحادثة';button.setAttribute('aria-label',chessChatExpanded?'إغلاق المحادثة':'فتح محادثة المباراة')});var headerToggle=$('chessChatButton');if(headerToggle){headerToggle.setAttribute('aria-expanded',String(chessChatExpanded));syncChessChatUnread();headerToggle.setAttribute('aria-label',chessChatExpanded?'إغلاق المحادثة':'فتح محادثة المباراة')}if(chessChatExpanded&&window.matchMedia&&window.matchMedia('(max-width:1000px)').matches){requestAnimationFrame(function(){var form=$('chessChatForm');if(!form)return;var rect=form.getBoundingClientRect();if(rect.top<0||rect.bottom>window.innerHeight)form.scrollIntoView({block:'nearest',behavior:'smooth'})})}}
 function handleAction(action,button){if(action==='invite')return inviteFriend();if(action==='copy-invite')return copySudokuFriendInvite();if(action==='start'||action==='start-round'||action==='next-hand'||action==='resign'||action==='draw'||action==='pass'||action==='call-uno'||action==='undo-stroke'||action==='fold'||action==='check'||action==='call'||action==='clear'||action==='hint'||action==='skip')return act(action);if(action==='raise')return act('raise',{amount:Number($('raiseAmount').value)});if(action==='play')return playUno();if(action==='guess')return sendGuess();if(action==='color'){selectedColor=button.dataset.color;renderGame(roomData.room,roomData.state)}}
 function formatChessClock(milliseconds){var seconds=Math.ceil(Math.max(0,Number(milliseconds)||0)/1000);return digit(String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0'))}
