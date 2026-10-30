@@ -1111,7 +1111,6 @@ export class TelegramBotManager {
   private activeSocialDownloads: Set<string> = new Set();
   /** آخر رابط فشل تحميله لكل مستخدم — زر «جرّب مرة ثانية» يعيد نفس المحاولة بلا كتابة الرابط. */
   private lastSocialAttempt: Map<string, { platform: MS.SocialPlatform; url: string }> = new Map();
-  private mediaSessionMsgs: Map<string, number[]> = new Map();
   private activeDownloadSlots: number = 0;
   private waitingDownloadResolvers: Array<() => void> = [];
   private rouletteSessions: Map<string, EXT.RouletteSession> = new Map();
@@ -2522,7 +2521,6 @@ export class TelegramBotManager {
           editDraft.coverFileId = coverFid;
           editDraft.waitingField = undefined;
           this.audioEditDrafts.set(mUid, editDraft);
-          this.trackMediaMsg(mUid, message.message_id);
           await this.sendAudioMetadataEditorCard(mUid);
           return;
         }
@@ -2536,7 +2534,6 @@ export class TelegramBotManager {
           return;
         }
         this.pendingCinemaFlows.delete(mUid);
-        this.trackMediaMsg(mUid, message.message_id);
         await this.handleCinemaScreenshot(mUid, imageFileId, String(message.document?.mime_type || 'image/jpeg'));
         return;
       }
@@ -2629,7 +2626,6 @@ export class TelegramBotManager {
         };
         this.audioMetadataPresets.set(uid, [preset, ...presets.filter(p => p.id !== existing?.id && p.name.toLowerCase() !== presetName.toLowerCase())].slice(0, 20));
         activeAudioDraft.waitingField = undefined;
-        this.trackMediaMsg(uid, message.message_id);
         if (activeAudioDraft.fileId) {
           this.audioEditDrafts.set(uid, activeAudioDraft);
           await this.sendMessage(uid, `✅ حفظت الإعداد «${presetName}». تگدر تطبّقه على هاي الأغنية أو أي أغنية ثانية.`);
@@ -2649,7 +2645,6 @@ export class TelegramBotManager {
         }
         activeAudioDraft.waitingField = undefined;
         this.audioEditDrafts.set(uid, activeAudioDraft);
-        this.trackMediaMsg(uid, message.message_id);
         await this.sendAudioMetadataEditorCard(uid);
         return;
       }
@@ -8384,17 +8379,6 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── مسح جميع رسائل الميديا والروابط المحمّلة لتخفيف الضغط والحفاظ على سرعة البوت ──
-    if (data === 'dl:clean') {
-      const tracked = this.mediaSessionMsgs.get(userId) || [];
-      const toDelete = new Set<number>(tracked);
-      if (messageId) toDelete.add(messageId);
-      this.mediaSessionMsgs.delete(userId);
-      await this.answerCallbackQuery(cb.id, '🗑️ تم مسح الميديا والروابط المحمّلة بنجاح!', false);
-      await Promise.allSettled(Array.from(toDelete).map(mid => this.deleteMessage(chatId, mid)));
-      return;
-    }
-
     // ── تحميل فيديو يوتيوب بدقة عالية HD (1080p / 720p) حتى لو تجاوز 50MB ──
     if (data.startsWith('ytq:hd:')) {
       const videoId = data.slice('ytq:hd:'.length).trim();
@@ -8419,7 +8403,6 @@ export class TelegramBotManager {
             chatId,
             hdRes.error || '⚠️ تعذّر استخراج نسخة HD حالياً — حاول مجدداً بعد لحظات.'
           );
-          if (errSent?.result?.message_id) this.trackMediaMsg(userId, errSent.result.message_id);
           return;
         }
 
@@ -8435,7 +8418,6 @@ export class TelegramBotManager {
           );
           hdItem.bytes = undefined;
           if (sentId) {
-            this.trackMediaMsg(userId, sentId);
             deliveredInline = true;
           }
         } else {
@@ -8448,7 +8430,6 @@ export class TelegramBotManager {
         if (!deliveredInline) {
           kb.push([{ text: `📥 تنزيل نسخة ${qBadge}HD الكاملة مباشرة${sizeNote}`, url: hdItem.url }]);
         }
-        kb.push([{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }]);
         kb.push([
           { text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' },
           { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
@@ -8457,14 +8438,11 @@ export class TelegramBotManager {
         const doneMsg = await this.sendMessage(
           chatId,
           deliveredInline
-            ? `🎬 *تم إرسال النسخة عالية الدقة (${qBadge}HD) بنجاح!*\n\n` +
-                `💡 _ملاحظة: بعد حفظ الفيديو بجهازك، ننصحك بالضغط على «🗑️ مسح الميديا المحمّلة» لحذف الرسائل والوسائط المنتهية والحفاظ على خفة وسرعة البوت للجميع._`
+            ? `🎬 *تم إرسال النسخة عالية الدقة (${qBadge}HD) بنجاح!*`
             : `🎬 *النسخة عالية الدقة (${qBadge}HD) جاهزة للتحميل الكامل${sizeNote}!*\n` +
-                `بما أن حجم النسخة يتجاوز سقف الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيل الملف الكامل بأقصى سرعة مباشرة إلى جهازك:\n\n` +
-                `💡 _ملاحظة: بعد إتمام التنزيل، ننصحك بالضغط على «🗑️ مسح الميديا المحمّلة» لحذف الروابط والرسائل المنتهية والحفاظ على خفة وسرعة البوت._`,
+                `بما أن حجم النسخة يتجاوز سقف الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيل الملف الكامل بأقصى سرعة مباشرة إلى جهازك:`,
           kb
         );
-        if (doneMsg?.result?.message_id) this.trackMediaMsg(userId, doneMsg.result.message_id);
       } finally {
         this.releaseDownloadSlot();
         this.activeSocialDownloads.delete(lockKey);
@@ -8498,10 +8476,8 @@ export class TelegramBotManager {
       const keyboard = [[{ text: '🔙 رجوع للمنصات', callback_data: 'svc:dl' }]];
       if (messageId) {
         await this.editMessageText(chatId, messageId, text, keyboard);
-        this.trackMediaMsg(userId, messageId);
       } else {
         const promptSent = await this.sendMessage(chatId, text, keyboard);
-        if (promptSent?.result?.message_id) this.trackMediaMsg(userId, promptSent.result.message_id);
       }
       await this.answerCallbackQuery(cb.id, '');
       return;
@@ -8972,7 +8948,6 @@ export class TelegramBotManager {
     }
 
     this.pendingConvert.set(uid, { fileId, kind });
-    this.trackMediaMsg(uid, msg.message_id);
 
     if (kind === 'audio' || kind === 'voice' || kind === 'video') {
       const initialTitle = String(msg.audio?.title || '').trim();
@@ -9023,7 +8998,6 @@ export class TelegramBotManager {
     }
     const kb = [...(optionsByKind[kind] || []), [{ text: '🔙 إلغاء', callback_data: 'svc:main' }]];
     const promptMsg = await this.sendMessage(uid, '🔄 *اختر الإجراء أو الصيغة المطلوبة:* 👇', kb);
-    if (promptMsg?.result?.message_id) this.trackMediaMsg(uid, promptMsg.result.message_id);
   }
 
   private async sendAudioMetadataEditorCard(uid: string, editMsgId?: number) {
@@ -9060,7 +9034,6 @@ export class TelegramBotManager {
       if (ed?.ok) return;
     }
     const sent = await this.sendMessage(uid, text, kb);
-    if (sent?.result?.message_id) this.trackMediaMsg(uid, sent.result.message_id);
   }
 
   private async executeFormatConversion(cb: TelegramCallbackQuery, targetAction: string) {
@@ -9280,7 +9253,6 @@ export class TelegramBotManager {
       const pMsg = await this.sendMessage(chatId, prompts[field] || 'أرسل القيمة الجديدة:', [
         [{ text: '🔙 رجوع للمحرر', callback_data: 'conv:edit_open' }]
       ]);
-      if (pMsg?.result?.message_id) this.trackMediaMsg(uid, pMsg.result.message_id);
       return;
     }
 
@@ -9358,7 +9330,6 @@ export class TelegramBotManager {
 
         if (upJson?.ok) {
           const sentMsgId = Number(upJson?.result?.message_id) || 1;
-          this.trackMediaMsg(uid, sentMsgId);
           const outputFileId = String(upJson?.result?.audio?.file_id || '');
           if (outputFileId) {
             draft.fileId = outputFileId;
@@ -9502,16 +9473,13 @@ export class TelegramBotManager {
       if (waitId) await this.deleteMessage(chatId, waitId);
 
       if (sentId) {
-        this.trackMediaMsg(uid, sentId);
         this.pendingConvert.delete(uid);
         const done = await this.sendMessage(chatId, '✅ *تم تحويل الصيغة بنجاح!*', [
-          [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
           [
             { text: '🔄 تحويل ملف آخر', callback_data: 'svc:convert' },
             { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
           ]
         ]);
-        if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
       } else {
         await this.sendMessage(chatId, '⚠️ تعذّر إتمام هذا التحويل على هذا الملف — جرّب صيغة أخرى.', [
           [{ text: '🔄 ملف آخر', callback_data: 'svc:convert' }]
@@ -9529,7 +9497,6 @@ export class TelegramBotManager {
       await this.sendMessage(uid, '⚠️ أرسل ملف صوت أو فيديو أو اكتب اسم الأغنية.');
       return;
     }
-    this.trackMediaMsg(uid, msg.message_id);
     const titleHint = String(msg.audio?.title || msg.document?.file_name || 'الأغنية').replace(/\.[^.]+$/, '');
     const waitMsg = await this.sendMessage(uid, '⏳ جارٍ فصل الصوت عن الموسيقى...');
     const waitId = waitMsg?.result?.message_id;
@@ -9565,7 +9532,6 @@ export class TelegramBotManager {
           );
           sep.vocalsBytes = undefined;
           if (s1) {
-            this.trackMediaMsg(uid, s1);
             delivered += 1;
           }
         }
@@ -9581,7 +9547,6 @@ export class TelegramBotManager {
           );
           sep.instrumentalBytes = undefined;
           if (s2) {
-            this.trackMediaMsg(uid, s2);
             delivered += 1;
           }
         }
@@ -9596,13 +9561,11 @@ export class TelegramBotManager {
       if (delivered > 0) {
         this.pendingVocalSep.delete(uid);
         const done = await this.sendMessage(uid, '✅ *تم عزل الصوت والموسيقى بنجاح!*', [
-          [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
           [
             { text: '🎼 عزل أغنية أخرى', callback_data: 'svc:vocal' },
             { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
           ]
         ]);
-        if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
       } else {
         await this.sendMessage(
           uid,
@@ -9651,7 +9614,6 @@ export class TelegramBotManager {
 
   /** عزل الموسيقى عن الأغنية عند كتابة اسم الأغنية نصاً */
   private async handleVocalSeparationTextInput(uid: string, query: string, incomingMsgId?: number) {
-    if (incomingMsgId) this.trackMediaMsg(uid, incomingMsgId);
     const waitMsg = await this.sendMessage(uid, '⏳ جارٍ فصل الصوت عن الموسيقى...');
     const waitId = waitMsg?.result?.message_id;
 
@@ -9683,7 +9645,6 @@ export class TelegramBotManager {
                 );
                 aiSep.vocalsBytes = undefined;
                 if (s1) {
-                  this.trackMediaMsg(uid, s1);
                   delivered += 1;
                 }
               }
@@ -9699,7 +9660,6 @@ export class TelegramBotManager {
                 );
                 aiSep.instrumentalBytes = undefined;
                 if (s2) {
-                  this.trackMediaMsg(uid, s2);
                   delivered += 1;
                 }
               }
@@ -9716,13 +9676,11 @@ export class TelegramBotManager {
       if (delivered > 0) {
         this.pendingVocalSep.delete(uid);
         const done = await this.sendMessage(uid, '✅ *تم عزل الصوت والموسيقى بنجاح!*', [
-          [{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }],
           [
             { text: '🎼 عزل أغنية أخرى', callback_data: 'svc:vocal' },
             { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
           ]
         ]);
-        if (done?.result?.message_id) this.trackMediaMsg(uid, done.result.message_id);
       } else {
         await this.sendMessage(uid, '⚠️ ما لكيت نسخة متاحة لهذه الأغنية — جرّب إرسال ملف الأغنية مباشرة.', [
           [{ text: '🔙 رجوع', callback_data: 'svc:main' }]
@@ -9856,14 +9814,6 @@ export class TelegramBotManager {
     );
   }
 
-  private trackMediaMsg(userId: string, msgId?: number | null) {
-    if (!msgId || !Number.isFinite(msgId)) return;
-    const arr = this.mediaSessionMsgs.get(userId) || [];
-    if (!arr.includes(msgId)) arr.push(msgId);
-    if (arr.length > 60) arr.shift();
-    this.mediaSessionMsgs.set(userId, arr);
-  }
-
   private async acquireDownloadSlot(): Promise<void> {
     if (this.activeDownloadSlots < 2) {
       this.activeDownloadSlots += 1;
@@ -9883,7 +9833,7 @@ export class TelegramBotManager {
     }
   }
 
-  /** معالجة رابط التحميل المرسل بالخاص من يوتيوب / بنترست / تيك توك / إنستغرام (يدعم > 50MB + زر HD + مسح الميديا + منع التكرار 100%) */
+  /** معالجة رابط التحميل المرسل بالخاص من يوتيوب / بنترست / تيك توك / إنستغرام (يدعم > 50MB + زر HD + منع التكرار 100%) */
   private async handleSocialDownloadInput(userId: string, rawUrl: string, incomingMsgId?: number) {
     const platform = this.pendingSocialDl.get(userId);
     if (!platform) return;
@@ -9893,7 +9843,6 @@ export class TelegramBotManager {
       return;
     }
     this.activeSocialDownloads.add(userId);
-    if (incomingMsgId) this.trackMediaMsg(userId, incomingMsgId);
 
     const statusMsg = await this.sendMessage(userId, `⏳ جاري تحميل المنشور من *${MS.socialPlatformLabel(platform)}* ...`);
     const statusMsgId = statusMsg?.result?.message_id;
@@ -9953,7 +9902,6 @@ export class TelegramBotManager {
         item.bytes = undefined;
 
         if (sentId) {
-          this.trackMediaMsg(userId, sentId);
           deliveredInline += 1;
         } else if (item.url && item.url.startsWith('http')) {
           oversizedButtons.push({
@@ -9976,23 +9924,18 @@ export class TelegramBotManager {
         if (platform === 'yt' && result.videoId) {
           kb.push([{ text: '🎬 تحميل بدقة عالية HD', callback_data: `ytq:hd:${result.videoId}` }]);
         }
-        kb.push([{ text: '🗑️ مسح الميديا المحمّلة', callback_data: 'dl:clean' }]);
         kb.push([
           { text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' },
           { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
         ]);
 
-        const noteLine =
-          `💡 _ملاحظة: بعد حفظ الفيديو أو الصورة بجهازك، ننصحك بالضغط على زر «🗑️ مسح الميديا المحمّلة» بالأسفل لحذف الروابط والوسائط المنتهية والحفاظ على خفة وسرعة البوت للجميع._`;
-
         const doneText =
           deliveredInline > 0
-            ? `✅ *تم تحميل وإرسال المنشور بنجاح!*\n\n${noteLine}`
+            ? `✅ *تم تحميل وإرسال المنشور بنجاح!*`
             : `✅ *تم تجهيز الفيديو الكامل بنجاح (حجم أكبر من 50MB)!*\n` +
-              `بما أن حجم الفيديو يتجاوز حد الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيله كاملاً مباشرة وبأقصى سرعة:\n\n${noteLine}`;
+              `بما أن حجم الفيديو يتجاوز حد الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيله كاملاً مباشرة وبأقصى سرعة:`;
 
         const doneMsg = await this.sendMessage(userId, doneText, kb);
-        if (doneMsg?.result?.message_id) this.trackMediaMsg(userId, doneMsg.result.message_id);
       } else if (statusMsgId) {
         await this.editMessageText(
           userId,
@@ -10144,7 +10087,7 @@ export class TelegramBotManager {
     }
   }
 
-  /** إرسال فيديو أو صورة (مع حماية كاملة للذاكرة وإعادة message_id ليتم مسحها بضغطة زر «مسح الميديا المحمّلة») */
+  /** إرسال فيديو أو صورة (مع حماية كاملة للذاكرة) */
   private async sendMediaBinaryOrUrl(
     chatId: string,
     kind: 'video' | 'photo',
