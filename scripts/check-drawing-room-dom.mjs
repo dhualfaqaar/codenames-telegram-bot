@@ -63,7 +63,7 @@ const openRooms = async win => {
   await waitFor(() => !win.document.querySelector('#drawRoomsScreen').hidden, 'rooms screen open');
 };
 const openCreateScreen = async win => {
-  await waitFor(() => win.document.querySelector('#drawCreateRoom'), 'create button');
+  await openRooms(win);
   if (win.document.querySelector('#drawCreateScreen').hidden) click(win, '#drawCreateRoom');
   await waitFor(() => !win.document.querySelector('#drawCreateScreen').hidden, 'create screen open');
 };
@@ -94,14 +94,15 @@ try {
   assert.match(play.querySelector('.draw-lobby-name').textContent, /أحمد/, 'your name is in the lobby column');
   assert.ok(play.querySelector('.draw-lobby-country .country-flag'), 'your country flag is in the lobby column');
   assert.equal(host.document.querySelector('#drawQuickPlay').textContent.trim(), 'العب');
-  assert.equal(host.document.querySelector('#drawCreateRoom').textContent.trim(), 'أنشئ غرفة');
   assert.equal(host.document.querySelector('#drawOpenRooms').textContent.trim(), 'الغرف');
   assert.ok(host.document.querySelector('.draw-lobby-grid').contains(host.document.querySelector('#drawRoomCode')), 'the code field sits in the lobby');
   assert.equal(host.document.querySelector('#drawRoomsScreen').hidden, true, 'the rooms screen starts closed');
   assert.equal(host.document.querySelector('#drawCreateScreen').hidden, true, 'the create screen starts closed');
   await openRooms(host);
   assert.equal(host.document.querySelector('#drawHub').hidden, true, 'the rooms screen replaces the lobby');
-  assert.ok(host.document.querySelector('.draw-rooms-box').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside a framed box');
+  assert.ok(host.document.querySelector('.draw-rooms-panel').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside a framed panel');
+  assert.ok(host.document.querySelector('.draw-rooms-panel').contains(host.document.querySelector('#drawCreateRoom')), 'creating a room is inside the rooms panel');
+  assert.equal(host.document.querySelector('#drawCreateRoom').textContent.trim(), 'أنشئ غرفة');
   assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
   click(host, '#drawRoomsBack');
   await waitFor(() => !host.document.querySelector('#drawHub').hidden, 'back to the lobby');
