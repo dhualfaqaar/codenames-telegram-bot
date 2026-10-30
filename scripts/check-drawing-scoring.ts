@@ -304,5 +304,13 @@ assert.ok(lobbyHtml.indexOf('id="drawRoomCode"') < lobbyHtml.indexOf('id="drawRo
 assert.ok(lobbyHtml.includes('id="drawCreateBack"'), 'the create screen can go back');
 assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the create screen opens the room');
 assert.ok(lobbyHtml.includes('draw-room-card'), 'open rooms render as pickable cards');
+assert.ok(lobbyHtml.includes('stroke-linecap="round"'), 'back buttons use a drawn arrow');
+assert.ok(!lobbyHtml.includes('&#8594;'), 'no thin character arrow is left');
+assert.ok(lobbyHtml.includes('class="draw-subview-live"'), 'the rooms screen shows that the list is live');
+assert.ok(/draw-rooms-scroll/.test(lobbyHtml), 'the room list has a fixed framed window');
+// «العب» only drops you into a room that already exists; it never opens one.
+const quickPlayBody = lobbyHtml.slice(lobbyHtml.indexOf('async function drawQuickPlay'), lobbyHtml.indexOf('function drawRoomCardMarkup'));
+assert.ok(quickPlayBody.includes('joinRoom('), 'play joins an open room');
+assert.ok(!quickPlayBody.includes('createRoom('), 'play never creates a room');
 
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');
