@@ -103,7 +103,8 @@ try {
   assert.ok(host.document.querySelector('.draw-rooms-panel').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside a framed panel');
   assert.ok(host.document.querySelector('.draw-rooms-panel').contains(host.document.querySelector('#drawCreateRoom')), 'creating a room is inside the rooms panel');
   assert.equal(host.document.querySelector('#drawCreateRoom').textContent.trim(), 'أنشئ غرفة');
-  assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
+  assert.equal(host.document.querySelector('#drawPublicRefresh'), null, 'the list refreshes itself, no refresh button');
+  assert.ok(host.document.querySelector('.draw-subview-back svg'), 'the back arrow is drawn, not a thin character');
   click(host, '#drawRoomsBack');
   await waitFor(() => !host.document.querySelector('#drawHub').hidden, 'back to the lobby');
   await openCreateScreen(host);
@@ -303,6 +304,17 @@ try {
   await openRooms(back);
   click(back, '#drawRoomsBack');
   await waitFor(() => !back.document.querySelector('#drawHub').hidden, 'the hub comes back');
+
+  // The room browser keeps itself up to date: a room opened later shows up
+  // without anyone pressing anything.
+  const watcher = makeClient('مراقب');
+  await openRooms(watcher);
+  const lateHost = makeClient('متأخر');
+  await waitFor(() => lateHost.document.querySelector('#drawQuickPlay'), 'late lobby');
+  await createRoomFromLobby(lateHost);
+  await waitFor(() => lateHost.document.querySelector('.draw-room'), 'late room');
+  const lateCode = await waitFor(() => roomOf(lateHost), 'late room code');
+  await waitFor(() => watcher.document.querySelector(`[data-room-id="${lateCode}"]`), 'the late room appears by itself', 20000);
 
   const hiddenHost = makeClient('مخفي');
   await waitFor(() => hiddenHost.document.querySelector('#drawQuickPlay'), 'hidden lobby');
