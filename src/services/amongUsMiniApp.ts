@@ -565,7 +565,7 @@ input:focus{border-color:var(--accent)}
     world.x = Math.max(1, Math.min(99, world.x + (vx / length) * speed / 60));
     world.y = Math.max(1, Math.min(99, world.y + (vy / length) * speed / 60));
     var now = Date.now();
-    if (now - world.lastSent > 140) {
+    if (now - world.lastSent > 220) {
       world.lastSent = now;
       act('move', { x: world.x, y: world.y });
     }

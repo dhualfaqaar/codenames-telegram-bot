@@ -91,7 +91,7 @@ export const AU_TASKS_PER_PLAYER = 5;
 export const AU_KILL_COOLDOWN_MS = 25_000;
 export const AU_MEETING_MS = 45_000;
 export const AU_SABOTAGE_MS = 45_000;
-export const AU_PRESENCE_MS = 90_000;
+export const AU_PRESENCE_MS = 180_000;
 
 /** Colours are game pieces, so they carry their own hex value. */
 export const AU_COLORS: Array<{ id: string; hex: string; name: string }> = [
@@ -459,7 +459,7 @@ function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
   // Bodies get reported by passing bots.
   const body = room.bodies.find(entry => distance(entry, bot) < 7);
   if (body && Math.random() < 0.5) {
-    startMeeting(room, 'report', bot.name);
+    startMeeting(room, 'report', bot.token);
     return;
   }
 
