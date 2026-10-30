@@ -130,12 +130,31 @@ check(
 check(
   'بطاقات اللعب مرسومة SVG بلا صور خارجية',
   (html.match(/class="sp-art"/g) || []).length === 3 &&
-    (html.match(/<svg viewBox="0 0 260 170"/g) || []).length === 3 &&
-    html.includes('id="metalc"') &&
-    html.includes('id="metalo"') &&
-    html.includes('id="metalk"') &&
-    html.includes('id="visorGlass"') &&
+    (html.match(/<svg viewBox="0 0 300 460"/g) || []).length === 3 &&
+    html.includes('id="steel"') &&
+    html.includes('id="glass"') &&
+    html.includes('id="skyCode"') &&
+    html.includes('id="skyMake"') &&
+    html.includes('id="skyOnline"') &&
     !/<img\s/.test(html)
+);
+check(
+  'رسم البطاقات بنفس نسبة البطاقة حتى ما ينقص منها شي',
+  /class="sp-art"[^>]*>\s*<svg viewBox="0 0 300 460" preserveAspectRatio="xMidYMid slice"/.test(html) &&
+    !html.includes('viewBox="0 0 260 170"')
+);
+check(
+  'كل بطاقة إلها لون مختلف',
+  html.includes('--tint:#3fe3c6') &&
+    html.includes('.sp-card#auCreate{--tint:#5cc8ff') &&
+    html.includes('.sp-card#auOnlineCard{--tint:#a98bff')
+);
+check(
+  'صف الاسم والقفل انحذف من تحت المربع',
+  !html.includes('id="auMeName"') &&
+    !html.includes('id="auMeBean"') &&
+    !html.includes('تلعب باسم حسابك') &&
+    !html.includes('class="sp-me"')
 );
 check(
   'إعدادات الغرفة قبل الإنشاء موجودة بالواجهة',
@@ -164,7 +183,7 @@ check(
     const pick = html.slice(html.indexOf('id="auViewPick"'), html.indexOf('id="auViewSettings"'));
     const order = ['id="auCodeCard"', 'id="auCreate"', 'id="auOnlineCard"'].map(id => pick.indexOf(id));
     return order.every(index => index > 0) && order[0] < order[1] && order[1] < order[2] &&
-      /grid-template-columns:1fr 1\.14fr 1fr/.test(html);
+      /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/.test(html);
   })()
 );
 check(
@@ -172,8 +191,8 @@ check(
   !html.includes('id="auName"') &&
     !html.includes('id="auNameAccount"') &&
     !html.includes('id="auSaveName"') &&
-    html.includes('id="auMeName"') &&
-    html.includes('id="auMeBean"')
+    html.includes('id="auPlayerName"') &&
+    html.includes('id="auPlayerChip"')
 );
 check(
   'الاسم يجي من حساب تليگرام مو من اليوزر',
