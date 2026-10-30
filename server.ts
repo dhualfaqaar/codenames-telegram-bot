@@ -10,6 +10,8 @@ import { SUDOKU_MINI_APP_HTML } from './src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from './src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from './src/assets/botAvatarBase64';
 import { InteractiveGameRooms, MemoryRoomStorage } from './src/services/interactiveGameRooms';
+import { AmongUsRooms } from './src/services/amongUsRooms';
+import { amongUsMiniAppHtml } from './src/services/amongUsMiniApp';
 import { ARABIC_STANDARD_WORDS, ARABIC_IRAQI_WORDS, POP_CULTURE_WORDS, ENGLISH_WORDS } from './src/data/words';
 
 dotenv.config();
@@ -23,6 +25,7 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json());
 
 const interactiveRooms = new InteractiveGameRooms(new MemoryRoomStorage());
+const amongUsRooms = new AmongUsRooms(new MemoryRoomStorage());
 app.get('/code-games-avatar.jpg', (_req, res) => {
   res.type('image/jpeg').set('Cache-Control', 'public, max-age=86400').send(Buffer.from(BOT_AVATAR_JPG_BASE64, 'base64'));
 });
@@ -48,6 +51,28 @@ app.all(['/api/interactive/rooms*', '/api/interactive/matchmaking*'], async (req
     console.error('Interactive room request failed:', error);
     res.status(500).json({ error: 'تعذر تنفيذ طلب اللعبة' });
   }
+});
+
+app.all('/api/amongus*', async (req, res) => {
+  try {
+    const method = req.method.toUpperCase();
+    const headers = new Headers();
+    if (method !== 'GET' && method !== 'HEAD') headers.set('Content-Type', 'application/json');
+    const init: RequestInit = { method, headers };
+    if (method !== 'GET' && method !== 'HEAD') init.body = JSON.stringify(req.body || {});
+    const request = new Request(`http://${req.get('host')}${req.originalUrl}`, init);
+    const response = await amongUsRooms.handle(request);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    res.send(Buffer.from(await response.arrayBuffer()));
+  } catch (error) {
+    console.error('Among Us room request failed:', error);
+    res.status(500).json({ error: 'تعذر تنفيذ طلب الغرفة' });
+  }
+});
+
+app.get('/amongus', (_req, res) => {
+  res.type('html').set('Cache-Control', 'no-cache').send(amongUsMiniAppHtml());
 });
 
 // Interactive game launcher and first standalone puzzle game.
