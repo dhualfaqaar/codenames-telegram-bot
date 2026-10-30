@@ -86,6 +86,14 @@ check(
 /* ------------------------------------------------------------------ html */
 
 const html = amongUsMiniAppHtml();
+
+check('اللعبة اسمها «امونق اس»', html.includes('<title>امونق اس</title>') && !html.includes('بيننا'));
+check(
+  'الواجهة على طابع اللعبة الأصلية',
+  html.includes('id="auStars"') && html.includes('AMONG') && html.includes('function crewSvg(') && html.includes('.btn.block')
+);
+check('زر الإجراءات مرسوم لا إيموجي', html.includes('id="auPad"') && html.includes('roundRect'));
+
 check('الصفحة تشحن كانفس الخريطة', html.includes('id="auCanvas"') && html.includes('getContext(\'2d\')'));
 check('الصفحة فيها جويستيك تحكم', html.includes('id="auPad"') && html.includes('id="auStick"'));
 for (const button of ['auUse', 'auKill', 'auReport', 'auVent', 'auSabotage', 'auEmergency']) {
