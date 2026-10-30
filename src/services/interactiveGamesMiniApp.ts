@@ -555,6 +555,23 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 
 .reveal-telegram-controls{position:fixed;left:max(8px,env(safe-area-inset-left));top:max(8px,env(safe-area-inset-top));z-index:90;width:38px;height:38px;display:grid;place-items:center;border:1px solid #8fb8d8;border-radius:11px;background:#143b62dd;color:#fff;font-size:17px;line-height:1;box-shadow:0 3px 12px #0004;cursor:pointer;backdrop-filter:blur(4px)}.reveal-telegram-controls[hidden]{display:none!important}
 .chess-seat-card > .player-avatar-badge{grid-row:1 / span 2}.player-avatar-badge{display:inline-flex;position:relative;flex:none;vertical-align:middle}.player-flag-marker{position:absolute;z-index:5;bottom:-3px;right:-4px;display:inline-flex;padding:1px;border-radius:3px;background:#fff;box-shadow:0 1px 3px #0006}.player-flag-marker img.country-flag{display:block!important;position:static!important;inset:auto!important;width:17px!important;height:12px!important;object-fit:cover!important;border-radius:2px!important}.draw-account-avatar img:not(.country-flag){object-fit:cover}
+/* Home lobby must fit the screen: no dead space on top, no scrolling, six equal cards. */
+body.chess-hub-open{padding-top:0!important}
+body.chess-hub-open:has(#chessHomePage.active){padding-bottom:0}
+body.chess-hub-open:has(#chessHomePage.active) #gameApp{min-height:0;padding-bottom:0}
+#chessHomePage{padding-top:0;margin-top:0}
+#chessHomePage .chess-hub-header{height:auto;padding:2px 2px 7px}
+#chessHomePage .chess-home-welcome{margin:8px 0 10px}
+#chessHomePage.active{display:flex;flex-direction:column;height:calc(100dvh - 160px - env(safe-area-inset-bottom,0px));min-height:0;padding-bottom:0;box-sizing:border-box}
+#chessHomePage .chess-feature-grid{flex:1 1 auto;min-height:0;grid-template-rows:repeat(3,minmax(0,1fr));gap:11px}
+#chessHomePage .chess-feature-card{min-height:0;overflow:hidden;gap:5px;padding:8px 7px}
+#chessHomePage .chess-feature-icon{width:clamp(40px,7.2vh,72px);height:clamp(40px,7.2vh,72px);font-size:clamp(27px,5vh,50px)}
+#chessHomePage .vision-icon{border-width:clamp(5px,.95vh,9px)}
+#chessHomePage .computer-icon i{width:clamp(18px,2.7vh,26px);height:clamp(18px,2.7vh,26px);font-size:clamp(10px,1.5vh,13px)}
+#chessHomePage .chess-feature-card strong{font-size:clamp(12px,1.75vh,16px)}
+#chessHomePage .chess-feature-card small{font-size:clamp(8px,1.15vh,10px)}
+@media(max-height:700px){#chessHomePage .chess-feature-card small{display:none}#chessHomePage .chess-feature-card{gap:4px}}
+@media(max-height:600px){#chessHomePage.active{height:auto;padding-bottom:168px}}
 
 __DRAWING_ROOM_CSS__
 __CHESS_LAYOUT_CSS__
