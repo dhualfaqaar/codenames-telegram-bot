@@ -21,8 +21,8 @@ import {
   cacheDelete,
   cacheGet,
   cacheSet,
-  traceReset,
-  traceSnapshot,
+  tracePush,
+  traceSnapshotSince,
   type TraceEntry,
   type ProviderAttempt
 } from './mediaResilience';
@@ -1789,6 +1789,56 @@ async function fetchTikTokAppFeed(awemeId: string): Promise<SocialDownloadResult
 }
 
 /**
+ * Mirror sites that render the same post from their own servers: they never use
+ * TikTok's quota and, unlike the app feed, their HTML also carries an album's
+ * frames as og:image tags.
+ */
+function tiktokProxyResolvers(url: string): Array<{ name: string; run: () => Promise<SocialDownloadResult | null> }> {
+  const pathPart = (() => {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname + parsed.search;
+    } catch {
+      return '';
+    }
+  })();
+  if (!pathPart || pathPart.length <= 2) return [];
+  return ['tnktok.com', 'vxtiktok.com', 'tiktxk.com'].map(proxyHost => ({
+    name: proxyHost,
+    run: async () => {
+      const r = await boundedFetch(`https://${proxyHost}${pathPart}`, {
+        headers: { 'User-Agent': TG_BOT_UA },
+        redirect: 'follow'
+      });
+      if (!r.ok) return null;
+      const html = await r.text();
+      // Photo posts carry no og:video at all: their frames live in og:image.
+      const ogImages = Array.from(
+        html.matchAll(/property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/gi)
+      ).map(match => match[1].replace(/&amp;/g, '&'));
+      const vidUrl =
+        html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
+        html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
+      if (!vidUrl || !vidUrl.startsWith('http')) {
+        const photos = ogImages
+          .filter(photoUrl => photoUrl.startsWith('http'))
+          .slice(0, 10)
+          .map(photoUrl => ({ kind: 'photo' as const, url: photoUrl, headers: { 'User-Agent': TG_BOT_UA } }));
+        if (photos.length) return { ok: true, items: photos };
+        return null;
+      }
+      const cleanVid = vidUrl.replace(/&amp;/g, '&');
+      const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 2000);
+      if (!verified) return null;
+      return {
+        ok: true,
+        items: [{ kind: 'video' as const, url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
+      };
+    }
+  }));
+}
+
+/**
  * Public resolvers that keep their own quota, so they still answer while TikTok
  * itself is throttling us. Both understand photo albums as well as videos.
  */
@@ -1869,7 +1919,19 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
     }
   }
 
-  // الطبقة 1: السحب المباشر من صفحة TikTok الرسمية مع حفظ الكوكيز (tt_chain_token) + استخراج الفيديو الأصلي بدون علامة مائية!
+  // الطبقة 1: المرايا والمزوّدون المستقلون — ما يلمسون حصة تيك توك، فيشتغلون
+  // حتى وقت الحجب ويغطّون ألبومات الصور. نبدي بيهم لأنهم الأنجح عملياً.
+  try {
+    const independent = [...tiktokProxyResolvers(resolvedUrl), ...tiktokThirdPartyResolvers(resolvedUrl)];
+    if (independent.length) {
+      const raced = await raceProviders<SocialDownloadResult>(independent);
+      if (raced.value) return raced.value;
+    }
+  } catch {
+    // نكمل على الطبقات الرسمية
+  }
+
+  // الطبقة 2: السحب المباشر من صفحة TikTok الرسمية مع حفظ الكوكيز (tt_chain_token) + استخراج الفيديو الأصلي بدون علامة مائية!
   // سلسلة الكوكيز قد تقفز 6 مرات، فنسقّفها: إذا حجب تيك توك الـ Worker ننتقل للمرايا فوراً بدل حرق الميزانية.
   if (tiktokFree()) try {
     const chain = await withTimeout(() => fetchWithCookieChain(resolvedUrl, BROWSER_UA), 7_000, 'tiktok:page');
@@ -1934,52 +1996,7 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   // الطبقتان 2 و3 معاً: مرايا العرض العامة وواجهة تطبيق تيك توك تعطي نفس المنشور،
   // فتُجرّب كلها بنفس اللحظة وأول إجابة مفحوصة تفوز — بدل 6 انتظارات متتالية.
   try {
-    const pathPart = (() => {
-      try {
-        const u = new URL(resolvedUrl);
-        return u.pathname + u.search;
-      } catch {
-        return '';
-      }
-    })();
     const mirrors: Array<{ name: string; run: () => Promise<SocialDownloadResult | null> }> = [];
-    if (pathPart && pathPart.length > 2) {
-      for (const proxyHost of ['tnktok.com', 'vxtiktok.com', 'tiktxk.com']) {
-        mirrors.push({
-          name: proxyHost,
-          run: async () => {
-            const r = await boundedFetch(`https://${proxyHost}${pathPart}`, {
-              headers: { 'User-Agent': TG_BOT_UA },
-              redirect: 'follow'
-            });
-            if (!r.ok) return null;
-            const html = await r.text();
-            // Photo posts carry no og:video at all: their frames live in og:image.
-            const ogImages = Array.from(
-              html.matchAll(/property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/gi)
-            ).map(match => match[1].replace(/&amp;/g, '&'));
-            const vidUrl =
-              html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
-              html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
-            if (!vidUrl || !vidUrl.startsWith('http')) {
-              const photos = ogImages
-                .filter(url => url.startsWith('http'))
-                .slice(0, 10)
-                .map(url => ({ kind: 'photo' as const, url, headers: { 'User-Agent': TG_BOT_UA } }));
-              if (photos.length) return { ok: true, items: photos };
-              return null;
-            }
-            const cleanVid = vidUrl.replace(/&amp;/g, '&');
-            const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 2000);
-            if (!verified) return null;
-            return {
-              ok: true,
-              items: [{ kind: 'video' as const, url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
-            };
-          }
-        });
-      }
-    }
     // TikTok's own embed page is served to datacenter IPs far more often than the
     // main site, and it carries the same play/download addresses as the app feed.
     // The embed page lives on TikTok's own host: skip it while the family is parked.
@@ -2030,15 +2047,6 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
     }
   } catch {
     // ننتقل للطبقة التالية
-  }
-
-  // الطبقة 4: خدمات طرف ثالث مستقلة عن حصة تيك توك — هاي اللي تشتغل وقت الحجب،
-  // فتُجرَّب بنفس اللحظة وأول إجابة صالحة تفوز (فيديو أو ألبوم صور).
-  try {
-    const raced = await raceProviders<SocialDownloadResult>(tiktokThirdPartyResolvers(resolvedUrl));
-    if (raced.value) return raced.value;
-  } catch {
-    // ignore
   }
 
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور تيك توك — تأكد أن المنشور عام وصحيح.' };
@@ -2809,7 +2817,6 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
   }
   const label = plainPlatformLabel(platform);
   const started = Date.now();
-  traceReset();
 
   // Repeating the same link is the normal case (a retry tap, a friend asking for
   // the same video): serve it from memory and never touch TikTok's quota again.
@@ -2841,7 +2848,7 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
         kinds: summary.kinds,
         elapsedMs: Date.now() - started,
         timedOut,
-        trace: traceSnapshot()
+        trace: traceSnapshotSince(started)
       }
     };
   }
@@ -2866,7 +2873,7 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
       kinds: summary.kinds,
       elapsedMs: Date.now() - started,
       timedOut,
-      trace: traceSnapshot()
+      trace: traceSnapshotSince(started)
     }
   };
 }
@@ -2879,7 +2886,8 @@ export async function diagnoseDownload(platform: SocialPlatform, rawInput: strin
     result,
     elapsedMs: Date.now() - started,
     build: MEDIA_ENGINE_BUILD,
-    trace: traceSnapshot()
+    // Only this run's calls: the buffer is shared by every request in the worker.
+    trace: traceSnapshotSince(started)
   };
 }
 

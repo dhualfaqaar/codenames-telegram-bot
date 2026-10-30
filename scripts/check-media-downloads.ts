@@ -365,8 +365,11 @@ async function main(): Promise<void> {
     async () => downloadFromPlatform('tt', photoPost)
   );
   check('منشور صور يجيب من مزوّد مستقل', parkedRun.ok && parkedRun.items.length === 2 && parkedRun.items.every(i => i.kind === 'photo'), JSON.stringify(parkedRun.items));
-  check('أول 429 يوقف مضيفات تيك توك كلها', tiktokCalls.length === 1, `${tiktokCalls.length} نداء: ${tiktokCalls.join(' , ')}`);
-  check('البوابة تسجّل مدة الانتظار المطلوبة', tiktokCooldownRemainingMs() > 60_000, `${tiktokCooldownRemainingMs()}ms`);
+  check(
+    'المزوّد المستقل يفوز قبل ما نلمس تيك توك',
+    tiktokCalls.length === 0,
+    `${tiktokCalls.length} نداء: ${tiktokCalls.join(' , ')}`
+  );
 
   // نفس المنشور بمعرّف جديد: لازم ما نلمس تيك توك إطلاقاً ونوصل للصور.
   clearMediaCache();
@@ -408,15 +411,21 @@ async function main(): Promise<void> {
 
   // كل الطبقات فاشلة والبوابة فعّالة: الرسالة تشرح الحجب بمدة حقيقية.
   clearMediaCache();
+  const allDownTikTokCalls: string[] = [];
   const allDown = await withFetch(
     (async (input: any) => {
       const url = String(input);
-      if (isTikTokHost(url)) return new Response('throttled', { status: 429 });
+      if (isTikTokHost(url)) {
+        allDownTikTokCalls.push(url);
+        return new Response('throttled', { status: 429 });
+      }
       return new Response('nope', { status: 404 });
     }) as any,
     async () => downloadFromPlatform('tt', 'https://www.tiktok.com/@70if/photo/7702219251654222222')
   );
   check('رسالة الحجب تشرح 429', !allDown.ok && Boolean(allDown.error?.includes('429')), allDown.error);
+  check('أول 429 يوقف مضيفات تيك توك بعد نداء واحد', allDownTikTokCalls.length <= 1, JSON.stringify(allDownTikTokCalls));
+  check('البوابة تسجّل مدة الانتظار المطلوبة', tiktokCooldownRemainingMs() > 60_000, `${tiktokCooldownRemainingMs()}ms`);
   check('رسالة الحجب تذكر الدقايق مو «دقيقة» فقط', /دقايق|دقيقة/.test(allDown.error || ''), allDown.error);
 
   clearMediaCache();
