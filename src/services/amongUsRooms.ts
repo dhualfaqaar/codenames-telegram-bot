@@ -141,6 +141,22 @@ export function sanitizeSettings(raw: unknown): AuSettings {
   return settings;
 }
 
+/** Names are display text only: no markup, no control characters, 18 chars max. */
+export function safeName(raw: unknown): string {
+  return String(raw == null ? '' : raw)
+    .replace(/[<>&"'\\`]/g, '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 18);
+}
+
+/**
+ * Optional trust hook: the worker passes a resolver that checks the signed
+ * Telegram initData. When it returns a name we use it and ignore the client's.
+ */
+export type NameResolver = (initData: string) => Promise<string | null>;
+
 export function roomSettings(room: AuRoomState): AuSettings {
   return room.settings ? sanitizeSettings(room.settings) : { ...AU_DEFAULT_SETTINGS };
 }
@@ -728,7 +744,24 @@ function json(data: unknown, status = 200): Response {
 const fail = (error: string, status = 400) => json({ ok: false, error }, status);
 
 export class AmongUsRooms {
-  constructor(private readonly storage: RoomStorage) {}
+  constructor(
+    private readonly storage: RoomStorage,
+    private readonly resolveName?: NameResolver
+  ) {}
+
+  /** The Telegram account name if it verifies, otherwise the sanitised fallback. */
+  private async playerName(body: any): Promise<string> {
+    if (this.resolveName) {
+      try {
+        const verified = await this.resolveName(String(body && body.initData || ''));
+        const clean = safeName(verified);
+        if (clean) return clean;
+      } catch {
+        // fall through to the sanitised client value
+      }
+    }
+    return safeName(body && body.name) || 'لاعب';
+  }
 
   private async load(code: string): Promise<AuRoomState | null> {
     const key = String(code || '').toUpperCase().slice(0, 6);
@@ -843,7 +876,7 @@ export class AmongUsRooms {
           tickAt: 0,
           round: 0
         };
-        const host = makePlayer(body.name || 'المضيف', false, room, String(body.color || ''));
+        const host = makePlayer(await this.playerName(body) || 'المضيف', false, room, String(body.color || ''));
         room.players.push(host);
         room.hostToken = host.token;
         log(room, 'انفتحت غرفة جديدة');
@@ -860,7 +893,7 @@ export class AmongUsRooms {
         if (room.phase !== 'lobby') return fail('المباراة بدت — انتظر الجولة الجاية');
         const limit = roomSettings(room).maxPlayers;
         if (room.players.length >= limit) return fail(`الغرفة فلّت (${limit} لاعبين)`);
-        const player = makePlayer(body.name || 'لاعب', false, room, String(body.color || ''));
+        const player = makePlayer(await this.playerName(body), false, room, String(body.color || ''));
         room.players.push(player);
         log(room, `انضم ${player.name}`);
         await this.save(room);

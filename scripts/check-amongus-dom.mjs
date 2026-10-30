@@ -39,7 +39,8 @@ function makeClient(name) {
       window.Telegram = {
         WebApp: {
           initData: 'mock-init-data',
-          initDataUnsafe: { user: { id: name.length + 20, first_name: name } },
+          // A @username is present on purpose: the game must ignore it and use the real name.
+          initDataUnsafe: { user: { id: name.length + 20, first_name: name, last_name: 'الحساب', username: 'user_' + name.length } },
           ready() {},
           expand() {},
           setHeaderColor() {},
@@ -135,7 +136,15 @@ assert.equal(host.document.querySelectorAll('#auShopGrid [data-color]').length, 
 host.document.getElementById('auShopClose').click();
 
 host.document.getElementById('auPlayBtn').click();
-host.document.getElementById('auName').value = 'المضيف';
+// The name is locked to the Telegram account: no editable field anywhere.
+assert.ok(!host.document.getElementById('auName'), 'ماكو حقل اسم داخل شاشة اللعب');
+assert.ok(!host.document.getElementById('auNameAccount'), 'ماكو حقل اسم داخل الملف');
+assert.ok(!host.document.getElementById('auSaveName'), 'ماكو زر حفظ اسم');
+assert.equal(
+  host.document.getElementById('auMeName').textContent.trim(),
+  'المضيف الحساب',
+  'الاسم = اسم الحساب (اول + لقب) مو اليوزر'
+);
 host.document.getElementById('auCreate').click();
 host.document.getElementById('auCreateRoom').click();
 await waitFor(() => host.document.getElementById('auLobby').classList.contains('on'), 'فتح غرفة الانتظار');
@@ -150,13 +159,15 @@ for (let i = 0; i < 5; i += 1) {
   const guest = makeClient('لاعب' + i);
   guest.document.getElementById('auPlayBtn').click();
   guest.document.getElementById('auCodeCard').click();
-  guest.document.getElementById('auName').value = 'لاعب' + i;
   guest.document.getElementById('auCode').value = code;
   guest.document.getElementById('auJoin').click();
   guests.push(guest);
   await sleep(180);
 }
 await waitFor(() => host.document.getElementById('auCount').textContent === '6', 'انضمام ستة لاعبين');
+const lobbyNames = Array.from(host.document.querySelectorAll('#auNames .who b')).map(node => node.textContent.trim());
+assert.ok(lobbyNames.includes('المضيف الحساب'), 'اسم المضيف باللوبي هو اسم الحساب: ' + lobbyNames.join(', '));
+assert.ok(lobbyNames.every(name => !name.includes('user_')), 'ماكو يوزرات باللوبي');
 
 // A browser client sees the host room in the online list (no tokens leaked).
 const browser = makeClient('فضولي');

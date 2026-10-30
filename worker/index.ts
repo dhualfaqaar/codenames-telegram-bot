@@ -15,7 +15,7 @@ import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 import { AmongUsRooms } from '../src/services/amongUsRooms';
 import { amongUsMiniAppHtml } from '../src/services/amongUsMiniApp';
 
-export const INTERACTIVE_APP_BUILD = '2026-11-08-amongus-menu-v46';
+export const INTERACTIVE_APP_BUILD = '2026-11-08-amongus-menu-v47';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -35,7 +35,7 @@ interface Env {
 
 const DEFAULT_WEBHOOK_URL = 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev';
 
-async function verifyTelegramWebAppInitData(initData: string, botToken: string): Promise<{ id: string } | null> {
+async function verifyTelegramWebAppInitData(initData: string, botToken: string): Promise<{ id: string; name: string } | null> {
   if (!initData || initData.length > 8192 || !botToken) return null;
   try {
     const params = new URLSearchParams(initData);
@@ -61,7 +61,12 @@ async function verifyTelegramWebAppInitData(initData: string, botToken: string):
     const calculatedHash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
     let mismatch = 0;
     for (let i = 0; i < 64; i++) mismatch |= calculatedHash.charCodeAt(i) ^ suppliedHash.charCodeAt(i);
-    return mismatch === 0 ? { id: String(telegramUser.id) } : null;
+    if (mismatch !== 0) return null;
+    const fullName = [telegramUser.first_name, telegramUser.last_name]
+      .filter((part: unknown) => typeof part === 'string' && String(part).trim())
+      .join(' ')
+      .trim();
+    return { id: String(telegramUser.id), name: fullName };
   } catch {
     return null;
   }
@@ -175,7 +180,11 @@ export class BotState {
     this.state = state;
     this.env = env;
     this.interactiveRooms = new InteractiveGameRooms(state.storage);
-    this.amongUsRooms = new AmongUsRooms(state.storage);
+    // The player name always comes from the signed Telegram payload, never the client text.
+    this.amongUsRooms = new AmongUsRooms(state.storage, async initData => {
+      const user = await verifyTelegramWebAppInitData(initData, String(this.env.TELEGRAM_BOT_TOKEN || ''));
+      return user ? user.name : null;
+    });
   }
 
   private async getBot(): Promise<TelegramBotManager> {
