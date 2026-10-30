@@ -109,6 +109,48 @@ assert.ok(botPlaying, 'filling the seat with a bot still starts the match');
 botWin.close();
 assert.equal(errors.length, 0, `no runtime errors: ${errors.join(' | ')}`);
 
-console.log('Chess friend box passed: time cards, waiting without a countdown, no old screen behind, and a six second start only after the friend joins.');
+// The old room shell must not show through the dialog: it is hidden until the
+// match starts, so nothing overlaps behind the modal.
+const setupWin = makeClient('خلفية');
+await waitFor(() => setupWin.document.querySelector('#chessFriendCard'), 'chess home for the backdrop check');
+click(setupWin, '#chessFriendCard');
+await waitFor(() => setupWin.document.querySelector('#createChessFriendRoom'), 'picker for the backdrop check');
+click(setupWin, '#createChessFriendRoom');
+await waitFor(() => setupWin.document.querySelector('#chessFriendStatus'), 'friend box for the backdrop check', 20000);
+assert.equal(setupWin.document.body.classList.contains('chess-friend-waiting'), true, 'the waiting state is flagged on the body');
+assert.equal(setupWin.document.querySelector('#roomPage').classList.contains('hide'), true, 'the old room screen is hidden behind the dialog');
+const setupRoom = new URLSearchParams(setupWin.location.search).get('room');
+await fetch(`${base}/api/interactive/rooms/${setupRoom}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'join', name: 'خصم' }) });
+await waitFor(async () => {
+  const token = setupWin.localStorage.getItem(`cg-room-token-${setupRoom}`);
+  const state = await (await fetch(`${base}/api/interactive/rooms/${setupRoom}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+  return state?.room?.status === 'playing';
+}, 'the match starts for the backdrop check', 25000);
+await sleep(1200);
+assert.equal(setupWin.document.body.classList.contains('chess-friend-waiting'), false, 'the flag clears once the match runs');
+assert.equal(setupWin.document.querySelector('#roomPage').classList.contains('hide'), false, 'the room screen comes back for the match');
+setupWin.close();
+
+// Random matchmaking must not wait for ever: a countdown ends in a real match.
+const randomWin = makeClient('عشوائي');
+await waitFor(() => randomWin.document.querySelector('#chessRandomCard'), 'chess home for the random check');
+click(randomWin, '#chessRandomCard');
+const waitingText = await waitFor(() => {
+  const wait = randomWin.document.querySelector('#matchWaitText');
+  return wait && /بوت/.test(wait.textContent) ? wait.textContent : null;
+}, 'random queue copy mentions the bot fallback');
+assert.match(waitingText, /[0-9]/, `the fallback counts down (${waitingText})`);
+const randomRoom = await waitFor(() => new URLSearchParams(randomWin.location.search).get('room'), 'bot room from the random queue', 30000);
+const randomToken = randomWin.localStorage.getItem(`cg-room-token-${randomRoom}`);
+const randomState = await waitFor(async () => {
+  const state = await (await fetch(`${base}/api/interactive/rooms/${randomRoom}`, { headers: { Authorization: `Bearer ${randomToken}` } })).json();
+  return state?.room?.status === 'playing' ? state : null;
+}, 'the random queue starts a real match instead of waiting', 25000);
+const bots = (randomState.room.players || []).filter(player => player.bot);
+assert.equal(bots.length, 1, 'a bot takes the empty seat when nobody is queued');
+randomWin.close();
+assert.equal(errors.length, 0, `no runtime errors: ${errors.join(' | ')}`);
+
+console.log('Chess friend box passed: time cards, no old screen behind the dialog, a six second start only after the friend joins, and a random queue that ends in a real match.');
 win.close();
 process.exit(0);

@@ -12,7 +12,7 @@
  */
 
 /** Bumped with every media reliability release so /dlstatus proves what is live. */
-export const MEDIA_ENGINE_BUILD = '2026-10-30-media-tiktok-gate-v24';
+export const MEDIA_ENGINE_BUILD = '2026-10-30-media-resolvers-first-v25';
 export const MEDIA_STEP_TIMEOUT_MS = 9_000;
 export const MEDIA_PROBE_TIMEOUT_MS = 6_000;
 export const MEDIA_TOTAL_BUDGET_MS = 34_000;
@@ -53,6 +53,15 @@ export function tracePush(entry: TraceEntry): void {
 
 export function traceSnapshot(): TraceEntry[] {
   return traceBuffer.slice();
+}
+
+/**
+ * Only the calls this download made. The buffer is shared by every request the
+ * worker handles, so a reset would erase a slower concurrent run — timestamps
+ * keep each report honest instead.
+ */
+export function traceSnapshotSince(at: number): TraceEntry[] {
+  return traceBuffer.filter(entry => entry.at >= at);
 }
 
 
