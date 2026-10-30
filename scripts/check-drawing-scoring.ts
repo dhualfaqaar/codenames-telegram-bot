@@ -339,9 +339,25 @@ assert.ok(lobbyHtml.includes("s.language!=='ar'"), 'the guess input switches dir
 assert.ok(lobbyHtml.includes('stroke-linecap="round"'), 'back buttons use a drawn arrow');
 assert.ok(!lobbyHtml.includes('&#8594;'), 'no thin character arrow is left');
 assert.ok(/draw-rooms-scroll/.test(lobbyHtml), 'the room list has a fixed framed window');
+// Exactly one quick-play implementation exists, and it never creates a room.
+assert.equal((lobbyHtml.match(/async function drawQuickPlay/g)||[]).length, 1, 'quick play is defined once');
 // «العب» only drops you into a room that already exists; it never opens one.
 const quickPlayBody = lobbyHtml.slice(lobbyHtml.indexOf('async function drawQuickPlay'), lobbyHtml.indexOf('function drawRoomCardMarkup'));
 assert.ok(quickPlayBody.includes('joinRoom('), 'play joins an open room');
 assert.ok(!quickPlayBody.includes('createRoom('), 'play never creates a room');
+
+// A chess friend room with nobody joining fills the empty seat with a bot so the
+// game can start instead of waiting forever.
+const friendRoom = (await (await post('', {game:'chess', name:'صديق', mode:'friend', clockMinutes:5})).json() as any);
+const friendId = friendRoom.room.id, friendToken = friendRoom.token;
+assert.equal((await storage.get<any>('interactive-room:'+friendId)).players.length, 1);
+assert.equal((await post(friendId,{action:'start',token:friendToken})).status, 400,'one player cannot start');
+assert.equal((await post(friendId,{action:'chess-bot-fill',token:friendToken})).status, 200,'the host can seat a bot');
+const filled = await storage.get<any>('interactive-room:'+friendId);
+assert.equal(filled.players.length, 2);
+assert.equal(filled.players[1].bot, true);
+assert.equal((await post(friendId,{action:'chess-bot-fill',token:friendToken})).status, 400,'the room is full now');
+assert.equal((await post(friendId,{action:'start',token:friendToken})).status, 200);
+assert.equal((await storage.get<any>('interactive-room:'+friendId)).status,'playing');
 
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');
