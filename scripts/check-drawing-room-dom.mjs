@@ -72,7 +72,7 @@ const createRoomFromLobby = async win => {
   click(win, '[data-action="friend"]');
 };
 const joinByCode = async (win, code) => {
-  await openRooms(win);
+  await waitFor(() => win.document.querySelector('#drawRoomCode'), 'code field');
   win.document.querySelector('#drawRoomCode').value = code;
   click(win, '#drawJoinButton');
 };
@@ -87,24 +87,24 @@ try {
   const guest = makeClient('سارة');
   const third = makeClient('علي');
   await waitFor(() => host.document.querySelector('#drawQuickPlay'), 'host lobby');
-  // The hub carries your own photo, name and country, plus three plain buttons.
-  const me = host.document.querySelector('.draw-lobby-me');
-  assert.ok(me, 'the lobby shows your own card');
-  assert.ok(me.querySelector('.draw-account-avatar'), 'your photo is on the card');
-  assert.match(me.textContent, /أحمد/, 'your name is on the card');
-  assert.ok(me.querySelector('.country-flag'), 'your country flag is on the card');
+  // The lobby keeps its two columns: your own photo, name and country above the
+  // three buttons on one side, and the room code field on the other.
+  const play = host.document.querySelector('.draw-lobby-play');
+  assert.ok(play.querySelector('.draw-account-avatar'), 'your photo is in the lobby column');
+  assert.match(play.querySelector('.draw-lobby-name').textContent, /أحمد/, 'your name is in the lobby column');
+  assert.ok(play.querySelector('.draw-lobby-country .country-flag'), 'your country flag is in the lobby column');
   assert.equal(host.document.querySelector('#drawQuickPlay').textContent.trim(), 'العب');
   assert.equal(host.document.querySelector('#drawCreateRoom').textContent.trim(), 'أنشئ غرفة');
   assert.equal(host.document.querySelector('#drawOpenRooms').textContent.trim(), 'الغرف');
+  assert.ok(host.document.querySelector('.draw-lobby-grid').contains(host.document.querySelector('#drawRoomCode')), 'the code field sits in the lobby');
   assert.equal(host.document.querySelector('#drawRoomsScreen').hidden, true, 'the rooms screen starts closed');
   assert.equal(host.document.querySelector('#drawCreateScreen').hidden, true, 'the create screen starts closed');
   await openRooms(host);
-  assert.equal(host.document.querySelector('#drawHub').hidden, true, 'the rooms screen replaces the hub');
+  assert.equal(host.document.querySelector('#drawHub').hidden, true, 'the rooms screen replaces the lobby');
   assert.ok(host.document.querySelector('.draw-rooms-box').contains(host.document.querySelector('#drawPublicList')), 'the room list sits inside a framed box');
   assert.ok(host.document.querySelector('#drawPublicRefresh'), 'the list can be refreshed');
-  assert.ok(host.document.querySelector('#drawRoomCode'), 'the rooms screen joins by code');
   click(host, '#drawRoomsBack');
-  await waitFor(() => !host.document.querySelector('#drawHub').hidden, 'back to the hub');
+  await waitFor(() => !host.document.querySelector('#drawHub').hidden, 'back to the lobby');
   await openCreateScreen(host);
   assert.equal(host.document.querySelector('#drawHub').hidden, true, 'the create screen replaces the hub');
   const visibility = host.document.querySelector('#drawRoomVisible');
