@@ -17,6 +17,7 @@ import * as STORY from '../src/services/truthLieEngine';
 import * as GE from '../src/services/guessEliminationEngine';
 import * as CH from '../src/services/chessGameEngine';
 import * as EXT from '../src/services/extraToolsEngine';
+import { audioFileMeta, canWriteId3Tags, isTelegramVoice, sniffAudioContainer } from '../src/services/audioFormats';
 import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
 import * as Cinema from '../src/services/cinemaServices';
@@ -1017,6 +1018,25 @@ interface BotChatRecord {
   type: string;
   title: string;
   lastSeen: number;
+}
+
+/**
+ * محوّل صوتي اختياري.
+ *
+ * تيليجرام يشترط OGG/Opus للبصمة الصوتية، والتحويل الحقيقي يحتاج ffmpeg.
+ * الـWorker (Cloudflare) ما يشغّل برامج خارجية، فما يسجّل محوّل هنا، وبالتالي
+ * البوت ما يرسل "بصمة" مزيفة؛ يسجّل حماية من الفويس الفارغ.
+ */
+export type AudioTranscoder = (input: Uint8Array) => Promise<Uint8Array | null>;
+
+let audioTranscoder: AudioTranscoder | null = null;
+
+export function registerAudioTranscoder(transcoder: AudioTranscoder | null): void {
+  audioTranscoder = transcoder;
+}
+
+export function hasAudioTranscoder(): boolean {
+  return audioTranscoder !== null;
 }
 
 export class TelegramBotManager {
@@ -2441,6 +2461,7 @@ export class TelegramBotManager {
       const head =
         `🧪 *فحص التحميل — ${MS.socialPlatformLabel(platform)}*\n${SEP}\n` +
         `🧩 ${diag.build} · ⏱️ ${(diag.elapsedMs / 1000).toFixed(1)}s\n` +
+        `🎙️ تحويل الصوت لفويس: ${hasAudioTranscoder() ? '✅ متاح (ffmpeg)' : '⚠️ غير متاح على هذا السيرفر'}\n` +
         `📊 النتيجة: ${diag.result.ok ? '✅ نجاح' : '❌ فشل'}\n${SEP}\n`;
       const body = rows.length ? rows.join('\n') : '_ما صار أي نداء شبكة — الفشل قبل الاتصال._';
       const tail = diag.result.ok ? '' : `\n${SEP}\n⚠️ ${this.mdSafe(diag.result.error || '')}`;
@@ -8869,6 +8890,21 @@ export class TelegramBotManager {
     }
   }
 
+  /**
+   * يجيب بايتات OGG/Opus فقط. إذا الملف أصلاً OGG/Opus يمر كما هو، وإذا ماكو
+   * تحويل متاح يرجع null حتى لا ينرسل فويس فارغ للمستخدم.
+   */
+  private async toVoiceBytes(bytes: Uint8Array): Promise<Uint8Array | null> {
+    if (isTelegramVoice(bytes)) return bytes;
+    if (!audioTranscoder) return null;
+    try {
+      const converted = await audioTranscoder(bytes);
+      return converted && isTelegramVoice(converted) ? converted : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async sendBinaryMultipart(
     chatId: string,
     method: 'sendAudio' | 'sendVoice' | 'sendDocument' | 'sendPhoto' | 'sendSticker' | 'sendVideo' | 'sendAnimation',
@@ -8914,6 +8950,10 @@ export class TelegramBotManager {
 
     if (msg.video) {
       fileId = msg.video.file_id;
+      kind = 'video';
+    } else if (msg.video_note) {
+      // Round video notes (الفيد الدائري) are plain MP4s, they just arrive under another field.
+      fileId = msg.video_note.file_id;
       kind = 'video';
     } else if (msg.animation) {
       fileId = msg.animation.file_id;
@@ -8980,7 +9020,7 @@ export class TelegramBotManager {
       ],
       voice: [
         [{ text: '🎵 تحويل البصمة إلى ملف صوتي (MP3)', callback_data: 'conv:to_audio' }],
-        [{ text: '✏️ تحويل وتعديل الاسم والفنان والملف والصورة', callback_data: 'conv:edit_open' }]
+        [{ text: '✏️ تحويل إلى ملف صوتي مع تعديل الاسم والصورة', callback_data: 'conv:edit_open' }]
       ],
       photo: [
         [{ text: '📑 تحويل الصورة إلى PDF', callback_data: 'conv:to_pdf' }],
@@ -9281,8 +9321,9 @@ export class TelegramBotManager {
           if (covDl?.bytes) coverBytes = covDl.bytes;
         }
 
-        const isM4a = draft.sourceKind === 'video';
-        if (!isM4a) {
+        // ID3 is an MP3-only marker: writing it on OGG/M4A corrupts the file, which is
+        // exactly what used to produce a silent voice note.
+        if (canWriteId3Tags(audioBytes)) {
           audioBytes = EXT.writeId3v23Tags(audioBytes, {
             title: draft.title,
             artist: draft.artist,
@@ -9290,13 +9331,21 @@ export class TelegramBotManager {
           });
         }
 
+        const container = sniffAudioContainer(audioBytes);
+        const isVoiceNote = isTelegramVoice(audioBytes);
+        const meta = audioFileMeta(container);
+        const isM4a = meta.extension === 'm4a';
+        const canCarryTags = !isVoiceNote;
+
         const safeBase = (draft.fileName || draft.title || 'audio').replace(/[\\/:*?"<>|]/g, '').trim() || 'audio';
-        const outExt = isM4a ? 'm4a' : 'mp3';
-        const outMime = isM4a ? 'audio/mp4' : 'audio/mpeg';
 
         const form = new FormData();
         form.append('chat_id', chatId);
-        form.append('audio', new Blob([audioBytes as unknown as ArrayBuffer], { type: outMime }), `${safeBase}.${outExt}`);
+        if (isVoiceNote) {
+          form.append('voice', new Blob([audioBytes as unknown as ArrayBuffer], { type: meta.mimeType }), `${safeBase}.${meta.extension}`);
+        } else {
+          form.append('audio', new Blob([audioBytes as unknown as ArrayBuffer], { type: meta.mimeType }), `${safeBase}.${meta.extension}`);
+        }
         const outputToken = `${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 5)}`;
         const editKeyboard = [
           [
@@ -9315,25 +9364,32 @@ export class TelegramBotManager {
           form.append('caption', quote.caption);
           form.append('caption_entities', JSON.stringify(quote.caption_entities));
         }
-        if (draft.title) form.append('title', draft.title);
-        if (draft.artist) form.append('performer', draft.artist);
-        if (coverBytes) {
+        if (canCarryTags && draft.title) form.append('title', draft.title);
+        if (canCarryTags && draft.artist) form.append('performer', draft.artist);
+        if (canCarryTags && coverBytes) {
           form.append('thumbnail', new Blob([coverBytes as unknown as ArrayBuffer], { type: 'image/jpeg' }), 'thumb.jpg');
         }
 
-        const up = await fetch(`https://api.telegram.org/bot${this.token}/sendAudio`, {
+        const up = await fetch(`https://api.telegram.org/bot${this.token}/${isVoiceNote ? 'sendVoice' : 'sendAudio'}`, {
           method: 'POST',
           body: form
         });
         const upJson: any = await up.json();
         if (waitId) await this.deleteMessage(chatId, waitId);
 
+        if (upJson?.ok && isVoiceNote && (draft.title || draft.artist || coverBytes)) {
+          await this.sendMessage(
+            chatId,
+            'ℹ️ البصمة الصوتية بصيغة OGG ما تقبل اسم/فنان/صورة داخل الملف، فانرسلت مثل ما هي بلا وسوم.'
+          );
+        }
+
         if (upJson?.ok) {
           const sentMsgId = Number(upJson?.result?.message_id) || 1;
-          const outputFileId = String(upJson?.result?.audio?.file_id || '');
+          const outputFileId = String(upJson?.result?.audio?.file_id || upJson?.result?.voice?.file_id || '');
           if (outputFileId) {
             draft.fileId = outputFileId;
-            draft.sourceKind = isM4a ? 'video' : 'audio';
+            draft.sourceKind = isM4a ? 'video' : isVoiceNote ? 'voice' : 'audio';
             draft.waitingField = undefined;
             this.audioEditDrafts.set(uid, draft);
             this.audioOutputDrafts.set(`${uid}:${outputToken}`, { ...draft });
@@ -9379,29 +9435,49 @@ export class TelegramBotManager {
 
       let sentId: number | null = null;
       if (targetAction === 'to_audio') {
+        // The extension/MIME must match the real bytes, otherwise the player breaks.
         const outBytes =
           saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
-        const isM4a = saved.kind === 'video';
+        const meta = audioFileMeta(sniffAudioContainer(outBytes));
         sentId = await this.sendBinaryMultipart(
           chatId,
           'sendAudio',
           'audio',
           outBytes,
-          isM4a ? 'converted-audio.m4a' : 'converted-audio.mp3',
-          isM4a ? 'audio/mp4' : 'audio/mpeg',
+          `converted-audio.${meta.extension}`,
+          meta.mimeType,
           { title: 'ملف صوتي محوّل' }
         );
       } else if (targetAction === 'to_voice') {
-        const outBytes =
-          saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
-        sentId = await this.sendBinaryMultipart(
-          chatId,
-          'sendVoice',
-          'voice',
-          outBytes,
-          'voice.ogg',
-          'audio/ogg'
-        );
+        // Telegram only plays a voice note when the bytes are OGG/Opus. Never fake it.
+        const voiceBytes = await this.toVoiceBytes(dl.bytes);
+        if (voiceBytes) {
+          sentId = await this.sendBinaryMultipart(
+            chatId,
+            'sendVoice',
+            'voice',
+            voiceBytes,
+            'voice.ogg',
+            'audio/ogg'
+          );
+        } else {
+          const audioBytes =
+            saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
+          const meta = audioFileMeta(sniffAudioContainer(audioBytes));
+          sentId = await this.sendBinaryMultipart(
+            chatId,
+            'sendAudio',
+            'audio',
+            audioBytes,
+            `converted-audio.${meta.extension}`,
+            meta.mimeType,
+            { title: 'ملف صوتي محوّل' }
+          );
+          await this.sendMessage(
+            chatId,
+            'ℹ️ الصوت انرسل كـ*ملف صوتي* وليس بصمة، لأن تيليگرام يشغّل البصمة بصيغة OGG/Opus فقط ولا يصير نرسل ملف بصيغة مغلوطة (يطلع فارغ بلا صوت).'
+          );
+        }
       } else if (targetAction === 'to_gif') {
         sentId = await this.sendBinaryMultipart(
           chatId,
