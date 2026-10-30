@@ -1793,6 +1793,16 @@ async function fetchTikTokAppFeed(awemeId: string): Promise<SocialDownloadResult
  * TikTok's quota and, unlike the app feed, their HTML also carries an album's
  * frames as og:image tags.
  */
+/** Records why a resolver gave up, so /dltest never shows a bare "HTTP 200". */
+function traceMiss(provider: string, reason: string, started: number, status?: number): void {
+  tracePush({ provider, ok: false, status, reason, ms: Date.now() - started, at: Date.now() });
+}
+
+/** Cloudflare's challenge page answers 200 but carries no media at all. */
+function looksLikeChallenge(html: string): boolean {
+  return /just a moment|checking your browser|cf-browser-verification|attention required|cf-chl/i.test(html.slice(0, 4000));
+}
+
 function tiktokProxyResolvers(url: string): Array<{ name: string; run: () => Promise<SocialDownloadResult | null> }> {
   const pathPart = (() => {
     try {
@@ -1806,12 +1816,17 @@ function tiktokProxyResolvers(url: string): Array<{ name: string; run: () => Pro
   return ['tnktok.com', 'vxtiktok.com', 'tiktxk.com'].map(proxyHost => ({
     name: proxyHost,
     run: async () => {
+      const started = Date.now();
       const r = await boundedFetch(`https://${proxyHost}${pathPart}`, {
         headers: { 'User-Agent': TG_BOT_UA },
         redirect: 'follow'
       });
       if (!r.ok) return null;
       const html = await r.text();
+      if (looksLikeChallenge(html)) {
+        traceMiss(proxyHost, 'صفحة حماية', started, r.status);
+        return null;
+      }
       // Photo posts carry no og:video at all: their frames live in og:image.
       const ogImages = Array.from(
         html.matchAll(/property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/gi)
@@ -1825,11 +1840,15 @@ function tiktokProxyResolvers(url: string): Array<{ name: string; run: () => Pro
           .slice(0, 10)
           .map(photoUrl => ({ kind: 'photo' as const, url: photoUrl, headers: { 'User-Agent': TG_BOT_UA } }));
         if (photos.length) return { ok: true, items: photos };
+        traceMiss(proxyHost, 'بلا وسائط', started, r.status);
         return null;
       }
       const cleanVid = vidUrl.replace(/&amp;/g, '&');
       const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 2000);
-      if (!verified) return null;
+      if (!verified) {
+        traceMiss(proxyHost, 'الرابط ما نزل', started, r.status);
+        return null;
+      }
       return {
         ok: true,
         items: [{ kind: 'video' as const, url: cleanVid, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }]
@@ -1848,6 +1867,7 @@ function tiktokThirdPartyResolvers(url: string): Array<{ name: string; run: () =
     {
       name: 'tikwm',
       run: async () => {
+        const started = Date.now();
         const form = new URLSearchParams({ url, hd: '1' });
         const res = await boundedFetch('https://www.tikwm.com/api/', {
           method: 'POST',
@@ -1860,7 +1880,10 @@ function tiktokThirdPartyResolvers(url: string): Array<{ name: string; run: () =
         }
         const json: any = await res.json().catch(() => null);
         const d = json?.data;
-        if (json?.code !== 0 || !d) return null;
+        if (json?.code !== 0 || !d) {
+          traceMiss('tikwm', 'بلا بيانات', started, res.status);
+          return null;
+        }
         if (Array.isArray(d.images) && d.images.length > 0) {
           const photos = d.images
             .filter(Boolean)
@@ -1870,7 +1893,10 @@ function tiktokThirdPartyResolvers(url: string): Array<{ name: string; run: () =
           if (photos.length) return { ok: true, items: photos };
         }
         const rawVid = d.hdplay || d.play || d.wmplay;
-        if (!rawVid) return null;
+        if (!rawVid) {
+          traceMiss('tikwm', 'بلا رابط', started, res.status);
+          return null;
+        }
         const fullUrl = String(rawVid).startsWith('http') ? String(rawVid) : `https://www.tikwm.com${rawVid}`;
         return { ok: true, items: [{ kind: 'video' as const, url: fullUrl }] };
       }
@@ -1878,6 +1904,7 @@ function tiktokThirdPartyResolvers(url: string): Array<{ name: string; run: () =
     {
       name: 'tiklydown',
       run: async () => {
+        const started = Date.now();
         const res = await boundedFetch(`https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(url)}`, {
           headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
         });
@@ -1895,7 +1922,10 @@ function tiktokThirdPartyResolvers(url: string): Array<{ name: string; run: () =
           .map((u: string) => ({ kind: 'photo' as const, url: u }));
         if (photos.length) return { ok: true, items: photos };
         const vid = body?.video?.noWatermark || body?.video?.watermark || json?.video?.noWatermark || json?.url;
-        if (typeof vid !== 'string' || !vid.startsWith('http')) return null;
+        if (typeof vid !== 'string' || !vid.startsWith('http')) {
+          traceMiss('tiklydown', 'بلا بيانات', started, res.status);
+          return null;
+        }
         return { ok: true, items: [{ kind: 'video' as const, url: vid }] };
       }
     }
