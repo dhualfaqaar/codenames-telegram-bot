@@ -25,7 +25,8 @@ import {
   diagnoseDownload,
   downloadFromPlatform,
   mediaProviderReport,
-  resetMediaProviders
+  resetMediaProviders,
+  tiktokCooldownRemainingMs
 } from '../src/services/mediaServicesEngine';
 
 let failures = 0;
@@ -323,6 +324,100 @@ async function main(): Promise<void> {
   check('ما نضرب مضيفات التطبيق بنفس اللحظة (طلب واحد بالمرة)', maxInFlight === 1, `maxInFlight=${maxInFlight}, calls=${appCalls.length}`);
   check('عند 429 نعيد محاولة واحدة فقط', appCalls.length <= 2, `${appCalls.length}`);
   check('رسالة 429 تشرح الضغط مو الرابط', Boolean(throttle.error?.includes('429')), throttle.error);
+
+  clearMediaCache();
+  resetProviderHealth();
+  resetMediaProviders();
+
+  // 8-ب) بوابة 429 لتيك توك ──────────────────────────────────────────────────
+  // تيك توك يحسب الحصة على عنوان السيرفر، وكل مضيفاته تتشارك نفس الحصة. فبعد
+  // أول 429 لازم تتوقف كل مضيفات تيك توك ونروح للمزوّدين المستقلين بدلها.
+  console.log('\n8-ب) بوابة 429 لتيك توك');
+  clearMediaCache();
+  resetProviderHealth();
+  resetMediaProviders();
+  // A plain /tiktok\.com/ also matches vxtiktok.com and the ?url= of a resolver,
+  // so the gate check looks at the hostname only.
+  const isTikTokHost = (raw: string): boolean => {
+    try {
+      const host = new URL(raw).hostname.toLowerCase();
+      return host === 'tiktok.com' || host.endsWith('.tiktok.com') || host.endsWith('.tiktokv.com');
+    } catch {
+      return false;
+    }
+  };
+  const tiktokCalls: string[] = [];
+  const photoPost = 'https://www.tiktok.com/@70if/photo/7702219251654003976?is_from_webapp=1';
+  const parkedRun = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      if (isTikTokHost(url)) {
+        tiktokCalls.push(url);
+        return new Response('throttled', { status: 429, headers: { 'retry-after': '420' } });
+      }
+      if (/tnktok|vxtiktok|tiktxk/.test(url)) return new Response('nope', { status: 404 });
+      if (url.includes('api.tiklydown.eu.org')) return new Response('nope', { status: 404 });
+      if (url.includes('tikwm.com')) {
+        return jsonResponse({ code: 0, data: { images: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'] } });
+      }
+      return new Response('nope', { status: 404 });
+    }) as any,
+    async () => downloadFromPlatform('tt', photoPost)
+  );
+  check('منشور صور يجيب من مزوّد مستقل', parkedRun.ok && parkedRun.items.length === 2 && parkedRun.items.every(i => i.kind === 'photo'), JSON.stringify(parkedRun.items));
+  check('أول 429 يوقف مضيفات تيك توك كلها', tiktokCalls.length === 1, `${tiktokCalls.length} نداء: ${tiktokCalls.join(' , ')}`);
+  check('البوابة تسجّل مدة الانتظار المطلوبة', tiktokCooldownRemainingMs() > 60_000, `${tiktokCooldownRemainingMs()}ms`);
+
+  // نفس المنشور بمعرّف جديد: لازم ما نلمس تيك توك إطلاقاً ونوصل للصور.
+  clearMediaCache();
+  const tiktokSecondRound: string[] = [];
+  const gatedRun = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      if (isTikTokHost(url)) {
+        tiktokSecondRound.push(url);
+        return new Response('throttled', { status: 429 });
+      }
+      if (/tnktok|vxtiktok|tiktxk/.test(url)) return new Response('nope', { status: 404 });
+      if (url.includes('api.tiklydown.eu.org')) return new Response('nope', { status: 404 });
+      if (url.includes('tikwm.com')) return jsonResponse({ code: 0, data: { hdplay: 'https://cdn.example/v.mp4' } });
+      return new Response('nope', { status: 404 });
+    }) as any,
+    async () => downloadFromPlatform('tt', 'https://www.tiktok.com/@70if/photo/7702219251654999999')
+  );
+  check('بعد الحجب ما نرجع نضرب تيك توك', tiktokSecondRound.length === 0, `${tiktokSecondRound.length} نداء: ${tiktokSecondRound.join(' , ')}`);
+  check('الفيديو يجي من المزوّد المستقل', gatedRun.ok && gatedRun.items[0]?.kind === 'video', JSON.stringify(gatedRun.items));
+
+  // المرايا تقرأ og:image لألبوم الصور (og:video ما موجود بالمنشورات هاي).
+  clearMediaCache();
+  const proxyPhoto = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      if (isTikTokHost(url)) return new Response('throttled', { status: 429 });
+      if (/tnktok|vxtiktok|tiktxk/.test(url)) {
+        return new Response(
+          '<meta property="og:image" content="https://cdn.example/one.jpg"><meta property="og:image" content="https://cdn.example/two.jpg">',
+          { status: 200, headers: { 'content-type': 'text/html' } }
+        );
+      }
+      return new Response('nope', { status: 404 });
+    }) as any,
+    async () => downloadFromPlatform('tt', 'https://www.tiktok.com/@70if/photo/7702219251654111111')
+  );
+  check('المرايا تقرأ صور og:image', proxyPhoto.ok && proxyPhoto.items.length === 2, JSON.stringify(proxyPhoto.items));
+
+  // كل الطبقات فاشلة والبوابة فعّالة: الرسالة تشرح الحجب بمدة حقيقية.
+  clearMediaCache();
+  const allDown = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      if (isTikTokHost(url)) return new Response('throttled', { status: 429 });
+      return new Response('nope', { status: 404 });
+    }) as any,
+    async () => downloadFromPlatform('tt', 'https://www.tiktok.com/@70if/photo/7702219251654222222')
+  );
+  check('رسالة الحجب تشرح 429', !allDown.ok && Boolean(allDown.error?.includes('429')), allDown.error);
+  check('رسالة الحجب تذكر الدقايق مو «دقيقة» فقط', /دقايق|دقيقة/.test(allDown.error || ''), allDown.error);
 
   clearMediaCache();
   resetProviderHealth();
