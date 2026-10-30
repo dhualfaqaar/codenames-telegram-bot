@@ -282,10 +282,10 @@ for (const game of ['', 'gartic']) {
 // The lobby is a hub: your own photo, name and country, then three plain
 // buttons (play, create a room, the room list). The room list and the create
 // form are separate screens that start hidden.
-assert.ok(lobbyHtml.includes('class="draw-hub"'), 'the lobby is a hub');
-assert.ok(lobbyHtml.includes('class="draw-lobby-me"'), 'the lobby shows your own card');
-assert.ok(lobbyHtml.includes('lobby-me-avatar'), 'your photo is on your card');
-assert.ok(lobbyHtml.includes('countryFlag(chessCountryCode())'), 'your country flag is on your card');
+assert.ok(lobbyHtml.includes('class="draw-lobby-grid"'), 'the lobby keeps its two columns');
+assert.ok(lobbyHtml.includes('lobby-avatar'), 'your photo is in the lobby');
+assert.ok(lobbyHtml.includes('class="draw-lobby-name"'), 'your name is in the lobby');
+assert.ok(lobbyHtml.includes('countryFlag(chessCountryCode())'), 'your country flag is in the lobby');
 assert.ok(lobbyHtml.includes('id="drawQuickPlay">العب<'), 'the play button has no icon');
 assert.ok(lobbyHtml.includes('id="drawCreateRoom">أنشئ غرفة<'), 'the create button is in the hub');
 assert.ok(lobbyHtml.includes('id="drawOpenRooms">الغرف<'), 'the rooms button is in the hub');
@@ -298,7 +298,8 @@ assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the room list exists');
 assert.ok(lobbyHtml.indexOf('class="draw-rooms-box"') < lobbyHtml.indexOf('id="drawPublicList"'), 'the list is inside the box');
 assert.ok(lobbyHtml.includes('id="drawRoomsPlay"'), 'the rooms screen has its own play button');
 assert.ok(/id="drawRoomsPlay"[^>]*disabled/.test(lobbyHtml), 'the rooms play button starts locked');
-assert.ok(lobbyHtml.includes('id="drawRoomCode"'), 'the rooms screen joins by code');
+assert.ok(lobbyHtml.includes('id="drawRoomCode"'), 'the lobby joins by code');
+assert.ok(lobbyHtml.indexOf('id="drawRoomCode"') < lobbyHtml.indexOf('id="drawRoomsScreen"'), 'the code field sits in the lobby');
 assert.ok(lobbyHtml.includes('id="drawCreateBack"'), 'the create screen can go back');
 assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the create screen opens the room');
 assert.ok(lobbyHtml.includes('draw-room-card'), 'open rooms render as pickable cards');

@@ -448,17 +448,16 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 .draw-lobby-heading .draw-brand{display:block;margin-bottom:10px;color:#3674c8;font-size:12px;font-weight:900;letter-spacing:.05em}
 .draw-ribbon{position:relative;display:inline-block;min-width:min(290px,100%);margin:0;padding:9px 32px;background:#1685ed;border:3px solid #103757;border-radius:9px;box-shadow:0 4px 0 #0c2c4d;color:#ffdc55!important;font-size:clamp(23px,3vw,30px)!important;line-height:1.3;text-shadow:1px 2px #104273}
 .draw-lobby-heading p{margin:12px 0 0;color:#647b90;font-size:14px;font-weight:650}
-.draw-hub{max-width:520px;margin:0 auto}
-.draw-hub[hidden]{display:none}
-.draw-lobby-me{display:flex;align-items:center;gap:12px;padding:12px 14px;border:2px solid #d9e2eb;border-radius:14px;background:#f7fbff}
-.draw-lobby-me .draw-account-avatar.lobby-me-avatar{width:54px;height:54px;font-size:20px}
-.draw-lobby-me-copy{display:grid;gap:3px;min-width:0;text-align:start}
-.draw-lobby-me-copy strong{display:flex;align-items:center;gap:4px;overflow:hidden;color:#17365b;font-size:15px;font-weight:900;text-overflow:ellipsis;white-space:nowrap}
-.draw-lobby-me-copy small{display:flex;align-items:center;gap:5px;color:#5c7b95;font-size:12px;font-weight:700}
-.draw-lobby-me-copy .country-flag{width:18px;height:13px;border-radius:2px}
-.draw-hub-actions{display:grid;gap:10px;margin:16px 0 0}
-.draw-hub-actions .draw-action{margin:0!important}
-.draw-subview{max-width:760px;margin:0 auto}
+.draw-lobby-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;align-items:start}
+.draw-lobby-grid[hidden]{display:none}
+.draw-lobby-grid>section{min-width:0;padding:12px clamp(20px,4vw,44px) 20px}
+.draw-lobby-grid>section+section{border-inline-start:1px solid #d9e2eb}
+.draw-lobby-name{margin:0;text-align:center;color:#17365b;font-size:17px;font-weight:900}
+.draw-lobby-country{display:flex;align-items:center;justify-content:center;gap:5px;margin:6px 0 0;color:#5c7b95;font-size:12px;font-weight:700}
+.draw-lobby-country .country-flag{width:18px;height:13px;border-radius:2px}
+.draw-lobby-quick{display:grid;gap:10px;margin:18px 0 0}
+.draw-lobby-quick .draw-action{margin:0!important}
+.draw-subview{max-width:820px;margin:0 auto}
 .draw-subview[hidden]{display:none}
 .draw-subview-head{display:flex;align-items:center;gap:10px;margin:0 0 12px}
 .draw-subview-head h2{flex:1;margin:0;text-align:center;color:#1764ad;font-size:18px;font-weight:900}
@@ -531,7 +530,7 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 .draw-how{margin:25px 0 0;padding:16px 18px;border-radius:12px;background:#f3f8fc;color:#58718a;font-size:13px;line-height:1.8}
 .draw-how strong{display:block;color:#205c91}.draw-how ol{margin:6px 0 0;padding-inline-start:20px}
 .screen-auto-note{font-size:12px;color:#bccbdd}
-@media(max-width:650px){.draw-lobby-heading{margin-bottom:20px}.draw-hub,.draw-subview{padding:0 2px}.draw-join-icon{width:58px;height:58px;margin:0 auto 12px;border-radius:17px;font-size:30px}.draw-how{margin-top:20px}}
+@media(max-width:650px){.draw-lobby-heading{margin-bottom:20px}.draw-lobby-grid{grid-template-columns:minmax(0,1fr)}.draw-lobby-grid>section{padding:10px 2px 22px}.draw-lobby-grid>section+section{border-inline-start:0;border-top:1px solid #d9e2eb}.draw-subview{padding:0 2px}.draw-join-icon{width:58px;height:58px;margin:0 auto 12px;border-radius:17px;font-size:30px}.draw-how{margin-top:20px}}
 
 .reveal-telegram-controls{position:fixed;left:max(8px,env(safe-area-inset-left));top:max(8px,env(safe-area-inset-top));z-index:90;width:38px;height:38px;display:grid;place-items:center;border:1px solid #8fb8d8;border-radius:11px;background:#143b62dd;color:#fff;font-size:17px;line-height:1;box-shadow:0 3px 12px #0004;cursor:pointer;backdrop-filter:blur(4px)}.reveal-telegram-controls[hidden]{display:none!important}
 .chess-seat-card > .player-avatar-badge{grid-row:1 / span 2}.player-avatar-badge{display:inline-flex;position:relative;flex:none;vertical-align:middle}.player-flag-marker{position:absolute;z-index:5;bottom:-3px;right:-4px;display:inline-flex;padding:1px;border-radius:3px;background:#fff;box-shadow:0 1px 3px #0006}.player-flag-marker img.country-flag{display:block!important;position:static!important;inset:auto!important;width:17px!important;height:12px!important;object-fit:cover!important;border-radius:2px!important}.draw-account-avatar img:not(.country-flag){object-fit:cover}
@@ -734,21 +733,30 @@ function bindPreferences(root){root.querySelectorAll('[data-pref]').forEach(func
 function openGamePage(game){if(game==='chess'){window.location.assign(new URL('/chess',location.origin).toString());return}if(game==='sudoku'){window.location.assign(new URL('/sudoku',location.origin).toString());return}var titles={chess:'شطرنج',sudoku:'سودوكو',uno:'أونو',gartic:'لعبة الرسم',poker:'بوكر تكساس'};var copy={chess:'اختار طريقة اللعب وحدد مستوى الخصم إذا اخترت البوت.',sudoku:'اختار اللعب الفردي أو سباقاً، ثم حدد مستوى اللغز.',uno:'اضبط عدد المقاعد وأنشئ غرفة خاصة لدعوة أصدقائك.',gartic:'حدد سعة الغرفة ووقت الجولة قبل إرسال الدعوة.',poker:'اضبط عدد المقاعد والرقائق الافتراضية للطاولة.'};setupGame=game;$('gameSetupPage').dataset.game=game;$('setupTitle').textContent=titles[game];$('setupCopy').textContent=copy[game];$('setupPlayerName').innerHTML=safe(accountName)+creatorBadgeMarkup();$('setupCountryMeta').innerHTML=countryFlag(chessCountryCode())+' '+safe(chessCountryLabel(chessCountryCode()));$('setupPlayerLevel').textContent=game==='chess'?digit(chessElo())+' ELO':'ملفي';if(tgUser&&tgUser.photo_url){$('setupAvatar').src=tgUser.photo_url;$('setupAvatar').hidden=false}else $('setupAvatar').hidden=true;$('gameProfileCard').innerHTML=profileCardMarkup(game);var html='';
 if(game==='uno')html='<h2>إعدادات الطاولة</h2><div class="setup-fields"><div><label class="field-label" for="capacity">عدد اللاعبين</label><select id="capacity" class="setup-select"><option value="2">لاعبان</option><option value="3">3 لاعبين</option><option value="4" selected>4 لاعبين</option></select></div><div><label class="field-label" for="unoTheme">نمط الأوراق</label><select id="unoTheme" class="setup-select" data-pref="unoTheme"><option value="classic">كلاسيكي</option><option value="pop">ألوان زاهية</option><option value="midnight">ليلي</option></select></div></div><div class="setup-actions"><button class="setup-action" data-action="friend"><strong>أنشئ غرفة أونو</strong><small>بعد إنشاء الغرفة، شارك رابطها حتى ينضم أصدقاؤك.</small></button></div>';
 else if(game==='gartic')html='<header class="draw-lobby-heading"><span class="draw-brand">CODE GAMES · لعبة الرسم</span><h1 class="draw-ribbon">لعبة الرسم</h1><p>ارسم، خمّن، والعب ويا أصدقائك</p></header>'
-+'<div class="draw-hub" id="drawHub">'
-+'<div class="draw-lobby-me">'
-+drawPlayerAvatar(getPhotoUrl(),accountName,'lobby-me-avatar')
-+'<span class="draw-lobby-me-copy"><strong>'+safe(accountName)+creatorBadgeMarkup()+'</strong><small>'+countryFlag(chessCountryCode())+'<span>'+safe(chessCountryLabel(chessCountryCode()))+'</span></small></span>'
-+'</div>'
-+'<div class="draw-hub-actions">'
++'<div class="draw-lobby-grid" id="drawHub">'
++'<section class="draw-lobby-play" aria-label="ابدأ اللعب">'
++drawPlayerAvatar(getPhotoUrl(),accountName,'lobby-avatar')
++'<p class="draw-lobby-name">'+safe(accountName)+creatorBadgeMarkup()+'</p>'
++'<p class="draw-lobby-country">'+countryFlag(chessCountryCode())+'<span>'+safe(chessCountryLabel(chessCountryCode()))+'</span></p>'
++'<div class="draw-lobby-quick">'
 +'<button type="button" class="draw-action" id="drawQuickPlay">العب</button>'
 +'<button type="button" class="draw-action create" id="drawCreateRoom">أنشئ غرفة</button>'
-+'<button type="button" class="draw-action rooms" id="drawOpenRooms">الغرف</button>'
++'<button type="button" class="draw-action" id="drawOpenRooms">الغرف</button>'
 +'</div>'
++'</section>'
++'<section aria-labelledby="drawJoinTitle">'
++'<h2 id="drawJoinTitle">انضم لأصدقائك</h2>'
++'<p class="draw-section-copy">عندك رمز غرفة؟ اكتبه هنا</p>'
++'<div class="draw-join-icon" aria-hidden="true">&#9993;</div>'
++'<label class="field-label" for="drawRoomCode">رمز الغرفة</label>'
++'<input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="مثلاً ABC234DEF567">'
++'<button type="button" id="drawJoinButton" class="draw-action join">انضم للغرفة</button>'
++'<div class="draw-how"><strong>شلون نلعب؟</strong><ol><li>أنشئ غرفة وشارك الدعوة.</li><li>بكل جولة لاعب يرسم كلمة.</li><li>خمّن بسرعة واجمع النقاط.</li></ol></div>'
++'</section>'
 +'</div>'
 +'<div class="draw-subview" id="drawRoomsScreen" hidden>'
 +'<div class="draw-subview-head"><button type="button" class="draw-subview-back" id="drawRoomsBack" aria-label="رجوع إلى القائمة الرئيسية">&#8594;</button><h2>الغرف المتاحة</h2><button type="button" id="drawPublicRefresh" class="draw-refresh" aria-label="تحديث قائمة الغرف">&#8635;</button></div>'
 +'<div class="draw-rooms-box"><div id="drawPublicList" class="draw-public-list" aria-live="polite"><p class="draw-public-empty">جاري تحميل الغرف…</p></div></div>'
-+'<div class="draw-code-row"><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="عندك رمز غرفة؟"><button type="button" id="drawJoinButton" class="draw-action join">انضمام</button></div>'
 +'<div class="draw-rooms-actions"><button type="button" class="draw-action" id="drawRoomsPlay" disabled>العب</button></div>'
 +'</div>'
 +'<div class="draw-subview" id="drawCreateScreen" hidden>'
