@@ -141,10 +141,11 @@ assert.ok(!host.document.getElementById('auName'), 'ماكو حقل اسم دا�
 assert.ok(!host.document.getElementById('auNameAccount'), 'ماكو حقل اسم داخل الملف');
 assert.ok(!host.document.getElementById('auSaveName'), 'ماكو زر حفظ اسم');
 assert.equal(
-  host.document.getElementById('auMeName').textContent.trim(),
+  host.document.getElementById('auPlayerName').textContent.trim(),
   'المضيف الحساب',
   'الاسم = اسم الحساب (اول + لقب) مو اليوزر'
 );
+assert.ok(!host.document.querySelector('.sp-me'), 'صف الاسم انحذف من تحت المربع');
 host.document.getElementById('auCreate').click();
 host.document.getElementById('auCreateRoom').click();
 await waitFor(() => host.document.getElementById('auLobby').classList.contains('on'), 'فتح غرفة الانتظار');
