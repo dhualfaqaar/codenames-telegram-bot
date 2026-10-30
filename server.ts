@@ -2,10 +2,10 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { telegramBot } from './server/telegramBot';
+import { registerAudioTranscoder, telegramBot } from './server/telegramBot';
 import { SUDOKU_MINI_APP_HTML } from './src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from './src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from './src/assets/botAvatarBase64';
@@ -15,6 +15,58 @@ import { amongUsMiniAppHtml } from './src/services/amongUsMiniApp';
 import { ARABIC_STANDARD_WORDS, ARABIC_IRAQI_WORDS, POP_CULTURE_WORDS, ENGLISH_WORDS } from './src/data/words';
 
 dotenv.config();
+
+/**
+ * تحويل الصوت إلى OGG/Opus عبر ffmpeg — هذا اللي يخلي «البصمة الصوتية» تشتغل.
+ *
+ * على Cloudflare Worker ماكو ffmpeg، فما ينسمح محوّل (والبوت يعتذر ويحوّل
+ * الصوت لملف صوتي صحيح بدل ما يرسل بصمة فارغة).
+ */
+function registerFfmpegTranscoder(): void {
+  const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
+  try {
+    execSync(`"${ffmpegPath}" -version`, { stdio: 'ignore', timeout: 5000 });
+  } catch {
+    console.warn('[voice] ffmpeg not found — voice notes fall back to a real audio file.');
+    registerAudioTranscoder(null);
+    return;
+  }
+  registerAudioTranscoder(
+    input =>
+      new Promise<Uint8Array | null>(resolve => {
+        try {
+          const child = spawn(
+            ffmpegPath,
+            [
+              '-hide_banner',
+              '-loglevel', 'error',
+              '-i', 'pipe:0',
+              '-vn',
+              '-ac', '1',
+              '-ar', '48000',
+              '-c:a', 'libopus',
+              '-b:a', '48k',
+              '-f', 'ogg',
+              'pipe:1'
+            ],
+            { stdio: ['pipe', 'pipe', 'pipe'] }
+          );
+          const chunks: Buffer[] = [];
+          child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+          child.stderr.on('data', () => {});
+          child.on('error', () => resolve(null));
+          child.on('close', code => resolve(code === 0 ? new Uint8Array(Buffer.concat(chunks)) : null));
+          child.stdin.on('error', () => {});
+          child.stdin.end(Buffer.from(input));
+        } catch {
+          resolve(null);
+        }
+      })
+  );
+  console.log('[voice] ffmpeg transcoder ready — voice conversion enabled.');
+}
+
+registerFfmpegTranscoder();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

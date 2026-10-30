@@ -23,7 +23,9 @@
     "test:drawing:dom": "node scripts/check-drawing-room-dom.mjs",
     "test:media": "tsx scripts/check-media-downloads.ts",
     "test:amongus": "tsx scripts/check-amongus.ts",
-    "test:amongus:dom": "node scripts/check-amongus-dom.mjs"
+    "test:amongus:dom": "node scripts/check-amongus-dom.mjs",
+    "test:audio": "tsx scripts/check-audio-formats.ts",
+    "test:voice": "tsx scripts/check-voice-delivery.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
