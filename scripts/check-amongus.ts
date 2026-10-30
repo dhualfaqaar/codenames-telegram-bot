@@ -7,6 +7,8 @@ import {
   impostorCount,
   isWalkable,
   publicRoom,
+  sanitizeSettings,
+  roomSettings,
   type AuRoomState
 } from '../src/services/amongUsRooms';
 import { amongUsMiniAppHtml } from '../src/services/amongUsMiniApp';
@@ -114,21 +116,52 @@ check(
     !html.includes('auPlayDialog')
 );
 check(
-  'PLAY يفتح بطاقتين داخل مربع الفضاء نفسه',
+  'PLAY يفتح ثلاث بطاقات داخل مربع الفضاء نفسه',
   html.includes('id="auSpaceBox"') &&
     html.includes('class="space-play" id="auSpacePlay"') &&
     html.includes('id="auCreate"') &&
-    html.includes('id="auFindCard"') &&
+    html.includes('id="auOnlineCard"') &&
+    html.includes('id="auCodeCard"') &&
     html.includes('>أنشئ غرفة<') &&
-    html.includes('>FIND GAME<') &&
+    html.includes('>ONLINE<') &&
+    html.includes('>ENTER CODE<') &&
     html.includes('id="auPlayBack"')
 );
 check(
   'بطاقات اللعب مرسومة SVG بلا صور خارجية',
-  (html.match(/class="sp-art"/g) || []).length === 2 &&
-    html.includes('id="auDoor"') &&
-    html.includes('id="auLapTop"') &&
+  (html.match(/class="sp-art"/g) || []).length === 3 &&
+    html.includes('id="cDoor"') &&
+    html.includes('id="oScreen"') &&
+    html.includes('id="kPanel"') &&
     !/<img\s/.test(html)
+);
+check(
+  'إعدادات الغرفة قبل الإنشاء موجودة بالواجهة',
+  html.includes('id="auViewSettings"') &&
+    html.includes('id="auSettingRows"') &&
+    html.includes('id="auCreateRoom"') &&
+    html.includes('ROOM_RULES') &&
+    ['maxPlayers', 'impostors', 'tasks', 'killCooldownMs', 'meetingMs'].every(key => html.includes(`${key}:`))
+);
+check(
+  'شاشة ONLINE تجيب الغرف الحالية',
+  html.includes('id="auViewOnline"') &&
+    html.includes('id="auRoomList"') &&
+    html.includes("fetch('/api/amongus/rooms')") &&
+    html.includes('setInterval(loadRooms')
+);
+check(
+  'ENTER CODE يفتح حقل صغير داخل المربع',
+  html.includes('id="auJoinBox"') &&
+    html.includes('id="auCode"') &&
+    html.includes('joinByCode')
+);
+check(
+  'السيرفر يقبل إعدادات الغرفة ويعرض الغرف',
+  typeof sanitizeSettings === 'function' &&
+    sanitizeSettings({ maxPlayers: 99, impostors: 99, tasks: 0 }).maxPlayers === 10 &&
+    sanitizeSettings({ impostors: 3, maxPlayers: 6 }).impostors <= 2 &&
+    typeof engine.listRooms === 'function'
 );
 check('زر الإجراءات مرسوم لا إيموجي', html.includes('id="auPad"') && html.includes('roundRect'));
 check(
@@ -422,5 +455,53 @@ check('نافذة التخريب 45 ثانية', sabotageWindow === 45_000);
 
 const snapshot = publicRoom(await room(code4), crew4.token);
 check('اللقطة العامة ما تسرّب رموز الآخرين', snapshot.players.filter(p => !p.you).every(p => p.token !== crew4.token));
+
+/* ------------------------------------------------------- rooms and settings */
+
+const listed = await (await engine.handle(new Request('https://game.test/api/amongus/rooms'))).json();
+check('قائمة الغرف ترجع ok وبلا رموز', listed.ok === true && Array.isArray(listed.rooms));
+check('القائمة ما تسرّب توكنات', JSON.stringify(listed.rooms).indexOf('au_') === -1);
+const listedRoom = listed.rooms.find((entry: any) => entry.code === code4);
+check(
+  'الغرفة المفتوحة تظهر بالقائمة مع المضيف والعدد',
+  Boolean(listedRoom) && typeof listedRoom.host === 'string' && listedRoom.players >= AU_MIN_START && listedRoom.maxPlayers >= AU_MIN_START
+);
+
+const custom = await post('/api/amongus/rooms', {
+  action: 'create',
+  name: 'مضيف الإعدادات',
+  color: 'pink',
+  settings: { maxPlayers: 6, impostors: 1, tasks: 3, killCooldownMs: 15_000, meetingMs: 30_000 }
+});
+check('الغرفة تنقبل إعدادات مخصّصة', custom.ok === true && custom.room.settings.maxPlayers === 6);
+check(
+  'الإعدادات المخصّصة تنحفظ وتنعكس بالغرفة',
+  custom.room.settings.impostors === 1 &&
+    custom.room.settings.tasks === 3 &&
+    custom.room.settings.killCooldownMs === 15_000 &&
+    custom.room.settings.meetingMs === 30_000
+);
+
+const customTokens = [custom.token];
+for (let i = 0; i < 5; i += 1) {
+  const guest = await post(`/api/amongus/rooms/${custom.code}`, { action: 'join', name: `لاعب ${i}`, code: custom.code });
+  if (guest.token) customTokens.push(guest.token);
+}
+check('الغرفة المخصّصة تكمل لستة وتصد الانضمام الزائد', customTokens.length === 6);
+const overflow = await post(`/api/amongus/rooms/${custom.code}`, { action: 'join', name: 'زائد', code: custom.code });
+check('سعة الغرفة تتبع الإعدادات', overflow.ok === false);
+
+const customStart = await post(`/api/amongus/rooms/${custom.code}`, { action: 'start', token: custom.token, code: custom.code });
+check('المباراة تبدأ بالإعدادات المخصّصة', customStart.ok === true);
+const customState = await room(custom.code);
+check('عدد المزوّرين يتبع الإعدادات', customState.players.filter(player => player.role === 'impostor').length === 1);
+check(
+  'عدد المهام يتبع الإعدادات',
+  customState.players.filter(player => player.role === 'crew').every(player => player.tasks.length === 3)
+);
+check('تبريد القتل المخصّص ينعكس بالـHUD', customStart.room.settings.killCooldownMs === 15_000);
+
+check('الإعدادات الغلط ترجع للافتراضي', sanitizeSettings({ maxPlayers: 999, tasks: 99 }).maxPlayers === 10 && sanitizeSettings({}).meetingMs === 45_000);
+check('الإعدادات القديمة بالغرف ترجع للافتراضي', roomSettings({ code: 'OLD', settings: undefined } as AuRoomState).maxPlayers === 10);
 
 console.log(`Among Us checks passed: ${passed} assertions (map, roles, movement, kill, report/vote, tasks, sabotage, vents, 6-10 players).`);
