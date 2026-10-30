@@ -140,6 +140,64 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   border:6px solid #93a5a4;box-shadow:0 8px 0 #062220,inset 0 0 0 3px #2b3a3c,inset 0 0 70px #000
 }
 .space-box canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+.space-play{
+  position:absolute;inset:0;display:none;flex-direction:column;gap:10px;padding:12px;
+  background:linear-gradient(180deg,#070c1ad9,#04060ee6);
+}
+.space-play.on{display:flex}
+.sp-head{display:flex;align-items:center;gap:10px;flex:none}
+.sp-title{
+  margin-inline-start:auto;color:#dff8f4;font-size:clamp(18px,2.6vw,32px);font-weight:900;
+  letter-spacing:4px;text-shadow:0 3px 0 #052a28
+}
+.sp-back{
+  width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:10px;cursor:pointer;
+  background:linear-gradient(180deg,#2f7873,#1b4f4e);border:3px solid #072e2d;color:#dff8f4;
+  box-shadow:0 4px 0 #052a28
+}
+.sp-back svg{width:18px;height:18px}
+.sp-back:active{transform:translateY(3px);box-shadow:0 1px 0 #052a28}
+.sp-cards{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:12px;direction:ltr}
+.sp-card{
+  position:relative;display:flex;flex-direction:column;overflow:hidden;cursor:pointer;padding:0;
+  border-radius:14px;background:#0a1a26;border:4px solid #8fa6b4;
+  box-shadow:0 6px 0 #04101a,inset 0 0 0 2px #33485a;
+  transition:transform .09s,box-shadow .09s,border-color .09s
+}
+.sp-card:hover{transform:translateY(-3px);border-color:#cfe6ee;box-shadow:0 9px 0 #04101a,inset 0 0 0 2px #4a6478}
+.sp-card:active{transform:translateY(2px);box-shadow:0 3px 0 #04101a,inset 0 0 0 2px #33485a}
+.sp-art{position:relative;flex:1;min-height:0;overflow:hidden;display:block;background:radial-gradient(circle at 50% 35%,#16323f,#080f17 78%)}
+.sp-art svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.sp-bar{
+  flex:none;display:block;padding:8px 6px;text-align:center;color:#08302f;
+  font-size:clamp(12px,1.7vw,20px);font-weight:900;letter-spacing:2px;
+  background:linear-gradient(180deg,#7dfdf0,#22d6bd 55%,#0aa392);
+  border-top:3px solid #073b38;text-shadow:0 1px 0 #ffffff66
+}
+.sp-join{display:none;flex:none;gap:8px;align-items:center;direction:rtl}
+.sp-join.on{display:flex}
+.sp-join input{
+  flex:1;min-width:0;height:46px;border-radius:10px;padding:0 12px;text-align:center;
+  background:#0b1a2e;border:3px solid #263a5c;color:#eaf6ff;font-size:19px;font-weight:900;
+  letter-spacing:6px;text-transform:uppercase
+}
+.sp-join button{
+  flex:none;height:46px;padding:0 18px;border-radius:10px;cursor:pointer;font-weight:900;font-size:14px;
+  background:linear-gradient(180deg,#8ef0b0,#3fc46b 55%,#26904c);border:3px solid #0c2e1b;color:#06240f;
+  box-shadow:0 4px 0 #0a2a18
+}
+.sp-join button:active{transform:translateY(3px);box-shadow:0 1px 0 #0a2a18}
+.sp-name{display:flex;flex:none;align-items:center;gap:8px;direction:rtl;color:#c7efe8;font-size:12px;font-weight:800}
+.sp-name input{
+  flex:1;min-width:0;height:38px;border-radius:9px;padding:0 10px;direction:rtl;
+  background:#0b1a2e;border:3px solid #1f3350;color:#dff8f4;font-size:13px;font-weight:700
+}
+@media(max-width:620px){
+  .space-play{padding:9px;gap:8px}
+  .sp-cards{gap:9px}
+  .sp-back{width:36px;height:36px}
+  .sp-bar{letter-spacing:1px;padding:6px 4px}
+}
 .space-hint{
   position:absolute;left:12px;bottom:8px;color:#7fa3a0;font-size:10px;letter-spacing:.6px;
   direction:rtl;pointer-events:none;opacity:.8
@@ -438,24 +496,103 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <div class="space-box" id="auSpaceBox">
         <canvas id="auSpace"></canvas>
         <span class="space-hint" id="auSpaceHint">السفينة على وشك الإقلاع</span>
+        <div class="space-play" id="auSpacePlay">
+          <div class="sp-head">
+            <button class="sp-back" id="auPlayBack" aria-label="رجوع">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="#dff8f4" stroke-width="3.4" stroke-linecap="round"/></svg>
+            </button>
+            <span class="sp-title">PLAY</span>
+          </div>
+          <div class="sp-cards">
+            <button class="sp-card" id="auCreate">
+              <span class="sp-art">
+                <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="auDoor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbe9f2"/><stop offset=".6" stop-color="#9db4c4"/><stop offset="1" stop-color="#6d8698"/></linearGradient>
+                    <linearGradient id="auRoomGlow" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#0d2f45"/><stop offset="1" stop-color="#061019" stop-opacity="0"/></linearGradient>
+                    <linearGradient id="auHostBean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff2e2"/><stop offset="1" stop-color="#25b4a4"/></linearGradient>
+                  </defs>
+                  <rect width="200" height="140" fill="#0a1a26"/>
+                  <circle cx="100" cy="46" r="54" fill="#123246" opacity=".55"/>
+                  <ellipse cx="100" cy="126" rx="86" ry="14" fill="#153a4c" opacity=".7"/>
+                  <rect x="56" y="118" width="122" height="14" rx="7" fill="url(#auRoomGlow)"/>
+                  <g stroke="#0c1c28" stroke-width="2.2" stroke-linejoin="round">
+                    <rect x="96" y="30" width="74" height="96" rx="7" fill="url(#auDoor)"/>
+                    <rect x="106" y="40" width="54" height="76" rx="5" fill="#7d97a9"/>
+                    <rect x="113" y="47" width="40" height="28" rx="4" fill="#a9e3f5" opacity=".85"/>
+                    <circle cx="150" cy="86" r="3.4" fill="#f0c14b" stroke-width="1.8"/>
+                  </g>
+                  <g stroke="#0c1c28" stroke-width="2.4" stroke-linejoin="round">
+                    <path d="M46 62C38 64 34 70 34 78s4 13 12 15h2V62z" fill="#1b7f74"/>
+                    <rect x="52" y="96" width="13" height="15" rx="6.5" fill="#1b7f74"/>
+                    <rect x="68" y="96" width="13" height="15" rx="6.5" fill="#1b7f74"/>
+                    <path d="M62 42c-13 0-21 9-21 21v22c0 8 5 12 13 12h16c8 0 13-4 13-12V63c0-12-8-21-21-21z" fill="url(#auHostBean)"/>
+                    <ellipse cx="72" cy="62" rx="13.5" ry="9.6" fill="#e9fbff" stroke="#0c1c28" stroke-width="2.4"/>
+                    <path d="M63 58c3.6-2.4 9-2.8 12.6-1.4" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+                  </g>
+                  <g>
+                    <circle cx="141" cy="30" r="16" fill="#f2c33c" stroke="#6b4a09" stroke-width="2.6"/>
+                    <circle cx="141" cy="30" r="11.6" fill="none" stroke="#ffeaa4" stroke-width="2" opacity=".8"/>
+                    <path d="M141 23.5v13M134.5 30h13" stroke="#5b3c05" stroke-width="3.6" stroke-linecap="round"/>
+                  </g>
+                </svg>
+              </span>
+              <span class="sp-bar">أنشئ غرفة</span>
+            </button>
+            <button class="sp-card" id="auFindCard">
+              <span class="sp-art">
+                <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="auLapTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6f4fb"/><stop offset="1" stop-color="#9db9ca"/></linearGradient>
+                    <linearGradient id="auScreen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7bf5e0"/><stop offset="1" stop-color="#2b7f9c"/></linearGradient>
+                    <linearGradient id="auBeanB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fe08a"/><stop offset="1" stop-color="#2f9a4a"/></linearGradient>
+                    <linearGradient id="auBeanC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fb6ff"/><stop offset="1" stop-color="#4157c4"/></linearGradient>
+                  </defs>
+                  <rect width="200" height="140" fill="#0a1a26"/>
+                  <circle cx="100" cy="52" r="58" fill="#12363f" opacity=".6"/>
+                  <ellipse cx="100" cy="124" rx="84" ry="13" fill="#14303c" opacity=".75"/>
+                  <g stroke="#0c1c28" stroke-width="2.2" stroke-linejoin="round">
+                    <path d="M74 84h68l9 20H65z" fill="url(#auLapTop)"/>
+                    <rect x="80" y="46" width="54" height="39" rx="5" fill="url(#auScreen)"/>
+                    <path d="M86 74c6-14 16-19 30-16" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+                    <rect x="92" y="85" width="30" height="4" rx="2" fill="#7e9aac" stroke="none"/>
+                  </g>
+                  <g stroke="#0c1c28" stroke-width="2.4" stroke-linejoin="round">
+                    <path d="M34 70C28 72 25 77 25 83s3 11 9 12h2V70z" fill="#1f6b34"/>
+                    <rect x="39" y="98" width="11" height="13" rx="5.5" fill="#1f6b34"/>
+                    <rect x="52" y="98" width="11" height="13" rx="5.5" fill="#1f6b34"/>
+                    <path d="M47 53c-11 0-18 8-18 18v18c0 7 4 10 11 10h14c7 0 11-3 11-10V71c0-10-7-18-18-18z" fill="url(#auBeanB)"/>
+                    <ellipse cx="55" cy="70" rx="11.6" ry="8.2" fill="#e9fbff" stroke="#0c1c28" stroke-width="2.3"/>
+                    <path d="M47 67c3-2 7.6-2.4 10.8-1.2" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round"/>
+                  </g>
+                  <g stroke="#0c1c28" stroke-width="2.4" stroke-linejoin="round">
+                    <path d="M154 62c-7 2-10 7-10 13s3 11 10 12h1V62z" fill="#33429c"/>
+                    <rect x="158" y="88" width="11" height="13" rx="5.5" fill="#33429c"/>
+                    <rect x="171" y="88" width="11" height="13" rx="5.5" fill="#33429c"/>
+                    <path d="M166 45c-11 0-18 8-18 18v17c0 7 4 10 11 10h13c7 0 11-3 11-10V63c0-10-7-18-17-18z" fill="url(#auBeanC)"/>
+                    <ellipse cx="174" cy="61" rx="11.2" ry="8" fill="#e9fbff" stroke="#0c1c28" stroke-width="2.3"/>
+                  </g>
+                  <g>
+                    <circle cx="120" cy="46" r="15" fill="#0a1a26" opacity=".45"/>
+                    <circle cx="118" cy="44" r="11" fill="none" stroke="#f4fbff" stroke-width="3.4"/>
+                    <path d="M126 52l7 7" stroke="#f4fbff" stroke-width="4.4" stroke-linecap="round"/>
+                    <circle cx="118" cy="44" r="8" fill="#8ff2e2" opacity=".35"/>
+                  </g>
+                </svg>
+              </span>
+              <span class="sp-bar">FIND GAME</span>
+            </button>
+          </div>
+          <div class="sp-join" id="auJoinBox">
+            <input id="auCode" maxlength="6" placeholder="ABC123" aria-label="كود الغرفة">
+            <button id="auJoin">انضم للغرفة</button>
+          </div>
+          <label class="sp-name"><span>اسمك</span><input id="auName" maxlength="18" placeholder="اكتب اسمك"></label>
+        </div>
       </div>
     </div>
   </div>
 </section>
-
-<div class="overlay" id="auPlayDialog">
-  <div class="dialog" style="direction:rtl">
-    <h2>ابدأ اللعب</h2>
-    <p>أنشئ غرفة وشارك الكود، أو انضم بكود صاحبك.</p>
-    <label class="field"><span>اسمك</span><input id="auName" maxlength="18" placeholder="اكتب اسمك"></label>
-    <button class="btn block green" id="auCreate"><span>أنشئ غرفة</span></button>
-    <div style="height:12px"></div>
-    <label class="field"><span>كود الغرفة</span><input id="auCode" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;letter-spacing:6px;text-align:center;font-size:20px"></label>
-    <button class="btn block" id="auJoin"><span>انضم للغرفة</span></button>
-    <button class="btn block dark" id="auPlayClose" style="margin-top:10px"><span>رجوع</span></button>
-    <p class="hint">من 6 إلى 10 لاعبين — واحد أو اثنين منهم مزوّرين</p>
-  </div>
-</div>
 
 <div class="overlay" id="auInvDialog">
   <div class="dialog" style="direction:rtl">
@@ -841,6 +978,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     toastTimer = setTimeout(function(){ box.classList.remove('on'); }, 2600);
   }
   function setScreen(name){
+    if (name !== 'auMenu') {
+      var panel = el('auSpacePlay');
+      if (panel) panel.classList.remove('on');
+    }
     ['auMenu','auLobby','auStage'].forEach(function(id){
       var node = el(id);
       if (id === name) node.classList.add('on'); else node.classList.remove('on');
@@ -985,11 +1126,33 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var node = el(id);
     if (node) node.classList.remove('on');
   }
+  function openPlay(){
+    var panel = el('auSpacePlay');
+    if (!panel) return;
+    panel.classList.add('on');
+    var hint = el('auSpaceHint');
+    if (hint) hint.style.opacity = '0';
+    el('auJoinBox').classList.remove('on');
+    beep();
+  }
+  function closePlay(){
+    var panel = el('auSpacePlay');
+    if (panel) panel.classList.remove('on');
+    var hint = el('auSpaceHint');
+    if (hint) hint.style.opacity = profile.hints ? '0.8' : '0';
+  }
   function wireMenu(){
     var openers = {
-      auPlayBtn: 'auPlayDialog', auInventoryBtn: 'auInvDialog', auShopBtn: 'auShopDialog',
+      auInventoryBtn: 'auInvDialog', auShopBtn: 'auShopDialog',
       auAccountBtn: 'auAccDialog', auSettingsBtn: 'auSetDialog', auFriendsBtn: 'auFriendsDialog'
     };
+    el('auPlayBtn').addEventListener('click', openPlay);
+    el('auPlayBack').addEventListener('click', closePlay);
+    el('auFindCard').addEventListener('click', function(){
+      var box = el('auJoinBox');
+      box.classList.toggle('on');
+      if (box.classList.contains('on')) { beep(); el('auCode').focus(); }
+    });
     Object.keys(openers).forEach(function(buttonId){
       var button = el(buttonId);
       if (button) button.addEventListener('click', function(){
@@ -1000,7 +1163,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       });
     });
     var closers = {
-      auPlayClose: 'auPlayDialog', auInvClose: 'auInvDialog', auShopClose: 'auShopDialog',
+      auInvClose: 'auInvDialog', auShopClose: 'auShopDialog',
       auAccClose: 'auAccDialog', auSetClose: 'auSetDialog', auFriendsClose: 'auFriendsDialog'
     };
     Object.keys(closers).forEach(function(buttonId){
@@ -1087,6 +1250,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   }
 
   el('auCreate').addEventListener('click', function(){
+    if (!(el('auName').value || '').trim() && profile.name) el('auName').value = profile.name;
     api('/rooms', { action:'create', name: readName(), color: profile.color }).then(function(res){
       if (!res.ok) return toast(res.error || 'تعذّر إنشاء الغرفة');
       AU.code = res.code; AU.token = res.token;
