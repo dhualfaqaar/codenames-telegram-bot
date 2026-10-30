@@ -109,6 +109,11 @@ try {
   await waitFor(() => !host.document.querySelector('#drawHub').hidden, 'back to the lobby');
   await openCreateScreen(host);
   assert.equal(host.document.querySelector('#drawHub').hidden, true, 'the create screen replaces the hub');
+  // The create screen carries a language picker; the default room is Arabic.
+  const languageField = host.document.querySelector('[data-draw-select="drawLanguage"]');
+  assert.ok(languageField, 'the create screen has a language picker');
+  assert.equal(languageField.dataset.value, 'ar', 'rooms start in Arabic');
+  assert.equal(host.document.querySelector('#drawLanguageValue').textContent.trim(), 'العربية');
   const visibility = host.document.querySelector('#drawRoomVisible');
   assert.ok(visibility, 'the create card has a visibility switch');
   assert.equal(visibility.checked, true, 'rooms start visible');

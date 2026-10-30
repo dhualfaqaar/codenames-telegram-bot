@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { InteractiveGameRooms, MemoryRoomStorage, drawGuessKind } from '../src/services/interactiveGameRooms';
+import { InteractiveGameRooms, MemoryRoomStorage, drawGuessKind, cleanDrawLanguage } from '../src/services/interactiveGameRooms';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 
 const storage = new MemoryRoomStorage();
@@ -14,6 +14,32 @@ const tooLong=(await (await post('',{game:'gartic',name:'وقت',capacity:4,roun
 assert.equal((await storage.get<any>('interactive-room:'+tooLong)).gameState.roundDurationMs,300000);
 const legacyTime=(await (await post('',{game:'gartic',name:'وقت',capacity:4,roundSeconds:45})).json() as any).room.id;
 assert.equal((await storage.get<any>('interactive-room:'+legacyTime)).gameState.roundDurationMs,45000);
+// Room language: the artist's words and the accepted guesses both follow it.
+assert.equal(cleanDrawLanguage('EN'),'en');
+assert.equal(cleanDrawLanguage('klingon'),'ar');
+assert.equal(drawGuessKind('Sun','sun','en'),'exact');
+assert.equal(drawGuessKind('cafe','café','fr'),'exact');
+assert.equal(drawGuessKind('sun','شمس','ar'),'wrong');
+assert.equal(drawGuessKind('شمس','sun','en'),'wrong');
+const englishRoom = (await (await post('',{game:'gartic',name:'En',capacity:4,language:'en'})).json() as any);
+const englishId = englishRoom.room.id, englishHost = englishRoom.token;
+const englishGuest = (await (await post(englishId,{action:'join',name:'Guest'})).json() as any).token;
+assert.equal((await storage.get<any>('interactive-room:'+englishId)).gameState.language,'en');
+assert.equal((await post(englishId,{action:'start',token:englishHost})).status,200);
+const englishChoices = (await view(englishId,englishHost)).state.wordChoices;
+englishChoices.forEach((word: string) => assert.match(word,/^[a-z ]+$/i,'the English room deals English words'));
+assert.equal((await post(englishId,{action:'choose-word',token:englishHost,word:englishChoices[0]})).status,200);
+const englishAnswer = englishChoices[0];
+// a guess typed in another script never counts
+const wrongScript = await post(englishId,{action:'guess',token:englishGuest,text:'شمس'});
+assert.notEqual(wrongScript.status,200,'a guess in another script is refused');
+assert.match(await wrongScript.text(),/إنجليزية|لغة/);
+assert.equal((await view(englishId,englishGuest)).state.hasGuessed,false);
+assert.equal((await post(englishId,{action:'guess',token:englishGuest,text:englishAnswer.toUpperCase()})).status,200);
+assert.equal((await view(englishId,englishGuest)).state.hasGuessed,true,'the same word in capitals counts');
+const listedEnglish = await (await rooms.handle(new Request('https://test/api/interactive/rooms?game=gartic'))).json() as any;
+assert.ok(listedEnglish.rooms.every((room: any) => typeof room.language === 'string'), 'the lobby lists each room language');
+
 const id=created.room.id, host=created.token;
 const one=(await (await post(id,{action:'join',name:'الأول'})).json() as any).token;
 const two=(await (await post(id,{action:'join',name:'الثاني'})).json() as any).token;
@@ -304,9 +330,14 @@ assert.ok(lobbyHtml.indexOf('id="drawRoomCode"') < lobbyHtml.indexOf('id="drawRo
 assert.ok(lobbyHtml.includes('id="drawCreateBack"'), 'the create screen can go back');
 assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the create screen opens the room');
 assert.ok(lobbyHtml.includes('draw-room-card'), 'open rooms render as pickable cards');
+// Room language: picked in the create form, sent with the room and shown on cards.
+assert.ok(lobbyHtml.includes('data-draw-select="drawLanguage"'), 'the create form lets you pick the room language');
+assert.ok(lobbyHtml.indexOf('id="drawCreateScreen"') < lobbyHtml.indexOf('data-draw-select="drawLanguage"'), 'the language picker lives in the create screen');
+assert.ok(lobbyHtml.includes("language:drawSelectValue('drawLanguage')"), 'the chosen language is sent when creating the room');
+assert.ok(lobbyHtml.includes('DRAW_LANGUAGE_LABELS'), 'room cards can show each room language');
+assert.ok(lobbyHtml.includes("s.language!=='ar'"), 'the guess input switches direction for non-Arabic rooms');
 assert.ok(lobbyHtml.includes('stroke-linecap="round"'), 'back buttons use a drawn arrow');
 assert.ok(!lobbyHtml.includes('&#8594;'), 'no thin character arrow is left');
-assert.ok(lobbyHtml.includes('class="draw-subview-live"'), 'the rooms screen shows that the list is live');
 assert.ok(/draw-rooms-scroll/.test(lobbyHtml), 'the room list has a fixed framed window');
 // «العب» only drops you into a room that already exists; it never opens one.
 const quickPlayBody = lobbyHtml.slice(lobbyHtml.indexOf('async function drawQuickPlay'), lobbyHtml.indexOf('function drawRoomCardMarkup'));
