@@ -85,12 +85,44 @@ const playPanel = host.document.getElementById('auSpacePlay');
 assert.ok(playPanel.classList.contains('on'), 'PLAY يفتح شاشة اللعب داخل مربع الفضاء');
 assert.ok(host.document.getElementById('auSpaceBox').contains(playPanel), 'شاشة اللعب داخل المربع مو نافذة منفصلة');
 assert.ok(host.document.getElementById('auCreate'), 'بطاقة أنشئ غرفة موجودة');
-assert.ok(host.document.getElementById('auFindCard'), 'بطاقة FIND GAME موجودة');
-assert.ok(!host.document.getElementById('auJoinBox').classList.contains('on'), 'حقل الكود مخفي قبل ما تدوس FIND GAME');
-host.document.getElementById('auFindCard').click();
-assert.ok(host.document.getElementById('auJoinBox').classList.contains('on'), 'FIND GAME يفتح حقل الكود');
+assert.ok(host.document.getElementById('auOnlineCard'), 'بطاقة ONLINE موجودة');
+assert.ok(host.document.getElementById('auCodeCard'), 'بطاقة ENTER CODE موجودة');
+assert.ok(!host.document.getElementById('auJoinBox').classList.contains('on'), 'حقل الكود مخفي قبل ما تدوس ENTER CODE');
+host.document.getElementById('auCodeCard').click();
+assert.ok(host.document.getElementById('auJoinBox').classList.contains('on'), 'ENTER CODE يفتح حقل الكود داخل المربع');
+host.document.getElementById('auCodeCard').click();
+assert.ok(!host.document.getElementById('auJoinBox').classList.contains('on'), 'ضغطة ثانية تسكّر حقل الكود');
+
+// The create card opens the room rules, and the rules are real controls.
+host.document.getElementById('auCreate').click();
+assert.ok(host.document.getElementById('auViewSettings').classList.contains('on'), 'بطاقة الإنشاء تفتح إعدادات الغرفة');
+assert.ok(!host.document.getElementById('auViewPick').classList.contains('on'), 'الإعدادات تستبدل شاشة البطاقات');
+const optionButtons = host.document.querySelectorAll('#auSettingRows [data-key]');
+assert.ok(optionButtons.length >= 12, 'الإعدادات فيها خيارات فعلية: ' + optionButtons.length);
+for (const key of ['maxPlayers', 'impostors', 'tasks', 'killCooldownMs', 'meetingMs']) {
+  assert.ok(host.document.querySelector(`#auSettingRows [data-key="${key}"]`), 'إعداد موجود: ' + key);
+}
+host.document.querySelector('#auSettingRows [data-key="maxPlayers"][data-value="6"]').click();
+assert.ok(
+  host.document.querySelector('#auSettingRows [data-key="maxPlayers"][data-value="6"]').classList.contains('on'),
+  'اختيار عدد اللاعبين ينحفظ'
+);
+host.document.getElementById('auSettingsBack').click();
+assert.ok(host.document.getElementById('auViewPick').classList.contains('on'), 'رجوع الإعدادات يرجع للبطاقات');
 host.document.getElementById('auPlayBack').click();
 assert.ok(!playPanel.classList.contains('on'), 'زر الرجوع يرجع للقائمة');
+
+// The online browser lists the live rooms (empty at this point).
+host.document.getElementById('auPlayBtn').click();
+host.document.getElementById('auOnlineCard').click();
+assert.ok(host.document.getElementById('auViewOnline').classList.contains('on'), 'ONLINE يفتح شاشة الغرف');
+await waitFor(
+  () => host.document.getElementById('auRoomList').textContent.length > 0,
+  'قائمة الغرف تشحن'
+);
+host.document.getElementById('auOnlineBack').click();
+assert.ok(!host.document.getElementById('auViewOnline').classList.contains('on'), 'رجوع ONLINE يشتغل');
+host.document.getElementById('auPlayBack').click();
 host.document.getElementById('auInventoryBtn').click();
 assert.ok(host.document.getElementById('auInvDialog').classList.contains('on'), 'INVENTORY يفتح الخزانة');
 const colorButtons = host.document.querySelectorAll('#auColorGrid [data-color]');
@@ -105,7 +137,9 @@ host.document.getElementById('auShopClose').click();
 host.document.getElementById('auPlayBtn').click();
 host.document.getElementById('auName').value = 'المضيف';
 host.document.getElementById('auCreate').click();
+host.document.getElementById('auCreateRoom').click();
 await waitFor(() => host.document.getElementById('auLobby').classList.contains('on'), 'فتح غرفة الانتظار');
+assert.ok(!host.document.getElementById('auSpacePlay').classList.contains('on'), 'شاشة اللعب تنسكّر بعد إنشاء الغرفة');
 const code = host.document.getElementById('auCodeLabel').textContent.trim();
 assert.match(code, /^[A-Z0-9]{6}$/, 'كود الغرفة يظهر بالمضيف');
 assert.equal(host.document.getElementById('auCount').textContent, '1');
@@ -115,7 +149,7 @@ const guests = [];
 for (let i = 0; i < 5; i += 1) {
   const guest = makeClient('لاعب' + i);
   guest.document.getElementById('auPlayBtn').click();
-  guest.document.getElementById('auFindCard').click();
+  guest.document.getElementById('auCodeCard').click();
   guest.document.getElementById('auName').value = 'لاعب' + i;
   guest.document.getElementById('auCode').value = code;
   guest.document.getElementById('auJoin').click();
@@ -123,6 +157,20 @@ for (let i = 0; i < 5; i += 1) {
   await sleep(180);
 }
 await waitFor(() => host.document.getElementById('auCount').textContent === '6', 'انضمام ستة لاعبين');
+
+// A browser client sees the host room in the online list (no tokens leaked).
+const browser = makeClient('فضولي');
+browser.document.getElementById('auPlayBtn').click();
+browser.document.getElementById('auOnlineCard').click();
+await waitFor(
+  () => Array.from(browser.document.querySelectorAll('#auRoomList [data-code]')).some(node => node.getAttribute('data-code') === code),
+  'الغرفة تظهر بقائمة ONLINE'
+);
+const listed = Array.from(browser.document.querySelectorAll('#auRoomList [data-code]')).find(
+  node => node.getAttribute('data-code') === code
+);
+assert.ok(listed, 'كارت الغرفة موجود بالقائمة');
+assert.ok(!browser.document.getElementById('auRoomList').innerHTML.includes('au_'), 'القائمة ما تسرّب توكنات');
 const names = host.document.querySelectorAll('#auNames .who');
 assert.equal(names.length, 6, 'قائمة اللاعبين تعرض الستة');
 assert.ok(host.document.getElementById('auStart').disabled === false, 'زر البداية يتفعّل بعد 6 لاعبين');
@@ -145,9 +193,17 @@ assert.match(host.document.getElementById('auTaskChip').textContent, /^\d+\/\d+$
 
 // Pressing use away from any of your own task terminals explains itself
 // instead of failing silently (impostors have no tasks at all).
+// Spawning next to one of your own terminals legitimately opens that task,
+// so the check accepts either outcome instead of depending on the spawn roll.
 host.document.getElementById('auUse').click();
-await waitFor(() => host.document.getElementById('auToast').classList.contains('on'), 'رسالة تنبيه عند الاستعمال');
-assert.match(host.document.getElementById('auToast').textContent, /محطة/);
+await waitFor(
+  () => host.document.getElementById('auToast').classList.contains('on') ||
+    host.document.getElementById('auTaskDialog').classList.contains('on'),
+  'رد واضح عند الاستعمال'
+);
+if (host.document.getElementById('auToast').classList.contains('on')) {
+  assert.match(host.document.getElementById('auToast').textContent, /محطة/);
+}
 
 // Everyone else is in the same match: the stage is shared, roles differ.
 await waitFor(() => guests[0].document.getElementById('auStage').classList.contains('on'), 'دخول الضيوف للمباراة');

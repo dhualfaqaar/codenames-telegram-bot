@@ -145,6 +145,52 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   background:linear-gradient(180deg,#070c1ad9,#04060ee6);
 }
 .space-play.on{display:flex}
+.sp-view{display:none;flex:1;min-height:0;flex-direction:column;gap:10px;direction:ltr}
+.sp-view.on{display:flex}
+.sp-mini{
+  flex:none;height:40px;padding:0 16px;border-radius:9px;cursor:pointer;font-size:12px;font-weight:900;letter-spacing:1px;
+  background:linear-gradient(180deg,#2f7873,#1b4f4e);border:3px solid #072e2d;color:#dff8f4;box-shadow:0 4px 0 #052a28
+}
+.sp-mini:active{transform:translateY(3px);box-shadow:0 1px 0 #052a28}
+/* room-rule picker */
+.sp-rows{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;direction:rtl;padding:2px}
+.sp-row{
+  display:flex;align-items:center;gap:10px;flex:none;padding:8px 10px;border-radius:11px;
+  background:linear-gradient(180deg,#123c3c,#0b2b2c);border:2px solid #082e2d
+}
+.sp-row>span{flex:none;min-width:104px;color:#d6f4ee;font-size:13px;font-weight:900}
+.sp-opts{display:flex;flex:1;gap:6px;flex-wrap:wrap;justify-content:flex-start;direction:ltr}
+.sp-opt{
+  min-width:52px;height:36px;padding:0 10px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:900;color:#bcd9d5;
+  background:#0f2b3a;border:2px solid #26455c;box-shadow:0 3px 0 #071b25
+}
+.sp-opt.on{color:#062a26;background:linear-gradient(180deg,#8ffbe6,#28d3bb);border-color:#073b38;box-shadow:0 3px 0 #06352f}
+.sp-opt:active{transform:translateY(2px);box-shadow:0 1px 0 #071b25}
+.sp-go{
+  flex:none;height:54px;border-radius:12px;cursor:pointer;font-size:18px;font-weight:900;letter-spacing:1px;color:#06240f;
+  background:linear-gradient(180deg,#8ef0b0,#3fc46b 55%,#26904c);border:3px solid #0c2e1b;
+  box-shadow:0 6px 0 #0a2a18,inset 0 2px 0 #d3ffe2
+}
+.sp-go:active{transform:translateY(4px);box-shadow:0 2px 0 #0a2a18}
+/* the online room browser */
+.sp-rooms{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;direction:rtl;padding:2px}
+.sp-room{
+  display:flex;align-items:center;gap:10px;flex:none;padding:9px 12px;border-radius:11px;cursor:pointer;text-align:right;
+  background:linear-gradient(180deg,#123c3c,#0b2b2c);border:2px solid #1f5a58;box-shadow:0 4px 0 #052a28
+}
+.sp-room:active{transform:translateY(3px);box-shadow:0 1px 0 #052a28}
+.sp-room.busy{opacity:.55;cursor:not-allowed;filter:grayscale(.4)}
+.sp-room .code{
+  flex:none;min-width:78px;padding:6px 8px;border-radius:8px;text-align:center;letter-spacing:3px;
+  background:#08202b;border:2px solid #2a6f75;color:#8ffbec;font-size:15px;font-weight:900
+}
+.sp-room .who{flex:1;min-width:0}
+.sp-room .who b{display:block;color:#eafffb;font-size:13px;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-room .who small{display:block;color:#9fd0c8;font-size:11px}
+.sp-room .n{flex:none;color:#8ffbec;font-size:13px;font-weight:900}
+.sp-empty{
+  margin:auto;text-align:center;color:#9fc9c2;font-size:13px;font-weight:800;line-height:1.9;padding:16px
+}
 .sp-head{display:flex;align-items:center;gap:10px;flex:none}
 .sp-title{
   margin-inline-start:auto;color:#dff8f4;font-size:clamp(18px,2.6vw,32px);font-weight:900;
@@ -157,7 +203,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 }
 .sp-back svg{width:18px;height:18px}
 .sp-back:active{transform:translateY(3px);box-shadow:0 1px 0 #052a28}
-.sp-cards{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:12px;direction:ltr}
+.sp-cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;direction:ltr}
 .sp-card{
   position:relative;display:flex;flex-direction:column;overflow:hidden;cursor:pointer;padding:0;
   border-radius:14px;background:#0a1a26;border:4px solid #8fa6b4;
@@ -497,98 +543,179 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <canvas id="auSpace"></canvas>
         <span class="space-hint" id="auSpaceHint">السفينة على وشك الإقلاع</span>
         <div class="space-play" id="auSpacePlay">
-          <div class="sp-head">
-            <button class="sp-back" id="auPlayBack" aria-label="رجوع">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="#dff8f4" stroke-width="3.4" stroke-linecap="round"/></svg>
-            </button>
-            <span class="sp-title">PLAY</span>
-          </div>
-          <div class="sp-cards">
-            <button class="sp-card" id="auCreate">
-              <span class="sp-art">
-                <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <div class="sp-view on" id="auViewPick">
+            <div class="sp-head">
+              <button class="sp-back" id="auPlayBack" aria-label="رجوع">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="#dff8f4" stroke-width="3.4" stroke-linecap="round"/></svg>
+              </button>
+              <span class="sp-title">PLAY</span>
+            </div>
+            <div class="sp-cards">
+              <button class="sp-card" id="auCreate">
+                <span class="sp-art">
+                  <svg viewBox="0 0 220 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
                   <defs>
-                    <linearGradient id="auDoor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbe9f2"/><stop offset=".6" stop-color="#9db4c4"/><stop offset="1" stop-color="#6d8698"/></linearGradient>
-                    <linearGradient id="auRoomGlow" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#0d2f45"/><stop offset="1" stop-color="#061019" stop-opacity="0"/></linearGradient>
-                    <linearGradient id="auHostBean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff2e2"/><stop offset="1" stop-color="#25b4a4"/></linearGradient>
+                    <linearGradient id="cSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#123a52"/><stop offset="1" stop-color="#050d15"/></linearGradient>
+                    <radialGradient id="cSpot" cx=".5" cy=".1" r=".9"><stop offset="0" stop-color="#7ff2e0" stop-opacity=".38"/><stop offset="1" stop-color="#7ff2e0" stop-opacity="0"/></radialGradient>
+                    <linearGradient id="cDoor" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6f2fa"/><stop offset=".5" stop-color="#a9c0d0"/><stop offset="1" stop-color="#6b8497"/></linearGradient>
+                    <linearGradient id="cDoorIn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6f86"/><stop offset="1" stop-color="#0b2230"/></linearGradient>
+                    <linearGradient id="cBean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ffbee"/><stop offset=".55" stop-color="#46e3cd"/><stop offset="1" stop-color="#12a394"/></linearGradient>
+                    <linearGradient id="cPlus" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6c9"/><stop offset=".5" stop-color="#f7c945"/><stop offset="1" stop-color="#d99a14"/></linearGradient>
                   </defs>
-                  <rect width="200" height="140" fill="#0a1a26"/>
-                  <circle cx="100" cy="46" r="54" fill="#123246" opacity=".55"/>
-                  <ellipse cx="100" cy="126" rx="86" ry="14" fill="#153a4c" opacity=".7"/>
-                  <rect x="56" y="118" width="122" height="14" rx="7" fill="url(#auRoomGlow)"/>
-                  <g stroke="#0c1c28" stroke-width="2.2" stroke-linejoin="round">
-                    <rect x="96" y="30" width="74" height="96" rx="7" fill="url(#auDoor)"/>
-                    <rect x="106" y="40" width="54" height="76" rx="5" fill="#7d97a9"/>
-                    <rect x="113" y="47" width="40" height="28" rx="4" fill="#a9e3f5" opacity=".85"/>
-                    <circle cx="150" cy="86" r="3.4" fill="#f0c14b" stroke-width="1.8"/>
+                  <rect width="220" height="150" fill="url(#cSky)"/>
+                  <rect width="220" height="150" fill="url(#cSpot)"/>
+                  <g opacity=".55" fill="#dff7ff">
+                    <circle cx="26" cy="22" r="1.6"/><circle cx="52" cy="14" r="1.1"/><circle cx="186" cy="26" r="1.4"/>
+                    <circle cx="168" cy="12" r="1"/><circle cx="204" cy="48" r="1.2"/><circle cx="14" cy="52" r="1.1"/>
                   </g>
-                  <g stroke="#0c1c28" stroke-width="2.4" stroke-linejoin="round">
-                    <path d="M46 62C38 64 34 70 34 78s4 13 12 15h2V62z" fill="#1b7f74"/>
-                    <rect x="52" y="96" width="13" height="15" rx="6.5" fill="#1b7f74"/>
-                    <rect x="68" y="96" width="13" height="15" rx="6.5" fill="#1b7f74"/>
-                    <path d="M62 42c-13 0-21 9-21 21v22c0 8 5 12 13 12h16c8 0 13-4 13-12V63c0-12-8-21-21-21z" fill="url(#auHostBean)"/>
-                    <ellipse cx="72" cy="62" rx="13.5" ry="9.6" fill="#e9fbff" stroke="#0c1c28" stroke-width="2.4"/>
-                    <path d="M63 58c3.6-2.4 9-2.8 12.6-1.4" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+                  <ellipse cx="110" cy="140" rx="96" ry="15" fill="#0a2634" opacity=".85"/>
+                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
+                    <rect x="104" y="26" width="86" height="112" rx="9" fill="url(#cDoor)"/>
+                    <rect x="114" y="36" width="66" height="90" rx="6" fill="url(#cDoorIn)"/>
+                    <path d="M118 122 176 40" stroke="#6fe6d0" stroke-width="5" opacity=".35"/>
+                    <rect x="110" y="24" width="74" height="8" rx="4" fill="#c8dbe7" stroke="#0a1a24" stroke-width="2.2"/>
+                    <circle cx="176" cy="88" r="4.2" fill="#f7c945" stroke="#0a1a24" stroke-width="2"/>
+                  </g>
+                  <g stroke="#0a1a24" stroke-width="2.8" stroke-linejoin="round">
+                    <path d="M60 66C51 68 46 75 46 84s5 15 14 17h3V66z" fill="#0f8a7d"/>
+                    <rect x="66" y="106" width="15" height="17" rx="7.5" fill="#0f8a7d"/>
+                    <rect x="85" y="106" width="15" height="17" rx="7.5" fill="#0f8a7d"/>
+                    <path d="M78 44c-15 0-25 10-25 24v25c0 9 6 14 15 14h19c9 0 15-5 15-14V68c0-14-10-24-24-24z" fill="url(#cBean)"/>
+                    <ellipse cx="88" cy="67" rx="16" ry="11.5" fill="#eafcff" stroke="#0a1a24" stroke-width="2.6"/>
+                    <path d="M76 62c4.4-2.8 11-3.2 15-1.6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
                   </g>
                   <g>
-                    <circle cx="141" cy="30" r="16" fill="#f2c33c" stroke="#6b4a09" stroke-width="2.6"/>
-                    <circle cx="141" cy="30" r="11.6" fill="none" stroke="#ffeaa4" stroke-width="2" opacity=".8"/>
-                    <path d="M141 23.5v13M134.5 30h13" stroke="#5b3c05" stroke-width="3.6" stroke-linecap="round"/>
+                    <circle cx="176" cy="34" r="19" fill="url(#cPlus)" stroke="#5d3d05" stroke-width="2.8"/>
+                    <circle cx="176" cy="34" r="13.4" fill="none" stroke="#fff3bf" stroke-width="2" opacity=".75"/>
+                    <path d="M176 25v18M167 34h18" stroke="#5d3d05" stroke-width="4.4" stroke-linecap="round"/>
                   </g>
                 </svg>
-              </span>
-              <span class="sp-bar">أنشئ غرفة</span>
-            </button>
-            <button class="sp-card" id="auFindCard">
-              <span class="sp-art">
-                <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                </span>
+                <span class="sp-bar">أنشئ غرفة</span>
+              </button>
+              <button class="sp-card" id="auOnlineCard">
+                <span class="sp-art">
+                  <svg viewBox="0 0 220 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
                   <defs>
-                    <linearGradient id="auLapTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6f4fb"/><stop offset="1" stop-color="#9db9ca"/></linearGradient>
-                    <linearGradient id="auScreen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7bf5e0"/><stop offset="1" stop-color="#2b7f9c"/></linearGradient>
-                    <linearGradient id="auBeanB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fe08a"/><stop offset="1" stop-color="#2f9a4a"/></linearGradient>
-                    <linearGradient id="auBeanC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fb6ff"/><stop offset="1" stop-color="#4157c4"/></linearGradient>
+                    <linearGradient id="oSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#10303f"/><stop offset="1" stop-color="#050d15"/></linearGradient>
+                    <radialGradient id="oGlow" cx=".5" cy=".45" r=".7"><stop offset="0" stop-color="#59f2d6" stop-opacity=".34"/><stop offset="1" stop-color="#59f2d6" stop-opacity="0"/></radialGradient>
+                    <linearGradient id="oDesk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ea7b8"/><stop offset="1" stop-color="#4b6474"/></linearGradient>
+                    <linearGradient id="oScreen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8ffbe6"/><stop offset=".6" stop-color="#2ea7b8"/><stop offset="1" stop-color="#1d5f83"/></linearGradient>
+                    <linearGradient id="oBeanA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a6f2a0"/><stop offset="1" stop-color="#2f9445"/></linearGradient>
+                    <linearGradient id="oBeanB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#aebeff"/><stop offset="1" stop-color="#3f4fc4"/></linearGradient>
+                    <linearGradient id="oBeanC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd08a"/><stop offset="1" stop-color="#dd7a1b"/></linearGradient>
                   </defs>
-                  <rect width="200" height="140" fill="#0a1a26"/>
-                  <circle cx="100" cy="52" r="58" fill="#12363f" opacity=".6"/>
-                  <ellipse cx="100" cy="124" rx="84" ry="13" fill="#14303c" opacity=".75"/>
-                  <g stroke="#0c1c28" stroke-width="2.2" stroke-linejoin="round">
-                    <path d="M74 84h68l9 20H65z" fill="url(#auLapTop)"/>
-                    <rect x="80" y="46" width="54" height="39" rx="5" fill="url(#auScreen)"/>
-                    <path d="M86 74c6-14 16-19 30-16" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".55"/>
-                    <rect x="92" y="85" width="30" height="4" rx="2" fill="#7e9aac" stroke="none"/>
+                  <rect width="220" height="150" fill="url(#oSky)"/>
+                  <rect width="220" height="150" fill="url(#oGlow)"/>
+                  <g opacity=".5" fill="#dff7ff"><circle cx="20" cy="18" r="1.4"/><circle cx="200" cy="14" r="1.2"/><circle cx="188" cy="40" r="1"/><circle cx="34" cy="44" r="1"/></g>
+                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
+                    <rect x="70" y="52" width="80" height="52" rx="7" fill="url(#oScreen)"/>
+                    <path d="M80 94c8-20 20-26 40-22" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" opacity=".5"/>
+                    <rect x="60" y="104" width="100" height="12" rx="6" fill="url(#oDesk)"/>
+                    <rect x="104" y="116" width="12" height="14" rx="3" fill="#6d8798"/>
                   </g>
-                  <g stroke="#0c1c28" stroke-width="2.4" stroke-linejoin="round">
-                    <path d="M34 70C28 72 25 77 25 83s3 11 9 12h2V70z" fill="#1f6b34"/>
-                    <rect x="39" y="98" width="11" height="13" rx="5.5" fill="#1f6b34"/>
-                    <rect x="52" y="98" width="11" height="13" rx="5.5" fill="#1f6b34"/>
-                    <path d="M47 53c-11 0-18 8-18 18v18c0 7 4 10 11 10h14c7 0 11-3 11-10V71c0-10-7-18-18-18z" fill="url(#auBeanB)"/>
-                    <ellipse cx="55" cy="70" rx="11.6" ry="8.2" fill="#e9fbff" stroke="#0c1c28" stroke-width="2.3"/>
-                    <path d="M47 67c3-2 7.6-2.4 10.8-1.2" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round"/>
+                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
+                    <path d="M36 76c-6 1.6-9 6-9 11.4s3 9.8 9 11h1.6V76z" fill="#1f7a33"/>
+                    <rect x="41" y="102" width="11" height="13" rx="5.5" fill="#1f7a33"/>
+                    <rect x="54" y="102" width="11" height="13" rx="5.5" fill="#1f7a33"/>
+                    <path d="M49 58c-10 0-17 7-17 16v15c0 6 4 9 10 9h13c6 0 10-3 10-9V74c0-9-7-16-16-16z" fill="url(#oBeanA)"/>
+                    <ellipse cx="57" cy="74" rx="11" ry="8" fill="#eafcff" stroke="#0a1a24" stroke-width="2.4"/>
                   </g>
-                  <g stroke="#0c1c28" stroke-width="2.4" stroke-linejoin="round">
-                    <path d="M154 62c-7 2-10 7-10 13s3 11 10 12h1V62z" fill="#33429c"/>
-                    <rect x="158" y="88" width="11" height="13" rx="5.5" fill="#33429c"/>
-                    <rect x="171" y="88" width="11" height="13" rx="5.5" fill="#33429c"/>
-                    <path d="M166 45c-11 0-18 8-18 18v17c0 7 4 10 11 10h13c7 0 11-3 11-10V63c0-10-7-18-17-18z" fill="url(#auBeanC)"/>
-                    <ellipse cx="174" cy="61" rx="11.2" ry="8" fill="#e9fbff" stroke="#0c1c28" stroke-width="2.3"/>
+                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
+                    <path d="M184 76c-6 1.6-9 6-9 11.4s3 9.8 9 11h1.6V76z" fill="#2c3796"/>
+                    <rect x="186" y="102" width="11" height="13" rx="5.5" fill="#2c3796"/>
+                    <rect x="199" y="102" width="11" height="13" rx="5.5" fill="#2c3796"/>
+                    <path d="M194 58c-10 0-17 7-17 16v15c0 6 4 9 10 9h13c6 0 10-3 10-9V74c0-9-7-16-16-16z" fill="url(#oBeanB)"/>
+                    <ellipse cx="202" cy="74" rx="11" ry="8" fill="#eafcff" stroke="#0a1a24" stroke-width="2.4"/>
                   </g>
-                  <g>
-                    <circle cx="120" cy="46" r="15" fill="#0a1a26" opacity=".45"/>
-                    <circle cx="118" cy="44" r="11" fill="none" stroke="#f4fbff" stroke-width="3.4"/>
-                    <path d="M126 52l7 7" stroke="#f4fbff" stroke-width="4.4" stroke-linecap="round"/>
-                    <circle cx="118" cy="44" r="8" fill="#8ff2e2" opacity=".35"/>
+                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
+                    <rect x="96" y="86" width="13" height="13" rx="6" fill="#b4620f"/>
+                    <rect x="112" y="86" width="13" height="13" rx="6" fill="#b4620f"/>
+                    <path d="M110 58c-9 0-15 6-15 15v10c0 7 4 10 9 10h12c5 0 9-3 9-10V73c0-9-6-15-15-15z" fill="url(#oBeanC)" transform="translate(0,4)"/>
+                    <ellipse cx="117" cy="74" rx="10" ry="7.2" fill="#f8feff" stroke="#0a1a24" stroke-width="2.4"/>
+                  </g>
+                  <g fill="#3ff08a" stroke="#0a1a24" stroke-width="1.8">
+                    <circle cx="44" cy="52" r="4"/><circle cx="190" cy="48" r="4"/>
+                  </g>
+                  <g stroke="#7bf5d9" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".85">
+                    <path d="M152 30a16 16 0 0 1 20 0"/><path d="M147 24a24 24 0 0 1 30 0"/><path d="M157 36a8 8 0 0 1 10 0"/>
                   </g>
                 </svg>
-              </span>
-              <span class="sp-bar">FIND GAME</span>
-            </button>
+                </span>
+                <span class="sp-bar">ONLINE</span>
+              </button>
+              <button class="sp-card" id="auCodeCard">
+                <span class="sp-art">
+                  <svg viewBox="0 0 220 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="kSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12303f"/><stop offset="1" stop-color="#050d15"/></linearGradient>
+                    <linearGradient id="kPanel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfeef8"/><stop offset="1" stop-color="#8ea7b9"/></linearGradient>
+                    <linearGradient id="kKey" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4fbff"/><stop offset="1" stop-color="#b3c8d8"/></linearGradient>
+                    <linearGradient id="kSlot" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ffbe6"/><stop offset="1" stop-color="#1b8f92"/></linearGradient>
+                    <linearGradient id="kBean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b6f7a6"/><stop offset="1" stop-color="#2f9445"/></linearGradient>
+                  </defs>
+                  <rect width="220" height="150" fill="url(#kSky)"/>
+                  <g opacity=".45" fill="#dff7ff"><circle cx="24" cy="20" r="1.4"/><circle cx="196" cy="18" r="1.2"/><circle cx="178" cy="128" r="1"/><circle cx="40" cy="132" r="1.1"/></g>
+                  <ellipse cx="110" cy="141" rx="90" ry="13" fill="#0a2634" opacity=".8"/>
+                  <g stroke="#0a1a24" stroke-width="2.8" stroke-linejoin="round">
+                    <rect x="46" y="30" width="128" height="102" rx="12" fill="url(#kPanel)"/>
+                    <rect x="58" y="42" width="104" height="26" rx="7" fill="#0d2432"/>
+                  </g>
+                  <g stroke="#0a1a24" stroke-width="2" fill="url(#kSlot)">
+                    <rect x="64" y="49" width="13" height="12" rx="3"/>
+                    <rect x="82" y="49" width="13" height="12" rx="3"/>
+                    <rect x="100" y="49" width="13" height="12" rx="3"/>
+                    <rect x="118" y="49" width="13" height="12" rx="3"/>
+                    <rect x="136" y="49" width="13" height="12" rx="3" fill="#22495c"/>
+                  </g>
+                  <g stroke="#0a1a24" stroke-width="2" fill="url(#kKey)">
+                    <rect x="62" y="78" width="26" height="16" rx="5"/><rect x="96" y="78" width="26" height="16" rx="5"/><rect x="130" y="78" width="26" height="16" rx="5"/>
+                    <rect x="62" y="100" width="26" height="16" rx="5"/><rect x="96" y="100" width="26" height="16" rx="5"/><rect x="130" y="100" width="26" height="16" rx="5"/>
+                  </g>
+                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
+                    <path d="M26 92c-5 1.4-7.6 5-7.6 9.6s2.6 8.4 7.6 9.4h1.4V92z" fill="#1f7a33"/>
+                    <rect x="30" y="114" width="10" height="12" rx="5" fill="#1f7a33"/>
+                    <rect x="42" y="114" width="10" height="12" rx="5" fill="#1f7a33"/>
+                    <path d="M40 76c-9 0-15 6-15 14v12c0 6 4 9 9 9h11c5 0 9-3 9-9V90c0-8-6-14-14-14z" fill="url(#kBean)" transform="translate(-10,2)"/>
+                    <ellipse cx="33" cy="92" rx="9.6" ry="7" fill="#eafcff" stroke="#0a1a24" stroke-width="2.3"/>
+                    <path d="M26 87c3-2 8-2.4 11-1.2" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+                  </g>
+                  <path d="M44 78h14" stroke="#7bf5d9" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 5" opacity=".8"/>
+                </svg>
+                </span>
+                <span class="sp-bar">ENTER CODE</span>
+              </button>
+            </div>
+            <div class="sp-join" id="auJoinBox">
+              <input id="auCode" maxlength="6" placeholder="ABC123" aria-label="كود الغرفة">
+              <button id="auJoin">دخول</button>
+            </div>
           </div>
-          <div class="sp-join" id="auJoinBox">
-            <input id="auCode" maxlength="6" placeholder="ABC123" aria-label="كود الغرفة">
-            <button id="auJoin">انضم للغرفة</button>
+
+          <div class="sp-view" id="auViewSettings">
+            <div class="sp-head">
+              <button class="sp-back" id="auSettingsBack" aria-label="رجوع">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="#dff8f4" stroke-width="3.4" stroke-linecap="round"/></svg>
+              </button>
+              <span class="sp-title">إعدادات الغرفة</span>
+            </div>
+            <div class="sp-rows" id="auSettingRows"></div>
+            <button class="sp-go" id="auCreateRoom">أنشئ الغرفة</button>
           </div>
+
+          <div class="sp-view" id="auViewOnline">
+            <div class="sp-head">
+              <button class="sp-back" id="auOnlineBack" aria-label="رجوع">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="#dff8f4" stroke-width="3.4" stroke-linecap="round"/></svg>
+              </button>
+              <span class="sp-title">غرف أونلاين</span>
+              <button class="sp-mini" id="auRefresh">تحديث</button>
+            </div>
+            <div class="sp-rooms" id="auRoomList"></div>
+          </div>
+
           <label class="sp-name"><span>اسمك</span><input id="auName" maxlength="18" placeholder="اكتب اسمك"></label>
-        </div>
+        </div></div>
       </div>
     </div>
   </div>
@@ -981,6 +1108,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (name !== 'auMenu') {
       var panel = el('auSpacePlay');
       if (panel) panel.classList.remove('on');
+      if (typeof stopOnline === 'function') stopOnline();
     }
     ['auMenu','auLobby','auStage'].forEach(function(id){
       var node = el(id);
@@ -1126,6 +1254,110 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var node = el(id);
     if (node) node.classList.remove('on');
   }
+  /* ---------- the play screens inside the launch window ---------- */
+  var ROOM_RULES = {
+    maxPlayers: { label: 'عدد اللاعبين', values: [6, 8, 10] },
+    impostors: { label: 'المزوّرين', values: [0, 1, 2, 3], names: { 0: 'تلقائي' } },
+    tasks: { label: 'مهام لكل لاعب', values: [3, 4, 5] },
+    killCooldownMs: { label: 'تبريد القتل', values: [15000, 25000, 40000], names: { 15000: '15 ثانية', 25000: '25 ثانية', 40000: '40 ثانية' } },
+    meetingMs: { label: 'مدة الاجتماع', values: [30000, 45000, 60000], names: { 30000: '30 ثانية', 45000: '45 ثانية', 60000: '60 ثانية' } }
+  };
+  var roomDraft = { maxPlayers: 10, impostors: 0, tasks: 5, killCooldownMs: 25000, meetingMs: 45000 };
+  var onlineTimer = 0;
+
+  function showView(id){
+    ['auViewPick', 'auViewSettings', 'auViewOnline'].forEach(function(viewId){
+      var node = el(viewId);
+      if (!node) return;
+      if (viewId === id) node.classList.add('on'); else node.classList.remove('on');
+    });
+    if (id !== 'auViewOnline') stopOnline();
+    if (id !== 'auViewPick') el('auJoinBox').classList.remove('on');
+  }
+
+  function renderRuleRows(){
+    var host = el('auSettingRows');
+    if (!host) return;
+    host.innerHTML = Object.keys(ROOM_RULES).map(function(key){
+      var rule = ROOM_RULES[key];
+      return '<div class="sp-row" data-row="' + key + '"><span>' + rule.label + '</span><div class="sp-opts">' +
+        rule.values.map(function(value){
+          var label = (rule.names && rule.names[value]) || String(value);
+          return '<button class="sp-opt' + (roomDraft[key] === value ? ' on' : '') + '" data-key="' + key + '" data-value="' + value + '">' + label + '</button>';
+        }).join('') + '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call(host.querySelectorAll('[data-key]'), function(node){
+      node.addEventListener('click', function(){
+        roomDraft[node.getAttribute('data-key')] = Number(node.getAttribute('data-value'));
+        if (roomDraft.impostors > Math.floor(roomDraft.maxPlayers / 3)) roomDraft.impostors = 0;
+        renderRuleRows();
+        beep();
+      });
+    });
+  }
+
+  function createRoom(){
+    if (!(el('auName').value || '').trim() && profile.name) el('auName').value = profile.name;
+    api('/rooms', { action: 'create', name: readName(), color: profile.color, settings: roomDraft }).then(function(res){
+      if (!res.ok) return toast(res.error || 'تعذّر إنشاء الغرفة');
+      AU.code = res.code; AU.token = res.token;
+      history.replaceState(null, '', '?code=' + res.code);
+      applyRoom(res.room);
+    });
+  }
+
+  function joinByCode(code){
+    if (!code || code.length < 4) return toast('اكتب كود الغرفة');
+    if (!(el('auName').value || '').trim() && profile.name) el('auName').value = profile.name;
+    api('/rooms/' + code, { action: 'join', name: readName(), code: code, color: profile.color }).then(function(res){
+      if (!res.ok) return toast(res.error || 'ما گدرنا ندخل');
+      AU.code = res.code; AU.token = res.token;
+      history.replaceState(null, '', '?code=' + res.code);
+      applyRoom(res.room);
+    });
+  }
+
+  function stopOnline(){
+    if (onlineTimer) { clearInterval(onlineTimer); onlineTimer = 0; }
+  }
+
+  function renderRooms(list){
+    var host = el('auRoomList');
+    if (!host) return;
+    if (!list.length) {
+      host.innerHTML = '<div class="sp-empty">ماكو غرف مفتوحة هسه<br>سوِّ غرفة وشارك الكود ويا ربعك</div>';
+      return;
+    }
+    host.innerHTML = list.map(function(room){
+      var busy = !room.joinable;
+      var count = room.players + '/' + room.maxPlayers;
+      var impostors = room.settings && room.settings.impostors ? room.settings.impostors : 'تلقائي';
+      return '<button class="sp-room' + (busy ? ' busy' : '') + '" data-code="' + room.code + '"' + (busy ? ' disabled' : '') + '>' +
+        '<span class="code">' + room.code + '</span>' +
+        '<span class="who"><b>' + esc(room.host || 'مضيف') + '</b><small>' +
+          (room.phase === 'lobby' ? 'بالانتظار · مزوّرين ' + impostors : 'المباراة شغّالة') + '</small></span>' +
+        '<span class="n">' + count + '</span></button>';
+    }).join('');
+    Array.prototype.forEach.call(host.querySelectorAll('[data-code]'), function(node){
+      node.addEventListener('click', function(){ joinByCode(node.getAttribute('data-code')); });
+    });
+  }
+
+  function loadRooms(){
+    fetch('/api/amongus/rooms').then(function(r){ return r.json(); }).then(function(res){
+      if (!el('auViewOnline').classList.contains('on')) return;
+      renderRooms((res && res.rooms) || []);
+    }).catch(function(){});
+  }
+
+  function openOnline(){
+    showView('auViewOnline');
+    el('auRoomList').innerHTML = '<div class="sp-empty">نبحث عن الغرف…</div>';
+    loadRooms();
+    stopOnline();
+    onlineTimer = setInterval(loadRooms, 2500);
+  }
+
   function openPlay(){
     var panel = el('auSpacePlay');
     if (!panel) return;
@@ -1133,11 +1365,14 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var hint = el('auSpaceHint');
     if (hint) hint.style.opacity = '0';
     el('auJoinBox').classList.remove('on');
+    showView('auViewPick');
+    renderRuleRows();
     beep();
   }
   function closePlay(){
     var panel = el('auSpacePlay');
     if (panel) panel.classList.remove('on');
+    stopOnline();
     var hint = el('auSpaceHint');
     if (hint) hint.style.opacity = profile.hints ? '0.8' : '0';
   }
@@ -1148,10 +1383,17 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     };
     el('auPlayBtn').addEventListener('click', openPlay);
     el('auPlayBack').addEventListener('click', closePlay);
-    el('auFindCard').addEventListener('click', function(){
+    el('auCreate').addEventListener('click', function(){ showView('auViewSettings'); renderRuleRows(); beep(); });
+    el('auSettingsBack').addEventListener('click', function(){ showView('auViewPick'); });
+    el('auCreateRoom').addEventListener('click', createRoom);
+    el('auOnlineCard').addEventListener('click', function(){ beep(); openOnline(); });
+    el('auOnlineBack').addEventListener('click', function(){ showView('auViewPick'); });
+    el('auRefresh').addEventListener('click', loadRooms);
+    el('auCodeCard').addEventListener('click', function(){
       var box = el('auJoinBox');
       box.classList.toggle('on');
       if (box.classList.contains('on')) { beep(); el('auCode').focus(); }
+      else el('auCode').value = '';
     });
     Object.keys(openers).forEach(function(buttonId){
       var button = el(buttonId);
@@ -1249,24 +1491,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     });
   }
 
-  el('auCreate').addEventListener('click', function(){
-    if (!(el('auName').value || '').trim() && profile.name) el('auName').value = profile.name;
-    api('/rooms', { action:'create', name: readName(), color: profile.color }).then(function(res){
-      if (!res.ok) return toast(res.error || 'تعذّر إنشاء الغرفة');
-      AU.code = res.code; AU.token = res.token;
-      history.replaceState(null, '', '?code=' + res.code);
-      applyRoom(res.room);
-    });
-  });
   el('auJoin').addEventListener('click', function(){
-    var code = (el('auCode').value || '').trim().toUpperCase();
-    if (code.length < 4) return toast('اكتب كود الغرفة');
-    api('/rooms/' + code, { action:'join', name: readName(), code:code, color: profile.color }).then(function(res){
-      if (!res.ok) return toast(res.error || 'ما گدرنا ندخل');
-      AU.code = res.code; AU.token = res.token;
-      history.replaceState(null, '', '?code=' + res.code);
-      applyRoom(res.room);
-    });
+    joinByCode((el('auCode').value || '').trim().toUpperCase());
+  });
+  el('auCode').addEventListener('keydown', function(event){
+    if (event.key === 'Enter') joinByCode((el('auCode').value || '').trim().toUpperCase());
   });
   el('auAddBot').addEventListener('click', function(){ act('addBot'); });
   el('auKickBot').addEventListener('click', function(){

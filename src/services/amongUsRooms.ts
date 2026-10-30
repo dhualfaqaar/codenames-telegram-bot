@@ -67,9 +67,20 @@ export interface AuLogEntry {
   text: string;
 }
 
+/** Host-chosen room rules. Every value is validated server side. */
+export interface AuSettings {
+  maxPlayers: number;
+  /** 0 means "auto": the engine scales impostors with the player count. */
+  impostors: number;
+  tasks: number;
+  killCooldownMs: number;
+  meetingMs: number;
+}
+
 export interface AuRoomState {
   code: string;
   hostToken: string;
+  settings?: AuSettings;
   phase: AuPhase;
   createdAt: number;
   updatedAt: number;
@@ -92,6 +103,47 @@ export const AU_KILL_COOLDOWN_MS = 25_000;
 export const AU_MEETING_MS = 45_000;
 export const AU_SABOTAGE_MS = 45_000;
 export const AU_PRESENCE_MS = 180_000;
+
+export const AU_DEFAULT_SETTINGS: AuSettings = {
+  maxPlayers: 10,
+  impostors: 0,
+  tasks: 5,
+  killCooldownMs: AU_KILL_COOLDOWN_MS,
+  meetingMs: AU_MEETING_MS
+};
+
+/** The only values the lobby offers, so a client can never send anything wild. */
+export const AU_SETTING_CHOICES = {
+  maxPlayers: [6, 8, 10],
+  impostors: [0, 1, 2, 3],
+  tasks: [3, 4, 5],
+  killCooldownMs: [15_000, 25_000, 40_000],
+  meetingMs: [30_000, 45_000, 60_000]
+} as const;
+
+export function sanitizeSettings(raw: unknown): AuSettings {
+  const input = (raw || {}) as Record<string, unknown>;
+  const pick = (value: unknown, list: readonly number[], fallback: number) => {
+    const parsed = Number(value);
+    return list.includes(parsed) ? parsed : fallback;
+  };
+  const settings: AuSettings = {
+    maxPlayers: pick(input.maxPlayers, AU_SETTING_CHOICES.maxPlayers, AU_DEFAULT_SETTINGS.maxPlayers),
+    impostors: pick(input.impostors, AU_SETTING_CHOICES.impostors, AU_DEFAULT_SETTINGS.impostors),
+    tasks: pick(input.tasks, AU_SETTING_CHOICES.tasks, AU_DEFAULT_SETTINGS.tasks),
+    killCooldownMs: pick(input.killCooldownMs, AU_SETTING_CHOICES.killCooldownMs, AU_DEFAULT_SETTINGS.killCooldownMs),
+    meetingMs: pick(input.meetingMs, AU_SETTING_CHOICES.meetingMs, AU_DEFAULT_SETTINGS.meetingMs)
+  };
+  // A ship always needs crew: one impostor per three seats at most.
+  if (settings.impostors > 0) {
+    settings.impostors = Math.min(settings.impostors, Math.max(1, Math.floor(settings.maxPlayers / 3)));
+  }
+  return settings;
+}
+
+export function roomSettings(room: AuRoomState): AuSettings {
+  return room.settings ? sanitizeSettings(room.settings) : { ...AU_DEFAULT_SETTINGS };
+}
 
 /** Colours are game pieces, so they carry their own hex value. */
 export const AU_COLORS: Array<{ id: string; hex: string; name: string }> = [
@@ -181,6 +233,8 @@ const EMERGENCY_POINT = { x: 50, y: 12 };
 const CAFETERIA_SPAWN = { x: 50, y: 17 };
 
 const ROOM_KEY = (code: string) => `amongus-room:${code}`;
+const ROOM_INDEX_KEY = 'amongus-rooms:index';
+const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const BOT_NAMES = ['بوت نجم', 'بوت صقر', 'بوت ظل', 'بوت نور', 'بوت بحر', 'بوت جبل', 'بوت سهم', 'بوت رعد'];
@@ -244,9 +298,9 @@ function taskForStation(station: (typeof AU_MAP.stations)[number], index: number
   return { id: `${station.id}-${index}`, kind: station.kind, station: station.id, label: station.label, done: false };
 }
 
-function dealTasks(): AuTask[] {
+function dealTasks(count = AU_TASKS_PER_PLAYER): AuTask[] {
   return shuffle(AU_MAP.stations)
-    .slice(0, AU_TASKS_PER_PLAYER)
+    .slice(0, Math.max(1, Math.min(count, AU_MAP.stations.length)))
     .map((station, index) => taskForStation(station, index));
 }
 
@@ -331,7 +385,8 @@ function checkWin(room: AuRoomState): boolean {
 }
 
 function startMatch(room: AuRoomState): void {
-  const players = room.players.slice(0, AU_MAX_PLAYERS);
+  const settings = roomSettings(room);
+  const players = room.players.slice(0, settings.maxPlayers);
   room.players = players;
   room.phase = 'playing';
   room.winner = null;
@@ -342,17 +397,21 @@ function startMatch(room: AuRoomState): void {
   room.lastMeeting = null;
   room.round = 1;
   room.log = [];
-  const impostors = impostorCount(players.length);
+  const wantedImpostors = settings.impostors > 0 ? settings.impostors : impostorCount(players.length);
+  const impostors = Math.max(
+    1,
+    Math.min(wantedImpostors, Math.max(1, Math.floor((players.length - 1) / 2)))
+  );
   const order = shuffle(players.map((_, index) => index));
   const impostorIndexes = new Set(order.slice(0, impostors));
   players.forEach((player, index) => {
     player.role = impostorIndexes.has(index) ? 'impostor' : 'crew';
     player.alive = true;
-    player.tasks = player.role === 'crew' ? dealTasks() : [];
+    player.tasks = player.role === 'crew' ? dealTasks(settings.tasks) : [];
     player.x = CAFETERIA_SPAWN.x + (Math.random() * 10 - 5);
     player.y = CAFETERIA_SPAWN.y + (Math.random() * 6 - 3);
     player.emergencyUsed = false;
-    player.lastKillAt = Date.now() - AU_KILL_COOLDOWN_MS;
+    player.lastKillAt = Date.now() - settings.killCooldownMs;
     player.votesGiven = false;
     player.target = null;
     player.nextThinkAt = 0;
@@ -369,7 +428,7 @@ function crewTaskProgress(room: AuRoomState): { done: number; total: number } {
 function startMeeting(room: AuRoomState, reason: 'report' | 'emergency', calledBy: string): void {
   const now = Date.now();
   room.phase = 'meeting';
-  room.meeting = { reason, calledBy, startedAt: now, endsAt: now + AU_MEETING_MS, votes: {} };
+  room.meeting = { reason, calledBy, startedAt: now, endsAt: now + roomSettings(room).meetingMs, votes: {} };
   room.players.forEach(player => {
     player.votesGiven = false;
     if (player.alive) {
@@ -449,7 +508,7 @@ function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
 
   if (bot.role === 'impostor') {
     const victim = nearestAliveCrew(room, bot, 6.5);
-    if (victim && now - bot.lastKillAt > AU_KILL_COOLDOWN_MS) {
+    if (victim && now - bot.lastKillAt > roomSettings(room).killCooldownMs) {
       victim.alive = false;
       bot.lastKillAt = now;
       room.bodies.push({ playerId: victim.token, name: victim.name, color: victim.color, x: victim.x, y: victim.y, room: roomAt(victim.x, victim.y), at: now });
@@ -585,6 +644,7 @@ export interface AuPublicRoom {
   canStart: boolean;
   minPlayers: number;
   maxPlayers: number;
+  settings: AuSettings;
   log: AuLogEntry[];
   now: number;
 }
@@ -647,11 +707,12 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
     progress,
     killCooldownLeftMs:
       viewer && viewer.role === 'impostor'
-        ? Math.max(0, AU_KILL_COOLDOWN_MS - (now - viewer.lastKillAt))
+        ? Math.max(0, roomSettings(room).killCooldownMs - (now - viewer.lastKillAt))
         : 0,
     canStart: room.phase === 'lobby' && room.players.length >= AU_MIN_START,
     minPlayers: AU_MIN_START,
-    maxPlayers: AU_MAX_PLAYERS,
+    maxPlayers: roomSettings(room).maxPlayers,
+    settings: roomSettings(room),
     log: room.log.slice(-12),
     now
   };
@@ -674,6 +735,57 @@ export class AmongUsRooms {
     if (!/^[A-Z0-9]{4,6}$/.test(key)) return null;
     const room = await this.storage.get<AuRoomState>(ROOM_KEY(key));
     return room || null;
+  }
+
+  /** Newest-first codes of every room this worker has opened (pruned on read). */
+  private async readIndex(): Promise<string[]> {
+    const list = await this.storage.get<string[]>(ROOM_INDEX_KEY);
+    return Array.isArray(list) ? list.filter(entry => typeof entry === 'string') : [];
+  }
+
+  private async addToIndex(code: string): Promise<void> {
+    const list = await this.readIndex();
+    if (list.includes(code)) return;
+    list.unshift(code);
+    await this.storage.put(ROOM_INDEX_KEY, list.slice(0, 60));
+  }
+
+  /**
+   * The online lobby browser. It never leaks tokens: a room is described by its
+   * code, host name, head count and rules only.
+   */
+  async listRooms(): Promise<Response> {
+    const now = Date.now();
+    const codes = await this.readIndex();
+    const live: string[] = [];
+    const rooms: Array<Record<string, unknown>> = [];
+    for (const code of codes) {
+      const room = await this.load(code);
+      if (!room) continue;
+      if (tick(room)) await this.save(room);
+      const age = now - room.updatedAt;
+      if (age > ROOM_TTL_MS) continue;
+      if (room.phase === 'ended' && age > 5 * 60 * 1000) continue;
+      live.push(code);
+      const settings = roomSettings(room);
+      rooms.push({
+        code: room.code,
+        host: room.players.find(player => player.token === room.hostToken)?.name || room.players[0]?.name || '',
+        players: room.players.length,
+        maxPlayers: settings.maxPlayers,
+        phase: room.phase,
+        joinable: room.phase === 'lobby' && room.players.length < settings.maxPlayers,
+        settings,
+        createdAt: room.createdAt
+      });
+    }
+    if (live.length !== codes.length) await this.storage.put(ROOM_INDEX_KEY, live);
+    rooms.sort((a, b) =>
+      a.joinable === b.joinable
+        ? Number(b.createdAt) - Number(a.createdAt)
+        : Number(b.joinable) - Number(a.joinable)
+    );
+    return json({ ok: true, rooms: rooms.slice(0, 12), now });
   }
 
   private async save(room: AuRoomState): Promise<void> {
@@ -699,7 +811,8 @@ export class AmongUsRooms {
       if (parts[0] !== 'api' || parts[1] !== 'amongus') return fail('not found', 404);
 
       if (request.method === 'GET') {
-        const code = parts[3] || url.searchParams.get('code') || '';
+        const code = String(parts[3] || url.searchParams.get('code') || '').toUpperCase();
+        if (!code) return await this.listRooms();
         const room = await this.load(code);
         if (!room) return fail('الغرفة غير موجودة أو انتهت', 404);
         const viewer = url.searchParams.get('token') || '';
@@ -714,6 +827,7 @@ export class AmongUsRooms {
         const code = randomCode();
         const room: AuRoomState = {
           code,
+          settings: sanitizeSettings(body.settings),
           hostToken: '',
           phase: 'lobby',
           createdAt: Date.now(),
@@ -734,6 +848,7 @@ export class AmongUsRooms {
         room.hostToken = host.token;
         log(room, 'انفتحت غرفة جديدة');
         await this.save(room);
+        await this.addToIndex(code);
         return json({ ok: true, code, token: host.token, room: publicRoom(room, host.token) });
       }
 
@@ -743,7 +858,8 @@ export class AmongUsRooms {
 
       if (action === 'join') {
         if (room.phase !== 'lobby') return fail('المباراة بدت — انتظر الجولة الجاية');
-        if (room.players.length >= AU_MAX_PLAYERS) return fail('الغرفة فلّت (10 لاعبين)');
+        const limit = roomSettings(room).maxPlayers;
+        if (room.players.length >= limit) return fail(`الغرفة فلّت (${limit} لاعبين)`);
         const player = makePlayer(body.name || 'لاعب', false, room, String(body.color || ''));
         room.players.push(player);
         log(room, `انضم ${player.name}`);
@@ -759,7 +875,7 @@ export class AmongUsRooms {
       switch (action) {
         case 'addBot': {
           if (room.phase !== 'lobby') return fail('ما يصير تضيف بوت بعد البداية');
-          if (room.players.length >= AU_MAX_PLAYERS) return fail('الغرفة فلّت');
+          if (room.players.length >= roomSettings(room).maxPlayers) return fail('الغرفة فلّت');
           if (me.token !== room.hostToken) return fail('المضيف بس يضيف بوتات');
           const used = new Set(room.players.map(player => player.name));
           const name = BOT_NAMES.find(candidate => !used.has(candidate)) || `بوت ${room.players.length + 1}`;
@@ -823,7 +939,7 @@ export class AmongUsRooms {
         case 'kill': {
           if (me.role !== 'impostor') return fail('المزوّر بس يقتل');
           if (room.phase !== 'playing' || !me.alive) break;
-          if (Date.now() - me.lastKillAt < AU_KILL_COOLDOWN_MS) return fail('القتل بعده ما جاهز');
+          if (Date.now() - me.lastKillAt < roomSettings(room).killCooldownMs) return fail('القتل بعده ما جاهز');
           const target = room.players.find(player => player.token === String(body.target || ''));
           if (!target || !target.alive || target.role === 'impostor') return fail('هدف غير صالح');
           if (distance(me, target) > 7) return fail('قريب من الهدف أول');
