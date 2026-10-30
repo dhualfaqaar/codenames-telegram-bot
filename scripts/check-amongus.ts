@@ -262,7 +262,7 @@ check(
   JSON.stringify(Array.from(new Set(html.match(/[\u{1F000}-\u{1FAFF}\u2699\uFE0F\u2B00-\u2BFF]/gu) || [])))
 );
 const inlineScripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]);
-check('سكربت الصفحة يوزن صح', inlineScripts.length === 1 && inlineScripts[0].length > 10_000);
+check('سكربت الصفحة يوزن صح', inlineScripts.length === 2 && inlineScripts[0].includes('window.GameSfx = {') && inlineScripts[1].length > 10_000);
 for (const source of inlineScripts) {
   let syntaxOk = true;
   try {

@@ -25,7 +25,9 @@
     "test:amongus": "tsx scripts/check-amongus.ts",
     "test:amongus:dom": "node scripts/check-amongus-dom.mjs",
     "test:audio": "tsx scripts/check-audio-formats.ts",
-    "test:voice": "tsx scripts/check-voice-delivery.ts"
+    "test:voice": "tsx scripts/check-voice-delivery.ts",
+    "test:sfx": "tsx scripts/check-game-sfx.ts",
+    "test:sfx:dom": "node scripts/check-game-sfx-dom.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
