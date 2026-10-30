@@ -72,8 +72,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 #auMenu{display:none;direction:ltr;padding:0}
 #auMenu.on{display:block}
 .menu-shell{
-  width:min(100%,1000px);margin:0 auto;display:grid;grid-template-rows:auto minmax(0,1fr);
-  gap:10px;min-height:calc(100dvh - 16px)
+  width:100%;max-width:1600px;margin:0 auto;display:grid;grid-template-rows:auto minmax(0,1fr);
+  gap:10px;min-height:calc(100dvh - 28px)
 }
 .au-top{display:flex;align-items:center;gap:10px}
 .au-player{
@@ -84,16 +84,20 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .au-player .dot{width:11px;height:11px;border-radius:50%;background:#3ff08a;box-shadow:0 0 10px #3ff08a;flex:none}
 .au-player b{color:#eafffb;font-size:14px;font-weight:900;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .au-friends{
-  margin-inline-start:auto;min-height:46px;padding:0 22px;border-radius:10px;
+  display:flex;align-items:center;gap:9px;
+  margin-inline-start:auto;min-height:46px;padding:0 20px;border-radius:10px;
   background:linear-gradient(180deg,#3d8d92,#255f66);border:3px solid #0b3335;color:#dff8f4;
   font-size:15px;font-weight:900;letter-spacing:2px;box-shadow:0 4px 0 #062220,inset 0 2px 0 #ffffff33
 }
+.au-friends svg{width:40px;height:27px;flex:none}
 .au-friends:active{transform:translateY(3px);box-shadow:0 1px 0 #062220}
 .au-body{
-  display:grid;grid-template-columns:clamp(180px,26%,270px) minmax(0,1fr);
-  gap:14px;min-height:0;align-items:stretch
+  display:grid;grid-template-columns:clamp(196px,20%,286px) minmax(0,1fr);
+  gap:16px;min-height:0;align-items:stretch
 }
-.au-left{display:flex;flex-direction:column;gap:10px;min-width:0}
+/* the original title screen: menu stacked on the left, window filling the rest */
+.au-left{display:flex;flex-direction:column;gap:10px;min-width:0;padding-top:2px}
+.au-version{margin-top:auto}
 .wordmark{display:block;width:min(100%,300px);height:auto;margin:2px 0 0}
 .wordmark text{
   font-family:"Comic Sans MS","Segoe Print","Bradley Hand","Marker Felt",cursive;
@@ -114,8 +118,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   content:"";position:absolute;inset:-30% -12%;pointer-events:none;
   background:repeating-linear-gradient(112deg,#ffffff38 0 13px,#ffffff00 13px 36px)
 }
-.menu-btn .ico{position:relative;width:40px;height:40px;display:grid;place-items:center;flex:none;transform:skewX(14deg)}
-.menu-btn .ico svg{width:34px;height:34px}
+.menu-btn .ico{position:relative;width:42px;height:42px;display:grid;place-items:center;flex:none;transform:skewX(14deg)}
+.menu-btn .ico svg{width:38px;height:38px;overflow:visible}
+.menu-btn.small .ico{width:30px;height:30px}
 .menu-btn .lbl{
   position:relative;flex:1;text-align:right;transform:skewX(14deg);
   color:#ffffff;font-size:clamp(17px,2.4vw,23px);font-weight:900;letter-spacing:1.6px;
@@ -128,9 +133,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .menu-btn.small .ico svg{width:24px;height:24px}
 .au-version{color:#c7efe8;font-size:10px;letter-spacing:.7px;opacity:.72;padding:0 4px}
 .space-box{
-  position:relative;width:100%;height:100%;aspect-ratio:16/10;
-  min-height:min(46dvh,320px);max-height:min(70dvh,560px);
-  border-radius:16px;overflow:hidden;
+  position:relative;width:100%;height:100%;
+  min-height:min(62dvh,440px);max-height:none;
+  border-radius:18px;overflow:hidden;
   background:radial-gradient(circle at 60% 40%,#0a1226,#04060e 70%);
   border:6px solid #93a5a4;box-shadow:0 8px 0 #062220,inset 0 0 0 3px #2b3a3c,inset 0 0 70px #000
 }
@@ -142,7 +147,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @media(max-width:620px){
   .au-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:10px}
   /* The launch window comes first and owns most of the screen, always landscape. */
-  .space-box{order:-1;aspect-ratio:auto;height:min(54dvh,430px);min-height:190px;max-height:none}
+  .space-box{order:-1;height:min(56dvh,470px);min-height:200px;max-height:none}
   .wordmark{width:min(62%,190px)}
   .menu-btn{min-height:52px;margin:6px 0}
   .menu-btn .lbl{font-size:16px}
@@ -154,7 +159,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 }
 @media(max-width:620px) and (orientation:landscape){
   .au-body{grid-template-columns:minmax(120px,34%) minmax(0,1fr);grid-template-rows:auto}
-  .space-box{order:0;height:min(78dvh,420px)}
+  .space-box{order:0;height:min(82dvh,460px)}
   .wordmark{width:min(86%,150px)}
 }
 /* ---- menus inside dialogs ---- */
@@ -338,7 +343,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <span class="dot" aria-hidden="true"></span>
         <b id="auPlayerName">لاعب</b>
       </div>
-      <button class="au-friends" id="auFriendsBtn"><span>FRIENDS</span></button>
+      <button class="au-friends" id="auFriendsBtn">
+        <svg viewBox="0 0 52 34" aria-hidden="true">
+          <path d="M15 6C8 6 4 10.6 4 16.6v3.2C4 23.3 6.4 25 9.6 25h10.8c3.2 0 5.6-1.7 5.6-5.2v-3.2C26 10.6 22 6 15 6z" fill="#8ff2dc" stroke="#073b38" stroke-width="2.4" stroke-linejoin="round"/>
+          <ellipse cx="16.6" cy="15.4" rx="5.6" ry="4" fill="#eafcff" stroke="#073b38" stroke-width="1.9"/>
+          <path d="M37 9C29.8 9 26 13.8 26 20v3.4c0 3.6 2.4 5.4 5.6 5.4h10.8c3.2 0 5.6-1.8 5.6-5.4V20C48 13.8 44.2 9 37 9z" fill="#4fd6c3" stroke="#073b38" stroke-width="2.3" stroke-linejoin="round"/>
+          <ellipse cx="38.6" cy="18.8" rx="5.8" ry="4.1" fill="#d7f7ff" stroke="#073b38" stroke-width="1.9"/>
+        </svg><span>FRIENDS</span></button>
     </div>
     <div class="au-body">
       <div class="au-left">
@@ -350,21 +361,76 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         </svg>
         <div class="menu-panel">
           <button class="menu-btn" id="auPlayBtn">
-            <span class="ico"><svg viewBox="0 0 64 80" aria-hidden="true"><rect x="2" y="26" width="15" height="24" rx="7" fill="#7a0f0f"/><path d="M20 4h20a15 15 0 0 1 15 15v20a11 11 0 0 1-11 11h-4v15a7 7 0 0 1-14 0V50h-6A15 15 0 0 1 5 35V19A15 15 0 0 1 20 4z" fill="#d33a3a"/><ellipse cx="39" cy="25" rx="15" ry="11" fill="#a9e3f5"/><ellipse cx="39" cy="25" rx="15" ry="11" fill="none" stroke="#5c0b0b" stroke-width="2.6"/><ellipse cx="44" cy="21" rx="5" ry="3.4" fill="#f2fdff"/></svg></span><span class="lbl">PLAY</span>
+            <span class="ico"><svg viewBox="0 0 60 74" aria-hidden="true">
+              <defs>
+                <linearGradient id="auIcoPlay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8478"/><stop offset=".55" stop-color="#e23a38"/><stop offset="1" stop-color="#a91f26"/></linearGradient>
+                <linearGradient id="auIcoPlayVisor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#c4f0ff"/><stop offset="1" stop-color="#78c7e8"/></linearGradient>
+              </defs>
+              <ellipse cx="30" cy="69" rx="21" ry="3.4" fill="#3d0a0e" opacity=".5"/>
+              <path d="M13 27C7.5 29 5 33.5 5 39s2.5 10 8 12h1.5V27z" fill="#93181f" stroke="#2a0507" stroke-width="2.6" stroke-linejoin="round"/>
+              <rect x="17" y="51" width="13" height="13" rx="6" fill="#8f1a20" stroke="#2a0507" stroke-width="2.6"/>
+              <rect x="33" y="51" width="13" height="13" rx="6" fill="#8f1a20" stroke="#2a0507" stroke-width="2.6"/>
+              <path d="M32 4C21 4 12 13 12 26v14c0 8 5 12 13 12h14c8 0 13-4 13-12V24C52 12 43 4 32 4z" fill="url(#auIcoPlay)" stroke="#2a0507" stroke-width="2.8" stroke-linejoin="round"/>
+              <path d="M16 27c0-8 5-14 13-15" fill="none" stroke="#ffb9b0" stroke-width="2.6" stroke-linecap="round" opacity=".55"/>
+              <ellipse cx="35" cy="22" rx="14.5" ry="10.2" fill="url(#auIcoPlayVisor)" stroke="#2a0507" stroke-width="2.6"/>
+              <path d="M25.5 17.6c4-2.7 10-3.1 14-1.6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".92"/>
+            </svg></span><span class="lbl">PLAY</span>
           </button>
           <button class="menu-btn" id="auInventoryBtn">
-            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="14" width="34" height="28" rx="6" fill="#8a6a3a" stroke="#2a1d0d" stroke-width="3"/><path d="M15 14v-3a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v3" fill="none" stroke="#2a1d0d" stroke-width="3"/><path d="M7 26h34" stroke="#2a1d0d" stroke-width="3"/><rect x="20" y="23" width="8" height="8" rx="2" fill="#f0c14b" stroke="#2a1d0d" stroke-width="2"/></svg></span><span class="lbl">INVENTORY</span>
+            <span class="ico"><svg viewBox="0 0 56 56" aria-hidden="true">
+              <defs>
+                <linearGradient id="auIcoChest" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dda059"/><stop offset=".55" stop-color="#a86c2c"/><stop offset="1" stop-color="#74451a"/></linearGradient>
+                <linearGradient id="auIcoLid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8b273"/><stop offset="1" stop-color="#b57a37"/></linearGradient>
+                <linearGradient id="auIcoSteel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8f1f8"/><stop offset="1" stop-color="#8ea3b8"/></linearGradient>
+              </defs>
+              <ellipse cx="28" cy="50.5" rx="22" ry="3.2" fill="#241405" opacity=".4"/>
+              <rect x="5" y="23" width="46" height="25" rx="4" fill="url(#auIcoChest)" stroke="#241405" stroke-width="2.6"/>
+              <path d="M5 25c0-9 8-15 23-15s23 6 23 15z" fill="url(#auIcoLid)" stroke="#241405" stroke-width="2.6" stroke-linejoin="round"/>
+              <path d="M12 18c3.6-3.6 9-5.6 14.5-5.6" fill="none" stroke="#ffe0b4" stroke-width="2.4" stroke-linecap="round" opacity=".75"/>
+              <rect x="5" y="21.5" width="46" height="6" rx="2" fill="url(#auIcoSteel)" stroke="#241405" stroke-width="2.3"/>
+              <rect x="11" y="15" width="6" height="33" rx="1.8" fill="url(#auIcoSteel)" stroke="#241405" stroke-width="2.1"/>
+              <rect x="39" y="15" width="6" height="33" rx="1.8" fill="url(#auIcoSteel)" stroke="#241405" stroke-width="2.1"/>
+              <rect x="22" y="26" width="12" height="14" rx="3" fill="#f6cd63" stroke="#241405" stroke-width="2.3"/>
+              <circle cx="28" cy="31.5" r="2.3" fill="#241405"/>
+              <path d="M28 33.5v3.6" stroke="#241405" stroke-width="2.2" stroke-linecap="round"/>
+            </svg></span><span class="lbl">INVENTORY</span>
           </button>
           <button class="menu-btn" id="auShopBtn">
-            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="18" cy="30" r="12" fill="#f0c14b" stroke="#6b4e09" stroke-width="3"/><circle cx="18" cy="30" r="6" fill="#ffe9a8" stroke="#6b4e09" stroke-width="2"/><path d="M32 8l3.6 7.2 8 1.1-5.8 5.6 1.4 7.9L32 26l-7.2 3.8 1.4-7.9-5.8-5.6 8-1.1z" fill="#e05a5a" stroke="#5c1414" stroke-width="2.4"/></svg></span><span class="lbl">SHOP</span>
+            <span class="ico"><svg viewBox="0 0 56 56" aria-hidden="true">
+              <defs>
+                <linearGradient id="auIcoBag" x1="0" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#ffe89b"/><stop offset=".5" stop-color="#f2b63a"/><stop offset="1" stop-color="#c07d15"/></linearGradient>
+                <linearGradient id="auIcoCoin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffbe4"/><stop offset=".55" stop-color="#ffd95c"/><stop offset="1" stop-color="#e9a915"/></linearGradient>
+              </defs>
+              <ellipse cx="26" cy="50" rx="19" ry="3.2" fill="#241405" opacity=".4"/>
+              <path d="M19 17v-4a8 8 0 0 1 16 0v4" fill="none" stroke="#7a4a1e" stroke-width="3.4" stroke-linecap="round"/>
+              <path d="M12 16h26l3.2 30.4a4.2 4.2 0 0 1-4.2 4.6H13a4.2 4.2 0 0 1-4.2-4.6z" fill="url(#auIcoBag)" stroke="#241405" stroke-width="2.6" stroke-linejoin="round"/>
+              <path d="M12.6 23.5h24.8" stroke="#241405" stroke-width="2" opacity=".4"/>
+              <path d="M16.5 22.5 18 45.5" stroke="#fff8dd" stroke-width="2.6" stroke-linecap="round" opacity=".6"/>
+              <circle cx="43.5" cy="37.5" r="10" fill="url(#auIcoCoin)" stroke="#5e3f06" stroke-width="2.6"/>
+              <circle cx="43.5" cy="37.5" r="6.6" fill="none" stroke="#cf9410" stroke-width="1.6" opacity=".85"/>
+              <path d="M43.5 32.9l1.7 3.4 3.7.5-2.7 2.6.7 3.7-3.4-1.8-3.4 1.8.7-3.7-2.7-2.6 3.7-.5z" fill="#8a5c05" stroke="#5e3f06" stroke-width=".9" stroke-linejoin="round"/>
+              <path d="M38.2 32.7a7 7 0 0 1 4.6-3.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".75"/>
+            </svg></span><span class="lbl">SHOP</span>
           </button>
         </div>
         <div class="menu-panel">
           <button class="menu-btn small" id="auAccountBtn">
-            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="11" width="36" height="26" rx="5" fill="#cfe3f2" stroke="#12303a" stroke-width="3"/><circle cx="18" cy="24" r="6" fill="#7fb9dd" stroke="#12303a" stroke-width="2.4"/><path d="M28 20h9M28 26h9M28 31h6" stroke="#12303a" stroke-width="2.6" stroke-linecap="round"/></svg></span><span class="lbl">MY ACCOUNT</span>
+            <span class="ico"><svg viewBox="0 0 52 44" aria-hidden="true">
+              <defs><linearGradient id="auIcoCard" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfeff"/><stop offset="1" stop-color="#bcd4e6"/></linearGradient></defs>
+              <rect x="3.5" y="6" width="45" height="32" rx="5" fill="url(#auIcoCard)" stroke="#12303a" stroke-width="2.6"/>
+              <path d="M3.5 11.5A5.5 5.5 0 0 1 9 6h34a5.5 5.5 0 0 1 5.5 5.5V15h-45z" fill="#3f8fe0" stroke="#12303a" stroke-width="2.4"/>
+              <circle cx="17" cy="24" r="6.6" fill="#8ec6e6" stroke="#12303a" stroke-width="2.4"/>
+              <path d="M24.5 22h15M24.5 27.5h15M24.5 33h9" stroke="#3a5d74" stroke-width="2.4" stroke-linecap="round" opacity=".8"/>
+            </svg></span><span class="lbl">MY ACCOUNT</span>
           </button>
           <button class="menu-btn small" id="auSettingsBtn">
-            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M20 6h8l1.6 5.2a14 14 0 0 1 4 2.3l5.2-1.6 4 6.9-3.8 3.7a14 14 0 0 1 0 4.6L42.8 31l-4 6.9-5.2-1.6a14 14 0 0 1-4 2.3L28 44h-8l-1.6-5.4a14 14 0 0 1-4-2.3L9.2 38l-4-6.9 3.8-3.7a14 14 0 0 1 0-4.6L5.2 19l4-6.9 5.2 1.6a14 14 0 0 1 4-2.3z" fill="#8fb6c9" stroke="#12303a" stroke-width="2.6" stroke-linejoin="round"/><circle cx="24" cy="24" r="6.5" fill="#0e3b3c" stroke="#12303a" stroke-width="2.6"/></svg></span><span class="lbl">SETTINGS</span>
+            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true">
+              <defs><linearGradient id="auIcoGear" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eaf3fa"/><stop offset="1" stop-color="#93aec3"/></linearGradient></defs>
+              <path d="M20 6h8l1.6 5.2a14 14 0 0 1 4 2.3l5.2-1.6 4 6.9-3.8 3.7a14 14 0 0 1 0 4.6L42.8 31l-4 6.9-5.2-1.6a14 14 0 0 1-4 2.3L28 44h-8l-1.6-5.4a14 14 0 0 1-4-2.3L9.2 38l-4-6.9 3.8-3.7a14 14 0 0 1 0-4.6L5.2 19l4-6.9 5.2 1.6a14 14 0 0 1 4-2.3z" fill="url(#auIcoGear)" stroke="#12303a" stroke-width="2.6" stroke-linejoin="round"/>
+              <circle cx="24" cy="24" r="7.4" fill="#0e3b3c" stroke="#12303a" stroke-width="2.6"/>
+              <circle cx="24" cy="24" r="7.4" fill="none" stroke="#ffffff" stroke-width="1.2" opacity=".25"/>
+              <path d="M17 15.5c2-3 5.2-4.6 8.6-4.8" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".55"/>
+            </svg></span><span class="lbl">SETTINGS</span>
           </button>
         </div>
         <div class="au-version">امونق اس · v1 · build 2026-11</div>

@@ -124,10 +124,31 @@ check(
 );
 check('ماكو دائرة فلوس داخل الفضاء', !html.includes('+1') && !html.includes('space.coins'));
 check(
-  'مربع الفضاء أفقي ويهيمن على الشاشة',
-  /\.space-box\{[^}]*aspect-ratio:16\/10/.test(html) &&
-    /\.space-box\{[^}]*height:100%/.test(html) &&
-    html.includes('height:min(54dvh,430px)')
+  'مربع الفضاء ياخذ كل المساحة ويطول لتحت',
+  /\.space-box\{[^}]*height:100%/.test(html) &&
+    /\.space-box\{[^}]*min-height:min\(62dvh,440px\)/.test(html) &&
+    !/\.space-box\{[^}]*max-height:\(min/.test(html) &&
+    html.includes('height:min(56dvh,470px)')
+);
+check(
+  'القائمة عمود على اليسار والفضاء ياخذ الباقي',
+  /\.au-body\{[^}]*grid-template-columns:clamp\(196px,20%,286px\) minmax\(0,1fr\)/.test(html) &&
+    html.includes('max-width:1600px')
+);
+check(
+  'أيقونات PLAY و INVENTORY و SHOP مرسومة بتدرّجات وتفاصيل',
+  ['auIcoPlay', 'auIcoPlayVisor', 'auIcoChest', 'auIcoLid', 'auIcoSteel', 'auIcoBag', 'auIcoCoin'].every(id => html.includes(`id="${id}"`)) &&
+    html.includes('id="auIcoCard"') &&
+    html.includes('id="auIcoGear"') &&
+    html.includes('auFriendsBtn')
+);
+check(
+  'ماكو إيموجي بأزرار القائمة',
+  !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(
+    ['auPlayBtn', 'auInventoryBtn', 'auShopBtn', 'auAccountBtn', 'auSettingsBtn', 'auFriendsBtn']
+      .map(id => html.slice(html.indexOf(`id="${id}"`), html.indexOf(`id="${id}"`) + 1600))
+      .join('')
+  )
 );
 
 check('الصفحة تشحن كانفس الخريطة', html.includes('id="auCanvas"') && html.includes('getContext(\'2d\')'));
