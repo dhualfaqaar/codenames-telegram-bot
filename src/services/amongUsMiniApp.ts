@@ -203,22 +203,44 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 }
 .sp-back svg{width:18px;height:18px}
 .sp-back:active{transform:translateY(3px);box-shadow:0 1px 0 #052a28}
-.sp-cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;direction:ltr}
+/* right = ONLINE, middle = create (a touch larger), left = enter code */
+.sp-cards{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1.14fr 1fr;gap:12px;direction:ltr;align-items:stretch}
 .sp-card{
   position:relative;display:flex;flex-direction:column;overflow:hidden;cursor:pointer;padding:0;
-  border-radius:14px;background:#0a1a26;border:4px solid #8fa6b4;
-  box-shadow:0 6px 0 #04101a,inset 0 0 0 2px #33485a;
-  transition:transform .09s,box-shadow .09s,border-color .09s
+  border-radius:16px;background:linear-gradient(180deg,#122c3a,#081722);
+  border:3px solid #6f8798;
+  box-shadow:0 7px 0 #04101a,0 12px 22px #0006,
+    inset 0 0 0 3px #0a1a26,inset 0 0 0 5px #2b4254,inset 0 2px 0 #ffffff1f;
+  transition:transform .1s,box-shadow .1s,border-color .1s
 }
-.sp-card:hover{transform:translateY(-3px);border-color:#cfe6ee;box-shadow:0 9px 0 #04101a,inset 0 0 0 2px #4a6478}
-.sp-card:active{transform:translateY(2px);box-shadow:0 3px 0 #04101a,inset 0 0 0 2px #33485a}
-.sp-art{position:relative;flex:1;min-height:0;overflow:hidden;display:block;background:radial-gradient(circle at 50% 35%,#16323f,#080f17 78%)}
+.sp-card:before{
+  content:"";position:absolute;inset:0;border-radius:14px;pointer-events:none;z-index:2;
+  background:linear-gradient(160deg,#ffffff26 0%,#ffffff00 34%,#00000000 70%,#00000040 100%)
+}
+.sp-card:after{
+  content:"";position:absolute;left:0;right:0;top:0;height:38%;pointer-events:none;z-index:2;
+  background:linear-gradient(180deg,#ffffff1a,#ffffff00)
+}
+.sp-card.big{border-color:#9fe6da;box-shadow:0 9px 0 #04101a,0 16px 26px #0007,
+  inset 0 0 0 3px #0a1a26,inset 0 0 0 5px #3c6a72,inset 0 2px 0 #ffffff26}
+.sp-card:hover{transform:translateY(-4px);border-color:#d6eef6;box-shadow:0 11px 0 #04101a,0 18px 28px #0008,
+  inset 0 0 0 3px #0a1a26,inset 0 0 0 5px #4a6478,inset 0 2px 0 #ffffff2e}
+.sp-card:active{transform:translateY(3px);box-shadow:0 3px 0 #04101a,0 6px 12px #0006,
+  inset 0 0 0 3px #0a1a26,inset 0 0 0 5px #33485a}
+.sp-art{position:relative;flex:1;min-height:0;overflow:hidden;display:block;background:#081624}
+.sp-art:after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 80% at 50% 0%,#ffffff14,#00000000 55%),
+             linear-gradient(0deg,#03101a99,#00000000 45%)
+}
 .sp-art svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .sp-bar{
-  flex:none;display:block;padding:8px 6px;text-align:center;color:#08302f;
-  font-size:clamp(12px,1.7vw,20px);font-weight:900;letter-spacing:2px;
-  background:linear-gradient(180deg,#7dfdf0,#22d6bd 55%,#0aa392);
-  border-top:3px solid #073b38;text-shadow:0 1px 0 #ffffff66
+  position:relative;z-index:3;flex:none;display:block;padding:9px 8px 10px;text-align:center;color:#052b27;
+  font-size:clamp(12px,1.55vw,19px);font-weight:900;letter-spacing:2px;
+  background:linear-gradient(180deg,#9ffdf1,#2fdcc1 52%,#0aa392);
+  border-top:3px solid #06302c;
+  box-shadow:inset 0 2px 0 #ffffff80,inset 0 -3px 0 #06776b,0 -4px 10px #0005;
+  text-shadow:0 1px 0 #ffffff99
 }
 .sp-join{display:none;flex:none;gap:8px;align-items:center;direction:rtl}
 .sp-join.on{display:flex}
@@ -233,11 +255,18 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   box-shadow:0 4px 0 #0a2a18
 }
 .sp-join button:active{transform:translateY(3px);box-shadow:0 1px 0 #0a2a18}
-.sp-name{display:flex;flex:none;align-items:center;gap:8px;direction:rtl;color:#c7efe8;font-size:12px;font-weight:800}
-.sp-name input{
-  flex:1;min-width:0;height:38px;border-radius:9px;padding:0 10px;direction:rtl;
-  background:#0b1a2e;border:3px solid #1f3350;color:#dff8f4;font-size:13px;font-weight:700
+/* who you are: read-only, taken from the Telegram account */
+.sp-me{
+  flex:none;display:flex;align-items:center;gap:9px;padding:6px 12px 6px 8px;border-radius:11px;direction:rtl;
+  background:linear-gradient(180deg,#123c3c,#0a2a2b);border:2px solid #1f5a58;box-shadow:0 4px 0 #052a28,inset 0 2px 0 #ffffff1a
 }
+.sp-me-ico{width:26px;height:32px;flex:none;display:grid;place-items:center}
+.sp-me-ico svg{width:100%;height:100%}
+.sp-me-txt{flex:1;min-width:0;display:block}
+.sp-me-txt small{display:block;color:#8fbeb8;font-size:10px;font-weight:800;letter-spacing:.4px}
+.sp-me-txt b{display:block;color:#eafffb;font-size:14px;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-lock{width:22px;height:22px;flex:none;display:grid;place-items:center;opacity:.9}
+.sp-lock svg{width:100%;height:100%}
 @media(max-width:620px){
   .space-play{padding:9px;gap:8px}
   .sp-cards{gap:9px}
@@ -551,139 +580,23 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
               <span class="sp-title">PLAY</span>
             </div>
             <div class="sp-cards">
-              <button class="sp-card" id="auCreate">
+              <button class="sp-card" id="auCodeCard">
                 <span class="sp-art">
-                  <svg viewBox="0 0 220 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="cSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#123a52"/><stop offset="1" stop-color="#050d15"/></linearGradient>
-                    <radialGradient id="cSpot" cx=".5" cy=".1" r=".9"><stop offset="0" stop-color="#7ff2e0" stop-opacity=".38"/><stop offset="1" stop-color="#7ff2e0" stop-opacity="0"/></radialGradient>
-                    <linearGradient id="cDoor" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6f2fa"/><stop offset=".5" stop-color="#a9c0d0"/><stop offset="1" stop-color="#6b8497"/></linearGradient>
-                    <linearGradient id="cDoorIn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6f86"/><stop offset="1" stop-color="#0b2230"/></linearGradient>
-                    <linearGradient id="cBean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ffbee"/><stop offset=".55" stop-color="#46e3cd"/><stop offset="1" stop-color="#12a394"/></linearGradient>
-                    <linearGradient id="cPlus" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6c9"/><stop offset=".5" stop-color="#f7c945"/><stop offset="1" stop-color="#d99a14"/></linearGradient>
-                  </defs>
-                  <rect width="220" height="150" fill="url(#cSky)"/>
-                  <rect width="220" height="150" fill="url(#cSpot)"/>
-                  <g opacity=".55" fill="#dff7ff">
-                    <circle cx="26" cy="22" r="1.6"/><circle cx="52" cy="14" r="1.1"/><circle cx="186" cy="26" r="1.4"/>
-                    <circle cx="168" cy="12" r="1"/><circle cx="204" cy="48" r="1.2"/><circle cx="14" cy="52" r="1.1"/>
-                  </g>
-                  <ellipse cx="110" cy="140" rx="96" ry="15" fill="#0a2634" opacity=".85"/>
-                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
-                    <rect x="104" y="26" width="86" height="112" rx="9" fill="url(#cDoor)"/>
-                    <rect x="114" y="36" width="66" height="90" rx="6" fill="url(#cDoorIn)"/>
-                    <path d="M118 122 176 40" stroke="#6fe6d0" stroke-width="5" opacity=".35"/>
-                    <rect x="110" y="24" width="74" height="8" rx="4" fill="#c8dbe7" stroke="#0a1a24" stroke-width="2.2"/>
-                    <circle cx="176" cy="88" r="4.2" fill="#f7c945" stroke="#0a1a24" stroke-width="2"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2.8" stroke-linejoin="round">
-                    <path d="M60 66C51 68 46 75 46 84s5 15 14 17h3V66z" fill="#0f8a7d"/>
-                    <rect x="66" y="106" width="15" height="17" rx="7.5" fill="#0f8a7d"/>
-                    <rect x="85" y="106" width="15" height="17" rx="7.5" fill="#0f8a7d"/>
-                    <path d="M78 44c-15 0-25 10-25 24v25c0 9 6 14 15 14h19c9 0 15-5 15-14V68c0-14-10-24-24-24z" fill="url(#cBean)"/>
-                    <ellipse cx="88" cy="67" rx="16" ry="11.5" fill="#eafcff" stroke="#0a1a24" stroke-width="2.6"/>
-                    <path d="M76 62c4.4-2.8 11-3.2 15-1.6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-                  </g>
-                  <g>
-                    <circle cx="176" cy="34" r="19" fill="url(#cPlus)" stroke="#5d3d05" stroke-width="2.8"/>
-                    <circle cx="176" cy="34" r="13.4" fill="none" stroke="#fff3bf" stroke-width="2" opacity=".75"/>
-                    <path d="M176 25v18M167 34h18" stroke="#5d3d05" stroke-width="4.4" stroke-linecap="round"/>
-                  </g>
-                </svg>
+                  <svg viewBox="0 0 260 170" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="skyk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#143246"/><stop offset=".62" stop-color="#0a1725"/><stop offset="1" stop-color="#04070e"/></linearGradient><radialGradient id="glowk" cx=".5" cy=".62" r=".62"><stop offset="0" stop-color="#37e6c8" stop-opacity=".42"/><stop offset=".55" stop-color="#37e6c8" stop-opacity=".12"/><stop offset="1" stop-color="#37e6c8" stop-opacity="0"/></radialGradient><linearGradient id="beank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b6f7a6"/><stop offset=".55" stop-color="#46b95c"/><stop offset="1" stop-color="#1d6b2f"/></linearGradient><linearGradient id="visorGlass" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#c9f2ff"/><stop offset="1" stop-color="#6fb8d8"/></linearGradient><linearGradient id="metalk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2f8fd"/><stop offset=".5" stop-color="#9fb6c7"/><stop offset="1" stop-color="#4c6274"/></linearGradient><linearGradient id="scank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ffbee"/><stop offset="1" stop-color="#12a08f"/></linearGradient></defs><rect width="260" height="170" fill="url(#skyk)"/><rect width="260" height="170" fill="url(#glowk)"/><g fill="#dff7ff" opacity=".55"><circle cx="24" cy="24" r="1.5"/><circle cx="56" cy="16" r="1"/><circle cx="214" cy="30" r="1.3"/><circle cx="236" cy="64" r="1"/><circle cx="18" cy="86" r="1"/></g><ellipse cx="130" cy="146" rx="112" ry="13" fill="#0a2230" opacity=".9"/><ellipse cx="130" cy="143" rx="86" ry="8" fill="#0d2d3e" opacity=".65"/><g stroke="#0a121c" stroke-linejoin="round"><rect x="92" y="20" width="134" height="118" rx="14" fill="url(#metalk)" stroke-width="3.2"/><rect x="102" y="30" width="114" height="34" rx="8" fill="#08151f" stroke-width="3"/><rect x="102" y="70" width="114" height="58" rx="9" fill="#dbe8f2" stroke-width="2.6"/></g><g><rect x="110" y="38" width="15" height="18" rx="4" fill="url(#scank)" stroke="#0a121c" stroke-width="2"/><rect x="129" y="38" width="15" height="18" rx="4" fill="url(#scank)" stroke="#0a121c" stroke-width="2"/><rect x="148" y="38" width="15" height="18" rx="4" fill="url(#scank)" stroke="#0a121c" stroke-width="2"/><rect x="167" y="38" width="15" height="18" rx="4" fill="url(#scank)" stroke="#0a121c" stroke-width="2"/><rect x="186" y="38" width="15" height="18" rx="4" fill="url(#scank)" stroke="#0a121c" stroke-width="2"/><rect x="205" y="38" width="5" height="18" rx="2" fill="#2a4b5c" stroke="#0a121c" stroke-width="1.6"/></g><g fill="#f7fbff" stroke="#0a121c" stroke-width="2"><rect x="110" y="79" width="28" height="17" rx="5"/><rect x="145" y="79" width="28" height="17" rx="5"/><rect x="180" y="79" width="28" height="17" rx="5"/><rect x="110" y="103" width="28" height="17" rx="5"/><rect x="145" y="103" width="28" height="17" rx="5"/><rect x="180" y="103" width="28" height="17" rx="5"/></g><g transform="translate(28.0,54.0) scale(0.8333)"><ellipse cx="50" cy="114" rx="34" ry="7" fill="#04070d" opacity=".55"/><path d="M16 34C6 36 2 47 2 58c0 12 4 21 14 22h2V34z" fill="#1d6b2f" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><rect x="20" y="86" width="25" height="19" rx="9.5" fill="#1d6b2f" stroke="#0a121c" stroke-width="3.4"/><rect x="47" y="86" width="25" height="19" rx="9.5" fill="#1d6b2f" stroke="#0a121c" stroke-width="3.4"/><path d="M46 10C23 10 9 26 9 48v28c0 11 7 18 18 18h30c11 0 18-7 18-18V42C75 23 64 10 46 10z" fill="url(#beank)" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><path d="M20 34c6-10 16-16 28-16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".28"/><ellipse cx="53" cy="41" rx="26" ry="19" fill="url(#visorGlass)" stroke="#0a121c" stroke-width="3.4"/><path d="M34 33c7-5 20-6 27-3" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity=".9"/></g><path d="M96 92h12" stroke="#8ffbec" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 5" opacity=".9"/><circle cx="118" cy="92" r="3.4" fill="#8ffbec" opacity=".9"/></svg>
                 </span>
-                <span class="sp-bar">أنشئ غرفة</span>
+                <span class="sp-bar">ENTER CODE</span>
+              </button>
+              <button class="sp-card big" id="auCreate">
+                <span class="sp-art">
+                  <svg viewBox="0 0 260 170" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="skyc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#123a4e"/><stop offset=".62" stop-color="#081524"/><stop offset="1" stop-color="#04070e"/></linearGradient><radialGradient id="glowc" cx=".5" cy=".62" r=".62"><stop offset="0" stop-color="#45f0d8" stop-opacity=".42"/><stop offset=".55" stop-color="#45f0d8" stop-opacity=".12"/><stop offset="1" stop-color="#45f0d8" stop-opacity="0"/></radialGradient><linearGradient id="beanc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8fbf0"/><stop offset=".55" stop-color="#43e0c8"/><stop offset="1" stop-color="#0e8b7e"/></linearGradient><linearGradient id="visorGlass" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#c9f2ff"/><stop offset="1" stop-color="#6fb8d8"/></linearGradient><linearGradient id="metalc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4fbff"/><stop offset=".5" stop-color="#a9c1d1"/><stop offset="1" stop-color="#4c6274"/></linearGradient><linearGradient id="scanc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ffbee"/><stop offset="1" stop-color="#12a08f"/></linearGradient></defs><rect width="260" height="170" fill="url(#skyc)"/><rect width="260" height="170" fill="url(#glowc)"/><g fill="#dff7ff" opacity=".55"><circle cx="18" cy="28" r="1.4"/><circle cx="48" cy="14" r="1"/><circle cx="96" cy="22" r="1.2"/><circle cx="232" cy="20" r="1.1"/><circle cx="246" cy="58" r="1"/></g><ellipse cx="130" cy="148" rx="118" ry="14" fill="#0a2634" opacity=".9"/><ellipse cx="130" cy="145" rx="92" ry="9" fill="#0d2d3e" opacity=".65"/><path d="M150 150l84-4 0-6-84-4z" fill="#7ff2e0" opacity=".18"/><g stroke="#0a121c" stroke-linejoin="round"><rect x="146" y="8" width="106" height="134" rx="16" fill="url(#metalc)" stroke-width="3.4"/><circle cx="199" cy="74" r="46" fill="#08222e" stroke-width="3.4"/><circle cx="199" cy="74" r="46" fill="none" stroke="#6ff0dc" stroke-width="2.4" opacity=".55"/><circle cx="199" cy="74" r="35" fill="#0b3340" stroke-width="2.8"/></g><circle cx="199" cy="74" r="29" fill="#0f4655" opacity=".95"/><path d="M181 60c5-8 14-13 24-13" fill="none" stroke="#a8fbf0" stroke-width="4.5" stroke-linecap="round" opacity=".5"/><g stroke="#8ffbec" stroke-width="3" stroke-linecap="round" opacity=".75"><path d="M180 74h9M209 74h9M199 55v-9M199 102v9"/></g><circle cx="199" cy="74" r="7" fill="#8ffbec" opacity=".85"/><circle cx="238" cy="118" r="6" fill="#f7c945" stroke="#0a121c" stroke-width="2.4"/><g transform="translate(30.0,48.0) scale(0.8800)"><ellipse cx="50" cy="114" rx="34" ry="7" fill="#04070d" opacity=".55"/><path d="M16 34C6 36 2 47 2 58c0 12 4 21 14 22h2V34z" fill="#0e8b7e" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><rect x="20" y="86" width="25" height="19" rx="9.5" fill="#0e8b7e" stroke="#0a121c" stroke-width="3.4"/><rect x="47" y="86" width="25" height="19" rx="9.5" fill="#0e8b7e" stroke="#0a121c" stroke-width="3.4"/><path d="M46 10C23 10 9 26 9 48v28c0 11 7 18 18 18h30c11 0 18-7 18-18V42C75 23 64 10 46 10z" fill="url(#beanc)" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><path d="M20 34c6-10 16-16 28-16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".28"/><ellipse cx="53" cy="41" rx="26" ry="19" fill="url(#visorGlass)" stroke="#0a121c" stroke-width="3.4"/><path d="M34 33c7-5 20-6 27-3" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity=".9"/></g><g><circle cx="126" cy="30" r="18" fill="#0a121c" opacity=".5"/><circle cx="126" cy="28" r="17" fill="#f7c945" stroke="#0a121c" stroke-width="3"/><circle cx="126" cy="28" r="11.6" fill="none" stroke="#fff3bf" stroke-width="1.8" opacity=".8"/><path d="M126 20v16M118 28h16" stroke="#5d3d05" stroke-width="4.2" stroke-linecap="round"/></g></svg>
+                </span>
+                <span class="sp-bar">CREATE ROOM</span>
               </button>
               <button class="sp-card" id="auOnlineCard">
                 <span class="sp-art">
-                  <svg viewBox="0 0 220 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="oSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#10303f"/><stop offset="1" stop-color="#050d15"/></linearGradient>
-                    <radialGradient id="oGlow" cx=".5" cy=".45" r=".7"><stop offset="0" stop-color="#59f2d6" stop-opacity=".34"/><stop offset="1" stop-color="#59f2d6" stop-opacity="0"/></radialGradient>
-                    <linearGradient id="oDesk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ea7b8"/><stop offset="1" stop-color="#4b6474"/></linearGradient>
-                    <linearGradient id="oScreen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8ffbe6"/><stop offset=".6" stop-color="#2ea7b8"/><stop offset="1" stop-color="#1d5f83"/></linearGradient>
-                    <linearGradient id="oBeanA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a6f2a0"/><stop offset="1" stop-color="#2f9445"/></linearGradient>
-                    <linearGradient id="oBeanB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#aebeff"/><stop offset="1" stop-color="#3f4fc4"/></linearGradient>
-                    <linearGradient id="oBeanC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd08a"/><stop offset="1" stop-color="#dd7a1b"/></linearGradient>
-                  </defs>
-                  <rect width="220" height="150" fill="url(#oSky)"/>
-                  <rect width="220" height="150" fill="url(#oGlow)"/>
-                  <g opacity=".5" fill="#dff7ff"><circle cx="20" cy="18" r="1.4"/><circle cx="200" cy="14" r="1.2"/><circle cx="188" cy="40" r="1"/><circle cx="34" cy="44" r="1"/></g>
-                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
-                    <rect x="70" y="52" width="80" height="52" rx="7" fill="url(#oScreen)"/>
-                    <path d="M80 94c8-20 20-26 40-22" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" opacity=".5"/>
-                    <rect x="60" y="104" width="100" height="12" rx="6" fill="url(#oDesk)"/>
-                    <rect x="104" y="116" width="12" height="14" rx="3" fill="#6d8798"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
-                    <path d="M36 76c-6 1.6-9 6-9 11.4s3 9.8 9 11h1.6V76z" fill="#1f7a33"/>
-                    <rect x="41" y="102" width="11" height="13" rx="5.5" fill="#1f7a33"/>
-                    <rect x="54" y="102" width="11" height="13" rx="5.5" fill="#1f7a33"/>
-                    <path d="M49 58c-10 0-17 7-17 16v15c0 6 4 9 10 9h13c6 0 10-3 10-9V74c0-9-7-16-16-16z" fill="url(#oBeanA)"/>
-                    <ellipse cx="57" cy="74" rx="11" ry="8" fill="#eafcff" stroke="#0a1a24" stroke-width="2.4"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
-                    <path d="M184 76c-6 1.6-9 6-9 11.4s3 9.8 9 11h1.6V76z" fill="#2c3796"/>
-                    <rect x="186" y="102" width="11" height="13" rx="5.5" fill="#2c3796"/>
-                    <rect x="199" y="102" width="11" height="13" rx="5.5" fill="#2c3796"/>
-                    <path d="M194 58c-10 0-17 7-17 16v15c0 6 4 9 10 9h13c6 0 10-3 10-9V74c0-9-7-16-16-16z" fill="url(#oBeanB)"/>
-                    <ellipse cx="202" cy="74" rx="11" ry="8" fill="#eafcff" stroke="#0a1a24" stroke-width="2.4"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
-                    <rect x="96" y="86" width="13" height="13" rx="6" fill="#b4620f"/>
-                    <rect x="112" y="86" width="13" height="13" rx="6" fill="#b4620f"/>
-                    <path d="M110 58c-9 0-15 6-15 15v10c0 7 4 10 9 10h12c5 0 9-3 9-10V73c0-9-6-15-15-15z" fill="url(#oBeanC)" transform="translate(0,4)"/>
-                    <ellipse cx="117" cy="74" rx="10" ry="7.2" fill="#f8feff" stroke="#0a1a24" stroke-width="2.4"/>
-                  </g>
-                  <g fill="#3ff08a" stroke="#0a1a24" stroke-width="1.8">
-                    <circle cx="44" cy="52" r="4"/><circle cx="190" cy="48" r="4"/>
-                  </g>
-                  <g stroke="#7bf5d9" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".85">
-                    <path d="M152 30a16 16 0 0 1 20 0"/><path d="M147 24a24 24 0 0 1 30 0"/><path d="M157 36a8 8 0 0 1 10 0"/>
-                  </g>
-                </svg>
+                  <svg viewBox="0 0 260 170" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="skyo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#15304c"/><stop offset=".62" stop-color="#0a1424"/><stop offset="1" stop-color="#04070e"/></linearGradient><radialGradient id="glowo" cx=".5" cy=".62" r=".62"><stop offset="0" stop-color="#4d7dff" stop-opacity=".42"/><stop offset=".55" stop-color="#4d7dff" stop-opacity=".12"/><stop offset="1" stop-color="#4d7dff" stop-opacity="0"/></radialGradient><linearGradient id="beano" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a9c2ff"/><stop offset=".55" stop-color="#4f66e8"/><stop offset="1" stop-color="#2b3aa8"/></linearGradient><linearGradient id="visorGlass" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#c9f2ff"/><stop offset="1" stop-color="#6fb8d8"/></linearGradient><linearGradient id="metalo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2f8fd"/><stop offset=".5" stop-color="#a3b9c9"/><stop offset="1" stop-color="#4c6274"/></linearGradient><linearGradient id="scano" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ffbee"/><stop offset="1" stop-color="#12a08f"/></linearGradient></defs><rect width="260" height="170" fill="url(#skyo)"/><rect width="260" height="170" fill="url(#glowo)"/><g fill="#dff7ff" opacity=".55"><circle cx="22" cy="22" r="1.5"/><circle cx="60" cy="12" r="1"/><circle cx="206" cy="18" r="1.2"/><circle cx="240" cy="74" r="1"/><circle cx="16" cy="64" r="1"/></g><ellipse cx="130" cy="150" rx="118" ry="13" fill="#0b1c31" opacity=".9"/><ellipse cx="130" cy="147" rx="92" ry="8" fill="#0d2d3e" opacity=".65"/><g transform="translate(20.0,46.0) scale(0.8667)"><ellipse cx="50" cy="114" rx="34" ry="7" fill="#04070d" opacity=".55"/><path d="M16 34C6 36 2 47 2 58c0 12 4 21 14 22h2V34z" fill="#2b3aa8" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><rect x="20" y="86" width="25" height="19" rx="9.5" fill="#2b3aa8" stroke="#0a121c" stroke-width="3.4"/><rect x="47" y="86" width="25" height="19" rx="9.5" fill="#2b3aa8" stroke="#0a121c" stroke-width="3.4"/><path d="M46 10C23 10 9 26 9 48v28c0 11 7 18 18 18h30c11 0 18-7 18-18V42C75 23 64 10 46 10z" fill="url(#beano)" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><path d="M20 34c6-10 16-16 28-16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".28"/><ellipse cx="53" cy="41" rx="26" ry="19" fill="url(#visorGlass)" stroke="#0a121c" stroke-width="3.4"/><path d="M34 33c7-5 20-6 27-3" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity=".9"/></g><g transform="translate(186.0,46.0) scale(0.8667)"><ellipse cx="50" cy="114" rx="34" ry="7" fill="#04070d" opacity=".55"/><path d="M16 34C6 36 2 47 2 58c0 12 4 21 14 22h2V34z" fill="#2b3aa8" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><rect x="20" y="86" width="25" height="19" rx="9.5" fill="#2b3aa8" stroke="#0a121c" stroke-width="3.4"/><rect x="47" y="86" width="25" height="19" rx="9.5" fill="#2b3aa8" stroke="#0a121c" stroke-width="3.4"/><path d="M46 10C23 10 9 26 9 48v28c0 11 7 18 18 18h30c11 0 18-7 18-18V42C75 23 64 10 46 10z" fill="url(#beano)" stroke="#0a121c" stroke-width="3.4" stroke-linejoin="round"/><path d="M20 34c6-10 16-16 28-16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".28"/><ellipse cx="53" cy="41" rx="26" ry="19" fill="url(#visorGlass)" stroke="#0a121c" stroke-width="3.4"/><path d="M34 33c7-5 20-6 27-3" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity=".9"/></g><g stroke="#0a121c" stroke-linejoin="round"><rect x="76" y="44" width="108" height="70" rx="9" fill="url(#metalo)" stroke-width="3.2"/><rect x="85" y="53" width="90" height="52" rx="6" fill="#0a2233" stroke-width="2.8"/><path d="M64 116h132l10 18H54z" fill="url(#metalo)" stroke-width="3"/><rect x="118" y="120" width="24" height="4" rx="2" fill="#7a94a6" stroke-width="1.6"/></g><g><rect x="93" y="61" width="74" height="12" rx="4" fill="#3ff08a" opacity=".85"/><rect x="97" y="64" width="20" height="6" rx="3" fill="#06281a"/><circle cx="160" cy="67" r="3" fill="#06281a"/><rect x="93" y="79" width="52" height="7" rx="3.5" fill="#8ffbec" opacity=".75"/><rect x="93" y="90" width="34" height="7" rx="3.5" fill="#8ffbec" opacity=".45"/><rect x="93" y="101" width="20" height="0" rx="0" fill="none"/></g><g fill="none" stroke="#7bf5d9" stroke-width="3" stroke-linecap="round" opacity=".9"><path d="M206 40a20 20 0 0 1 26 0"/><path d="M200 31a30 30 0 0 1 38 0"/></g><circle cx="219" cy="52" r="4" fill="#7bf5d9"/><g fill="#3ff08a" stroke="#0a121c" stroke-width="1.8"><circle cx="44" cy="52" r="4.4"/><circle cx="214" cy="92" r="4"/></g></svg>
                 </span>
                 <span class="sp-bar">ONLINE</span>
-              </button>
-              <button class="sp-card" id="auCodeCard">
-                <span class="sp-art">
-                  <svg viewBox="0 0 220 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="kSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12303f"/><stop offset="1" stop-color="#050d15"/></linearGradient>
-                    <linearGradient id="kPanel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfeef8"/><stop offset="1" stop-color="#8ea7b9"/></linearGradient>
-                    <linearGradient id="kKey" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4fbff"/><stop offset="1" stop-color="#b3c8d8"/></linearGradient>
-                    <linearGradient id="kSlot" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ffbe6"/><stop offset="1" stop-color="#1b8f92"/></linearGradient>
-                    <linearGradient id="kBean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b6f7a6"/><stop offset="1" stop-color="#2f9445"/></linearGradient>
-                  </defs>
-                  <rect width="220" height="150" fill="url(#kSky)"/>
-                  <g opacity=".45" fill="#dff7ff"><circle cx="24" cy="20" r="1.4"/><circle cx="196" cy="18" r="1.2"/><circle cx="178" cy="128" r="1"/><circle cx="40" cy="132" r="1.1"/></g>
-                  <ellipse cx="110" cy="141" rx="90" ry="13" fill="#0a2634" opacity=".8"/>
-                  <g stroke="#0a1a24" stroke-width="2.8" stroke-linejoin="round">
-                    <rect x="46" y="30" width="128" height="102" rx="12" fill="url(#kPanel)"/>
-                    <rect x="58" y="42" width="104" height="26" rx="7" fill="#0d2432"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2" fill="url(#kSlot)">
-                    <rect x="64" y="49" width="13" height="12" rx="3"/>
-                    <rect x="82" y="49" width="13" height="12" rx="3"/>
-                    <rect x="100" y="49" width="13" height="12" rx="3"/>
-                    <rect x="118" y="49" width="13" height="12" rx="3"/>
-                    <rect x="136" y="49" width="13" height="12" rx="3" fill="#22495c"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2" fill="url(#kKey)">
-                    <rect x="62" y="78" width="26" height="16" rx="5"/><rect x="96" y="78" width="26" height="16" rx="5"/><rect x="130" y="78" width="26" height="16" rx="5"/>
-                    <rect x="62" y="100" width="26" height="16" rx="5"/><rect x="96" y="100" width="26" height="16" rx="5"/><rect x="130" y="100" width="26" height="16" rx="5"/>
-                  </g>
-                  <g stroke="#0a1a24" stroke-width="2.6" stroke-linejoin="round">
-                    <path d="M26 92c-5 1.4-7.6 5-7.6 9.6s2.6 8.4 7.6 9.4h1.4V92z" fill="#1f7a33"/>
-                    <rect x="30" y="114" width="10" height="12" rx="5" fill="#1f7a33"/>
-                    <rect x="42" y="114" width="10" height="12" rx="5" fill="#1f7a33"/>
-                    <path d="M40 76c-9 0-15 6-15 14v12c0 6 4 9 9 9h11c5 0 9-3 9-9V90c0-8-6-14-14-14z" fill="url(#kBean)" transform="translate(-10,2)"/>
-                    <ellipse cx="33" cy="92" rx="9.6" ry="7" fill="#eafcff" stroke="#0a1a24" stroke-width="2.3"/>
-                    <path d="M26 87c3-2 8-2.4 11-1.2" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
-                  </g>
-                  <path d="M44 78h14" stroke="#7bf5d9" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 5" opacity=".8"/>
-                </svg>
-                </span>
-                <span class="sp-bar">ENTER CODE</span>
               </button>
             </div>
             <div class="sp-join" id="auJoinBox">
@@ -714,7 +627,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
             <div class="sp-rooms" id="auRoomList"></div>
           </div>
 
-          <label class="sp-name"><span>اسمك</span><input id="auName" maxlength="18" placeholder="اكتب اسمك"></label>
+          <div class="sp-me">
+            <span class="sp-me-ico" id="auMeBean" aria-hidden="true"></span>
+            <span class="sp-me-txt"><small>تلعب باسم حسابك</small><b id="auMeName">لاعب</b></span>
+            <span class="sp-lock" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="3" fill="#8ffbec" stroke="#073b38" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="#073b38" stroke-width="2.2"/></svg>
+            </span>
+          </div>
         </div></div>
       </div>
     </div>
@@ -744,8 +663,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <div class="dialog" style="direction:rtl">
     <h2>ملفي</h2>
     <div class="profile" id="auProfile"></div>
-    <label class="field" style="margin-top:12px"><span>اسم اللاعب</span><input id="auNameAccount" maxlength="18"></label>
-    <button class="btn block green" id="auSaveName"><span>احفظ الاسم</span></button>
+    <p class="hint">اسمك هو اسم حسابك بتليگرام — ما يتغيّر من هنا.</p>
     <button class="btn block dark" id="auAccClose" style="margin-top:10px"><span>رجوع</span></button>
   </div>
 </div>
@@ -1142,23 +1060,31 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function storageSet(key, value){
     try { localStorage.setItem(key, value); } catch (e) {}
   }
+  /**
+   * The player name is the Telegram account name (first + last), never the
+   * @username and never something typed here.
+   */
+  function tgAccountName(){
+    var user = null;
+    try { user = Telegram.WebApp.initDataUnsafe.user || null; } catch (e) {}
+    if (!user) return '';
+    var first = String(user.first_name || '').trim();
+    var last = String(user.last_name || '').trim();
+    var full = (first + ' ' + last).trim();
+    return full.slice(0, 18);
+  }
+  function tgInitData(){
+    try { return String(Telegram.WebApp.initData || ''); } catch (e) { return ''; }
+  }
   function readName(){
-    var raw = (el('auName').value || '').trim();
-    if (!raw) {
-      try { raw = (Telegram.WebApp.initDataUnsafe.user.username || Telegram.WebApp.initDataUnsafe.user.first_name || '').slice(0, 18); } catch (e) {}
-    }
-    AU.name = raw || 'لاعب';
-    storageSet('au-name', AU.name);
-    renderChip();
+    AU.name = tgAccountName() || 'لاعب';
     return AU.name;
   }
-  try { el('auName').value = storageGet('au-name', ''); } catch (e) {}
-  try { el('auNameAccount').value = storageGet('au-name', ''); } catch (e) {}
 
   /* ---------- profile: name, colour, unlocked cosmetics ---------- */
   var RARE = { gold: 3, silver: 3 };
   var profile = {
-    name: storageGet('au-name', '') || 'لاعب',
+    name: tgAccountName() || 'لاعب',
     color: storageGet('au-color', 'red'),
     matches: Number(storageGet('au-matches', '0')) || 0,
     sound: storageGet('au-sound', '1') === '1',
@@ -1169,6 +1095,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (box) box.innerHTML = crewSvg(profile.color);
     var label = el('auPlayerName');
     if (label) label.textContent = profile.name || 'لاعب';
+    // the locked identity row inside the launch window
+    var meBean = el('auMeBean');
+    if (meBean) meBean.innerHTML = crewSvg(profile.color);
+    var meName = el('auMeName');
+    if (meName) meName.textContent = profile.name || 'لاعب';
   }
   function isUnlocked(colorId){
     if (!RARE[colorId]) return true;
@@ -1297,8 +1228,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   }
 
   function createRoom(){
-    if (!(el('auName').value || '').trim() && profile.name) el('auName').value = profile.name;
-    api('/rooms', { action: 'create', name: readName(), color: profile.color, settings: roomDraft }).then(function(res){
+    api('/rooms', { action: 'create', name: readName(), color: profile.color, settings: roomDraft, initData: tgInitData() }).then(function(res){
       if (!res.ok) return toast(res.error || 'تعذّر إنشاء الغرفة');
       AU.code = res.code; AU.token = res.token;
       history.replaceState(null, '', '?code=' + res.code);
@@ -1308,8 +1238,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
   function joinByCode(code){
     if (!code || code.length < 4) return toast('اكتب كود الغرفة');
-    if (!(el('auName').value || '').trim() && profile.name) el('auName').value = profile.name;
-    api('/rooms/' + code, { action: 'join', name: readName(), code: code, color: profile.color }).then(function(res){
+    api('/rooms/' + code, { action: 'join', name: readName(), code: code, color: profile.color, initData: tgInitData() }).then(function(res){
       if (!res.ok) return toast(res.error || 'ما گدرنا ندخل');
       AU.code = res.code; AU.token = res.token;
       history.replaceState(null, '', '?code=' + res.code);
@@ -1412,16 +1341,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       var button = el(buttonId);
       if (button) button.addEventListener('click', function(){ closeDialog(closers[buttonId]); });
     });
-    el('auSaveName').addEventListener('click', function(){
-      var value = (el('auNameAccount').value || '').trim();
-      if (!value) return toast('اكتب اسم');
-      profile.name = value.slice(0, 18);
-      storageSet('au-name', profile.name);
-      el('auName').value = profile.name;
-      renderChip();
-      renderProfile();
-      toast('انحفظ الاسم');
-    });
     el('auSoundToggle').checked = profile.sound;
     el('auSoundToggle').addEventListener('change', function(){
       profile.sound = el('auSoundToggle').checked;
@@ -1462,6 +1381,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var hint = el('auSpaceHint');
     if (hint) hint.style.opacity = profile.hints ? '0.8' : '0';
   }
+  try { localStorage.removeItem('au-name'); } catch (e) {}
   renderChip();
   wireMenu();
   startSpace();

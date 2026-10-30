@@ -122,7 +122,7 @@ check(
     html.includes('id="auCreate"') &&
     html.includes('id="auOnlineCard"') &&
     html.includes('id="auCodeCard"') &&
-    html.includes('>أنشئ غرفة<') &&
+    html.includes('>CREATE ROOM<') &&
     html.includes('>ONLINE<') &&
     html.includes('>ENTER CODE<') &&
     html.includes('id="auPlayBack"')
@@ -130,9 +130,11 @@ check(
 check(
   'بطاقات اللعب مرسومة SVG بلا صور خارجية',
   (html.match(/class="sp-art"/g) || []).length === 3 &&
-    html.includes('id="cDoor"') &&
-    html.includes('id="oScreen"') &&
-    html.includes('id="kPanel"') &&
+    (html.match(/<svg viewBox="0 0 260 170"/g) || []).length === 3 &&
+    html.includes('id="metalc"') &&
+    html.includes('id="metalo"') &&
+    html.includes('id="metalk"') &&
+    html.includes('id="visorGlass"') &&
     !/<img\s/.test(html)
 );
 check(
@@ -155,6 +157,30 @@ check(
   html.includes('id="auJoinBox"') &&
     html.includes('id="auCode"') &&
     html.includes('joinByCode')
+);
+check(
+  'ترتيب البطاقات: يمين ONLINE، وسط أنشئ غرفة، يسار ENTER CODE',
+  (() => {
+    const pick = html.slice(html.indexOf('id="auViewPick"'), html.indexOf('id="auViewSettings"'));
+    const order = ['id="auCodeCard"', 'id="auCreate"', 'id="auOnlineCard"'].map(id => pick.indexOf(id));
+    return order.every(index => index > 0) && order[0] < order[1] && order[1] < order[2] &&
+      /grid-template-columns:1fr 1\.14fr 1fr/.test(html);
+  })()
+);
+check(
+  'الاسم مقفول وماكو حقل اسم قابل للتعديل',
+  !html.includes('id="auName"') &&
+    !html.includes('id="auNameAccount"') &&
+    !html.includes('id="auSaveName"') &&
+    html.includes('id="auMeName"') &&
+    html.includes('id="auMeBean"')
+);
+check(
+  'الاسم يجي من حساب تليگرام مو من اليوزر',
+  html.includes('function tgAccountName()') &&
+    /first_name/.test(html) &&
+    /last_name/.test(html) &&
+    !/user\.username/.test(html)
 );
 check(
   'السيرفر يقبل إعدادات الغرفة ويعرض الغرف',
