@@ -10,6 +10,7 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "test:chess": "tsx scripts/check-chess-bot.ts && node scripts/check-stockfish-worker.cjs",
+    "test:chess:friend": "node scripts/check-chess-friend-box.mjs",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
