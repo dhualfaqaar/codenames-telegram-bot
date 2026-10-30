@@ -26,6 +26,7 @@ import {
   downloadFromPlatform,
   mediaProviderReport,
   resetMediaProviders,
+  resetTikTokCooldown,
   tiktokCooldownRemainingMs
 } from '../src/services/mediaServicesEngine';
 
@@ -282,6 +283,46 @@ async function main(): Promise<void> {
   );
   check('الإعادة تجيب البايتات من الـCDN بس', hitHosts.length <= 1 && mediaHits >= 1, hitHosts.join(' , '));
   check('الكاش قلّل النداءات فعلياً', hitHosts.length < firstCalls, `${firstCalls} → ${hitHosts.length}`);
+
+  // 7-ب) مرآة ترجّع صفحة حماية بدل المنشور، والمزوّد المستقل ينقذ التحميل ─────
+  clearMediaCache();
+  resetProviderHealth();
+  resetMediaProviders();
+  resetTikTokCooldown();
+  const challengeRun = await withFetch(
+    (async (input: any) => {
+      const url = String(input);
+      if (url.includes('vt.tiktok.com')) {
+        return new Response(null, {
+          status: 301,
+          headers: { location: 'https://www.tiktok.com/@griff.t/video/7300000000000000999' }
+        });
+      }
+      if (/tnktok|vxtiktok|tiktxk/.test(url)) {
+        // Cloudflare answers 200 but the body is a challenge, not the post.
+        return new Response('<html><head><title>Just a moment...</title></head></html>', { status: 200 });
+      }
+      if (url.includes('www.tikwm.com')) {
+        return new Response(
+          JSON.stringify({ code: 0, data: { images: ['https://cdn.example.test/p1.jpg', 'https://cdn.example.test/p2.jpg'] } }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      return new Response('nope', { status: 404 });
+    }) as any,
+    async () => diagnoseDownload('tt', 'https://vt.tiktok.com/ZSgtWrq3e/')
+  );
+  check(
+    'ألبوم الصور يرجع من المزوّد المستقل',
+    challengeRun.result.ok && challengeRun.result.items.length === 2,
+    challengeRun.result.error
+  );
+  const challengeTrace: any[] = challengeRun.trace || [];
+  check(
+    'التشخيص يفضح صفحة الحماية بدل HTTP 200 صامت',
+    challengeTrace.some(entry => /حماية/.test(String(entry.reason || ''))),
+    JSON.stringify(challengeTrace.map(entry => entry.reason || entry.provider))
+  );
 
   // 8) 429 من واجهة التطبيق ───────────────────────────────────────────────────
   console.log('\n8) حد الطلبات 429');

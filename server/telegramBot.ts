@@ -2435,7 +2435,7 @@ export class TelegramBotManager {
       const rows = diag.trace.slice(-18).map(entry => {
         const status = entry.status ? `HTTP ${entry.status}` : 'بلا استجابة';
         const size = entry.bytes ? ` · ${Math.round(entry.bytes / 1024)}KB` : '';
-        const reason = !entry.ok && entry.reason && !entry.status ? ` (${this.mdSafe(entry.reason)})` : '';
+        const reason = !entry.ok && entry.reason ? ` (${this.mdSafe(entry.reason)})` : '';
         return `• ${this.mdSafe(entry.provider)} → ${this.mdSafe(status)}${size} · ${entry.ms}ms${reason}`;
       });
       const head =

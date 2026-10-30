@@ -12,7 +12,7 @@
  */
 
 /** Bumped with every media reliability release so /dlstatus proves what is live. */
-export const MEDIA_ENGINE_BUILD = '2026-10-30-media-resolvers-first-v25';
+export const MEDIA_ENGINE_BUILD = '2026-10-30-media-resolvers-first-v26';
 export const MEDIA_STEP_TIMEOUT_MS = 9_000;
 export const MEDIA_PROBE_TIMEOUT_MS = 6_000;
 export const MEDIA_TOTAL_BUDGET_MS = 34_000;
