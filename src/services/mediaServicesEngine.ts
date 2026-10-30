@@ -1590,6 +1590,8 @@ async function fetchWithCookieChain(initialUrl: string, ua = BROWSER_UA): Promis
   const cookieMap = new Map<string, string>();
 
   for (let hop = 0; hop < 6; hop++) {
+    // A parked host is not asked again: every extra call renews the throttle.
+    if (isTikTokHost(currentUrl) && tiktokCooldownRemainingMs() > 0) return null;
     const cookieHeader = Array.from(cookieMap.entries())
       .map(([k, v]) => `${k}=${v}`)
       .join('; ');
@@ -1601,6 +1603,10 @@ async function fetchWithCookieChain(initialUrl: string, ua = BROWSER_UA): Promis
     if (cookieHeader) headers.Cookie = cookieHeader;
 
     const res = await boundedFetch(currentUrl, { redirect: 'manual', headers });
+    if (noteTikTokThrottle(currentUrl, res.status, res.headers.get('retry-after'))) {
+      await res.body?.cancel().catch(() => undefined);
+      return null;
+    }
 
     // استخراج Set-Cookie في بيئة Cloudflare Workers
     const rawCookies: string[] =
@@ -1689,8 +1695,43 @@ const TIKTOK_APP_HOSTS = [
 
 const TIKTOK_APP_UA = 'TikTok 26.2.0 rv:262018 (iPhone; iOS 16.5; ar_IQ) Cronet';
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * TikTok's quota is per IP, and every tiktok.com / *.tiktokv.com host draws from
+ * it. So one 429 parks the whole family: retrying the page, the embed and the
+ * three app hosts right after a throttle is what turned one 429 into a wall of
+ * them. While parked we go straight to the resolvers that do not share the quota.
+ */
+const TIKTOK_PARK_MS = 8 * 60_000;
+const TIKTOK_PARK_MAX_MS = 30 * 60_000;
+let tiktokParkedUntil = 0;
+
+function isTikTokHost(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === 'tiktok.com' || host.endsWith('.tiktok.com') || host.endsWith('.tiktokv.com');
+  } catch {
+    return false;
+  }
+}
+
+/** True when TikTok just told us to back off (parks the family for a while). */
+function noteTikTokThrottle(raw: string, status: number, retryAfterHeader?: string | null): boolean {
+  if (status !== 429 || !isTikTokHost(raw)) return false;
+  const retryAfter = Number(retryAfterHeader || 0);
+  const asked = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1_000 : 0;
+  const wait = Math.min(TIKTOK_PARK_MAX_MS, Math.max(TIKTOK_PARK_MS, asked));
+  tiktokParkedUntil = Math.max(tiktokParkedUntil, Date.now() + wait);
+  return true;
+}
+
+/** How long TikTok asked us to stay away, in ms (0 = we are free to call it). */
+export function tiktokCooldownRemainingMs(now = Date.now()): number {
+  return Math.max(0, tiktokParkedUntil - now);
+}
+
+/** Clears the park (diagnostics and tests). */
+export function resetTikTokCooldown(): void {
+  tiktokParkedUntil = 0;
 }
 
 function tiktokFeedResult(json: any, awemeId: string): SocialDownloadResult | null {
@@ -1716,6 +1757,7 @@ function tiktokFeedResult(json: any, awemeId: string): SocialDownloadResult | nu
  */
 async function fetchTikTokAppFeed(awemeId: string): Promise<SocialDownloadResult | null> {
   const ordered = providerHealth.order(TIKTOK_APP_HOSTS.map(host => ({ name: host }))).map(item => item.name);
+  if (tiktokCooldownRemainingMs() > 0) return null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     for (const host of ordered) {
       if (providerHealth.coolingDown(host)) continue;
@@ -1727,9 +1769,9 @@ async function fetchTikTokAppFeed(awemeId: string): Promise<SocialDownloadResult
         if (r.status === 429) {
           providerHealth.record(host, false, 'http 429');
           await r.body?.cancel().catch(() => undefined);
-          // Back off before touching another host: they share the same quota.
-          if (attempt === 0) await sleep(900);
-          break;
+          // The whole TikTok family shares one quota, so stop asking any of it.
+          noteTikTokThrottle(apiUrl, 429, r.headers.get('retry-after'));
+          return null;
         }
         if (!r.ok) {
           await r.body?.cancel().catch(() => undefined);
@@ -1746,14 +1788,80 @@ async function fetchTikTokAppFeed(awemeId: string): Promise<SocialDownloadResult
   return null;
 }
 
+/**
+ * Public resolvers that keep their own quota, so they still answer while TikTok
+ * itself is throttling us. Both understand photo albums as well as videos.
+ */
+function tiktokThirdPartyResolvers(url: string): Array<{ name: string; run: () => Promise<SocialDownloadResult | null> }> {
+  const cancel = (res: Response) => res.body?.cancel().catch(() => undefined);
+  return [
+    {
+      name: 'tikwm',
+      run: async () => {
+        const form = new URLSearchParams({ url, hd: '1' });
+        const res = await boundedFetch('https://www.tikwm.com/api/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': BROWSER_UA },
+          body: form.toString()
+        });
+        if (!res.ok) {
+          await cancel(res);
+          return null;
+        }
+        const json: any = await res.json().catch(() => null);
+        const d = json?.data;
+        if (json?.code !== 0 || !d) return null;
+        if (Array.isArray(d.images) && d.images.length > 0) {
+          const photos = d.images
+            .filter(Boolean)
+            .slice(0, 10)
+            .map((img: any) => ({ kind: 'photo' as const, url: String(typeof img === 'string' ? img : img?.url || '') }))
+            .filter((item: any) => item.url.startsWith('http'));
+          if (photos.length) return { ok: true, items: photos };
+        }
+        const rawVid = d.hdplay || d.play || d.wmplay;
+        if (!rawVid) return null;
+        const fullUrl = String(rawVid).startsWith('http') ? String(rawVid) : `https://www.tikwm.com${rawVid}`;
+        return { ok: true, items: [{ kind: 'video' as const, url: fullUrl }] };
+      }
+    },
+    {
+      name: 'tiklydown',
+      run: async () => {
+        const res = await boundedFetch(`https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(url)}`, {
+          headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
+        });
+        if (!res.ok) {
+          await cancel(res);
+          return null;
+        }
+        const json: any = await res.json().catch(() => null);
+        const body = json?.data?.images ? json.data : json;
+        const pics: any[] = Array.isArray(body?.images) ? body.images : [];
+        const photos = pics
+          .map((item: any) => (typeof item === 'string' ? item : item?.url))
+          .filter((u: any) => typeof u === 'string' && u.startsWith('http'))
+          .slice(0, 10)
+          .map((u: string) => ({ kind: 'photo' as const, url: u }));
+        if (photos.length) return { ok: true, items: photos };
+        const vid = body?.video?.noWatermark || body?.video?.watermark || json?.video?.noWatermark || json?.url;
+        if (typeof vid !== 'string' || !vid.startsWith('http')) return null;
+        return { ok: true, items: [{ kind: 'video' as const, url: vid }] };
+      }
+    }
+  ];
+}
+
 async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   const normalized = normalizeTikTokUrl(url);
   let resolvedUrl = normalized;
   let awemeId = normalized.match(TIKTOK_ID_RE)?.[1] || '';
+  // Every TikTok-owned host shares one quota, so a single 429 parks them all.
+  const tiktokFree = () => tiktokCooldownRemainingMs() === 0;
 
   // A short link has no id: resolve it first, otherwise the app feed — our most
   // reliable layer — cannot even be asked, and the mirrors get a dead path.
-  if (!awemeId) {
+  if (!awemeId && tiktokFree()) {
     const short = await resolveTikTokShortLink(normalized).catch(() => null);
     if (short) {
       resolvedUrl = short.url;
@@ -1763,7 +1871,7 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
 
   // الطبقة 1: السحب المباشر من صفحة TikTok الرسمية مع حفظ الكوكيز (tt_chain_token) + استخراج الفيديو الأصلي بدون علامة مائية!
   // سلسلة الكوكيز قد تقفز 6 مرات، فنسقّفها: إذا حجب تيك توك الـ Worker ننتقل للمرايا فوراً بدل حرق الميزانية.
-  try {
+  if (tiktokFree()) try {
     const chain = await withTimeout(() => fetchWithCookieChain(resolvedUrl, BROWSER_UA), 7_000, 'tiktok:page');
     if (chain) {
       resolvedUrl = chain.finalUrl || url;
@@ -1846,10 +1954,21 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
             });
             if (!r.ok) return null;
             const html = await r.text();
+            // Photo posts carry no og:video at all: their frames live in og:image.
+            const ogImages = Array.from(
+              html.matchAll(/property=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/gi)
+            ).map(match => match[1].replace(/&amp;/g, '&'));
             const vidUrl =
               html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
               html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
-            if (!vidUrl || !vidUrl.startsWith('http')) return null;
+            if (!vidUrl || !vidUrl.startsWith('http')) {
+              const photos = ogImages
+                .filter(url => url.startsWith('http'))
+                .slice(0, 10)
+                .map(url => ({ kind: 'photo' as const, url, headers: { 'User-Agent': TG_BOT_UA } }));
+              if (photos.length) return { ok: true, items: photos };
+              return null;
+            }
             const cleanVid = vidUrl.replace(/&amp;/g, '&');
             const verified = await tryFetchMediaBytes(cleanVid, { 'User-Agent': BROWSER_UA }, 2000);
             if (!verified) return null;
@@ -1863,7 +1982,8 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
     }
     // TikTok's own embed page is served to datacenter IPs far more often than the
     // main site, and it carries the same play/download addresses as the app feed.
-    if (awemeId) {
+    // The embed page lives on TikTok's own host: skip it while the family is parked.
+    if (awemeId && tiktokFree()) {
       mirrors.push({
         name: 'tiktok:embed',
         run: async () => {
@@ -1904,7 +2024,7 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
     }
     // واجهة التطبيق تُجرَّب وحدها بعد المرايا: إطلاق 3 مضيفات بنفس اللحظة هو
     // السبب المباشر لخطأ 429 اللي كان يمنع التحميل بشكل متقطّع.
-    if (awemeId) {
+    if (awemeId && tiktokFree()) {
       const appFeed = await fetchTikTokAppFeed(awemeId);
       if (appFeed) return appFeed;
     }
@@ -1912,28 +2032,11 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
     // ننتقل للطبقة التالية
   }
 
-  // الطبقة 3: TikWM كاحتياط إضافي أخير
+  // الطبقة 4: خدمات طرف ثالث مستقلة عن حصة تيك توك — هاي اللي تشتغل وقت الحجب،
+  // فتُجرَّب بنفس اللحظة وأول إجابة صالحة تفوز (فيديو أو ألبوم صور).
   try {
-    const form = new URLSearchParams({ url: resolvedUrl, hd: '1' });
-    const res = await boundedFetch('https://www.tikwm.com/api/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': BROWSER_UA },
-      body: form.toString()
-    });
-    if (res.ok) {
-      const json: any = await res.json();
-      const d = json?.data;
-      if (json?.code === 0 && d) {
-        if (Array.isArray(d.images) && d.images.length > 0) {
-          return { ok: true, items: d.images.slice(0, 10).map((img: string) => ({ kind: 'photo' as const, url: img })) };
-        }
-        const rawVid = d.hdplay || d.play || d.wmplay;
-        if (rawVid) {
-          const fullUrl = String(rawVid).startsWith('http') ? String(rawVid) : `https://www.tikwm.com${rawVid}`;
-          return { ok: true, items: [{ kind: 'video', url: fullUrl }] };
-        }
-      }
-    }
+    const raced = await raceProviders<SocialDownloadResult>(tiktokThirdPartyResolvers(resolvedUrl));
+    if (raced.value) return raced.value;
   } catch {
     // ignore
   }
@@ -2686,6 +2789,11 @@ function attemptsSince(since: number): ProviderAttempt[] {
     }));
 }
 
+/** How long the platform's own throttle still runs, so the message can say it. */
+function cooldownFor(platform: SocialPlatform): number {
+  return platform === 'tt' ? tiktokCooldownRemainingMs() : 0;
+}
+
 function plainPlatformLabel(platform: SocialPlatform): string {
   return socialPlatformLabel(platform).replace(/^[^\p{L}]+/u, '').trim();
 }
@@ -2720,7 +2828,7 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
   } catch (error: any) {
     timedOut = error?.code === 'timeout';
     const attempts = attemptsSince(started);
-    const summary = summarizeFailures(attempts, label);
+    const summary = summarizeFailures(attempts, label, { waitMs: cooldownFor(platform) });
     return {
       ok: false,
       items: [],
@@ -2748,7 +2856,7 @@ export async function downloadFromPlatform(platform: SocialPlatform, rawInput: s
 
   // A plain "make sure it is public" hides a broken mirror: say what really failed.
   const attempts = attemptsSince(started);
-  const summary = summarizeFailures(attempts, label);
+  const summary = summarizeFailures(attempts, label, { waitMs: cooldownFor(platform) });
   return {
     ...result,
     error: summary.serviceDown ? summary.text : result.error || summary.text,
@@ -2801,6 +2909,7 @@ export function mediaProviderReport(now = Date.now()) {
 /** Resets mirror health; used by tests and by /dlstatus reset. */
 export function resetMediaProviders(): void {
   providerHealth.reset();
+  resetTikTokCooldown();
 }
 
 export {

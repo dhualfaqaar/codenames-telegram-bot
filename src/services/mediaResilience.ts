@@ -12,7 +12,7 @@
  */
 
 /** Bumped with every media reliability release so /dlstatus proves what is live. */
-export const MEDIA_ENGINE_BUILD = '2026-10-30-media-cache-v23';
+export const MEDIA_ENGINE_BUILD = '2026-10-30-media-tiktok-gate-v24';
 export const MEDIA_STEP_TIMEOUT_MS = 9_000;
 export const MEDIA_PROBE_TIMEOUT_MS = 6_000;
 export const MEDIA_TOTAL_BUDGET_MS = 34_000;
@@ -343,22 +343,29 @@ export type FailureSummary = {
 };
 
 /** Turns raw attempt failures into a sentence the user can act on. */
-export function summarizeFailures(attempts: ProviderAttempt[], platformLabel: string): FailureSummary {
+export function summarizeFailures(
+  attempts: ProviderAttempt[],
+  platformLabel: string,
+  options: { waitMs?: number } = {}
+): FailureSummary {
   const kinds = attempts.map(attempt => failureKind(attempt.reason));
   const providers = Array.from(new Set(attempts.map(attempt => attempt.provider).filter(Boolean)));
   const infraOnly = attempts.length > 0 && kinds.every(kind => kind === 'timeout' || kind === 'http' || kind === 'network' || kind === 'empty');
   if (!attempts.length) {
     return { serviceDown: false, kinds: [], providers, text: `⚠️ تعذّر تحميل منشور ${platformLabel} — تأكد أن المنشور عام والرابط صحيح.` };
   }
-  const rateLimited = attempts.some(attempt => /429/.test(String(attempt.reason || '')));
+  const rateLimited = attempts.some(attempt => /429/.test(String(attempt.reason || ''))) || (options.waitMs || 0) > 0;
   if (rateLimited) {
+    // Say how long the host actually asked us to wait instead of guessing.
+    const minutes = Math.ceil((options.waitMs || 0) / 60_000);
+    const wait = minutes > 1 ? `تقريباً ${minutes} دقايق` : 'دقيقة تقريباً';
     return {
       serviceDown: true,
       kinds,
       providers,
       text:
         `⚠️ ${platformLabel} حادّد عدد الطلبات علينا هالوقت (429) — مو مشكلة برابطك.\n` +
-        `انتظر دقيقة وحاول مرة ثانية، أو استخدم منصة ثانية من القائمة.`
+        `انتظر ${wait} وحاول مرة ثانية، أو استخدم منصة ثانية من القائمة.`
     };
   }
   if (infraOnly) {
