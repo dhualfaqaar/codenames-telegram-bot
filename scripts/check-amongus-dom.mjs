@@ -27,7 +27,7 @@ function makeClient(name) {
           {
             get: (_target, prop) => {
               if (prop === 'canvas') return { width: 360, height: 640 };
-              if (prop === 'createRadialGradient') {
+              if (prop === 'createRadialGradient' || prop === 'createLinearGradient') {
                 return () => ({ addColorStop() {} });
               }
               if (prop === 'measureText') return () => ({ width: 10 });
@@ -69,6 +69,32 @@ async function waitFor(check, label, timeout = 20000) {
 }
 
 const host = makeClient('المضيف');
+
+// The title screen must be the original main menu, not a plain form.
+assert.ok(host.document.getElementById('auMenu').classList.contains('on'), 'شاشة البداية هي قائمة اللعبة');
+for (const id of ['auPlayBtn', 'auInventoryBtn', 'auShopBtn', 'auAccountBtn', 'auSettingsBtn', 'auFriendsBtn']) {
+  assert.ok(host.document.getElementById(id), 'زر القائمة موجود: ' + id);
+}
+assert.ok(!host.document.body.textContent.includes('NEWS'), 'بدون NEWS');
+assert.ok(!host.document.body.textContent.includes('CREDITS'), 'بدون CREDITS');
+assert.ok(host.document.getElementById('auSpace'), 'مربع الفضاء موجود');
+
+// PLAY opens the room dialog, INVENTORY opens the colour grid with ten colours.
+host.document.getElementById('auPlayBtn').click();
+assert.ok(host.document.getElementById('auPlayDialog').classList.contains('on'), 'PLAY يفتح نافذة اللعب');
+host.document.getElementById('auPlayClose').click();
+host.document.getElementById('auInventoryBtn').click();
+assert.ok(host.document.getElementById('auInvDialog').classList.contains('on'), 'INVENTORY يفتح الخزانة');
+const colorButtons = host.document.querySelectorAll('#auColorGrid [data-color]');
+assert.equal(colorButtons.length, 10, 'الخزانة فيها عشرة ألوان');
+colorButtons[1].click();
+host.document.getElementById('auInvClose').click();
+host.document.getElementById('auShopBtn').click();
+assert.ok(host.document.getElementById('auShopDialog').classList.contains('on'), 'SHOP يفتح المتجر');
+assert.equal(host.document.querySelectorAll('#auShopGrid [data-color]').length, 2, 'المتجر فيه لونان نادران');
+host.document.getElementById('auShopClose').click();
+
+host.document.getElementById('auPlayBtn').click();
 host.document.getElementById('auName').value = 'المضيف';
 host.document.getElementById('auCreate').click();
 await waitFor(() => host.document.getElementById('auLobby').classList.contains('on'), 'فتح غرفة الانتظار');

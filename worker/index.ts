@@ -15,7 +15,7 @@ import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 import { AmongUsRooms } from '../src/services/amongUsRooms';
 import { amongUsMiniAppHtml } from '../src/services/amongUsMiniApp';
 
-export const INTERACTIVE_APP_BUILD = '2026-11-08-amongus-look-v41';
+export const INTERACTIVE_APP_BUILD = '2026-11-08-amongus-menu-v42';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;

@@ -89,8 +89,28 @@ const html = amongUsMiniAppHtml();
 
 check('اللعبة اسمها «امونق اس»', html.includes('<title>امونق اس</title>') && !html.includes('بيننا'));
 check(
-  'الواجهة على طابع اللعبة الأصلية',
-  html.includes('id="auStars"') && html.includes('AMONG') && html.includes('function crewSvg(') && html.includes('.btn.block')
+  'شاشة البداية مثل اللعبة الأصلية',
+  html.includes('id="auMenu"') &&
+    html.includes('id="auSpace"') &&
+    html.includes('class="wordmark"') &&
+    html.includes('>PLAY<') &&
+    html.includes('>INVENTORY<') &&
+    html.includes('>SHOP<') &&
+    html.includes('>MY ACCOUNT<') &&
+    html.includes('>SETTINGS<') &&
+    html.includes('>FRIENDS<')
+);
+check('بدون NEWS وبدون CREDITS', !html.includes('>NEWS<') && !html.includes('>CREDITS<'));
+check(
+  'النجوم والشخصيات تتحرك بمربع الفضاء',
+  html.includes('function spaceFrame(') &&
+    html.includes('requestAnimationFrame(spaceFrame)') &&
+    html.includes('space.stars') &&
+    html.includes('space.beans')
+);
+check(
+  'كل أزرار القائمة تفتح شي حقيقي',
+  ['auPlayDialog', 'auInvDialog', 'auShopDialog', 'auAccDialog', 'auSetDialog', 'auFriendsDialog'].every(id => html.includes(`id="${id}"`))
 );
 check('زر الإجراءات مرسوم لا إيموجي', html.includes('id="auPad"') && html.includes('roundRect'));
 
@@ -129,6 +149,11 @@ check('إنشاء غرفة يرجّع كود وتوكن', created.ok && /^[A-Z0-
 const code = created.code;
 const hostToken = created.token;
 check('الغرفة تبدي بمرحلة الانتظار', created.room.phase === 'lobby' && created.room.players.length === 1);
+
+const colored = await post('/api/amongus/rooms', { action: 'create', name: 'ملوّن', color: 'cyan' });
+check('اللون المختار ينطبق على اللاعب', colored.ok && colored.room.players[0].color === 'cyan', colored.room?.players?.[0]?.color);
+const dupColor = await post(`/api/amongus/rooms/${colored.code}`, { action: 'join', name: 'ثاني', code: colored.code, color: 'cyan' });
+check('اللون المأخوذ ينبدل بلون ثاني', dupColor.ok && dupColor.room.players[1].color !== 'cyan', dupColor.room?.players?.[1]?.color);
 
 const guests: string[] = [];
 for (let i = 1; i <= 4; i += 1) {

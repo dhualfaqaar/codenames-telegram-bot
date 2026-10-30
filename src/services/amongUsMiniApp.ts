@@ -68,35 +68,97 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .btn.green{background:linear-gradient(180deg,#8ef0b0,#3fc46b 50%,#26904c);border-color:#0c2e1b;color:#06240f;box-shadow:0 6px 0 #0a2a18,inset 0 2px 0 #d3ffe2,inset 0 -4px 0 #1c7a3e}
 .btn.dark{background:linear-gradient(180deg,#2b3c63,#1b2745 60%,#131c33);border-color:#0a1220;color:#dfeaff;box-shadow:0 6px 0 #08101c,inset 0 2px 0 #4c6296,inset 0 -4px 0 #101a2e}
 .btn[disabled]{filter:grayscale(.5) brightness(.72);pointer-events:none}
-/* ---- entry ---- */
-#auEntry{min-height:calc(100dvh - 24px);display:none}
-#auEntry.on{display:grid;place-items:center}
-#auStars{position:fixed;inset:0;z-index:0;background:
-  radial-gradient(1200px 600px at 50% -10%,#172a52 0%,#0a0e1f 55%,#05070f 100%)}
-#auStars i{position:absolute;border-radius:50%;background:#dce9ff;opacity:.85;animation:twinkle 3.4s infinite ease-in-out}
-@keyframes twinkle{0%,100%{opacity:.15;transform:scale(.8)}50%{opacity:.95;transform:scale(1.15)}}
-.logo{position:relative;text-align:center;margin:0 0 6px}
-.logo h1{
-  margin:0;font-size:clamp(34px,11vw,54px);line-height:.98;font-weight:900;
-  letter-spacing:1px;color:#fff;transform:skewX(-9deg);text-transform:uppercase;
-  text-shadow:0 3px 0 #0b1220,0 6px 0 #05070f,0 0 26px #3f8fe066;
+/* ---- main menu: the original title screen ---- */
+#auMenu{display:none;direction:ltr;padding:0}
+#auMenu.on{display:block}
+.menu-shell{
+  width:min(100%,1000px);margin:0 auto;display:grid;grid-template-rows:auto minmax(0,1fr);
+  gap:10px;min-height:calc(100dvh - 16px)
 }
-.logo h1 b{display:block;font-size:.62em;color:#a9c7e8;text-shadow:0 2px 0 #0b1220}
-.logo p{margin:10px 0 0;color:#9fb0cf;font-size:12px;letter-spacing:.6px}
-.mascot{margin:8px auto 4px;width:min(46vw,190px);filter:drop-shadow(0 14px 22px #000a)}
-.card{
-  position:relative;z-index:2;margin:14px 0;padding:16px;border-radius:22px;
-  background:linear-gradient(180deg,#1b2745,#121a30);
-  border:3px solid #33456b;box-shadow:0 10px 0 #060b16,inset 0 2px 0 #ffffff14
+.au-top{display:flex;align-items:center;gap:10px}
+.au-player{
+  display:flex;align-items:center;gap:9px;padding:5px 14px 5px 8px;border-radius:10px;
+  background:#123a3c;border:3px solid #08302f;box-shadow:0 4px 0 #062220;min-width:0;max-width:62%
 }
-.field{display:block;margin:0 0 12px}
-.field span{display:block;margin:0 0 6px;font-size:11px;color:#9fb0cf;letter-spacing:.4px}
-input{
-  width:100%;padding:14px 14px;border-radius:14px;border:3px solid #33456b;
-  background:#0b1220;color:#eef6ff;font:inherit;font-weight:800;outline:none;
+.au-player .ava{width:36px;height:36px;flex:none;display:grid;place-items:center}
+.au-player .dot{width:11px;height:11px;border-radius:50%;background:#3ff08a;box-shadow:0 0 10px #3ff08a;flex:none}
+.au-player b{color:#eafffb;font-size:14px;font-weight:900;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.au-friends{
+  margin-inline-start:auto;min-height:46px;padding:0 22px;border-radius:10px;
+  background:linear-gradient(180deg,#3d8d92,#255f66);border:3px solid #0b3335;color:#dff8f4;
+  font-size:15px;font-weight:900;letter-spacing:2px;box-shadow:0 4px 0 #062220,inset 0 2px 0 #ffffff33
 }
-input:focus{border-color:#6fa8de;box-shadow:0 0 0 3px #6fa8de33}
-input::placeholder{color:#5f7292}
+.au-friends:active{transform:translateY(3px);box-shadow:0 1px 0 #062220}
+.au-body{
+  display:grid;grid-template-columns:minmax(240px,34%) minmax(0,1fr);
+  gap:14px;min-height:0;align-items:stretch
+}
+.au-left{display:flex;flex-direction:column;gap:10px;min-width:0}
+.wordmark{display:block;width:min(100%,300px);height:auto;margin:2px 0 0}
+.wordmark text{
+  font-family:"Comic Sans MS","Segoe Print","Bradley Hand","Marker Felt",cursive;
+  font-weight:400;fill:none;stroke:#ffffff;stroke-linecap:round;stroke-linejoin:round
+}
+.menu-panel{
+  background:linear-gradient(180deg,#17524f,#0e3b3c);border:3px solid #08302f;border-radius:12px;
+  padding:6px 8px;box-shadow:0 6px 0 #062220,inset 0 2px 0 #ffffff1a
+}
+.menu-btn{
+  position:relative;display:flex;align-items:center;gap:10px;width:100%;min-height:58px;
+  margin:7px 0;padding:0 12px;border-radius:9px;overflow:hidden;cursor:pointer;
+  background:linear-gradient(180deg,#63f8de,#14cbb2 55%,#0aa392);
+  border:3px solid #073b38;box-shadow:0 5px 0 #052a28,inset 0 2px 0 #ffffff70;
+  transform:skewX(-14deg);transition:transform .07s,box-shadow .07s
+}
+.menu-btn:before{
+  content:"";position:absolute;inset:-30% -12%;pointer-events:none;
+  background:repeating-linear-gradient(112deg,#ffffff38 0 13px,#ffffff00 13px 36px)
+}
+.menu-btn .ico{position:relative;width:40px;height:40px;display:grid;place-items:center;flex:none;transform:skewX(14deg)}
+.menu-btn .ico svg{width:34px;height:34px}
+.menu-btn .lbl{
+  position:relative;flex:1;text-align:right;transform:skewX(14deg);
+  color:#ffffff;font-size:clamp(17px,2.4vw,23px);font-weight:900;letter-spacing:1.6px;
+  text-shadow:0 2px 0 #057a70,0 0 12px #063c3a
+}
+.menu-btn:active{transform:skewX(-14deg) translateY(4px);box-shadow:0 1px 0 #052a28}
+.menu-btn.small{min-height:46px;background:linear-gradient(180deg,#2f7873,#1b4f4e);border-color:#072e2d;box-shadow:0 4px 0 #052a28,inset 0 2px 0 #ffffff22}
+.menu-btn.small:before{opacity:.35}
+.menu-btn.small .lbl{font-size:clamp(12px,1.7vw,15px);color:#d6f4ee;letter-spacing:1.2px;text-shadow:0 2px 0 #042a28}
+.menu-btn.small .ico svg{width:24px;height:24px}
+.au-version{color:#c7efe8;font-size:10px;letter-spacing:.7px;opacity:.72;padding:0 4px}
+.space-box{
+  position:relative;border-radius:16px;overflow:hidden;min-height:240px;
+  background:radial-gradient(circle at 60% 40%,#0a1226,#04060e 70%);
+  border:6px solid #93a5a4;box-shadow:0 8px 0 #062220,inset 0 0 0 3px #2b3a3c,inset 0 0 70px #000
+}
+.space-box canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+.space-hint{
+  position:absolute;left:12px;bottom:8px;color:#7fa3a0;font-size:10px;letter-spacing:.6px;
+  direction:rtl;pointer-events:none;opacity:.8
+}
+@media(max-width:620px){
+  .au-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(150px,32vh) auto}
+  .space-box{order:-1}
+  .wordmark{width:min(74%,220px)}
+}
+/* ---- menus inside dialogs ---- */
+.colors{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:12px 0}
+.color{
+  position:relative;display:grid;place-items:center;gap:4px;padding:8px 4px;border-radius:14px;
+  background:#101a30;border:3px solid #2c3d5e;box-shadow:0 4px 0 #05070f;cursor:pointer
+}
+.color svg{width:30px;height:38px}
+.color small{font-size:9px;color:#9fb0cf;font-weight:800}
+.color.on{border-color:#63f8de;box-shadow:0 4px 0 #052a28,0 0 0 3px #63f8de55}
+.color.locked{filter:grayscale(.85) brightness(.6)}
+.color .lock{position:absolute;inset:auto 4px 4px auto;width:16px;height:16px}
+.profile{display:grid;gap:8px;margin:10px 0}
+.profile div{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:12px;background:#101a30;border:2px solid #2c3d5e;font-size:12px;color:#c8d8ef}
+.profile b{color:#fff}
+.switch{display:flex;align-items:center;gap:10px;margin:10px 0;padding:12px;border-radius:14px;background:#101a30;border:2px solid #2c3d5e;font-size:12px;color:#c8d8ef;cursor:pointer}
+.switch input{width:22px;height:22px;accent-color:#63f8de;flex:none}
+
 /* ---- lobby: the waiting room ---- */
 #auLobby{min-height:calc(100dvh - 24px);display:none}
 #auLobby.on{display:block}
@@ -251,26 +313,119 @@ input::placeholder{color:#5f7292}
 </style>
 </head>
 <body>
-<div id="auStars" aria-hidden="true"></div>
 <div id="auToast"></div>
 
-<section id="auEntry" class="screen on">
-  <div class="sheet">
-    <div class="logo">
-      <h1>AMONG<b>US</b></h1>
-      <p>امونق اس — طاقم ضد مزوّر</p>
+<section id="auMenu" class="screen on">
+  <div class="menu-shell">
+    <div class="au-top">
+      <div class="au-player" id="auPlayerChip">
+        <span class="ava" id="auPlayerBean" aria-hidden="true"></span>
+        <span class="dot" aria-hidden="true"></span>
+        <b id="auPlayerName">لاعب</b>
+      </div>
+      <button class="au-friends" id="auFriendsBtn"><span>FRIENDS</span></button>
     </div>
-    <div class="mascot" id="auMascot" aria-hidden="true"></div>
-    <div class="card">
-      <label class="field"><span>اسم اللاعب</span><input id="auName" maxlength="18" placeholder="اكتب اسمك"></label>
-      <button class="btn block green" id="auCreate"><span>أنشئ غرفة</span></button>
-      <div style="height:12px"></div>
-      <label class="field"><span>كود الغرفة</span><input id="auCode" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;letter-spacing:5px;text-align:center;font-size:20px"></label>
-      <button class="btn block" id="auJoin"><span>انضم للغرفة</span></button>
-      <p class="hint">من 6 إلى 10 لاعبين — واحد أو اثنين منهم مزوّرين</p>
+    <div class="au-body">
+      <div class="au-left">
+        <svg class="wordmark" viewBox="0 0 320 92" aria-hidden="true">
+          <text x="8" y="64" font-size="52" letter-spacing="2" stroke-width="3.6" opacity=".95">AMONG</text>
+          <text x="10" y="66" font-size="52" letter-spacing="2" stroke-width="1.1" opacity=".55">AMONG</text>
+          <text x="238" y="64" font-size="30" letter-spacing="1" stroke-width="2.4">US</text>
+          <text x="239" y="65.5" font-size="30" letter-spacing="1" stroke-width=".9" opacity=".55">US</text>
+        </svg>
+        <div class="menu-panel">
+          <button class="menu-btn" id="auPlayBtn">
+            <span class="ico"><svg viewBox="0 0 64 80" aria-hidden="true"><rect x="2" y="26" width="15" height="24" rx="7" fill="#7a0f0f"/><path d="M20 4h20a15 15 0 0 1 15 15v20a11 11 0 0 1-11 11h-4v15a7 7 0 0 1-14 0V50h-6A15 15 0 0 1 5 35V19A15 15 0 0 1 20 4z" fill="#d33a3a"/><ellipse cx="39" cy="25" rx="15" ry="11" fill="#a9e3f5"/><ellipse cx="39" cy="25" rx="15" ry="11" fill="none" stroke="#5c0b0b" stroke-width="2.6"/><ellipse cx="44" cy="21" rx="5" ry="3.4" fill="#f2fdff"/></svg></span><span class="lbl">PLAY</span>
+          </button>
+          <button class="menu-btn" id="auInventoryBtn">
+            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="14" width="34" height="28" rx="6" fill="#8a6a3a" stroke="#2a1d0d" stroke-width="3"/><path d="M15 14v-3a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v3" fill="none" stroke="#2a1d0d" stroke-width="3"/><path d="M7 26h34" stroke="#2a1d0d" stroke-width="3"/><rect x="20" y="23" width="8" height="8" rx="2" fill="#f0c14b" stroke="#2a1d0d" stroke-width="2"/></svg></span><span class="lbl">INVENTORY</span>
+          </button>
+          <button class="menu-btn" id="auShopBtn">
+            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="18" cy="30" r="12" fill="#f0c14b" stroke="#6b4e09" stroke-width="3"/><circle cx="18" cy="30" r="6" fill="#ffe9a8" stroke="#6b4e09" stroke-width="2"/><path d="M32 8l3.6 7.2 8 1.1-5.8 5.6 1.4 7.9L32 26l-7.2 3.8 1.4-7.9-5.8-5.6 8-1.1z" fill="#e05a5a" stroke="#5c1414" stroke-width="2.4"/></svg></span><span class="lbl">SHOP</span>
+          </button>
+        </div>
+        <div class="menu-panel">
+          <button class="menu-btn small" id="auAccountBtn">
+            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="11" width="36" height="26" rx="5" fill="#cfe3f2" stroke="#12303a" stroke-width="3"/><circle cx="18" cy="24" r="6" fill="#7fb9dd" stroke="#12303a" stroke-width="2.4"/><path d="M28 20h9M28 26h9M28 31h6" stroke="#12303a" stroke-width="2.6" stroke-linecap="round"/></svg></span><span class="lbl">MY ACCOUNT</span>
+          </button>
+          <button class="menu-btn small" id="auSettingsBtn">
+            <span class="ico"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M20 6h8l1.6 5.2a14 14 0 0 1 4 2.3l5.2-1.6 4 6.9-3.8 3.7a14 14 0 0 1 0 4.6L42.8 31l-4 6.9-5.2-1.6a14 14 0 0 1-4 2.3L28 44h-8l-1.6-5.4a14 14 0 0 1-4-2.3L9.2 38l-4-6.9 3.8-3.7a14 14 0 0 1 0-4.6L5.2 19l4-6.9 5.2 1.6a14 14 0 0 1 4-2.3z" fill="#8fb6c9" stroke="#12303a" stroke-width="2.6" stroke-linejoin="round"/><circle cx="24" cy="24" r="6.5" fill="#0e3b3c" stroke="#12303a" stroke-width="2.6"/></svg></span><span class="lbl">SETTINGS</span>
+          </button>
+        </div>
+        <div class="au-version">امونق اس · v1 · build 2026-11</div>
+      </div>
+      <div class="space-box" id="auSpaceBox">
+        <canvas id="auSpace"></canvas>
+        <span class="space-hint" id="auSpaceHint">السفينة على وشك الإقلاع</span>
+      </div>
     </div>
   </div>
 </section>
+
+<div class="overlay" id="auPlayDialog">
+  <div class="dialog" style="direction:rtl">
+    <h2>ابدأ اللعب</h2>
+    <p>أنشئ غرفة وشارك الكود، أو انضم بكود صاحبك.</p>
+    <label class="field"><span>اسمك</span><input id="auName" maxlength="18" placeholder="اكتب اسمك"></label>
+    <button class="btn block green" id="auCreate"><span>أنشئ غرفة</span></button>
+    <div style="height:12px"></div>
+    <label class="field"><span>كود الغرفة</span><input id="auCode" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;letter-spacing:6px;text-align:center;font-size:20px"></label>
+    <button class="btn block" id="auJoin"><span>انضم للغرفة</span></button>
+    <button class="btn block dark" id="auPlayClose" style="margin-top:10px"><span>رجوع</span></button>
+    <p class="hint">من 6 إلى 10 لاعبين — واحد أو اثنين منهم مزوّرين</p>
+  </div>
+</div>
+
+<div class="overlay" id="auInvDialog">
+  <div class="dialog" style="direction:rtl">
+    <h2>الخزانة</h2>
+    <p>اختار لون بطلك — اللون ينحفظ ويتطبّق بكل مباراة.</p>
+    <div class="colors" id="auColorGrid"></div>
+    <button class="btn block dark" id="auInvClose" style="margin-top:14px"><span>رجوع</span></button>
+  </div>
+</div>
+
+<div class="overlay" id="auShopDialog">
+  <div class="dialog" style="direction:rtl">
+    <h2>المتجر</h2>
+    <p>ألوان نادرة تنفتح بجمْع المباريات.</p>
+    <div class="colors" id="auShopGrid"></div>
+    <p class="hint" id="auShopHint"></p>
+    <button class="btn block dark" id="auShopClose" style="margin-top:10px"><span>رجوع</span></button>
+  </div>
+</div>
+
+<div class="overlay" id="auAccDialog">
+  <div class="dialog" style="direction:rtl">
+    <h2>ملفي</h2>
+    <div class="profile" id="auProfile"></div>
+    <label class="field" style="margin-top:12px"><span>اسم اللاعب</span><input id="auNameAccount" maxlength="18"></label>
+    <button class="btn block green" id="auSaveName"><span>احفظ الاسم</span></button>
+    <button class="btn block dark" id="auAccClose" style="margin-top:10px"><span>رجوع</span></button>
+  </div>
+</div>
+
+<div class="overlay" id="auSetDialog">
+  <div class="dialog" style="direction:rtl">
+    <h2>الإعدادات</h2>
+    <p>إعدادات محلية على جهازك.</p>
+    <label class="switch"><input type="checkbox" id="auSoundToggle"><span>أصوات الأزرار والتنبيهات</span></label>
+    <label class="switch"><input type="checkbox" id="auHintsToggle"><span>إظهار تلميحات المحطات</span></label>
+    <button class="btn block red" id="auResetBtn" style="margin-top:14px"><span>امسح بياناتي المحلية</span></button>
+    <button class="btn block dark" id="auSetClose" style="margin-top:10px"><span>رجوع</span></button>
+  </div>
+</div>
+
+<div class="overlay" id="auFriendsDialog">
+  <div class="dialog" style="direction:rtl">
+    <h2>الأصدقاء</h2>
+    <p>شارك رابط اللعبة — أي شخص يفتحه يگدر ينشئ غرفة أو ينضم بكود.</p>
+    <button class="btn block green" id="auShareBtn"><span>شارك الرابط</span></button>
+    <button class="btn block" id="auCopyBtn" style="margin-top:10px"><span>انسخ الرابط</span></button>
+    <p class="hint" id="auShareLink"></p>
+    <button class="btn block dark" id="auFriendsClose" style="margin-top:10px"><span>رجوع</span></button>
+  </div>
+</div>
 
 <section id="auLobby" class="screen">
   <div class="sheet">
@@ -382,31 +537,194 @@ input::placeholder{color:#5f7292}
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
 
-  /* ---------- stars ---------- */
-  (function stars(){
-    var box = document.getElementById('auStars');
-    if (!box) return;
-    var html = '';
-    for (var i = 0; i < 70; i += 1) {
-      var size = (Math.random() * 2.2 + 0.9).toFixed(1);
-      html += '<i style="left:' + (Math.random() * 100).toFixed(2) + '%;top:' + (Math.random() * 100).toFixed(2) +
-        '%;width:' + size + 'px;height:' + size + 'px;animation-delay:' + (Math.random() * 3).toFixed(2) + 's"></i>';
+  /* ---------- the space window: drifting stars + floating crewmates ---------- */
+  var space = { canvas:null, ctx:null, w:0, h:0, stars:[], beans:[], t:0 };
+  function spaceResize(){
+    if (!space.canvas) return;
+    var box = space.canvas.parentElement;
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    space.w = Math.max(1, box.clientWidth || 320);
+    space.h = Math.max(1, box.clientHeight || 240);
+    space.canvas.width = Math.round(space.w * dpr);
+    space.canvas.height = Math.round(space.h * dpr);
+    space.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function spaceSeed(){
+    space.stars = [];
+    var count = 90;
+    for (var i = 0; i < count; i += 1) {
+      space.stars.push({
+        x: Math.random(),
+        y: Math.random(),
+        r: Math.random() * 1.7 + 0.5,
+        speed: Math.random() * 0.012 + 0.004,
+        phase: Math.random() * Math.PI * 2,
+        twinkle: Math.random() * 1.6 + 0.9
+      });
     }
-    box.innerHTML = html;
-  })();
-  (function mascot(){
-    var box = document.getElementById('auMascot');
-    if (!box) return;
-    box.innerHTML = '<svg viewBox="0 0 200 220" aria-hidden="true">' +
-      '<ellipse cx="100" cy="206" rx="58" ry="10" fill="#04060f" opacity=".55"/>' +
-      '<rect x="6" y="86" width="42" height="64" rx="20" fill="#8f1b1b"/>' +
-      '<path d="M62 12h70a50 50 0 0 1 50 50v62a34 34 0 0 1-34 34h-14v40a22 22 0 0 1-44 0v-40H96a50 50 0 0 1-50-50V62A50 50 0 0 1 62 12z" fill="#c51111"/>' +
-      '<ellipse cx="128" cy="80" rx="46" ry="33" fill="#a9e3f5"/>' +
-      '<ellipse cx="128" cy="80" rx="46" ry="33" fill="none" stroke="#7a0f0f" stroke-width="7"/>' +
-      '<ellipse cx="143" cy="68" rx="15" ry="10" fill="#f2fdff"/>' +
-      '<path d="M86 168h36" stroke="#7a0f0f" stroke-width="9" stroke-linecap="round"/>' +
-      '</svg>';
-  })();
+    var palette = ['cyan', 'green', 'red', 'pink', 'yellow', 'purple'];
+    space.beans = palette.map(function(id, index){
+      return {
+        color: id,
+        x: 0.16 + index * 0.135,
+        y: 0.30 + (index % 3) * 0.17,
+        amp: 0.05 + (index % 2) * 0.04,
+        speed: 0.22 + index * 0.045,
+        phase: index * 1.35,
+        scale: 0.85 + (index % 3) * 0.16,
+        tilt: (index % 2 ? 1 : -1) * (0.2 + index * 0.05)
+      };
+    });
+  }
+  function spaceBean(px, py, unit, hex, angle, bob){
+    var ctx = space.ctx;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(angle);
+    ctx.scale(unit / 26, unit / 26);
+    // backpack
+    ctx.fillStyle = spaceShade(hex, -0.34);
+    ctx.beginPath();
+    ctx.moveTo(-24, -8);
+    ctx.lineTo(-34, -4);
+    ctx.quadraticCurveTo(-38, 8, -32, 18);
+    ctx.lineTo(-22, 16);
+    ctx.closePath();
+    ctx.fill();
+    // body
+    ctx.fillStyle = hex;
+    ctx.beginPath();
+    ctx.moveTo(-16, -22);
+    ctx.lineTo(10, -22);
+    ctx.quadraticCurveTo(24, -22, 24, -6);
+    ctx.lineTo(24, 12);
+    ctx.quadraticCurveTo(24, 22, 14, 22);
+    ctx.lineTo(-6, 22);
+    ctx.quadraticCurveTo(-18, 22, -18, 10);
+    ctx.lineTo(-18, -14);
+    ctx.quadraticCurveTo(-18, -22, -16, -22);
+    ctx.fill();
+    // legs
+    ctx.fillStyle = spaceShade(hex, -0.14);
+    var swing = Math.sin(bob) * 4;
+    ctx.fillRect(-14, 20, 11, 12 + swing);
+    ctx.fillRect(2, 18, 11, 10 - swing);
+    // visor
+    ctx.fillStyle = '#a9e3f5';
+    ctx.beginPath();
+    ctx.ellipse(12, -9, 13, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = spaceShade(hex, -0.5);
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+    ctx.fillStyle = '#f2fdff';
+    ctx.beginPath();
+    ctx.ellipse(16, -12, 4, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  function spaceShade(hex, amount){
+    var value = String(hex || '#8899aa').replace('#', '');
+    var num = parseInt(value, 16);
+    var r = Math.max(0, Math.min(255, ((num >> 16) & 255) + Math.round(255 * amount)));
+    var g = Math.max(0, Math.min(255, ((num >> 8) & 255) + Math.round(255 * amount)));
+    var b = Math.max(0, Math.min(255, (num & 255) + Math.round(255 * amount)));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+  function spaceColor(id){
+    for (var i = 0; i < CFG.colors.length; i += 1) if (CFG.colors[i].id === id) return CFG.colors[i].hex;
+    return '#8899aa';
+  }
+  function spaceFrame(){
+    requestAnimationFrame(spaceFrame);
+    var visible = document.getElementById('auMenu');
+    if (!space.canvas || !visible || !visible.classList.contains('on')) return;
+    if (!space.w) spaceResize();
+    var ctx = space.ctx;
+    var w = space.w;
+    var h = space.h;
+    space.t += 0.016;
+    ctx.clearRect(0, 0, w, h);
+
+    // deep space + a faint nebula band, like the original window
+    var bg = ctx.createLinearGradient(0, 0, w, h);
+    bg.addColorStop(0, '#070c1a');
+    bg.addColorStop(0.55, '#04060e');
+    bg.addColorStop(1, '#0a0714');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.translate(w * 0.62, h * 0.42);
+    ctx.rotate(-0.5);
+    var arc = ctx.createLinearGradient(-w * 0.5, 0, w * 0.5, 0);
+    arc.addColorStop(0, '#00000000');
+    arc.addColorStop(0.5, '#5c7fb8');
+    arc.addColorStop(1, '#00000000');
+    ctx.fillStyle = arc;
+    ctx.fillRect(-w * 0.7, -h * 0.28, w * 1.4, h * 0.56);
+    ctx.restore();
+
+    // moving, twinkling stars
+    for (var i = 0; i < space.stars.length; i += 1) {
+      var star = space.stars[i];
+      star.x -= star.speed * 0.016 * 3;
+      if (star.x < -0.02) star.x = 1.02;
+      var alpha = 0.35 + Math.abs(Math.sin(space.t * star.twinkle + star.phase)) * 0.65;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#e7f2ff';
+      ctx.beginPath();
+      ctx.arc(star.x * w, star.y * h, star.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // floating crewmates, each on its own lazy orbit
+    for (var b = 0; b < space.beans.length; b += 1) {
+      var bean = space.beans[b];
+      var drift = space.t * bean.speed + bean.phase;
+      var bx = (bean.x + Math.sin(drift * 0.6) * 0.05) * w;
+      var by = (bean.y + Math.sin(drift) * bean.amp) * h;
+      var unit = Math.min(w, h) * 0.115 * bean.scale;
+      spaceBean(bx, by, unit, spaceColor(bean.color), Math.sin(drift * 0.7) * bean.tilt, drift * 2.2);
+    }
+
+    // the gold coin at the bottom-right corner
+    var coinR = Math.min(w, h) * 0.085;
+    var cx = w - coinR * 1.5;
+    var cy = h - coinR * 1.35;
+    var spin = Math.abs(Math.cos(space.t * 1.6));
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(0.45 + spin * 0.55, 1);
+    ctx.beginPath();
+    ctx.arc(0, 0, coinR, 0, Math.PI * 2);
+    ctx.fillStyle = '#f0c14b';
+    ctx.fill();
+    ctx.lineWidth = Math.max(2, coinR * 0.16);
+    ctx.strokeStyle = '#8a6209';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, coinR * 0.62, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffe9a8';
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#fff6d0';
+    ctx.font = '900 ' + Math.round(coinR * 0.9) + 'px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('+1', cx, cy);
+  }
+  function startSpace(){
+    if (space.canvas) return;
+    space.canvas = document.getElementById('auSpace');
+    if (!space.canvas) return;
+    space.ctx = space.canvas.getContext('2d');
+    spaceSeed();
+    spaceResize();
+    window.addEventListener('resize', function(){ space.w = 0; spaceResize(); });
+    requestAnimationFrame(spaceFrame);
+  }
 
   var el = function(id){ return document.getElementById(id); };
   var toastTimer = 0;
@@ -418,11 +736,12 @@ input::placeholder{color:#5f7292}
     toastTimer = setTimeout(function(){ box.classList.remove('on'); }, 2600);
   }
   function setScreen(name){
-    ['auEntry','auLobby','auStage'].forEach(function(id){
+    ['auMenu','auLobby','auStage'].forEach(function(id){
       var node = el(id);
       if (id === name) node.classList.add('on'); else node.classList.remove('on');
     });
     document.body.style.overflow = name === 'auStage' ? 'hidden' : 'auto';
+    if (name === 'auMenu') startSpace();
     if (window.Telegram && Telegram.WebApp && name === 'auStage') {
       try { Telegram.WebApp.expand && Telegram.WebApp.expand(); } catch (e) {}
     }
@@ -443,16 +762,199 @@ input::placeholder{color:#5f7292}
       return res;
     });
   }
+  function storageGet(key, fallback){
+    try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+  }
+  function storageSet(key, value){
+    try { localStorage.setItem(key, value); } catch (e) {}
+  }
   function readName(){
     var raw = (el('auName').value || '').trim();
     if (!raw) {
       try { raw = (Telegram.WebApp.initDataUnsafe.user.username || Telegram.WebApp.initDataUnsafe.user.first_name || '').slice(0, 18); } catch (e) {}
     }
     AU.name = raw || 'لاعب';
-    try { localStorage.setItem('au-name', AU.name); } catch (e) {}
+    storageSet('au-name', AU.name);
+    renderChip();
     return AU.name;
   }
-  try { el('auName').value = localStorage.getItem('au-name') || ''; } catch (e) {}
+  try { el('auName').value = storageGet('au-name', ''); } catch (e) {}
+  try { el('auNameAccount').value = storageGet('au-name', ''); } catch (e) {}
+
+  /* ---------- profile: name, colour, unlocked cosmetics ---------- */
+  var RARE = { gold: 3, silver: 3 };
+  var profile = {
+    name: storageGet('au-name', '') || 'لاعب',
+    color: storageGet('au-color', 'red'),
+    matches: Number(storageGet('au-matches', '0')) || 0,
+    sound: storageGet('au-sound', '1') === '1',
+    hints: storageGet('au-hints', '1') === '1'
+  };
+  function renderChip(){
+    var box = el('auPlayerBean');
+    if (box) box.innerHTML = crewSvg(profile.color);
+    var label = el('auPlayerName');
+    if (label) label.textContent = profile.name || 'لاعب';
+  }
+  function isUnlocked(colorId){
+    if (!RARE[colorId]) return true;
+    return profile.matches >= RARE[colorId];
+  }
+  function beep(){
+    if (!profile.sound) return;
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!beep.ctx) beep.ctx = new Ctx();
+      var osc = beep.ctx.createOscillator();
+      var gain = beep.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 380;
+      gain.gain.value = 0.03;
+      osc.connect(gain);
+      gain.connect(beep.ctx.destination);
+      osc.start();
+      osc.stop(beep.ctx.currentTime + 0.05);
+    } catch (e) {}
+  }
+  function setColor(colorId){
+    if (!isUnlocked(colorId)) { toast('هذا اللون بعده مقفول — افتحه من المتجر'); return; }
+    profile.color = colorId;
+    storageSet('au-color', colorId);
+    renderChip();
+    renderColors();
+    beep();
+  }
+  function renderColors(){
+    var grid = el('auColorGrid');
+    if (!grid) return;
+    grid.innerHTML = CFG.colors.filter(function(c){ return !RARE[c.id]; }).map(function(color){
+      return '<button class="color' + (profile.color === color.id ? ' on' : '') + '" data-color="' + color.id + '" title="' + color.name + '">' +
+        crewSvg(color.id) + '<small>' + color.name + '</small></button>';
+    }).join('');
+    Array.prototype.forEach.call(grid.querySelectorAll('[data-color]'), function(node){
+      node.addEventListener('click', function(){ setColor(node.getAttribute('data-color')); });
+    });
+  }
+  function renderShop(){
+    var grid = el('auShopGrid');
+    if (!grid) return;
+    grid.innerHTML = CFG.colors.filter(function(c){ return RARE[c.id]; }).map(function(color){
+      var open = isUnlocked(color.id);
+      return '<button class="color' + (open ? '' : ' locked') + (profile.color === color.id ? ' on' : '') + '" data-color="' + color.id + '">' +
+        crewSvg(color.id) + '<small>' + color.name + '</small>' +
+        (open ? '' : '<svg class="lock" viewBox="0 0 24 24" fill="none" stroke="#dfe9ff" stroke-width="2.4"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>') +
+        '</button>';
+    }).join('');
+    Array.prototype.forEach.call(grid.querySelectorAll('[data-color]'), function(node){
+      node.addEventListener('click', function(){
+        var id = node.getAttribute('data-color');
+        if (!isUnlocked(id)) return toast('تحتاج ' + RARE[id] + ' مباريات — عندك ' + profile.matches);
+        setColor(id);
+        renderShop();
+      });
+    });
+    el('auShopHint').textContent = 'عندك ' + profile.matches + ' مباريات مكتملة · الألوان النادرة تنفتح بعد ' + RARE.gold;
+  }
+  function renderProfile(){
+    el('auProfile').innerHTML =
+      '<div><span>الاسم</span><b>' + esc(profile.name) + '</b></div>' +
+      '<div><span>اللون</span><b>' + esc((CFG.colors.filter(function(c){ return c.id === profile.color; })[0] || {}).name || profile.color) + '</b></div>' +
+      '<div><span>مباريات مكتملة</span><b>' + profile.matches + '</b></div>' +
+      '<div><span>ألوان نادرة</span><b>' + CFG.colors.filter(function(c){ return RARE[c.id] && isUnlocked(c.id); }).length + ' / 2</b></div>';
+  }
+  function countMatch(code){
+    if (!code) return;
+    var seen = storageGet('au-seen', '');
+    if (seen.indexOf('|' + code + '|') >= 0) return;
+    storageSet('au-seen', (seen + '|' + code + '|').slice(-400));
+    profile.matches += 1;
+    storageSet('au-matches', String(profile.matches));
+  }
+  function openDialog(id){
+    var node = el(id);
+    if (node) node.classList.add('on');
+    beep();
+  }
+  function closeDialog(id){
+    var node = el(id);
+    if (node) node.classList.remove('on');
+  }
+  function wireMenu(){
+    var openers = {
+      auPlayBtn: 'auPlayDialog', auInventoryBtn: 'auInvDialog', auShopBtn: 'auShopDialog',
+      auAccountBtn: 'auAccDialog', auSettingsBtn: 'auSetDialog', auFriendsBtn: 'auFriendsDialog'
+    };
+    Object.keys(openers).forEach(function(buttonId){
+      var button = el(buttonId);
+      if (button) button.addEventListener('click', function(){
+        if (buttonId === 'auInventoryBtn') renderColors();
+        if (buttonId === 'auShopBtn') renderShop();
+        if (buttonId === 'auAccountBtn') renderProfile();
+        openDialog(openers[buttonId]);
+      });
+    });
+    var closers = {
+      auPlayClose: 'auPlayDialog', auInvClose: 'auInvDialog', auShopClose: 'auShopDialog',
+      auAccClose: 'auAccDialog', auSetClose: 'auSetDialog', auFriendsClose: 'auFriendsDialog'
+    };
+    Object.keys(closers).forEach(function(buttonId){
+      var button = el(buttonId);
+      if (button) button.addEventListener('click', function(){ closeDialog(closers[buttonId]); });
+    });
+    el('auSaveName').addEventListener('click', function(){
+      var value = (el('auNameAccount').value || '').trim();
+      if (!value) return toast('اكتب اسم');
+      profile.name = value.slice(0, 18);
+      storageSet('au-name', profile.name);
+      el('auName').value = profile.name;
+      renderChip();
+      renderProfile();
+      toast('انحفظ الاسم');
+    });
+    el('auSoundToggle').checked = profile.sound;
+    el('auSoundToggle').addEventListener('change', function(){
+      profile.sound = el('auSoundToggle').checked;
+      storageSet('au-sound', profile.sound ? '1' : '0');
+      beep();
+    });
+    el('auHintsToggle').checked = profile.hints;
+    el('auHintsToggle').addEventListener('change', function(){
+      profile.hints = el('auHintsToggle').checked;
+      storageSet('au-hints', profile.hints ? '1' : '0');
+      var hint = el('auSpaceHint');
+      if (hint) hint.style.opacity = profile.hints ? '0.8' : '0';
+    });
+    el('auResetBtn').addEventListener('click', function(){
+      ['au-name', 'au-color', 'au-matches', 'au-seen', 'au-sound', 'au-hints'].forEach(function(key){
+        try { localStorage.removeItem(key); } catch (e) {}
+      });
+      profile.matches = 0;
+      profile.color = 'red';
+      closeDialog('auSetDialog');
+      renderChip();
+      toast('انمسحت البيانات المحلية');
+    });
+    var link = location.origin + '/amongus';
+    el('auShareLink').textContent = link;
+    el('auCopyBtn').addEventListener('click', function(){
+      var done = function(){ toast('انسخ الرابط: ' + link); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(function(){ toast('انتسخ الرابط'); }).catch(done);
+      else done();
+    });
+    el('auShareBtn').addEventListener('click', function(){
+      var share = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent('العب امونق اس وياي');
+      try {
+        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink(share);
+        else window.open(share, '_blank');
+      } catch (e) { window.open(share, '_blank'); }
+    });
+    var hint = el('auSpaceHint');
+    if (hint) hint.style.opacity = profile.hints ? '0.8' : '0';
+  }
+  renderChip();
+  wireMenu();
+  startSpace();
 
   /* ---------- lobby ---------- */
   function renderLobby(room){
@@ -480,7 +982,7 @@ input::placeholder{color:#5f7292}
   }
 
   el('auCreate').addEventListener('click', function(){
-    api('/rooms', { action:'create', name: readName() }).then(function(res){
+    api('/rooms', { action:'create', name: readName(), color: profile.color }).then(function(res){
       if (!res.ok) return toast(res.error || 'تعذّر إنشاء الغرفة');
       AU.code = res.code; AU.token = res.token;
       history.replaceState(null, '', '?code=' + res.code);
@@ -490,7 +992,7 @@ input::placeholder{color:#5f7292}
   el('auJoin').addEventListener('click', function(){
     var code = (el('auCode').value || '').trim().toUpperCase();
     if (code.length < 4) return toast('اكتب كود الغرفة');
-    api('/rooms/' + code, { action:'join', name: readName(), code:code }).then(function(res){
+    api('/rooms/' + code, { action:'join', name: readName(), code:code, color: profile.color }).then(function(res){
       if (!res.ok) return toast(res.error || 'ما گدرنا ندخل');
       AU.code = res.code; AU.token = res.token;
       history.replaceState(null, '', '?code=' + res.code);
@@ -514,6 +1016,7 @@ input::placeholder{color:#5f7292}
   /* ---------- polling ---------- */
   function applyRoom(room){
     if (!room) return;
+    if (room.phase === 'ended') countMatch(room.code);
     AU.room = room;
     if (room.phase === 'lobby') {
       setScreen('auLobby');

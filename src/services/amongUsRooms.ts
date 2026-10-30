@@ -104,8 +104,14 @@ export const AU_COLORS: Array<{ id: string; hex: string; name: string }> = [
   { id: 'black', hex: '#3f474e', name: 'أسود' },
   { id: 'white', hex: '#d6e0f0', name: 'أبيض' },
   { id: 'purple', hex: '#6b2fbb', name: 'بنفسجي' },
-  { id: 'cyan', hex: '#38fedc', name: 'سماوي' }
+  { id: 'cyan', hex: '#38fedc', name: 'سماوي' },
+  // Rare colours: the client unlocks them after a few finished matches.
+  { id: 'gold', hex: '#e2b53a', name: 'ذهبي' },
+  { id: 'silver', hex: '#c3d0dc', name: 'فضي' }
 ];
+
+/** Colours that only appear once the player has played a few matches. */
+export const AU_RARE_COLORS = ['gold', 'silver'];
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -248,12 +254,14 @@ function stationById(id: string) {
   return AU_MAP.stations.find(station => station.id === id) || null;
 }
 
-function pickColor(room: AuRoomState): string {
+function pickColor(room: AuRoomState, wanted?: string): string {
   const used = new Set(room.players.map(player => player.color));
+  const asked = AU_COLORS.find(color => color.id === wanted);
+  if (asked && !used.has(asked.id)) return asked.id;
   return (AU_COLORS.find(color => !used.has(color.id)) || AU_COLORS[0]).id;
 }
 
-function makePlayer(name: string, bot: boolean, room: AuRoomState): AuPlayer {
+function makePlayer(name: string, bot: boolean, room: AuRoomState, color?: string): AuPlayer {
   const spawn = {
     x: CAFETERIA_SPAWN.x + (Math.random() * 8 - 4),
     y: CAFETERIA_SPAWN.y + (Math.random() * 6 - 3)
@@ -261,7 +269,7 @@ function makePlayer(name: string, bot: boolean, room: AuRoomState): AuPlayer {
   return {
     token: bot ? `bot_${Math.random().toString(36).slice(2, 9)}` : token(),
     name: String(name || 'لاعب').slice(0, 18),
-    color: pickColor(room),
+    color: pickColor(room, color),
     bot,
     role: null,
     alive: true,
@@ -721,7 +729,7 @@ export class AmongUsRooms {
           tickAt: 0,
           round: 0
         };
-        const host = makePlayer(body.name || 'المضيف', false, room);
+        const host = makePlayer(body.name || 'المضيف', false, room, String(body.color || ''));
         room.players.push(host);
         room.hostToken = host.token;
         log(room, 'انفتحت غرفة جديدة');
@@ -736,7 +744,7 @@ export class AmongUsRooms {
       if (action === 'join') {
         if (room.phase !== 'lobby') return fail('المباراة بدت — انتظر الجولة الجاية');
         if (room.players.length >= AU_MAX_PLAYERS) return fail('الغرفة فلّت (10 لاعبين)');
-        const player = makePlayer(body.name || 'لاعب', false, room);
+        const player = makePlayer(body.name || 'لاعب', false, room, String(body.color || ''));
         room.players.push(player);
         log(room, `انضم ${player.name}`);
         await this.save(room);
