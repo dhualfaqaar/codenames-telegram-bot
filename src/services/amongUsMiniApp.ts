@@ -90,7 +90,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 }
 .au-friends:active{transform:translateY(3px);box-shadow:0 1px 0 #062220}
 .au-body{
-  display:grid;grid-template-columns:minmax(240px,34%) minmax(0,1fr);
+  display:grid;grid-template-columns:clamp(180px,26%,270px) minmax(0,1fr);
   gap:14px;min-height:0;align-items:stretch
 }
 .au-left{display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -128,7 +128,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .menu-btn.small .ico svg{width:24px;height:24px}
 .au-version{color:#c7efe8;font-size:10px;letter-spacing:.7px;opacity:.72;padding:0 4px}
 .space-box{
-  position:relative;border-radius:16px;overflow:hidden;min-height:240px;
+  position:relative;width:100%;height:100%;aspect-ratio:16/10;
+  min-height:min(46dvh,320px);max-height:min(70dvh,560px);
+  border-radius:16px;overflow:hidden;
   background:radial-gradient(circle at 60% 40%,#0a1226,#04060e 70%);
   border:6px solid #93a5a4;box-shadow:0 8px 0 #062220,inset 0 0 0 3px #2b3a3c,inset 0 0 70px #000
 }
@@ -138,9 +140,22 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   direction:rtl;pointer-events:none;opacity:.8
 }
 @media(max-width:620px){
-  .au-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(150px,32vh) auto}
-  .space-box{order:-1}
-  .wordmark{width:min(74%,220px)}
+  .au-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:10px}
+  /* The launch window comes first and owns most of the screen, always landscape. */
+  .space-box{order:-1;aspect-ratio:auto;height:min(54dvh,430px);min-height:190px;max-height:none}
+  .wordmark{width:min(62%,190px)}
+  .menu-btn{min-height:52px;margin:6px 0}
+  .menu-btn .lbl{font-size:16px}
+  .menu-btn.small{min-height:44px;margin:4px 0}
+  .menu-btn.small .lbl{font-size:12px}
+  .au-left{gap:8px}
+  .au-body{gap:10px}
+  .menu-panel+.menu-panel{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:5px 6px}
+}
+@media(max-width:620px) and (orientation:landscape){
+  .au-body{grid-template-columns:minmax(120px,34%) minmax(0,1fr);grid-template-rows:auto}
+  .space-box{order:0;height:min(78dvh,420px)}
+  .wordmark{width:min(86%,150px)}
 }
 /* ---- menus inside dialogs ---- */
 .colors{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:12px 0}
@@ -514,17 +529,24 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   var AU = { code:'', token:'', room:null, busy:false };
 
   /* ---------- drawn crewmate (no emoji anywhere) ---------- */
+  var CREW_OUTLINE = '#151a24';
+  /** The crewmate silhouette from the game: flat body, dark outline, huge visor. */
   function crewSvg(colorId, extra){
     var hex = '#8899aa';
     for (var i = 0; i < CFG.colors.length; i += 1) if (CFG.colors[i].id === colorId) hex = CFG.colors[i].hex;
-    var dark = shade(hex, -0.32);
-    return '<svg viewBox="0 0 64 80" aria-hidden="true">' +
-      '<rect x="2" y="26" width="15" height="24" rx="7" fill="' + dark + '"/>' +
-      '<path d="M20 4h20a15 15 0 0 1 15 15v20a11 11 0 0 1-11 11h-4v15a7 7 0 0 1-14 0V50h-6A15 15 0 0 1 5 35V19A15 15 0 0 1 20 4z" fill="' + hex + '"/>' +
-      '<ellipse cx="39" cy="25" rx="15" ry="11" fill="#a9e3f5"/>' +
-      '<ellipse cx="39" cy="25" rx="15" ry="11" fill="none" stroke="' + shade(hex, -0.5) + '" stroke-width="2.4"/>' +
-      '<ellipse cx="44" cy="21" rx="5" ry="3.4" fill="#f2fdff"/>' +
-      '<path d="M17 56h12" stroke="' + shade(hex, -0.5) + '" stroke-width="3" stroke-linecap="round"/>' +
+    var dark = shade(hex, -0.34);
+    var id = 'cg-' + String(colorId).replace(/[^a-z0-9]/gi, '');
+    return '<svg viewBox="0 0 100 120" aria-hidden="true">' +
+      '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" stop-color="' + shade(hex, 0.16) + '"/><stop offset="1" stop-color="' + shade(hex, -0.08) + '"/>' +
+      '</linearGradient></defs>' +
+      '<ellipse cx="50" cy="112" rx="33" ry="6" fill="#0b0f18" opacity=".45"/>' +
+      '<path d="M16 34C6 36 2 47 2 58c0 12 4 21 14 22h2V34z" fill="' + dark + '" stroke="' + CREW_OUTLINE + '" stroke-width="3.4" stroke-linejoin="round"/>' +
+      '<rect x="20" y="86" width="25" height="19" rx="9.5" fill="' + dark + '" stroke="' + CREW_OUTLINE + '" stroke-width="3.4"/>' +
+      '<rect x="47" y="86" width="25" height="19" rx="9.5" fill="' + dark + '" stroke="' + CREW_OUTLINE + '" stroke-width="3.4"/>' +
+      '<path d="M46 10C23 10 9 26 9 48v28c0 11 7 18 18 18h30c11 0 18-7 18-18V42C75 23 64 10 46 10z" fill="url(#' + id + ')" stroke="' + CREW_OUTLINE + '" stroke-width="3.4" stroke-linejoin="round"/>' +
+      '<ellipse cx="53" cy="41" rx="26" ry="19" fill="#a9e3f5" stroke="' + CREW_OUTLINE + '" stroke-width="3.4"/>' +
+      '<path d="M34 33c7-5 20-6 27-3" stroke="#e9fbff" stroke-width="6" stroke-linecap="round" fill="none" opacity=".9"/>' +
       (extra || '') + '</svg>';
   }
   function shade(hex, amount){
@@ -576,61 +598,103 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       };
     });
   }
-  function spaceBean(px, py, unit, hex, angle, bob){
-    var ctx = space.ctx;
+  /**
+   * One canvas crewmate, in the same proportions as the SVG above.
+   * size is the body height in pixels; phase drives the leg swing.
+   */
+  function drawCrew(ctx, px, py, size, hex, angle, phase, opts){
+    opts = opts || {};
+    var s = size / 84;
+    var dark = shade(hex, -0.34);
+    var lighter = shade(hex, 0.16);
     ctx.save();
     ctx.translate(px, py);
-    ctx.rotate(angle);
-    ctx.scale(unit / 26, unit / 26);
+    ctx.rotate(angle || 0);
+    ctx.scale(s, s);
+    ctx.translate(-50, -50);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3.4;
+    ctx.strokeStyle = CREW_OUTLINE;
+
+    if (opts.shadow !== false) {
+      ctx.beginPath();
+      ctx.ellipse(50, 112, 33, 6, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(8,12,20,0.45)';
+      ctx.fill();
+    }
+
     // backpack
-    ctx.fillStyle = spaceShade(hex, -0.34);
     ctx.beginPath();
-    ctx.moveTo(-24, -8);
-    ctx.lineTo(-34, -4);
-    ctx.quadraticCurveTo(-38, 8, -32, 18);
-    ctx.lineTo(-22, 16);
+    ctx.moveTo(16, 34);
+    ctx.bezierCurveTo(6, 36, 2, 47, 2, 58);
+    ctx.bezierCurveTo(2, 70, 6, 79, 16, 80);
+    ctx.lineTo(18, 80);
+    ctx.lineTo(18, 34);
     ctx.closePath();
+    ctx.fillStyle = dark;
     ctx.fill();
-    // body
-    ctx.fillStyle = hex;
-    ctx.beginPath();
-    ctx.moveTo(-16, -22);
-    ctx.lineTo(10, -22);
-    ctx.quadraticCurveTo(24, -22, 24, -6);
-    ctx.lineTo(24, 12);
-    ctx.quadraticCurveTo(24, 22, 14, 22);
-    ctx.lineTo(-6, 22);
-    ctx.quadraticCurveTo(-18, 22, -18, 10);
-    ctx.lineTo(-18, -14);
-    ctx.quadraticCurveTo(-18, -22, -16, -22);
-    ctx.fill();
-    // legs
-    ctx.fillStyle = spaceShade(hex, -0.14);
-    var swing = Math.sin(bob) * 4;
-    ctx.fillRect(-14, 20, 11, 12 + swing);
-    ctx.fillRect(2, 18, 11, 10 - swing);
-    // visor
-    ctx.fillStyle = '#a9e3f5';
-    ctx.beginPath();
-    ctx.ellipse(12, -9, 13, 9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = spaceShade(hex, -0.5);
-    ctx.lineWidth = 2.6;
     ctx.stroke();
-    ctx.fillStyle = '#f2fdff';
+
+    // legs (they swing while swimming / walking)
+    var swing = Math.sin(phase || 0) * 3;
+    drawLeg(ctx, 20, 86 + swing * 0.4, dark);
+    drawLeg(ctx, 47, 86 - swing * 0.4, dark);
+
+    // body with a soft top light
     ctx.beginPath();
-    ctx.ellipse(16, -12, 4, 2.6, 0, 0, Math.PI * 2);
+    ctx.moveTo(46, 10);
+    ctx.bezierCurveTo(23, 10, 9, 26, 9, 48);
+    ctx.lineTo(9, 76);
+    ctx.bezierCurveTo(9, 87, 16, 94, 27, 94);
+    ctx.lineTo(57, 94);
+    ctx.bezierCurveTo(68, 94, 75, 87, 75, 76);
+    ctx.lineTo(75, 42);
+    ctx.bezierCurveTo(75, 23, 64, 10, 46, 10);
+    ctx.closePath();
+    var grad = ctx.createLinearGradient(0, 10, 0, 94);
+    grad.addColorStop(0, lighter);
+    grad.addColorStop(1, shade(hex, -0.1));
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.stroke();
+
+    // visor
+    ctx.beginPath();
+    ctx.ellipse(53, 41, 26, 19, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#a9e3f5';
+    ctx.fill();
+    ctx.stroke();
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(53, 41, 24, 17, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(63, 33, 15, 9, -0.35, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fill();
     ctx.restore();
+    ctx.beginPath();
+    ctx.ellipse(53, 41, 26, 19, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
   }
-  function spaceShade(hex, amount){
-    var value = String(hex || '#8899aa').replace('#', '');
-    var num = parseInt(value, 16);
-    var r = Math.max(0, Math.min(255, ((num >> 16) & 255) + Math.round(255 * amount)));
-    var g = Math.max(0, Math.min(255, ((num >> 8) & 255) + Math.round(255 * amount)));
-    var b = Math.max(0, Math.min(255, (num & 255) + Math.round(255 * amount)));
-    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  function drawLeg(ctx, x, y, color){
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, 25, 19, 9.5);
+    else {
+      var r = 9.5;
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + 25, y, x + 25, y + 19, r);
+      ctx.arcTo(x + 25, y + 19, x, y + 19, r);
+      ctx.arcTo(x, y + 19, x, y, r);
+      ctx.arcTo(x, y, x + 25, y, r);
+    }
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.stroke();
   }
+
   function spaceColor(id){
     for (var i = 0; i < CFG.colors.length; i += 1) if (CFG.colors[i].id === id) return CFG.colors[i].hex;
     return '#8899aa';
@@ -685,35 +749,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       var drift = space.t * bean.speed + bean.phase;
       var bx = (bean.x + Math.sin(drift * 0.6) * 0.05) * w;
       var by = (bean.y + Math.sin(drift) * bean.amp) * h;
-      var unit = Math.min(w, h) * 0.115 * bean.scale;
-      spaceBean(bx, by, unit, spaceColor(bean.color), Math.sin(drift * 0.7) * bean.tilt, drift * 2.2);
+      var unit = Math.min(w, h) * 0.22 * bean.scale;
+      drawCrew(ctx, bx, by, unit, spaceColor(bean.color), Math.sin(drift * 0.7) * bean.tilt, drift * 2.2);
     }
 
-    // the gold coin at the bottom-right corner
-    var coinR = Math.min(w, h) * 0.085;
-    var cx = w - coinR * 1.5;
-    var cy = h - coinR * 1.35;
-    var spin = Math.abs(Math.cos(space.t * 1.6));
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(0.45 + spin * 0.55, 1);
-    ctx.beginPath();
-    ctx.arc(0, 0, coinR, 0, Math.PI * 2);
-    ctx.fillStyle = '#f0c14b';
-    ctx.fill();
-    ctx.lineWidth = Math.max(2, coinR * 0.16);
-    ctx.strokeStyle = '#8a6209';
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(0, 0, coinR * 0.62, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffe9a8';
-    ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = '#fff6d0';
-    ctx.font = '900 ' + Math.round(coinR * 0.9) + 'px system-ui';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('+1', cx, cy);
   }
   function startSpace(){
     if (space.canvas) return;
@@ -1076,45 +1115,12 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     ctx.arcTo(x, y, x + w, y, radius);
     ctx.closePath();
   }
-  /** The bean, drawn exactly like the game: backpack, body, visor, highlight. */
+  /** In-ship crewmate: the same renderer as the launch window. */
   function drawBean(px, py, unit, hex, dead, name, isYou){
-    var u = unit;
     ctx.save();
-    ctx.translate(px, py);
     ctx.globalAlpha = dead ? 0.42 : 1;
-    // shadow
-    ctx.fillStyle = '#04060f66';
-    ctx.beginPath();
-    ctx.ellipse(0, u * 1.05, u * 0.95, u * 0.28, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // backpack
-    ctx.fillStyle = shade(hex, -0.34);
-    roundRect(-u * 1.05, -u * 0.35, u * 0.5, u * 0.85, u * 0.22);
-    ctx.fill();
-    // body
-    ctx.fillStyle = hex;
-    roundRect(-u * 0.72, -u * 1.15, u * 1.6, u * 1.95, u * 0.62);
-    ctx.fill();
-    // legs
-    ctx.fillStyle = shade(hex, -0.12);
-    roundRect(-u * 0.62, u * 0.35, u * 0.55, u * 0.62, u * 0.24);
-    ctx.fill();
-    roundRect(u * 0.12, u * 0.35, u * 0.55, u * 0.62, u * 0.24);
-    ctx.fill();
-    // visor
-    ctx.fillStyle = '#a9e3f5';
-    ctx.beginPath();
-    ctx.ellipse(u * 0.34, -u * 0.55, u * 0.62, u * 0.44, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = shade(hex, -0.5);
-    ctx.lineWidth = Math.max(1, u * 0.09);
-    ctx.stroke();
-    ctx.fillStyle = '#f2fdff';
-    ctx.beginPath();
-    ctx.ellipse(u * 0.5, -u * 0.66, u * 0.2, u * 0.13, 0, 0, Math.PI * 2);
-    ctx.fill();
+    drawCrew(ctx, px, py, unit, hex, 0, 0, { shadow: !dead });
     ctx.restore();
-
     if (name) {
       ctx.save();
       ctx.globalAlpha = dead ? 0.5 : 1;
@@ -1124,7 +1130,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       ctx.textBaseline = 'bottom';
       ctx.shadowColor = '#04060f';
       ctx.shadowBlur = 4;
-      ctx.fillText(name, px, py - u * 1.5);
+      ctx.fillText(name, px, py - size.scale * 2.1);
       ctx.restore();
     }
   }
@@ -1237,13 +1243,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     room.players.forEach(function(player){
       if (player.token === 'you') return;
       var pos = toScreen(player.x, player.y);
-      drawBean(pos.x, pos.y, size.scale * 1.75, colorHex(player.color), !player.alive, player.name, false);
+      drawBean(pos.x, pos.y, size.scale * 3.6, colorHex(player.color), !player.alive, player.name, false);
     });
 
     // you last, on top
     if (me) {
       var own = toScreen(world.x, world.y);
-      drawBean(own.x, own.y, size.scale * 1.9, colorHex(me.color), !me.alive, me.name, true);
+      drawBean(own.x, own.y, size.scale * 3.9, colorHex(me.color), !me.alive, me.name, true);
     }
 
     // vision cone: the original's darkness around the player
