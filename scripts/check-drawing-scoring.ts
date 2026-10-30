@@ -279,28 +279,28 @@ for (const game of ['', 'gartic']) {
     assert.doesNotThrow(() => new Function(script), `inline script parses for "${game}"`);
   }
 }
-// The lobby keeps its original two columns: the player photo above the play and
-// rooms buttons on one side, and the empty room code field on the other. The
-// room options and the open room list only show up behind the rooms button.
-assert.ok(lobbyHtml.includes('class="draw-lobby-grid"'), 'the lobby keeps its two columns');
-assert.ok(lobbyHtml.includes('id="drawQuickPlay">العب<'), 'the play button is labelled without an icon');
-assert.ok(lobbyHtml.includes('id="drawOpenRooms"'), 'the rooms button exists');
+// The lobby is a hub: your own photo, name and country, then three plain
+// buttons (play, create a room, the room list). The room list and the create
+// form are separate screens that start hidden.
+assert.ok(lobbyHtml.includes('class="draw-hub"'), 'the lobby is a hub');
+assert.ok(lobbyHtml.includes('class="draw-lobby-me"'), 'the lobby shows your own card');
+assert.ok(lobbyHtml.includes('lobby-me-avatar'), 'your photo is on your card');
+assert.ok(lobbyHtml.includes('countryFlag(chessCountryCode())'), 'your country flag is on your card');
+assert.ok(lobbyHtml.includes('id="drawQuickPlay">العب<'), 'the play button has no icon');
+assert.ok(lobbyHtml.includes('id="drawCreateRoom">أنشئ غرفة<'), 'the create button is in the hub');
+assert.ok(lobbyHtml.includes('id="drawOpenRooms">الغرف<'), 'the rooms button is in the hub');
 assert.ok(!lobbyHtml.includes('▶'), 'the play button carries no triangle icon');
-assert.ok(!lobbyHtml.includes('\u{1F6AA}'), 'the rooms button carries no door icon');
-assert.ok(lobbyHtml.indexOf('class="draw-lobby-grid"') < lobbyHtml.indexOf('drawPlayerAvatar('), 'the player photo sits inside the lobby grid');
-assert.ok(lobbyHtml.indexOf('drawPlayerAvatar(') < lobbyHtml.indexOf('id="drawQuickPlay"'), 'the photo sits above the play and rooms buttons');
-assert.ok(lobbyHtml.indexOf('id="drawRoomCode"') < lobbyHtml.indexOf('id="drawRoomsView"'), 'the room code field is on the lobby screen');
-assert.ok(lobbyHtml.includes('id="drawRoomsView"'), 'the rooms screen exists');
-assert.ok(lobbyHtml.includes('id="drawCreateToggle"'), 'the create button lives inside the rooms screen');
-assert.ok(lobbyHtml.includes('id="drawCreateOptions"'), 'the room options are collapsible');
-assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the open room list lives inside the rooms screen');
-assert.ok(lobbyHtml.indexOf('id="drawRoomsView"') < lobbyHtml.indexOf('id="drawPublicList"'), 'the list is inside the rooms screen');
-assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the room is opened from inside the rooms screen');
+assert.ok(!lobbyHtml.includes('\u{1F6AA}'), 'no door icon on the buttons');
+assert.ok(lobbyHtml.includes('id="drawRoomsScreen" hidden'), 'the rooms screen starts closed');
+assert.ok(lobbyHtml.includes('id="drawCreateScreen" hidden'), 'the create screen starts closed');
+assert.ok(lobbyHtml.includes('class="draw-rooms-box"'), 'the room list sits in a framed box');
+assert.ok(lobbyHtml.includes('id="drawPublicList"'), 'the room list exists');
+assert.ok(lobbyHtml.indexOf('class="draw-rooms-box"') < lobbyHtml.indexOf('id="drawPublicList"'), 'the list is inside the box');
 assert.ok(lobbyHtml.includes('id="drawRoomsPlay"'), 'the rooms screen has its own play button');
 assert.ok(/id="drawRoomsPlay"[^>]*disabled/.test(lobbyHtml), 'the rooms play button starts locked');
-assert.ok(lobbyHtml.includes('id="drawRoomsBack"'), 'the rooms screen can go back');
+assert.ok(lobbyHtml.includes('id="drawRoomCode"'), 'the rooms screen joins by code');
+assert.ok(lobbyHtml.includes('id="drawCreateBack"'), 'the create screen can go back');
+assert.ok(lobbyHtml.includes('data-action="friend">افتح الغرفة<'), 'the create screen opens the room');
 assert.ok(lobbyHtml.includes('draw-room-card'), 'open rooms render as pickable cards');
-assert.ok(lobbyHtml.indexOf('id="drawLobbyMain"') < lobbyHtml.indexOf('id="drawRoomsView"'), 'the rooms screen is its own screen');
-assert.ok(!lobbyHtml.includes('draw-hub'), 'no hub screen replaced the lobby');
 
 console.log('Drawing scoring, private hints, chat, answer secrecy, ties, timers, legacy rooms, leaving, rejoining, live strokes, dots, the public lobby, the ten second choice window and empty seats passed.');

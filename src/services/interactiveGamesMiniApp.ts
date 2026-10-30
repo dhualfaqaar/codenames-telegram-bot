@@ -448,23 +448,31 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 .draw-lobby-heading .draw-brand{display:block;margin-bottom:10px;color:#3674c8;font-size:12px;font-weight:900;letter-spacing:.05em}
 .draw-ribbon{position:relative;display:inline-block;min-width:min(290px,100%);margin:0;padding:9px 32px;background:#1685ed;border:3px solid #103757;border-radius:9px;box-shadow:0 4px 0 #0c2c4d;color:#ffdc55!important;font-size:clamp(23px,3vw,30px)!important;line-height:1.3;text-shadow:1px 2px #104273}
 .draw-lobby-heading p{margin:12px 0 0;color:#647b90;font-size:14px;font-weight:650}
-.draw-lobby-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;align-items:start}
-.draw-lobby-grid[hidden]{display:none}
-.draw-lobby-grid>section{min-width:0;padding:12px clamp(20px,4vw,44px) 20px}
-.draw-lobby-grid>section+section{border-inline-start:1px solid #d9e2eb}
-.draw-lobby-quick{display:grid;gap:10px;margin:16px 0 0}
-.draw-lobby-quick .draw-action{margin:0!important}
-.draw-rooms-view{max-width:900px;margin:0 auto;padding:8px clamp(12px,3vw,24px) 96px}
-.draw-rooms-view[hidden]{display:none}
-.draw-rooms-bar{display:flex;align-items:center;gap:10px;margin:0 0 10px}
-.draw-rooms-bar h2{flex:1;margin:0!important;text-align:center!important}
-.draw-rooms-back{display:grid;place-items:center;flex:none;width:42px;height:42px;padding:0;border:3px solid #103757;border-radius:11px;background:#ffd244;color:#163859;font:inherit;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #103757}
-.draw-rooms-back:active{transform:translateY(2px);box-shadow:0 1px 0 #103757}
-.draw-create-options{margin:0 0 12px;padding:12px;border:2px solid #d9e2eb;border-radius:14px;background:#f7fbff}
-.draw-create-options[hidden]{display:none}
-.draw-create-options h2{margin:0 0 8px!important}
-.draw-create-options .draw-action{margin-top:14px}
-#gameSetupPage[data-game="gartic"] .draw-lobby-grid h2,#gameSetupPage[data-game="gartic"] .draw-rooms-view h2{margin:0 0 8px;text-align:center;color:#1764ad;font-size:17px;font-weight:900}
+.draw-hub{max-width:520px;margin:0 auto}
+.draw-hub[hidden]{display:none}
+.draw-lobby-me{display:flex;align-items:center;gap:12px;padding:12px 14px;border:2px solid #d9e2eb;border-radius:14px;background:#f7fbff}
+.draw-lobby-me .draw-account-avatar.lobby-me-avatar{width:54px;height:54px;font-size:20px}
+.draw-lobby-me-copy{display:grid;gap:3px;min-width:0;text-align:start}
+.draw-lobby-me-copy strong{display:flex;align-items:center;gap:4px;overflow:hidden;color:#17365b;font-size:15px;font-weight:900;text-overflow:ellipsis;white-space:nowrap}
+.draw-lobby-me-copy small{display:flex;align-items:center;gap:5px;color:#5c7b95;font-size:12px;font-weight:700}
+.draw-lobby-me-copy .country-flag{width:18px;height:13px;border-radius:2px}
+.draw-hub-actions{display:grid;gap:10px;margin:16px 0 0}
+.draw-hub-actions .draw-action{margin:0!important}
+.draw-subview{max-width:760px;margin:0 auto}
+.draw-subview[hidden]{display:none}
+.draw-subview-head{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.draw-subview-head h2{flex:1;margin:0;text-align:center;color:#1764ad;font-size:18px;font-weight:900}
+.draw-subview-back{display:grid;place-items:center;flex:none;width:42px;height:42px;padding:0;border:3px solid #103757;border-radius:11px;background:#ffd244;color:#163859;font:inherit;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #103757}
+.draw-subview-back:active{transform:translateY(2px);box-shadow:0 1px 0 #103757}
+.draw-rooms-box{padding:12px;border:2px solid #d9e2eb;border-radius:16px;background:#fbfdff}
+.draw-code-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0 0}
+.draw-code-row .guess-input{min-height:46px}
+.draw-code-row .draw-action{width:auto;min-height:46px;margin:0!important;padding:0 18px;font-size:14px}
+.draw-rooms-actions{display:grid;gap:10px;margin:12px 0 0}
+.draw-rooms-actions .draw-action{margin:0!important}
+.draw-create-box{padding:14px;border:2px solid #d9e2eb;border-radius:16px;background:#fbfdff}
+.draw-create-box .draw-action{margin-top:14px}
+#gameSetupPage[data-game="gartic"] .draw-subview-head h2,#gameSetupPage[data-game="gartic"] .draw-hub h2{margin:0 0 8px;text-align:center;color:#1764ad;font-size:17px;font-weight:900}
 .draw-section-copy{margin:0 0 20px;text-align:center;color:#637a91;font-size:13px}
 .draw-fields{display:grid;gap:14px}
 /* visibility switch inside the create card */
@@ -480,7 +488,7 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 .draw-toggle-copy small{color:#5c7b95;font-size:11px;line-height:1.5}
 /* open rooms browser */
 .draw-refresh{flex:none;border:1px solid #b7c9d9;border-radius:9px;background:#fff;color:#1764ad;font:inherit;font-size:12px;font-weight:800;padding:8px 12px;cursor:pointer}
-.draw-public-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin:0;max-height:none;overflow:visible}
+.draw-public-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin:0;max-height:min(52vh,420px);overflow:auto;padding:2px}
 .draw-public-empty{grid-column:1/-1;margin:6px 0;color:#6b8598;font-size:13px;text-align:center}
 .draw-room-card{position:relative;display:grid;justify-items:center;gap:5px;padding:12px 10px;border:3px solid #c8d7e5;border-radius:14px;background:#fff;color:#274761;font:inherit;cursor:pointer;box-shadow:0 3px 0 #d8e4ee;text-align:center}
 .draw-room-card[aria-pressed="true"]{border-color:#1688e9;background:#eaf6ff;box-shadow:0 3px 0 #1688e9}
@@ -512,10 +520,10 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 #gameSetupPage[data-game="gartic"] .draw-select-option[aria-selected="true"]{background:#1688e9;color:#fff}
 #gameSetupPage[data-game="gartic"] .draw-select-option i{flex:none;font-style:normal;font-weight:900;visibility:hidden}
 #gameSetupPage[data-game="gartic"] .draw-select-option[aria-selected="true"] i{visibility:visible}
-#gameSetupPage[data-game="gartic"] .draw-rooms-view .field-label{display:block;margin-bottom:6px;color:#4e6880;font-size:13px;font-weight:800}
-#gameSetupPage[data-game="gartic"] .draw-rooms-view .setup-select,#gameSetupPage[data-game="gartic"] .draw-rooms-view .guess-input{width:100%;min-height:48px;margin:0;padding:8px 12px;border:2px solid #b7c9d9;border-radius:10px;background:#fff!important;color:#193d5d!important;font:inherit;font-size:15px;box-shadow:none}
-#gameSetupPage[data-game="gartic"] .draw-rooms-view .guess-input::placeholder{color:#8095a6}
-#gameSetupPage[data-game="gartic"] .draw-rooms-view .setup-select:focus-visible,#gameSetupPage[data-game="gartic"] .draw-rooms-view .guess-input:focus-visible{outline:3px solid #87c9ff;outline-offset:2px}
+#gameSetupPage[data-game="gartic"] .draw-subview .field-label{display:block;margin-bottom:6px;color:#4e6880;font-size:13px;font-weight:800}
+#gameSetupPage[data-game="gartic"] .draw-subview .setup-select,#gameSetupPage[data-game="gartic"] .draw-subview .guess-input{width:100%;min-height:48px;margin:0;padding:8px 12px;border:2px solid #b7c9d9;border-radius:10px;background:#fff!important;color:#193d5d!important;font:inherit;font-size:15px;box-shadow:none}
+#gameSetupPage[data-game="gartic"] .draw-subview .guess-input::placeholder{color:#8095a6}
+#gameSetupPage[data-game="gartic"] .draw-subview .setup-select:focus-visible,#gameSetupPage[data-game="gartic"] .draw-subview .guess-input:focus-visible{outline:3px solid #87c9ff;outline-offset:2px}
 #gameSetupPage[data-game="gartic"] .draw-action{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;margin:18px 0 0;padding:10px 16px;border:3px solid #123b5d!important;border-radius:14px;background:#ffd244!important;color:#163859!important;box-shadow:0 4px 0 #123b5d!important;font:inherit;font-size:16px;font-weight:950;cursor:pointer}
 #gameSetupPage[data-game="gartic"] .draw-action.join{background:#36b7f4!important;color:#103858!important}
 #gameSetupPage[data-game="gartic"] .draw-action:active{transform:translateY(3px);box-shadow:0 1px 0 #123b5d!important}
@@ -523,7 +531,7 @@ body:has(#gameSetupPage[data-game="gartic"].active) .ambient-backdrop{display:no
 .draw-how{margin:25px 0 0;padding:16px 18px;border-radius:12px;background:#f3f8fc;color:#58718a;font-size:13px;line-height:1.8}
 .draw-how strong{display:block;color:#205c91}.draw-how ol{margin:6px 0 0;padding-inline-start:20px}
 .screen-auto-note{font-size:12px;color:#bccbdd}
-@media(max-width:650px){.draw-lobby-heading{margin-bottom:20px}.draw-lobby-grid{grid-template-columns:minmax(0,1fr)}.draw-lobby-grid>section{padding:10px 2px 22px}.draw-lobby-grid>section+section{border-inline-start:0;border-top:1px solid #d9e2eb}.draw-rooms-view>section{padding:14px 2px 16px}.draw-join-icon{width:58px;height:58px;margin:0 auto 12px;border-radius:17px;font-size:30px}.draw-how{margin-top:20px}}
+@media(max-width:650px){.draw-lobby-heading{margin-bottom:20px}.draw-hub,.draw-subview{padding:0 2px}.draw-join-icon{width:58px;height:58px;margin:0 auto 12px;border-radius:17px;font-size:30px}.draw-how{margin-top:20px}}
 
 .reveal-telegram-controls{position:fixed;left:max(8px,env(safe-area-inset-left));top:max(8px,env(safe-area-inset-top));z-index:90;width:38px;height:38px;display:grid;place-items:center;border:1px solid #8fb8d8;border-radius:11px;background:#143b62dd;color:#fff;font-size:17px;line-height:1;box-shadow:0 3px 12px #0004;cursor:pointer;backdrop-filter:blur(4px)}.reveal-telegram-controls[hidden]{display:none!important}
 .chess-seat-card > .player-avatar-badge{grid-row:1 / span 2}.player-avatar-badge{display:inline-flex;position:relative;flex:none;vertical-align:middle}.player-flag-marker{position:absolute;z-index:5;bottom:-3px;right:-4px;display:inline-flex;padding:1px;border-radius:3px;background:#fff;box-shadow:0 1px 3px #0006}.player-flag-marker img.country-flag{display:block!important;position:static!important;inset:auto!important;width:17px!important;height:12px!important;object-fit:cover!important;border-radius:2px!important}.draw-account-avatar img:not(.country-flag){object-fit:cover}
@@ -617,7 +625,7 @@ function isGamesLobby(){return !standaloneGame&&!roomId&&!setupGame&&!chessHomeA
 function syncTelegramNavigation(){var playing=!!(roomData&&roomData.room&&roomData.room.status==='playing'),button=$('revealTelegramControls'),supported=!!(tg&&tg.BackButton&&typeof tg.BackButton.hide==='function'&&typeof tg.BackButton.show==='function'),canRestore=supported;if(button)button.hidden=!(playing&&canRestore&&!nativeControlsRestored);if(!supported)return;try{if(isGamesLobby()||(playing&&!nativeControlsRestored))tg.BackButton.hide();else tg.BackButton.show()}catch(e){if(button)button.hidden=true}}
 function returnToGamesLobby(){abandonMatchForReplacement();closeMode();notifyChessForfeit();notifyRoomLeave();roomData=null;clearInterval(polling);window.location.assign('/interactive')}
 function revealTelegramControls(){nativeControlsRestored=true;syncTelegramNavigation();try{if(tg&&!tg.isFullscreen&&telegramFullscreenSupported())tg.requestFullscreen()}catch(e){}setTimeout(function(){syncTelegramFullscreen();syncTelegramNavigation()},180)}
-function handleTelegramBack(){if(typeof drawRoomsScreen!=='undefined'&&drawRoomsScreen){drawOpenRoomsScreen(false);return}if(isGamesLobby()){if(tg)tg.close();return}returnToGamesLobby()}
+function handleTelegramBack(){var screen=typeof $==='function'?($('drawRoomsScreen')||$('drawCreateScreen')):null;if(typeof drawOpenPanel==='function'&&screen&&!screen.hidden){drawOpenPanel('');return}if(isGamesLobby()){if(tg)tg.close();return}returnToGamesLobby()}
 function requestInitialFullscreen(){if(!telegramFullscreenSupported()||tg.isFullscreen)return;try{tg.requestFullscreen()}catch(e){syncTelegramFullscreen()}}
 function syncTelegramFullscreen(){var active=!!(tg&&tg.isFullscreen),portrait=!!(window.matchMedia&&window.matchMedia('(orientation: portrait)').matches),safeTop=Number(tg&&tg.safeAreaInset&&tg.safeAreaInset.top)||0,contentTop=Number(tg&&tg.contentSafeAreaInset&&tg.contentSafeAreaInset.top)||0,headerReserve=tg?(active?Math.max(0,contentTop-safeTop):Math.max(portrait?132:72,contentTop-safeTop)):0;document.documentElement.style.setProperty('--tg-header-reserve',Math.ceil(headerReserve)+'px');document.body.classList.toggle('telegram-fullscreen',active);document.documentElement.style.setProperty('--tg-content-top',Math.max(safeTop,contentTop)+'px');document.querySelectorAll('[data-immersive-toggle]').forEach(function(button){button.textContent=active?'الخروج من وضع ملء الشاشة':'تفعيل وضع ملء الشاشة';button.disabled=!telegramFullscreenSupported()});document.querySelectorAll('[data-immersive-status]').forEach(function(label){label.textContent=telegramFullscreenSupported()?(active?'وضع ملء الشاشة مفعل. اضغط الزر للرجوع لشريط تيليجرام.':'يخفي شريط تيليجرام أثناء اللعب إذا كان إصدار التطبيق يدعم ذلك.'):'إخفاء شريط تيليجرام يحتاج إصداراً أحدث يدعم وضع ملء الشاشة.'});syncTelegramNavigation();scheduleChessLayout()}
 function toggleTelegramFullscreen(){if(!telegramFullscreenSupported()){syncTelegramFullscreen();return}try{if(tg.isFullscreen)tg.exitFullscreen();else tg.requestFullscreen()}catch(e){syncTelegramFullscreen()}setTimeout(syncTelegramFullscreen,150)}
@@ -726,40 +734,72 @@ function bindPreferences(root){root.querySelectorAll('[data-pref]').forEach(func
 function openGamePage(game){if(game==='chess'){window.location.assign(new URL('/chess',location.origin).toString());return}if(game==='sudoku'){window.location.assign(new URL('/sudoku',location.origin).toString());return}var titles={chess:'شطرنج',sudoku:'سودوكو',uno:'أونو',gartic:'لعبة الرسم',poker:'بوكر تكساس'};var copy={chess:'اختار طريقة اللعب وحدد مستوى الخصم إذا اخترت البوت.',sudoku:'اختار اللعب الفردي أو سباقاً، ثم حدد مستوى اللغز.',uno:'اضبط عدد المقاعد وأنشئ غرفة خاصة لدعوة أصدقائك.',gartic:'حدد سعة الغرفة ووقت الجولة قبل إرسال الدعوة.',poker:'اضبط عدد المقاعد والرقائق الافتراضية للطاولة.'};setupGame=game;$('gameSetupPage').dataset.game=game;$('setupTitle').textContent=titles[game];$('setupCopy').textContent=copy[game];$('setupPlayerName').innerHTML=safe(accountName)+creatorBadgeMarkup();$('setupCountryMeta').innerHTML=countryFlag(chessCountryCode())+' '+safe(chessCountryLabel(chessCountryCode()));$('setupPlayerLevel').textContent=game==='chess'?digit(chessElo())+' ELO':'ملفي';if(tgUser&&tgUser.photo_url){$('setupAvatar').src=tgUser.photo_url;$('setupAvatar').hidden=false}else $('setupAvatar').hidden=true;$('gameProfileCard').innerHTML=profileCardMarkup(game);var html='';
 if(game==='uno')html='<h2>إعدادات الطاولة</h2><div class="setup-fields"><div><label class="field-label" for="capacity">عدد اللاعبين</label><select id="capacity" class="setup-select"><option value="2">لاعبان</option><option value="3">3 لاعبين</option><option value="4" selected>4 لاعبين</option></select></div><div><label class="field-label" for="unoTheme">نمط الأوراق</label><select id="unoTheme" class="setup-select" data-pref="unoTheme"><option value="classic">كلاسيكي</option><option value="pop">ألوان زاهية</option><option value="midnight">ليلي</option></select></div></div><div class="setup-actions"><button class="setup-action" data-action="friend"><strong>أنشئ غرفة أونو</strong><small>بعد إنشاء الغرفة، شارك رابطها حتى ينضم أصدقاؤك.</small></button></div>';
 else if(game==='gartic')html='<header class="draw-lobby-heading"><span class="draw-brand">CODE GAMES · لعبة الرسم</span><h1 class="draw-ribbon">لعبة الرسم</h1><p>ارسم، خمّن، والعب ويا أصدقائك</p></header>'
-+'<div class="draw-lobby-grid" id="drawLobbyMain">'
-+'<section class="draw-lobby-play" aria-label="ابدأ اللعب">'
-+drawPlayerAvatar(getPhotoUrl(),accountName,'lobby-avatar')
-+'<div class="draw-lobby-quick">'
++'<div class="draw-hub" id="drawHub">'
++'<div class="draw-lobby-me">'
++drawPlayerAvatar(getPhotoUrl(),accountName,'lobby-me-avatar')
++'<span class="draw-lobby-me-copy"><strong>'+safe(accountName)+creatorBadgeMarkup()+'</strong><small>'+countryFlag(chessCountryCode())+'<span>'+safe(chessCountryLabel(chessCountryCode()))+'</span></small></span>'
++'</div>'
++'<div class="draw-hub-actions">'
 +'<button type="button" class="draw-action" id="drawQuickPlay">العب</button>'
-+'<button type="button" class="draw-action" id="drawOpenRooms" aria-expanded="false" aria-controls="drawRoomsView">الغرف</button>'
++'<button type="button" class="draw-action create" id="drawCreateRoom">أنشئ غرفة</button>'
++'<button type="button" class="draw-action rooms" id="drawOpenRooms">الغرف</button>'
 +'</div>'
-+'</section>'
-+'<section aria-labelledby="drawJoinTitle">'
-+'<h2 id="drawJoinTitle">انضم لأصدقائك</h2><p class="draw-section-copy">عندك رمز غرفة؟ اكتبه هنا</p><div class="draw-join-icon" aria-hidden="true">✉</div><label class="field-label" for="drawRoomCode">رمز الغرفة</label><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="مثلاً ABC234DEF567"><button type="button" id="drawJoinButton" class="draw-action join"><span aria-hidden="true">↗</span> انضم للغرفة</button><div class="draw-how"><strong>شلون نلعب؟</strong><ol><li>أنشئ غرفة وشارك الدعوة.</li><li>بكل جولة لاعب يرسم كلمة.</li><li>خمّن بسرعة واجمع النقاط.</li></ol></div>'
-+'</section>'
 +'</div>'
-+'<div class="draw-rooms-view" id="drawRoomsView" hidden>'
-+'<div class="draw-rooms-bar">'
-+'<button type="button" class="draw-rooms-back" id="drawRoomsBack" aria-label="رجوع إلى القائمة">&#9668;</button>'
-+'<h2 id="drawRoomsTitle">الغرف</h2>'
-+'<button type="button" id="drawPublicRefresh" class="draw-refresh" aria-label="تحديث قائمة الغرف">&#8635; تحديث</button>'
++'<div class="draw-subview" id="drawRoomsScreen" hidden>'
++'<div class="draw-subview-head"><button type="button" class="draw-subview-back" id="drawRoomsBack" aria-label="رجوع إلى القائمة الرئيسية">&#8594;</button><h2>الغرف المتاحة</h2><button type="button" id="drawPublicRefresh" class="draw-refresh" aria-label="تحديث قائمة الغرف">&#8635;</button></div>'
++'<div class="draw-rooms-box"><div id="drawPublicList" class="draw-public-list" aria-live="polite"><p class="draw-public-empty">جاري تحميل الغرف…</p></div></div>'
++'<div class="draw-code-row"><input id="drawRoomCode" class="guess-input" maxlength="12" dir="ltr" autocomplete="off" placeholder="عندك رمز غرفة؟"><button type="button" id="drawJoinButton" class="draw-action join">انضمام</button></div>'
++'<div class="draw-rooms-actions"><button type="button" class="draw-action" id="drawRoomsPlay" disabled>العب</button></div>'
 +'</div>'
-+'<p class="draw-section-copy">اختار غرفة تعجبك، وبعدها اضغط «العب»</p>'
-+'<div class="draw-create-options" id="drawCreateOptions" hidden>'
-+'<h2 id="drawCreateTitle">غرفة جديدة</h2>'
-+'<p class="draw-section-copy">اضبط إعدادات الجولة، وبعدها افتح الغرفة</p>'
++'<div class="draw-subview" id="drawCreateScreen" hidden>'
++'<div class="draw-subview-head"><button type="button" class="draw-subview-back" id="drawCreateBack" aria-label="رجوع إلى القائمة الرئيسية">&#8594;</button><h2>أنشئ غرفة</h2></div>'
++'<div class="draw-create-box">'
++'<p class="draw-section-copy">اضبط إعدادات الجولة، وبعدها افتح الغرفة لأصدقائك</p>'
 +'<div class="draw-fields"><div><label class="field-label" id="capacityLabel">عدد اللاعبين</label><div class="draw-select" data-draw-select="capacity" data-value="16"><button type="button" id="capacityTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="capacityLabel capacityValue"><span class="draw-select-value" id="capacityValue">16 لاعباً</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="capacityMenu" role="listbox" aria-labelledby="capacityLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="2" aria-selected="false"><span>لاعبان</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="4" aria-selected="false"><span>4 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="6" aria-selected="false"><span>6 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="8" aria-selected="false"><span>8 لاعبين</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="12" aria-selected="false"><span>12 لاعباً</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="16" aria-selected="true"><span>16 لاعباً</span><i aria-hidden="true">✓</i></div></div></div></div><div><label class="field-label" id="roundSecondsLabel">وقت الرسم لكل جولة</label><div class="draw-select" data-draw-select="roundSeconds" data-value="75"><button type="button" id="roundSecondsTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="roundSecondsLabel roundSecondsValue"><span class="draw-select-value" id="roundSecondsValue">75 ثانية</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="roundSecondsMenu" role="listbox" aria-labelledby="roundSecondsLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="30" aria-selected="false"><span>30 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="45" aria-selected="false"><span>45 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="75" aria-selected="true"><span>75 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="90" aria-selected="false"><span>90 ثانية</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="120" aria-selected="false"><span>دقيقتان</span><i aria-hidden="true">✓</i></div></div></div></div><div><label class="field-label" id="drawTargetScoreLabel">نقاط الفوز</label><div class="draw-select" data-draw-select="drawTargetScore" data-value="100"><button type="button" id="drawTargetScoreTrigger" class="draw-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="drawTargetScoreLabel drawTargetScoreValue"><span class="draw-select-value" id="drawTargetScoreValue">100 نقطة</span><span class="draw-select-chevron" aria-hidden="true">▾</span></button><div class="draw-select-menu" id="drawTargetScoreMenu" role="listbox" aria-labelledby="drawTargetScoreLabel" hidden><div class="draw-select-option" role="option" tabindex="-1" data-value="100" aria-selected="true"><span>100 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="120" aria-selected="false"><span>120 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="140" aria-selected="false"><span>140 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="160" aria-selected="false"><span>160 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="180" aria-selected="false"><span>180 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="200" aria-selected="false"><span>200 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="225" aria-selected="false"><span>225 نقطة</span><i aria-hidden="true">✓</i></div><div class="draw-select-option" role="option" tabindex="-1" data-value="250" aria-selected="false"><span>250 نقطة</span><i aria-hidden="true">✓</i></div></div></div></div>'
 +'<label class="draw-toggle" for="drawRoomVisible"><input type="checkbox" id="drawRoomVisible" checked><span class="draw-toggle-track" aria-hidden="true"><i></i></span><span class="draw-toggle-copy"><strong>الغرفة مرئية للجميع</strong><small id="drawRoomVisibleHint">تظهر بقائمة الغرف المتاحة، وأي أحد يكدر يدخلها</small></span></label>'
 +'<button type="button" class="draw-action" data-action="friend">افتح الغرفة</button>'
 +'</div>'
-+'<div id="drawPublicList" class="draw-public-list" aria-live="polite"><p class="draw-public-empty">جاري تحميل الغرف…</p></div>'
-+'<div class="draw-rooms-actions">'
-+'<button type="button" class="draw-action create" id="drawCreateToggle" aria-expanded="false" aria-controls="drawCreateOptions">أنشئ غرفة</button>'
-+'<button type="button" class="draw-action" id="drawRoomsPlay" disabled>العب</button>'
-+'</div>'
 +'</div>';
 else html='<h2>إعدادات الطاولة</h2><div class="setup-fields"><div><label class="field-label" for="capacity">عدد اللاعبين</label><select id="capacity" class="setup-select"><option value="2">لاعبان</option><option value="4">4 لاعبين</option><option value="6" selected>6 لاعبين</option></select></div><div><label class="field-label" for="startingChips">رقائق البداية</label><select id="startingChips" class="setup-select"><option value="500">500</option><option value="1000" selected>1000</option><option value="2000">2000</option></select></div><div><label class="field-label" for="pokerTheme">لون الطاولة</label><select id="pokerTheme" class="setup-select" data-pref="pokerTheme"><option value="felt">لباد أخضر</option><option value="blue">أزرق</option><option value="red">أحمر</option><option value="night">داكن</option></select></div></div><div class="notice">اللعب ودي برقائق افتراضية فقط؛ ماكو أموال حقيقية.</div><div class="setup-actions"><button class="setup-action" data-action="friend"><strong>أنشئ طاولة بوكر</strong><small>شارك رابطها مع أصدقائك للانضمام.</small></button></div>';
-$('gameOptions').innerHTML=html;initDrawSelects($('gameOptions'));bindPreferences($('gameOptions'));$('gameOptions').querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{if(game==='uno')createRoom(game,{capacity:Number($('capacity').value)});else if(game==='gartic'){var target=Number(drawSelectValue('drawTargetScore'));if(!Number.isInteger(target)||target<100){toast('اختار نقاط الفوز من القائمة');return}createRoom(game,{capacity:Number(drawSelectValue('capacity')),roundSeconds:Number(drawSelectValue('roundSeconds')),targetScore:target,visible:!($('drawRoomVisible')&&!$('drawRoomVisible').checked)})}else createRoom(game,{capacity:Number($('capacity').value),startingChips:Number($('startingChips').value)})});if(game==='gartic'){$('drawJoinButton').onclick=function(){var code=$('drawRoomCode').value.trim().toUpperCase();if(!/^[A-Z0-9]{12}$/.test(code)){toast('اكتب رمز غرفة صحيح');return}joinRoom(code)};$('drawRoomCode').onkeydown=function(event){if(event.key==='Enter')$('drawJoinButton').click()};var vis=$('drawRoomVisible');if(vis)vis.onchange=function(){var hint=$('drawRoomVisibleHint');if(hint)hint.textContent=vis.checked?'تظهر بقائمة الغرف المتاحة، وأي أحد يكدر يدخلها':'مخفية — ما تظهر بالقائمة، وتدخلها بالرمز بس'};var refreshButton=$('drawPublicRefresh');if(refreshButton)refreshButton.onclick=function(){loadPublicRooms(true)};var quickPlayButton=$('drawQuickPlay');if(quickPlayButton)quickPlayButton.onclick=function(){drawQuickPlay()};var openRoomsButton=$('drawOpenRooms');if(openRoomsButton)openRoomsButton.onclick=function(){drawOpenRoomsScreen(true)};var roomsBackButton=$('drawRoomsBack');if(roomsBackButton)roomsBackButton.onclick=function(){drawOpenRoomsScreen(false)};var roomsPlayButton=$('drawRoomsPlay');if(roomsPlayButton)roomsPlayButton.onclick=function(){if(!drawPickedRoom)return;roomsPlayButton.disabled=true;joinRoom(drawPickedRoom)};var createToggle=$('drawCreateToggle'),createOptions=$('drawCreateOptions');if(createToggle&&createOptions)createToggle.onclick=function(){var willOpen=!!createOptions.hidden;createOptions.hidden=!willOpen;createToggle.setAttribute('aria-expanded',willOpen?'true':'false')}}setPage(false)}
+$('gameOptions').innerHTML=html;initDrawSelects($('gameOptions'));bindPreferences($('gameOptions'));$('gameOptions').querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{if(game==='uno')createRoom(game,{capacity:Number($('capacity').value)});else if(game==='gartic'){var target=Number(drawSelectValue('drawTargetScore'));if(!Number.isInteger(target)||target<100){toast('اختار نقاط الفوز من القائمة');return}createRoom(game,{capacity:Number(drawSelectValue('capacity')),roundSeconds:Number(drawSelectValue('roundSeconds')),targetScore:target,visible:!($('drawRoomVisible')&&!$('drawRoomVisible').checked)})}else createRoom(game,{capacity:Number($('capacity').value),startingChips:Number($('startingChips').value)})});if(game==='gartic'){$('drawJoinButton').onclick=function(){var code=$('drawRoomCode').value.trim().toUpperCase();if(!/^[A-Z0-9]{12}$/.test(code)){toast('اكتب رمز غرفة صحيح');return}joinRoom(code)};$('drawRoomCode').onkeydown=function(event){if(event.key==='Enter')$('drawJoinButton').click()};var vis=$('drawRoomVisible');if(vis)vis.onchange=function(){var hint=$('drawRoomVisibleHint');if(hint)hint.textContent=vis.checked?'تظهر بقائمة الغرف المتاحة، وأي أحد يكدر يدخلها':'مخفية — ما تظهر بالقائمة، وتدخلها بالرمز بس'};var refreshButton=$('drawPublicRefresh');if(refreshButton)refreshButton.onclick=function(){loadPublicRooms(true)};var quickPlayButton=$('drawQuickPlay');if(quickPlayButton)quickPlayButton.onclick=function(){drawQuickPlay()};var roomsButton=$('drawOpenRooms');if(roomsButton)roomsButton.onclick=function(){drawOpenPanel('rooms')};var createRoomButton=$('drawCreateRoom');if(createRoomButton)createRoomButton.onclick=function(){drawOpenPanel('create')};var roomsBackButton=$('drawRoomsBack');if(roomsBackButton)roomsBackButton.onclick=function(){drawOpenPanel('')};var createBackButton=$('drawCreateBack');if(createBackButton)createBackButton.onclick=function(){drawOpenPanel('')};var quickPlayButton=$('drawQuickPlay');if(quickPlayButton)quickPlayButton.onclick=function(){drawQuickPlay()};var roomsPlayButton=$('drawRoomsPlay');if(roomsPlayButton)roomsPlayButton.onclick=function(){if(!drawPickedRoom)return;roomsPlayButton.disabled=true;joinRoom(drawPickedRoom)}}setPage(false)}
+function drawOpenPanel(name){
+  var roomsPanel=$('drawRoomsScreen'),createPanel=$('drawCreateScreen'),hub=$('drawHub');
+  if(!roomsPanel||!createPanel)return;
+  var showRooms=name==='rooms',showCreate=name==='create',sub=showRooms||showCreate;
+  roomsPanel.hidden=!showRooms;
+  createPanel.hidden=!showCreate;
+  if(hub)hub.hidden=sub;
+  var states={drawOpenRooms:showRooms,drawCreateRoom:showCreate};
+  Object.keys(states).forEach(function(id){
+    var button=$(id);
+    if(!button)return;
+    button.classList.toggle('active',states[id]);
+    button.setAttribute('aria-expanded',states[id]?'true':'false');
+  });
+  if(showRooms)loadPublicRooms(true);
+  if(window.scrollTo)window.scrollTo({top:0,behavior:'smooth'});
+}
+async function drawQuickPlay(){
+  var button=$('drawQuickPlay');
+  if(!button||button.dataset.busy==='1')return;
+  button.dataset.busy='1';
+  try{
+    var response=await fetch('/api/interactive/rooms?game=gartic',{cache:'no-store'});
+    var data=await response.json().catch(function(){return {}});
+    var rooms=(Array.isArray(data.rooms)?data.rooms:[]).filter(function(room){return Number(room.players)<Number(room.capacity)});
+    if(rooms.length){
+      var pick=rooms[Math.floor(Math.random()*rooms.length)];
+      joinRoom(String(pick.id||'').toUpperCase());
+      return;
+    }
+    toast('ماكو غرف مفتوحة هالوقت — فتحنا لك غرفة عامة');
+    createRoom('gartic',{capacity:16,roundSeconds:Number(drawSelectValue('roundSeconds'))||75,targetScore:Number(drawSelectValue('drawTargetScore'))||100,visible:true});
+  }catch(error){
+    toast('تعذر البحث عن غرفة — جرّب مرة ثانية');
+  }finally{
+    delete button.dataset.busy;
+  }
+}
 function drawRoomCardMarkup(room){
   var photo=room.hostPhoto?'<img src="'+safe(room.hostPhoto)+'" alt="" onerror="this.remove()">':'<span>'+safe(String(room.hostName||'ل').trim().charAt(0)||'ل')+'</span>';
   return '<button type="button" class="draw-room-card" data-room-id="'+safe(room.id)+'" aria-pressed="false">'
@@ -777,24 +817,10 @@ function drawPickRoom(id){
   var play=$('drawRoomsPlay');
   if(play)play.disabled=!drawPickedRoom;
 }
-function drawOpenRoomsScreen(open){
-  var lobby=$('drawLobbyMain'),view=$('drawRoomsView'),button=$('drawOpenRooms');
-  if(!lobby||!view)return;
-  drawRoomsScreen=!!open;
-  lobby.hidden=drawRoomsScreen;
-  view.hidden=!drawRoomsScreen;
-  if(button)button.setAttribute('aria-expanded',drawRoomsScreen?'true':'false');
-  if(drawRoomsScreen){
-    loadPublicRooms(true);
-    if(window.scrollTo)window.scrollTo({top:0,behavior:'smooth'});
-  }else{
-    drawPickRoom('');
-  }
-}
 async function loadPublicRooms(force){
-  var list=$('drawPublicList'),roomsView=$('drawRoomsView');
+  var list=$('drawPublicList'),roomsScreen=$('drawRoomsScreen');
   if(!list||$('gameSetupPage').dataset.game!=='gartic')return;
-  if(roomsView&&roomsView.hidden)return;
+  if(roomsScreen&&roomsScreen.hidden&&!force)return;
   if(list.dataset.loading==='1')return;
   list.dataset.loading='1';
   try{
@@ -809,6 +835,8 @@ async function loadPublicRooms(force){
     list.querySelectorAll('[data-room-id]').forEach(function(card){
       card.onclick=function(){drawPickRoom(card.dataset.roomId)};
     });
+    var countLabel=$('drawRoomsCount');
+    if(countLabel)countLabel.textContent=rooms.length?digit(rooms.length)+' غرفة متاحة':'ماكو غرف متاحة';
     drawPickRoom(rooms.some(function(room){return room.id===drawPickedRoom})?drawPickedRoom:'');
   }catch(error){
     list.innerHTML='<p class="draw-public-empty">تعذر تحميل الغرف — جرّب زر التحديث.</p>';
@@ -1022,7 +1050,7 @@ document.addEventListener('click',function(event){if(!event.target.closest('#gam
 function drawPlayerAvatar(photo,name,extra){var initial=safe(String(name||'ل').trim().charAt(0)||'ل');return '<span class="draw-account-avatar '+(extra||'')+'">'+initial+(photo?'<img src="'+safe(photo)+'" alt="" onerror="this.remove()">':'')+'</span>'}
 var DRAW_PALETTE_UI=['#1f2937','#4b5563','#94a3b8','#e2e8f0','#ffffff','#d1d5db','#7dd3fc','#38bdf8','#0284c7','#0f766e','#22c55e','#84cc16','#facc15','#f59e0b','#f97316','#ef4444','#b91c1c','#a855f7','#ec4899','#fcd5b5'];
 var DRAW_TOOLS=[['pen','✏️','قلم'],['eraser','🧽','ممحاة'],['rect-fill','■','مربع معبأ'],['rect','▢','مربع'],['ellipse-fill','●','دائرة معبأة'],['ellipse','◯','دائرة'],['line','╱','خط'],['diamond','◇','معين']];
-var drawTool='pen',redoStack=[],drawRoomsScreen=false,drawPickedRoom='';
+var drawTool='pen',redoStack=[],drawPickedRoom='';
 function drawLogFeed(s){
   var items=[];
   (s.logs||[]).forEach(function(l){items.push({at:Number(l.at)||0,kind:l.kind||'info',name:'',text:l.text})});
