@@ -26,7 +26,7 @@ const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
 const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
 assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
 const interactivePageResponse = await cloudflareWorker.fetch(new Request(`https://game.test/interactive?app_build=${INTERACTIVE_APP_BUILD}`), {} as any, {} as any);
-assert(INTERACTIVE_APP_BUILD === '2026-11-08-home-fit-v38' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
+assert(INTERACTIVE_APP_BUILD === '2026-11-08-vector-icons-v39' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
 for (const art of ['/chess-hero-v2.jpg', '/drawing-hero.jpg', '/sudoku-hero.jpg']) {
   const artResponse = await cloudflareWorker.fetch(new Request('https://game.test' + art), {} as any, {} as any);
   assert(artResponse.status === 200 && artResponse.headers.get('Content-Type') === 'image/jpeg' && (await artResponse.arrayBuffer()).byteLength > 5_000, 'game card art ' + art + ' should be served by the worker');
@@ -57,6 +57,23 @@ assert(miniAppHtml.includes('#roomPage[data-game=\"chess\"] .chessboard>.square.
 assert(miniAppHtml.includes('chess-chat-unread-dot') && miniAppHtml.includes('function updateChessChatUnread') && miniAppHtml.includes('function markChessChatRead'), 'incoming opponent messages should mark chat unread until opened');
 assert(miniAppHtml.includes('ضد بوت</strong>') && miniAppHtml.includes('ضد صديق</strong>') && miniAppHtml.includes('لاعب عشوائي</strong>') && miniAppHtml.includes('overflow-x:auto;overscroll-behavior-inline:contain'), 'chess options should remain ordered in a horizontal scroll strip');
 assert(miniAppHtml.includes('id=\"chessPieceSetting\"') && miniAppHtml.includes('إعدادات المظهر') && miniAppHtml.includes('id=\"profileCountryFlag\"') && miniAppHtml.includes('countryFlag(player.countryCode'), 'chess appearance options and player country flags should be available');
+
+// The hub header has no in-header back button, so the grid must be title + one trailing control:
+// an empty 42px column used to squeeze the title until it overlapped the settings button.
+assert(
+  miniAppHtml.includes('.chess-hub-header{height:54px;display:grid;grid-template-columns:minmax(0,1fr) auto') &&
+    !miniAppHtml.includes('.chess-hub-header{height:54px;display:grid;grid-template-columns:42px'),
+  'the chess header must keep the title on the right and the trailing control on the left, without an empty back column'
+);
+assert(
+  miniAppHtml.includes('.chess-settings-open svg{') && miniAppHtml.includes('.draw-tool-glyph svg{'),
+  'chess settings and drawing tools must use drawn vector icons'
+);
+const chessUiEmoji = miniAppHtml.match(/[\u{1F000}-\u{1FAFF}\u2699\uFE0F\u2B00-\u2BFF]/gu) || [];
+assert(
+  chessUiEmoji.length === 0,
+  'the mini app UI must not ship emoji icons, drawn vectors only: found ' + JSON.stringify(Array.from(new Set(chessUiEmoji)))
+);
 const countryCodeListIndex = miniAppHtml.indexOf('var CHESS_COUNTRY_CODES=');
 const initialCountryRenderIndex = miniAppHtml.indexOf("$('profileCountryFlag').innerHTML=countryFlag(chessCountryCode())");
 assert(countryCodeListIndex >= 0 && countryCodeListIndex < initialCountryRenderIndex && miniAppHtml.includes('CHESS_COUNTRY_CODES.map(function(code)'), 'country codes must be initialized before profile rendering and selector population');

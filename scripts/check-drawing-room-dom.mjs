@@ -164,7 +164,8 @@ try {
   // wears the same line-art icon set as the other tools.
   assert.ok(host.document.querySelector('.draw-color-wheel'), 'the artist gets the colour wheel');
   assert.ok(host.document.querySelector('.draw-clear svg'), 'clear-all uses the shared line-art icon');
-  assert.equal(host.document.querySelectorAll('.draw-tool svg').length, 1);
+  // Pen and eraser used to be emoji: every tool icon is a drawn vector now.
+  assert.equal(host.document.querySelectorAll('.draw-tool svg').length, 3);
   assert.equal(host.document.querySelector('#drawColorPop').classList.contains('open'), false);
   click(host, '.draw-color-wheel');
   const colorPop = host.document.querySelector('#drawColorPop');
