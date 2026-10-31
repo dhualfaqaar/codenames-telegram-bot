@@ -48,6 +48,8 @@ export interface CatalogMeta {
   streak: number;
   /** مرحلة الترتيب: ندوّر نفس اللغات بترتيب مختلف حتى نطلع كتب جديدة */
   sortStage: number;
+  /** كم مرة كملنا دورة اللغات كلها */
+  wrapCount: number;
 }
 
 interface OpenLibraryDoc {
@@ -108,9 +110,13 @@ export const CATALOG_LANGUAGES: Array<{ code: string; label: string; queries?: s
 
 export const CATALOG_TARGET = 10_000;
 const CHUNK_SIZE = 200;
-// ٨ صفحات لكل استعلام (٨٠٠ كتاب) — يخلّي التوزيع بين اللغات متوازن بدل ما
-// تبلع العربية كل الحصة.
-const MAX_PAGE_PER_QUERY = 8;
+// سقف عالي للصفحات: الحاجة الفعلية ١٠,٠٠٠ كتاب، وكل استعلام يعطي ١٠٠ كتاب
+// بالصفحة، فـ٤٠ صفحة لكل استعلام تكفي وتخلّي التوزيع بين اللغات متوازن.
+const MAX_PAGE_PER_QUERY = 40;
+/** كم مرة نعيد دورة اللغات كلها قبل ما نعتبر المكتبة خلصت (حماية من حلقة لا نهائية). */
+const MAX_WRAP = 3;
+/** عدد محاولات نفس الصفحة قبل ما نوقف دفعة البذر الحالية. */
+const FETCH_ATTEMPTS = 3;
 /** ترتيب Open Library لكل مرحلة: نكرر اللغات بترتيب مختلف حتى نتجاوز التكرار. */
 const SORT_STAGES = ['', 'new', 'old', 'random'];
 const API_FIELDS = 'key,title,author_name,first_publish_year,number_of_pages_median,cover_i,language,subject';
@@ -131,7 +137,8 @@ const EMPTY_META: CatalogMeta = {
   failures: 0,
   rejected: 0,
   streak: 0,
-  sortStage: 0
+  sortStage: 0,
+  wrapCount: 0
 };
 
 /** تخزين بالذاكرة — للتشغيل المحلي والفحوص لما ماكو Durable Object. */
@@ -160,6 +167,25 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 
 function tidy(value: string, max: number): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/**
+ * تطبيع عربي/لاتيني للمقارنة: التشكيل، الهمزات، التاء المربوطة، الياء، الحروف
+ * الكبيرة والصغيرة. بدونه «نجيب محفوظ» ما يطابق «نجيب محفوظ» لو مكتوب بهمزة،
+ * وهذا سبب رسالة «ما لكيت نتيجة» اللي صارت.
+ */
+export function normalizeQuery(value: string): string {
+  return String(value || '')
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, '') // تشكيل وتطويل
+    .replace(/[\u0623\u0625\u0622\u0671]/g, 'ا') // أ إ آ ٱ ← ا
+    .replace(/\u0649/g, 'ي') // ى ← ي
+    .replace(/\u0629/g, 'ه') // ة ← ه
+    .replace(/\u0624/g, 'و') // ؤ ← و
+    .replace(/\u0626/g, 'ي') // ئ ← ي
+    .replace(/['\u2019\u2018`]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** يحوّل نتيجة Open Library لسجل نظيف، أو null لو ناقص. */
@@ -221,6 +247,19 @@ export class BookCatalog {
         }
         // العدد الحقيقي من الملفات أدق من الـmeta لو صار انقطاع.
         this.meta.total = this.books.length;
+        // 🔴 إصلاح مهم: النسخ القديمة كانت تعلّم «خلصت» وهي ناقصة (توقفت على
+        // ٣٠٠٠). لو العدد أقل من الهدف نرفع العلم ونرجّع المؤشر للبداية حتى
+        // يكمّل البذر بدل ما يظل واقف للأبد.
+        if (this.meta.done && this.books.length < CATALOG_TARGET) {
+          console.warn(`Book catalog marked done at ${this.books.length}/${CATALOG_TARGET} — resuming seeding.`);
+          this.meta.done = false;
+          this.meta.wrapCount = 0;
+          this.meta.sortStage = 0;
+          this.meta.page = 1;
+          this.meta.queryIndex = 0;
+          this.meta.langIndex = 0;
+          await this.storage.put(META_KEY, this.meta);
+        }
       } catch {
         this.books = [];
         this.index = new Map();
@@ -276,24 +315,27 @@ export class BookCatalog {
     return source.find(book => book.id !== options.excludeId) || source[0];
   }
 
-  /** بحث محلي سريع بالعنوان أو المؤلف. */
+  /** بحث محلي سريع بالعنوان أو المؤلف (يتحمّل الهمزات وترتيب الكلمات). */
   async searchLocal(query: string, limit = 6): Promise<CatalogBook[]> {
     await this.load();
-    const needle = tidy(query, 60).toLowerCase();
-    if (!needle) return [];
-    const words = needle.split(' ').filter(Boolean);
+    const needle = normalizeQuery(tidy(query, 60));
+    if (needle.length < 2) return [];
+    const words = needle.split(' ').filter(word => word.length >= 2);
     const scored: Array<{ book: CatalogBook; score: number }> = [];
     for (const book of this.books) {
-      const title = book.title.toLowerCase();
-      const author = book.author.toLowerCase();
+      const title = normalizeQuery(book.title);
+      const author = normalizeQuery(book.author);
+      const haystack = `${title} ${author}`;
       let score = 0;
-      if (title === needle) score += 100;
-      if (author === needle) score += 60;
-      if (title.includes(needle)) score += 40;
-      if (author.includes(needle)) score += 25;
+      if (title === needle) score += 120;
+      if (author === needle) score += 100;
+      if (title.includes(needle)) score += 45;
+      if (author.includes(needle)) score += 40;
+      // كل كلمة من البحث مطلوبة (بأي ترتيب) — يخلّي «محفوظ نجيب» تطابق «نجيب محفوظ».
+      if (words.length && words.every(word => haystack.includes(word))) score += 30;
       for (const word of words) {
         if (title.includes(word)) score += 6;
-        if (author.includes(word)) score += 4;
+        if (author.includes(word)) score += 5;
       }
       if (score > 0) scored.push({ book, score });
     }
@@ -301,39 +343,80 @@ export class BookCatalog {
     return scored.slice(0, limit).map(entry => entry.book);
   }
 
-  /** بحث حيّ بـOpen Library (بلا مفتاح). يرجع [] لو الـAPI تعطّل. */
-  async searchRemote(query: string, limit = 6): Promise<CatalogBook[]> {
-    const clean = tidy(query, 60);
-    if (!clean || !this.fetchImpl) return [];
-    const url =
-      'https://openlibrary.org/search.json?q=' + encodeURIComponent(clean) +
-      '&limit=' + String(Math.max(1, Math.min(20, limit))) +
-      '&fields=' + encodeURIComponent(API_FIELDS);
-    const docs = await this.fetchDocs(url);
-    if (!docs) return [];
-    const out: CatalogBook[] = [];
-    for (const doc of docs) {
-      const book = cleanCatalogDoc(doc, '');
-      if (book) out.push(book);
-      if (out.length >= limit) break;
-    }
-    return out;
-  }
-
   /** بحث موحّد: المحلي أولاً، وبعدها الـAPI لو النتائج قليلة. */
   async search(query: string, limit = 6): Promise<{ local: CatalogBook[]; remote: CatalogBook[] }> {
-    const local = await this.searchLocal(query, limit);
-    if (local.length >= limit) return { local, remote: [] };
-    const remote = await this.searchRemote(query, limit);
-    const seen = new Set(local.map(book => book.id));
-    return { local, remote: remote.filter(book => !seen.has(book.id)) };
+    const detail = await this.searchDetailed(query, limit);
+    return { local: detail.local, remote: detail.remote };
   }
 
   /**
-   * يجيب صفحة من Open Library.
-   * null = فشل شبكة/HTTP (نحسبه فشل)، [] = نجح بس ماكو نتائج (ما نحسبه فشل).
+   * نفس البحث بس يرجّع هم هل الـAPI تعطّل (شبكة/429) حتى نقول للمستخدم
+   * «جرّب بعد شوي» بدل «ماكو نتيجة» وهو كاتب اسم مؤلف موجود.
    */
-  private async fetchDocs(url: string): Promise<OpenLibraryDoc[] | null> {
+  async searchDetailed(
+    query: string,
+    limit = 6
+  ): Promise<{ local: CatalogBook[]; remote: CatalogBook[]; remoteFailed: boolean }> {
+    const local = await this.searchLocal(query, limit);
+    const clean = tidy(query, 60);
+    if (local.length >= limit || clean.length < 2) {
+      return { local, remote: [], remoteFailed: false };
+    }
+    const remoteResult = await this.searchRemoteDetailed(clean, limit);
+    const seen = new Set(local.map(book => book.id));
+    return {
+      local,
+      remote: remoteResult.books.filter(book => !seen.has(book.id)),
+      remoteFailed: remoteResult.failed
+    };
+  }
+
+  /** بحث حيّ بـOpen Library (بلا مفتاح): يجرّب q ثم author ثم title. */
+  async searchRemote(query: string, limit = 6): Promise<CatalogBook[]> {
+    const result = await this.searchRemoteDetailed(tidy(query, 60), limit);
+    return result.books;
+  }
+
+  private async searchRemoteDetailed(
+    clean: string,
+    limit: number
+  ): Promise<{ books: CatalogBook[]; failed: boolean }> {
+    if (clean.length < 2 || !this.fetchImpl) return { books: [], failed: false };
+    const size = String(Math.max(1, Math.min(20, limit)));
+    const urls: string[] = [
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(clean)}&limit=${size}&fields=${encodeURIComponent(API_FIELDS)}`,
+      `https://openlibrary.org/search.json?author=${encodeURIComponent(clean)}&limit=${size}&fields=${encodeURIComponent(API_FIELDS)}`,
+      `https://openlibrary.org/search.json?title=${encodeURIComponent(clean)}&limit=${size}&fields=${encodeURIComponent(API_FIELDS)}`
+    ];
+    let sawFailure = false;
+    for (const url of urls) {
+      const docs = await this.fetchDocs(url, 2);
+      if (!docs) {
+        sawFailure = true;
+        continue;
+      }
+      const out: CatalogBook[] = [];
+      for (const doc of docs) {
+        const book = cleanCatalogDoc(doc, '');
+        if (book) out.push(book);
+        if (out.length >= limit) break;
+      }
+      if (out.length) return { books: out, failed: false };
+    }
+    return { books: [], failed: sawFailure };
+  }
+
+  private async fetchDocs(url: string, attempts = 1): Promise<OpenLibraryDoc[] | null> {
+    if (!this.fetchImpl) return null;
+    for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
+      const docs = await this.fetchDocsOnce(url);
+      if (docs !== null) return docs;
+      if (attempt < attempts) await sleep(500 * attempt);
+    }
+    return null;
+  }
+
+  private async fetchDocsOnce(url: string): Promise<OpenLibraryDoc[] | null> {
     if (!this.fetchImpl) return null;
     try {
       const response = await this.fetchImpl(url, {
@@ -356,7 +439,7 @@ export class BookCatalog {
   async seed(queries = 3): Promise<{ added: number; total: number; done: boolean }> {
     await this.load();
     if (this.seeding) return this.seeding;
-    if (this.meta.done || this.books.length >= CATALOG_TARGET) {
+    if (this.books.length >= CATALOG_TARGET) {
       this.meta.done = true;
       return { added: 0, total: this.books.length, done: true };
     }
@@ -376,25 +459,37 @@ export class BookCatalog {
           this.meta.done = true;
           break;
         }
-        const queries = lang.queries && lang.queries.length ? lang.queries : [`language:${lang.code}`];
-        const rawQuery = queries[Math.min(this.meta.queryIndex, queries.length - 1)];
+        const langQueries = lang.queries && lang.queries.length ? lang.queries : [`language:${lang.code}`];
+        const rawQuery = langQueries[Math.min(this.meta.queryIndex, langQueries.length - 1)];
         const sort = SORT_STAGES[this.meta.sortStage] || '';
         const url =
           'https://openlibrary.org/search.json?q=' + encodeURIComponent(rawQuery) +
           '&page=' + String(this.meta.page) +
           (sort ? `&sort=${sort}` : '') +
           '&limit=100&fields=' + encodeURIComponent(API_FIELDS);
-        this.meta.requests += 1;
+
         // فاصل بسيط بين الطلبات: Open Library تسمح بـ٣ طلبات/ثانية مع User-Agent واضح.
-        if (this.meta.requests > 0 && i > 0) await sleep(400);
-        const docs = await this.fetchDocs(url);
-        if (docs === null) {
+        if (i > 0) await sleep(400);
+
+        // 🔴 الشي المهم: لو الطلب فشل (429 مثلاً) نعيد **نفس الصفحة**؛ ما نحرّك
+        // المؤشر. قبل هذا كان الفشل يحرّك المؤشر ويوصل المكتبة لـ«خلصت» وهي
+        // ناقصة، وهذا سبب توقّفها على ٣٠٠٠ كتاب.
+        let docs: OpenLibraryDoc[] | null = null;
+        for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt += 1) {
+          this.meta.requests += 1;
+          docs = await this.fetchDocs(url);
+          if (docs !== null) break;
           this.meta.failures += 1;
           this.meta.streak += 1;
-        } else {
-          this.meta.streak = 0;
+          await sleep(600 * (attempt + 1));
         }
-        for (const doc of docs || []) {
+        if (docs === null) {
+          // نوقف الدفعة هنا — المؤشر ثابت، فالمنبّه الجاي يعيد نفس الصفحة.
+          break;
+        }
+        this.meta.streak = 0;
+
+        for (const doc of docs) {
           // نوسم الكتاب بلغة الاستعلام: يعني «متوفر بهذه اللغة» (الكتاب ممكن يكون
           // مترجم لأكثر من لغة، وسجل Open Library يجمعها كلها بمصفوفة واحدة).
           const book = cleanCatalogDoc(doc, lang.code, true);
@@ -408,27 +503,40 @@ export class BookCatalog {
           pending.push(book);
           added += 1;
         }
-        // استعلام بلا نتائج؟ ننتقل للاستعلام الجاي فوراً بدل ما نحرق ٨ صفحات.
-        if (docs && docs.length === 0) this.meta.page = MAX_PAGE_PER_QUERY;
-        // ننتقل للصفحة أو الاستعلام أو اللغة الجاية
-        this.meta.page += 1;
-        if (this.meta.page > MAX_PAGE_PER_QUERY) {
-          this.meta.page = 1;
-          this.meta.queryIndex += 1;
-          if (this.meta.queryIndex >= queries.length) {
-            this.meta.queryIndex = 0;
-            this.meta.langIndex += 1;
-          }
+
+        // دور بين اللغات: كل طلب ياخذ لغة، وبعد ما نكمل اللغات كلها ننتقل
+        // للصفحة الجاية عند الجميع. هذا يخلّي التوزيع متوازن (العربية أولاً)
+        // بدل ما تبلع لغة وحدة كل الحصة.
+        if (docs.length === 0) {
+          // استعلام هاللغة فاضي؟ نتخطاه بقية الصفحات.
+          this.meta.queryIndex = Math.max(this.meta.queryIndex, langQueries.length);
         }
+        this.meta.langIndex += 1;
         if (this.meta.langIndex >= CATALOG_LANGUAGES.length) {
-          // خلصت اللغات وما وصلنا الهدف؟ نعيدها بترتيب ثاني بدل ما نستسلم.
-          this.meta.sortStage += 1;
           this.meta.langIndex = 0;
-          this.meta.queryIndex = 0;
-          this.meta.page = 1;
-          if (this.meta.sortStage >= SORT_STAGES.length) {
-            this.meta.done = true;
-            break;
+          this.meta.page += 1;
+          if (this.meta.page > MAX_PAGE_PER_QUERY) {
+            this.meta.page = 1;
+            this.meta.queryIndex += 1;
+            const maxQueries = Math.max(...CATALOG_LANGUAGES.map(entry => (entry.queries || []).length || 1));
+            if (this.meta.queryIndex >= maxQueries) {
+              // خلصت كل الاستعلامات بكل اللغات؟ ترتيب ثاني.
+              this.meta.queryIndex = 0;
+              this.meta.sortStage += 1;
+              if (this.meta.sortStage >= SORT_STAGES.length) {
+                this.meta.sortStage = 0;
+                this.meta.wrapCount += 1;
+              }
+              const maxPages = MAX_PAGE_PER_QUERY;
+              if (this.meta.wrapCount >= MAX_WRAP && this.books.length < CATALOG_TARGET) {
+                console.warn(
+                  `Book catalog stalled at ${this.books.length}/${CATALOG_TARGET} after ${this.meta.requests} requests ` +
+                    `(failures ${this.meta.failures}, pages ${maxPages})`
+                );
+                this.meta.done = true;
+                break;
+              }
+            }
           }
         }
       }
@@ -454,9 +562,11 @@ export class BookCatalog {
     }
   }
 
-  /** هل يحتاج منبّه تالي للبذر؟ */
+  /** هل يحتاج منبّه تالي للبذر؟ (العبرة بالعدد الحقيقي مو بعلم «خلصت») */
   needsMore(): boolean {
-    return !this.meta.done && this.books.length < CATALOG_TARGET;
+    if (this.books.length >= CATALOG_TARGET) return false;
+    if (this.meta.done) return false;
+    return true;
   }
 
   /**
