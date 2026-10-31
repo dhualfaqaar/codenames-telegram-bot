@@ -183,6 +183,8 @@ interface TelegramMessage {
   audio?: any;
   animation?: any;
   document?: any;
+  forward_origin?: { type?: string; chat?: TelegramChat };
+  forward_from_chat?: TelegramChat;
   location?: any;
   contact?: any;
 }
@@ -2467,6 +2469,15 @@ export class TelegramBotManager {
     const text = message.text?.trim() || '';
     const sender = message.from;
     const senderName = sender ? (sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '')) : 'مجهول';
+
+    // المالك يحوّل ملف من القناة للبوت: نفهرسه بالبصمة، مو بالاسم وحده.
+    const source = message.forward_origin?.type === 'channel' ? message.forward_origin.chat : message.forward_from_chat;
+    if (message.chat.type === 'private' && sender && this.isOwner(sender.id) &&
+        source?.type === 'channel' && source.username?.toLowerCase() === 'lovekotob' && message.document) {
+      const result = await this.indexForwardedBookPdf(message.document);
+      await this.sendMessage(chatId, result ? 'انحفظ الملف بالفهرس. ينرسل إذا طابق نسخة ملكية عامة متحقّق منها.' : 'ما كدرت أفهرس الملف هسه. تأكد إنه PDF وحجمه ما يتجاوز 20 MB، وجرّب مرة ثانية.');
+      return;
+    }
 
     const isStartCommand = /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
 
@@ -8566,12 +8577,13 @@ export class TelegramBotManager {
           );
           return;
         }
-        const sent = await this.sendPdfDocument(
-          chatId,
-          file.url,
-          `📄 *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}`,
-          [[{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
-        );
+        const caption = `📄 *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}`;
+        const keyboard = [[{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]];
+        // لا نرسل نسخة القناة إلا إذا طابقت بصمة وحجم نسخة أرشيف المتحقق من حقوقها.
+        const channelFile = await this.bookCatalog.channelPdf(file.sha1, file.sizeBytes);
+        let sent = channelFile ? await this.sendPdfDocument(chatId, channelFile, caption, keyboard) : null;
+        // قد يتعطل معرّف تيليجرام؛ المصدر المتحقق منه يبقى احتياطياً.
+        if (!sent?.ok) sent = await this.sendPdfDocument(chatId, file.url, caption, keyboard);
         if (!sent?.ok) {
           await this.sendMessage(
             chatId,
@@ -12799,7 +12811,40 @@ export class TelegramBotManager {
     return rows;
   }
 
-  /** يرسل ملف PDF من إنترنت أرشيف عبر تيليجرام. */
+  /** نفهرس فقط PDF محوّل من القناة، ونحسب بصمته من محتواه الفعلي. */
+  private async indexForwardedBookPdf(document: any): Promise<boolean> {
+    const size = Number(document?.file_size);
+    const fileId = document?.file_id;
+    if (!this.token || typeof fileId !== 'string' || !fileId || fileId.length > 1024 ||
+        !Number.isSafeInteger(size) || size < 5 || size > 20 * 1024 * 1024 ||
+        !(document.mime_type === 'application/pdf' || /\.pdf$/i.test(document.file_name || ''))) return false;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/getFile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId }), signal: AbortSignal.timeout(15000)
+      });
+      const data: any = await response.json();
+      const path = data?.result?.file_path;
+      if (!response.ok || !data.ok || typeof path !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(path) || path.split('/').includes('..')) return false;
+      const download = await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`, { signal: AbortSignal.timeout(30000) });
+      if (!download.ok) return false;
+      const declaredSize = Number(download.headers.get('content-length'));
+      if (declaredSize && declaredSize !== size) return false;
+      const bytes = await download.arrayBuffer();
+      if (bytes.byteLength !== size) return false;
+      const header = new Uint8Array(bytes, 0, 5);
+      if (String.fromCharCode(...header) !== '%PDF-') return false;
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', bytes));
+      const sha1 = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+      await this.bookCatalog.rememberChannelPdf(sha1, fileId, size);
+      return true;
+    } catch {
+      // لا نسجل رمز البوت أو رابط التحميل في السجلات.
+      return false;
+    }
+  }
+
+  /** يرسل ملف PDF بمعرّف تيليجرام أو برابط أرشيف. */
   private async sendPdfDocument(chatId: string, url: string, caption: string, keyboard?: any[][]): Promise<any> {
     if (!this.token) return null;
     try {
