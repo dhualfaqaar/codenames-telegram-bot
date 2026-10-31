@@ -9,6 +9,7 @@
  * بعدة منبّهات بدل طلب واحد طويل.
  */
 
+import { LITERARY_GENRES, LITERATURE_BY_LANGUAGE } from './bookRecommendationEngine';
 import type { BookGenre } from './bookRecommendationEngine';
 
 export interface CatalogBook {
@@ -125,7 +126,19 @@ export const CATALOG_LANGUAGES: Array<{ code: string; label: string; queries?: s
   { code: 'may', label: 'الماليزية', queries: ['language:may'] },
   { code: 'kor', label: 'الكورية', queries: ['language:kor'] },
   { code: 'jpn', label: 'اليابانية', queries: ['language:jpn'] },
-  { code: 'chi', label: 'الصينية', queries: ['language:chi'] }
+  { code: 'chi', label: 'الصينية', queries: ['language:chi'] },
+  { code: 'ben', label: 'البنغالية', queries: ['language:ben'] },
+  { code: 'tam', label: 'التاميلية', queries: ['language:tam'] },
+  { code: 'vie', label: 'الفيتنامية', queries: ['language:vie'] },
+  { code: 'tha', label: 'التايلندية', queries: ['language:tha'] },
+  { code: 'mal', label: 'المالايالامية', queries: ['language:mal'] },
+  { code: 'fil', label: 'الفلبينية', queries: ['language:fil'] },
+  { code: 'bul', label: 'البلغارية', queries: ['language:bul'] },
+  { code: 'srp', label: 'الصربية', queries: ['language:srp'] },
+  { code: 'hrv', label: 'الكرواتية', queries: ['language:hrv'] },
+  { code: 'cat', label: 'الكتالونية', queries: ['language:cat'] },
+  { code: 'afr', label: 'الأفريقانية', queries: ['language:afr'] },
+  { code: 'swa', label: 'السواحيلية', queries: ['language:swa'] }
 ];
 
 export const GENRE_SUBJECTS: Record<BookGenre, string[]> = {
@@ -163,9 +176,9 @@ export const GENRE_SUBJECTS: Record<BookGenre, string[]> = {
     'نفسي', 'علم النفس', 'عادات', 'نجاح'
   ],
   sci_fi: [
-    'science fiction', 'sci-fi', 'scifi', 'fantasy', 'space', 'spaceship', 'dystopia',
+    'science fiction', 'sci-fi', 'scifi', 'space', 'spaceship', 'dystopia',
     'utopia', 'time travel', 'robots', 'aliens', 'cyberpunk', 'science-fiction',
-    'خيال علمي', 'فانتازيا', 'مستقبل', 'فضاء', 'روبوت'
+    'خيال علمي', 'مستقبل', 'فضاء', 'روبوت'
   ],
   mystery: [
     'mystery', 'detective', 'crime', 'criminal', 'thriller', 'suspense', 'police',
@@ -185,6 +198,77 @@ export const GENRE_SUBJECTS: Record<BookGenre, string[]> = {
     'juvenile', 'juvenile fiction', 'children', 'childrens', "children's", 'fairy tales',
     'fairy tale', 'picture book', 'young adult', 'kids', 'nursery', 'bedtime',
     'enfants', 'kinder', 'أطفال', 'حكايات', 'حكاية', 'طفل', 'صغار'
+  ],
+  psychology: [
+    'psychology', 'psychological', 'psychoanalysis', 'psychiatry', 'mental health',
+    'cognitive', 'behavior', 'behaviour', 'freud', 'jung', 'psychotherapy',
+    'علم النفس', 'نفسي', 'تحليل نفسي', 'صحة نفسية', 'سلوك'
+  ],
+  arabic_lit: [
+    'arabic literature', 'arabic fiction', 'arabic poetry', 'arabic drama', 'arabic essays',
+    'أدب عربي', 'الأدب العربي', 'شعر عربي', 'رواية عربية', 'دواوين', 'ديوان شعر'
+  ],
+  english_lit: [
+    'english literature', 'english fiction', 'english poetry', 'english drama',
+    'shakespeare', 'victorian', 'elizabethan', 'أدب إنجليزي'
+  ],
+  french_lit: [
+    'french literature', 'french fiction', 'french poetry', 'littérature française',
+    'roman français', 'أدب فرنسي'
+  ],
+  russian_lit: [
+    'russian literature', 'russian fiction', 'russian poetry', 'русская литература',
+    'أدب روسي'
+  ],
+  german_lit: [
+    'german literature', 'german fiction', 'german poetry', 'deutsche literatur',
+    'أدب ألماني'
+  ],
+  politics: [
+    'politics', 'political science', 'government', 'geopolitics', 'democracy',
+    'dictatorship', 'elections', 'public policy', 'international relations',
+    'سياسة', 'علوم سياسية', 'حكم', 'ديمقراطية', 'انتخابات', 'سياسي'
+  ],
+  economics: [
+    'economics', 'economic', 'communism', 'socialism', 'capitalism', 'marxism',
+    'economy', 'finance, public', 'trade', 'labor', 'labour', 'اقتصاد', 'شيوعية',
+    'اشتراكية', 'رأسمالية', 'ماركسية', 'اقتصادي'
+  ],
+  science: [
+    'science', 'physics', 'chemistry', 'biology', 'astronomy', 'evolution',
+    'genetics', 'ecology', 'neuroscience', 'quantum', 'علوم', 'فيزياء', 'كيمياء',
+    'أحياء', 'فلك', 'تطور', 'علم الأحياء'
+  ],
+  math: [
+    'mathematics', 'math', 'algebra', 'geometry', 'calculus', 'statistics',
+    'probability', 'number theory', 'رياضيات', 'جبر', 'هندسة', 'إحصاء', 'حساب'
+  ],
+  sports: [
+    'sports', 'sport', 'football', 'soccer', 'olympics', 'athletics', 'basketball',
+    'boxing', 'martial arts', 'رياضة', 'كرة القدم', 'أولمبياد', 'رياضي', 'ملاكمة'
+  ],
+  medicine: [
+    'medicine', 'medical', 'health', 'nutrition', 'disease', 'surgery', 'anatomy',
+    'nursing', 'pharmacology', 'طب', 'صحة', 'تغذية', 'مرض', 'جراحة', 'تشريح', 'تمريض'
+  ],
+  arts: [
+    'art', 'arts', 'music', 'painting', 'cinema', 'photography', 'architecture',
+    'sculpture', 'theater, music', 'فنون', 'فن', 'موسيقى', 'رسم', 'سينما', 'تصوير', 'عمارة'
+  ],
+  mythology: [
+    'mythology', 'myth', 'myths', 'folklore', 'legends', 'legend', 'fairy tales, folklore',
+    'أساطير', 'خرافات', 'فلكلور', 'أسطورة', 'حكايات شعبية'
+  ],
+  comics: [
+    'comics', 'comic books', 'graphic novels', 'graphic novel', 'cartoons',
+    'كوميكس', 'قصص مصورة', 'روايات مصورة'
+  ],
+  manga: [
+    'manga', 'anime', 'shonen', 'shojo', 'seinen', 'مانغا', 'مانجا', 'أنمي'
+  ],
+  fantasy: [
+    'fantasy', 'fantasy fiction', 'magic', 'dragons', 'wizards', 'elves',
+    'fairy tale, fantasy', 'فانتازيا', 'سحر', 'تنانين', 'سحرة'
   ]
 };
 
@@ -195,21 +279,26 @@ export const GENRE_SUBJECTS: Record<BookGenre, string[]> = {
 export const DEFAULT_GENRE: BookGenre = 'novel';
 
 /** يستخرج تصنيفات الكتاب من مواضيعه (ويعتمد على العنوان كخط ثاني). */
-export function classifyBook(subjects: string[], title = ''): string[] {
+export function classifyBook(subjects: string[], title = '', lang = ''): string[] {
   const haystack = `${subjects.join(' | ')} | ${title}`.toLowerCase();
   const found: string[] = [];
   for (const genre of Object.keys(GENRE_SUBJECTS) as BookGenre[]) {
     if (GENRE_SUBJECTS[genre].some(word => haystack.includes(word))) found.push(genre);
   }
-  return found.slice(0, 4);
+  // فصل الآداب حسب اللغة: كتاب أدبي عربي/إنجليزي/فرنسي/روسي/ألماني ياخذ وسم أدبه.
+  const literature = LITERATURE_BY_LANGUAGE[lang];
+  if (literature && found.some(genre => LITERARY_GENRES.includes(genre as BookGenre)) && !found.includes(literature)) {
+    found.push(literature);
+  }
+  return found.slice(0, 5);
 }
 
 /**
  * نفس التصنيف بس يضمن نتيجة: لو ما طابقت المواضيع شي نرجع التصنيف الافتراضي
  * حتى ما يبقى أي كتاب خارج الأصناف (هذا كان سبب «مكتبة ١٠,٠٠٠ وأصناف قليلة»).
  */
-export function classifyBookStrict(subjects: string[], title = ''): string[] {
-  const found = classifyBook(subjects, title);
+export function classifyBookStrict(subjects: string[], title = '', lang = ''): string[] {
+  const found = classifyBook(subjects, title, lang);
   return found.length ? found : [DEFAULT_GENRE];
 }
 
@@ -226,13 +315,30 @@ export const GENRE_SEED_SUBJECTS: Record<BookGenre, string> = {
   mystery: 'Detective and mystery stories',
   horror: 'Horror tales',
   biography: 'Biography',
-  children: "Children's literature"
+  children: "Children's literature",
+  psychology: 'Psychology',
+  arabic_lit: 'Arabic literature',
+  english_lit: 'English literature',
+  french_lit: 'French literature',
+  russian_lit: 'Russian literature',
+  german_lit: 'German literature',
+  politics: 'Politics',
+  economics: 'Economics',
+  science: 'Science',
+  math: 'Mathematics',
+  sports: 'Sports',
+  medicine: 'Medicine',
+  arts: 'Art',
+  mythology: 'Mythology',
+  comics: 'Comics & Graphic Novels',
+  manga: 'Manga',
+  fantasy: 'Fantasy fiction'
 };
 
 /** الفلسفة أكثر صنف مطلوب — نضمن له عدد أدنى بالمكتبة. */
-export const PHILOSOPHY_MIN = 1_000;
+export const PHILOSOPHY_MIN = 1_200;
 /** سقف أعلى للمكتبة وقت تعويض الفلسفة (نتجاوز الهدف شوي بدل ما نضغط الأصناف). */
-export const CATALOG_MAX = 13_000;
+export const CATALOG_MAX = 26_000;
 
 /** مواضيع الفلسفة اللي نبذر بيها لحد ما نوصل العدد الأدنى. */
 export const PHILOSOPHY_SUBJECTS = [
@@ -250,7 +356,7 @@ export const PHILOSOPHY_SUBJECTS = [
   'Philosophy, Arab',
   'فلسفة'
 ];
-export const CATALOG_TARGET = 10_000;
+export const CATALOG_TARGET = 20_000;
 /** مصادر البذر: لغة صرفة، أو لغة + تصنيف حتى كل صنف ياخذ حصته. */
 export interface SeedSource {
   q: string;
@@ -263,6 +369,15 @@ export interface SeedSource {
  * الكبيرة، وبعدها بقية اللغات. كل مصدر يعطي ١٠٠ كتاب بالصفحة، فدورة وحدة
  * تمر على كل الأصناف — هذا اللي يخلّي «كتاب ثاني» ما يلف بين ٤ كتب.
  */
+/** كل صنف أدبي مرتبط بلغة معيّنة — ما نخلط «أدب إنجليزي» ببذر عربي. */
+const GENRE_LANGUAGE_LOCK: Partial<Record<BookGenre, string>> = {
+  arabic_lit: 'ara',
+  english_lit: 'eng',
+  french_lit: 'fre',
+  russian_lit: 'rus',
+  german_lit: 'ger'
+};
+
 export function buildSeedSources(): SeedSource[] {
   const sources: SeedSource[] = [];
   const genreKeys = Object.keys(GENRE_SEED_SUBJECTS) as BookGenre[];
@@ -270,6 +385,8 @@ export function buildSeedSources(): SeedSource[] {
   // ١) العربية: لغة + كل صنف (بالعربي أولاً حتى الكتب العربية تاخذ نصيبها).
   sources.push({ q: 'language:ara', lang: 'ara' });
   for (const genre of genreKeys) {
+    const locked = GENRE_LANGUAGE_LOCK[genre];
+    if (locked && locked !== 'ara') continue;
     sources.push({ q: `language:ara AND subject:"${GENRE_SEED_SUBJECTS[genre]}"`, lang: 'ara', genre });
   }
   for (const subject of ['Arabic fiction', 'Arabic poetry', 'Arabic literature', 'Arabic drama']) {
@@ -281,6 +398,8 @@ export function buildSeedSources(): SeedSource[] {
   for (const code of bigLanguages) {
     sources.push({ q: `language:${code}`, lang: code });
     for (const genre of genreKeys) {
+      const locked = GENRE_LANGUAGE_LOCK[genre];
+      if (locked && locked !== code) continue;
       sources.push({ q: `language:${code} AND subject:"${GENRE_SEED_SUBJECTS[genre]}"`, lang: code, genre });
     }
   }
@@ -398,6 +517,19 @@ function tidy(value: string, max: number): string {
  * الكبيرة والصغيرة. بدونه «نجيب محفوظ» ما يطابق «نجيب محفوظ» لو مكتوب بهمزة،
  * وهذا سبب رسالة «ما لكيت نتيجة» اللي صارت.
  */
+/** هل النص فيه حروف عربية؟ */
+export function hasArabic(value: string): boolean {
+  return /[\u0600-\u06FF]/.test(String(value || ''));
+}
+
+/** يشيل «تأليف» و«بقلم» من عبارة المؤلف. */
+export function stripAuthorPrefix(value: string): string {
+  return String(value || '')
+    .replace(/^\s*(?:تأليف|بقلم|اعداد|إعداد|ترجمة|تحقيق)[:\s]+/u, '')
+    .replace(/^\s*(?:by|author)[:\s]+/i, '')
+    .trim();
+}
+
 export function normalizeQuery(value: string): string {
   return String(value || '')
     .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, '') // تشكيل وتطويل
@@ -426,6 +558,7 @@ export function cleanCatalogDoc(doc: OpenLibraryDoc, fallbackLang: string, prefe
   const firstRaw = Array.isArray(doc.first_sentence) ? doc.first_sentence[0] : doc.first_sentence;
   const firstSentence = tidy(String(firstRaw || ''), 240);
   const ia = tidy(String(doc.ia?.[0] || ''), 80);
+  const langValue = tidy(String((preferFallbackLang ? fallbackLang : doc.language?.[0]) || fallbackLang), 8) || fallbackLang;
   const subject = tidy(subjects[0] || '', 40);
   return {
     id,
@@ -434,9 +567,9 @@ export function cleanCatalogDoc(doc: OpenLibraryDoc, fallbackLang: string, prefe
     year: Number.isFinite(year) && year > 600 && year <= new Date().getFullYear() + 1 ? year : null,
     pages: Number.isFinite(pages) && pages > 10 && pages < 5000 ? pages : null,
     cover: Number.isFinite(cover) && cover > 0 ? cover : null,
-    lang: tidy(String((preferFallbackLang ? fallbackLang : doc.language?.[0]) || fallbackLang), 8) || fallbackLang,
+    lang: langValue,
     subject,
-    genres: classifyBookStrict(subjects, title),
+    genres: classifyBookStrict(subjects, title, langValue),
     first: firstSentence.length > 15 ? firstSentence : undefined,
     ia: ia || undefined,
     pd: doc.public_scan_b === true
@@ -454,9 +587,17 @@ export class BookCatalog {
   /** كاش عدد كتب الفلسفة (يصفّر مع كل إضافة جديدة) */
   private philosophyCache: number | null = null;
 
-  constructor(storage?: BookStorageAdapter, fetchImpl?: typeof fetch) {
+  /** فاصل الطلبات بالمللي ثانية (الفحوص تخليه صفر حتى تشتغل بسرعة). */
+  private queryGapMs: number;
+
+  constructor(
+    storage?: BookStorageAdapter,
+    fetchImpl?: typeof fetch,
+    options: { queryGapMs?: number } = {}
+  ) {
     this.storage = storage || memoryBookStorage();
     this.fetchImpl = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : (null as unknown as typeof fetch));
+    this.queryGapMs = options.queryGapMs ?? 400;
   }
 
   /** يحمّل المكتبة من التخزين مرة وحدة. */
@@ -502,6 +643,70 @@ export class BookCatalog {
       }
     })();
     return this.loaded;
+  }
+
+  /**
+   * يعرّب عنوان الكتاب واسم المؤلف إذا كانت عند Open Library طبعة عربية.
+   * كثير من الأعمال مسجّلة بالحروف اللاتينية (Najib Mahfuz / Children of
+   * Gebelawi)، فنروح لـ editions.json وندوّر على طبعة عنوانها بالعربي.
+   * النتيجة تتكاش بالتخزين حتى ما نعيد الطلب.
+   */
+  async localize(book: CatalogBook): Promise<{ title: string; author: string; localized: boolean }> {
+    const original = { title: book.title, author: book.author, localized: false };
+    if (hasArabic(`${book.title} ${book.author}`)) return original;
+
+    const cacheKey = `books:loc:${book.id}`;
+    try {
+      const cached = await this.storage.get<{ title: string; author: string } | null>(cacheKey);
+      if (cached === null) return original;
+      if (cached) return { title: cached.title, author: cached.author, localized: true };
+    } catch {
+      /* التخزين مو دايماً متاح */
+    }
+
+    const url = `https://openlibrary.org/works/${book.id}/editions.json?limit=60`;
+    try {
+      const res = await this.fetchImpl(url, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
+      });
+      if (!res?.ok) return original;
+      const payload: any = await res.json();
+      const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+      let arabicTitle = '';
+      let arabicAuthor = '';
+      for (const entry of entries) {
+        const title = cleanDescription(String(entry?.title || ''));
+        if (!arabicTitle && hasArabic(title)) arabicTitle = title;
+        if (!arabicAuthor) {
+          const statement = cleanDescription(String(entry?.by_statement || ''));
+          const candidate = stripAuthorPrefix(statement);
+          if (hasArabic(candidate)) arabicAuthor = candidate;
+          else {
+            const contribution = (entry?.contributions || []).map((item: any) => String(item || '')).find(hasArabic);
+            if (contribution) arabicAuthor = cleanDescription(contribution);
+          }
+        }
+        if (arabicTitle && arabicAuthor) break;
+      }
+      if (!arabicTitle) {
+        try {
+          await this.storage.put(cacheKey, null);
+        } catch {
+          /* اختياري */
+        }
+        return original;
+      }
+      const result = { title: arabicTitle, author: arabicAuthor || book.author };
+      try {
+        await this.storage.put(cacheKey, result);
+      } catch {
+        /* اختياري */
+      }
+      return { ...result, localized: true };
+    } catch {
+      return original;
+    }
   }
 
   /**
@@ -566,7 +771,7 @@ export class BookCatalog {
   /** تصنيفات كتاب: من الحقل المخزّن، أو محسوبة من مواضيعه (كتب قديمة بلا حقل). */
   genresOf(book: CatalogBook): string[] {
     if (book.genres && book.genres.length) return book.genres;
-    const computed = classifyBookStrict(book.subject ? [book.subject] : [], book.title);
+    const computed = classifyBookStrict(book.subject ? [book.subject] : [], book.title, book.lang);
     book.genres = computed;
     return computed;
   }
@@ -863,7 +1068,7 @@ export class BookCatalog {
           '&limit=100&fields=' + encodeURIComponent(API_FIELDS);
 
         // فاصل بسيط بين الطلبات: Open Library تسمح بـ٣ طلبات/ثانية مع User-Agent واضح.
-        if (i > 0) await sleep(400);
+        if (i > 0 && this.queryGapMs > 0) await sleep(this.queryGapMs);
 
         // 🔴 الشي المهم: لو الطلب فشل (429 مثلاً) نعيد **نفس الصفحة**؛ ما نحرّك
         // المؤشر. قبل هذا كان الفشل يحرّك المؤشر ويوصل المكتبة لـ«خلصت» وهي
@@ -875,7 +1080,7 @@ export class BookCatalog {
           if (docs !== null) break;
           this.meta.failures += 1;
           this.meta.streak += 1;
-          await sleep(600 * (attempt + 1));
+          if (this.queryGapMs > 0) await sleep(600 * (attempt + 1));
         }
         if (docs === null) {
           // نوقف الدفعة هنا — المؤشر ثابت، فالمنبّه الجاي يعيد نفس الصفحة.

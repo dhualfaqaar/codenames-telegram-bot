@@ -8284,11 +8284,20 @@ export class TelegramBotManager {
         const genres = Books.bookGenres();
         const countFor = (genre: Books.BookGenre) =>
           (catalogCounts.get(genre) || 0) + Books.booksFor(genre).length;
-        const labelFor = (genre: Books.BookGenre) => `${Books.BOOK_GENRE_LABELS[genre]} · ${countFor(genre)}`;
+        // صنف بلا كتب: نعرض اسمه بلا رقم بدل «· 0».
+        const labelFor = (genre: Books.BookGenre) => {
+          const count = countFor(genre);
+          return count > 0 ? `${Books.BOOK_GENRE_LABELS[genre]} · ${count}` : Books.BOOK_GENRE_LABELS[genre];
+        };
+        // الأكثر كتباً بالأول حتى الأصناف المطلوبة تكون بأول الشاشة.
+        const orderedGenres = [...genres].sort((a, b) => {
+          const diff = countFor(b) - countFor(a);
+          return diff !== 0 ? diff : Books.BOOK_GENRE_LABELS[a].localeCompare(Books.BOOK_GENRE_LABELS[b], 'ar');
+        });
         const keyboard: any[][] = [];
-        for (let i = 0; i < genres.length; i += 2) {
-          const first = genres[i];
-          const second = genres[i + 1];
+        for (let i = 0; i < orderedGenres.length; i += 2) {
+          const first = orderedGenres[i];
+          const second = orderedGenres[i + 1];
           const row = [{ text: labelFor(first), callback_data: `svc:books:genre:${first}` }];
           if (second) row.push({ text: labelFor(second), callback_data: `svc:books:genre:${second}` });
           keyboard.push(row);
@@ -8386,9 +8395,10 @@ export class TelegramBotManager {
           if (fromCatalog) {
             itemId = fromCatalog.id;
             pickedCatalogBook = fromCatalog;
+            const locRandom = await this.bookCatalog.localize(fromCatalog);
             text = this.bookCardText({
-              title: fromCatalog.title,
-              author: fromCatalog.author,
+              title: locRandom.title,
+              author: locRandom.author,
               year: fromCatalog.year,
               pages: fromCatalog.pages,
               language: this.catalogLanguageLabel(fromCatalog.lang),
@@ -8401,9 +8411,10 @@ export class TelegramBotManager {
           if (fromCatalog) {
             itemId = fromCatalog.book.id;
             widened = fromCatalog.widened;
+            const locGenre = await this.bookCatalog.localize(fromCatalog.book);
             text = this.bookCardText({
-              title: fromCatalog.book.title,
-              author: fromCatalog.book.author,
+              title: locGenre.title,
+              author: locGenre.author,
               year: fromCatalog.book.year,
               pages: fromCatalog.book.pages,
               language: this.catalogLanguageLabel(fromCatalog.book.lang),
@@ -12707,10 +12718,12 @@ export class TelegramBotManager {
     header: string
   ): Promise<void> {
     const description = await this.bookCatalog.describe(book);
+    // نجرّب الطبعة العربية أولاً حتى الأسماء تطلع «عبد الله» مو «Abd Allah».
+    const localized = await this.bookCatalog.localize(book);
     const caption = this.bookCardText({
       meta: header,
-      title: book.title,
-      author: book.author,
+      title: localized.title,
+      author: localized.author,
       year: book.year,
       pages: book.pages,
       language: this.catalogLanguageLabel(book.lang),
@@ -12827,13 +12840,17 @@ export class TelegramBotManager {
       );
       return;
     }
-    const lines = results.map((book, index) => {
+    // نعرّب نتائج البحث كذلك (بالتوازي حتى ما يتأخر الرد).
+    const localizedResults = await Promise.all(
+      results.map(async book => ({ book, loc: await this.bookCatalog.localize(book) }))
+    );
+    const lines = localizedResults.map(({ book, loc }, index) => {
       const year = book.year ? ` · ${book.year}` : '';
       const lang = book.lang ? ` · ${this.catalogLanguageLabel(book.lang)}` : '';
-      return `${index + 1}) *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}${year}${lang}`;
+      return `${index + 1}) *${this.mdSafe(loc.title)}* — ${this.mdSafe(loc.author)}${year}${lang}`;
     });
-    const keyboard = results.map(book => [
-      { text: `📖 ${book.title.slice(0, 28)} — ${book.author.slice(0, 20)}`, callback_data: `svc:books:open:${book.id}` }
+    const keyboard = localizedResults.map(({ book, loc }) => [
+      { text: `📖 ${loc.title.slice(0, 28)} — ${loc.author.slice(0, 20)}`, callback_data: `svc:books:open:${book.id}` }
     ]);
     keyboard.push([{ text: '🔎 دوّر غير كتاب', callback_data: 'svc:books:search' }]);
     keyboard.push([{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]);

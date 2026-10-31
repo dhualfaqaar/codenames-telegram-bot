@@ -14,6 +14,8 @@ import {
   PHILOSOPHY_SOURCES,
   SEED_SOURCES,
   DEFAULT_GENRE,
+  hasArabic,
+  stripAuthorPrefix,
   classifyBook,
   classifyBookStrict,
   memoryBookStorage,
@@ -106,13 +108,13 @@ const fakeFetch = (async (input: any) => {
   check('رابط صفحة الكتاب', workUrl({ id: 'OL27448W' }) === 'https://openlibrary.org/works/OL27448W');
   check('قائمة اللغات تغطي كل المطلوب', ['ara', 'eng', 'rus', 'ger', 'fre', 'ron', 'spa', 'ita', 'tur', 'per'].every(code => CATALOG_LANGUAGES.some(entry => entry.code === code)));
   check('العربية أول لغة بالبذر', CATALOG_LANGUAGES[0].code === 'ara');
-  check('الهدف ١٠٠٠٠ كتاب', CATALOG_TARGET === 10_000);
+  check('الهدف 20,000 كتاب', CATALOG_TARGET === 20_000);
 }
 
 /* ───────────── البذر + التخزين المقسّم ───────────── */
 {
   const storage = memoryBookStorage();
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   requestLog = [];
   mode = 'ok';
 
@@ -138,6 +140,9 @@ const fakeFetch = (async (input: any) => {
   check('المصادر تغطي كل الأصناف', Object.keys(GENRE_SEED_SUBJECTS).every(genre =>
     SEED_SOURCES.some(source => source.genre === genre)));
   check('المصادر تغطي 29 لغة', new Set(SEED_SOURCES.map(source => source.lang)).size >= 29);
+  check('«أدب عربي» ما ينبذر بلغة إنجليزية', SEED_SOURCES.filter(source => source.genre === 'arabic_lit').every(source => source.lang === 'ara'));
+  check('«أدب إنجليزي» ما ينبذر بلغة عربية', SEED_SOURCES.filter(source => source.genre === 'english_lit').every(source => source.lang === 'eng'));
+  check('كل الأصناف الجديدة إلها مصادر', ['psychology', 'science', 'math', 'sports', 'medicine', 'arts', 'mythology', 'comics', 'manga', 'fantasy', 'politics', 'economics'].every(genre => SEED_SOURCES.some(source => source.genre === genre)));
   check('الـmeta يعدّ الطلبات', meta.requests === 3);
 
   // تكرار نفس الصفحة ما يزيد شي (منع التكرار بالمعرّف)
@@ -151,7 +156,7 @@ const fakeFetch = (async (input: any) => {
 /* ───────────── الوصول لـ١٠,٠٠٠ كتاب ───────────── */
 {
   const storage = memoryBookStorage();
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   mode = 'ok';
   let guard = 0;
   while (catalog.needsMore() && guard < 400) {
@@ -159,9 +164,9 @@ const fakeFetch = (async (input: any) => {
     guard += 1;
   }
   const stats = await catalog.stats();
-  check('المكتبة توصل ١٠,٠٠٠ كتاب', stats.total >= 10_000);
+  check('المكتبة توصل 20,000 كتاب', stats.total >= 20_000);
   check('البذر يتوقف عند الهدف', catalog.needsMore() === false);
-  check('الهدف ما يتجاوز بكثير', stats.total < 10_600);
+  check('الهدف ما يتجاوز بكثير', stats.total < 20_700);
   check('عدة لغات انبذرت', stats.languages >= 3);
   check('البذر توقّف بحد معقول من الطلبات', guard < 200);
   const byLang = await catalog.countByLanguage();
@@ -175,8 +180,8 @@ const fakeFetch = (async (input: any) => {
   for (const genre of Object.keys(GENRE_SEED_SUBJECTS)) {
     genreTotals.push((await catalog.genreStats(genre)).total);
   }
-  check('كل صنف إله ≥100 كتاب بالمكتبة الكبيرة', genreTotals.every(total => total >= 100));
-  check('الأصناف الاثنا عشر كلها موجودة', genreTotals.length === 12);
+  check('كل صنف إله ≥200 كتاب بالمكتبة الكبيرة', genreTotals.every(total => total >= 200));
+  check('كل الأصناف (29) موجودة', genreTotals.length === 29);
 
   const pool = await catalog.booksByGenre('novel', 'all');
   check('صنف الرواية عنده مئات الكتب', pool.length >= 200);
@@ -197,11 +202,11 @@ const fakeFetch = (async (input: any) => {
   const distribution = await catalog.genreDistribution();
   const sum = distribution.genres.reduce((total, entry) => total + entry.count, 0);
   check('صفر كتاب بدون صنف', distribution.unclassified === 0);
-  check('كل الكتب موزعة على الأصناف', sum >= distribution.total && distribution.total >= 10_000);
-  check('الأصناف الاثنا عشر كلها فيها كتب', distribution.genres.length === 12);
-  check('أصغر صنف عنده ≥50 كتاب', distribution.genres[distribution.genres.length - 1].count >= 50);
+  check('كل الكتب موزعة على الأصناف', sum >= distribution.total && distribution.total >= 20_000);
+  check('كل الأصناف (29) فيها كتب', distribution.genres.length === 29);
+  check('أصغر صنف عنده ≥150 كتاب', distribution.genres[distribution.genres.length - 1].count >= 150);
   const philosophy = distribution.genres.find(entry => entry.genre === 'philosophy')?.count || 0;
-  check('الفلسفة ≥1000 كتاب', philosophy >= PHILOSOPHY_MIN);
+  check('الفلسفة ≥1200 كتاب', philosophy >= PHILOSOPHY_MIN);
   check('عدّاد الفلسفة يطابق genreStats', philosophy === (await catalog.genreStats('philosophy')).total);
   check('philosophyCount يطابق التوزيع', catalog.philosophyCount() === philosophy);
   check('المكتبة تعتبر مكتملة (هدف + فلسفة)', catalog.isComplete() === true);
@@ -230,7 +235,7 @@ const fakeFetch = (async (input: any) => {
 /* ───────────── البحث والاقتراح العشوائي ───────────── */
 {
   const storage = memoryBookStorage();
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   mode = 'ok';
   await catalog.seed(6);
 
@@ -256,7 +261,7 @@ const fakeFetch = (async (input: any) => {
 /* ───────────── التراجع الآمن ───────────── */
 {
   const storage = memoryBookStorage();
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   mode = 'fail';
   const beforeMeta = await storage.get<any>('books:meta');
   const result = await catalog.seed(3);
@@ -301,7 +306,7 @@ const fakeFetch = (async (input: any) => {
     { id: 'OL9W', title: 'أولاد حارتنا', author: 'نجيب محفوظ', year: 1959, pages: 240, cover: 11, lang: 'ara', subject: 'Fiction' },
     { id: 'OL10W', title: 'The Old Man and the Sea', author: 'Ernest Hemingway', year: 1952, pages: 131, cover: 12, lang: 'eng', subject: 'Fiction' }
   ]);
-  const local = new BookCatalog(storage, fakeFetch);
+  const local = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   check('البحث باسم المؤلف يلقى كتابه', (await local.searchLocal('نجيب محفوظ', 5)).length === 1);
   check('البحث بترتيب كلمات مقلوب يشتغل', (await local.searchLocal('محفوظ نجيب', 5)).length === 1);
   check('البحث بهمزة مختلفة يشتغل', (await local.searchLocal('نجيب محفوظ', 5)).length === 1);
@@ -324,14 +329,14 @@ const fakeFetch = (async (input: any) => {
     }
     return { ok: false, status: 429, json: async () => ({}) } as any;
   }) as unknown as typeof fetch;
-  const flaky = new BookCatalog(memoryBookStorage(), flakyFetch);
+  const flaky = new BookCatalog(memoryBookStorage(), flakyFetch, { queryGapMs: 0 });
   const detailed = await flaky.searchDetailed('نجيب محفوظ', 5);
   check('لو البحث العام فشل يجرّب author', detailed.remote.length === 1 && hits.some(hit => hit.includes('author=')));
   check('ما يعلّم فشل لو نجح البديل', detailed.remoteFailed === false);
 
   // ولو كل المحاولات فشلت، نعلّم الفشل حتى نقول «جرّب بعد شوي»
   const deadFetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as any) as unknown as typeof fetch;
-  const dead = new BookCatalog(memoryBookStorage(), deadFetch);
+  const dead = new BookCatalog(memoryBookStorage(), deadFetch, { queryGapMs: 0 });
   const deadResult = await dead.searchDetailed('نجيب محفوظ', 5);
   check('كل المحاولات فاشلة = remoteFailed', deadResult.remoteFailed === true && deadResult.remote.length === 0);
 }
@@ -352,7 +357,7 @@ const fakeFetch = (async (input: any) => {
     updatedAt: Date.now(), requests: 100, failures: 10, rejected: 0, streak: 0, sortStage: 0, wrapCount: 4
   });
 
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   mode = 'ok';
   const stats = await catalog.stats();
   check('المكتبة القديمة المتوقفة تنقرأ ٣٠٠٠', stats.total === 3000);
@@ -365,7 +370,7 @@ const fakeFetch = (async (input: any) => {
     guard += 1;
   }
   const after = await catalog.stats();
-  check('المكتبة تكمّل لـ١٠,٠٠٠ بعد الاستئناف', after.total >= 10_000);
+  check('المكتبة تكمّل لـ20,000 بعد الاستئناف', after.total >= 20_000);
   check('الكتب القديمة ما تنحذف', (await catalog.all()).some(book => book.id.startsWith('OLD')));
   check('الدفعات القديمة تبقى بالتخزين', (await storage.list({ prefix: 'books:chunk:' })).size >= 15);
 }
@@ -385,10 +390,32 @@ const fakeFetch = (async (input: any) => {
   check('«Short stories» = قصة قصيرة', classifyBook(['Short stories']).includes('short_stories'));
   check('«Fiction» = رواية', classifyBook(['Fiction']).includes('novel'));
   check('مواضيع عربية تنصنّف', classifyBook(['شعر عربي']).includes('poetry') && classifyBook(['رواية عربية']).includes('novel'));
+  check('«Psychology» = علم نفس', classifyBook(['Psychology']).includes('psychology'));
+  check('«Communism» = اقتصاد', classifyBook(['Communism']).includes('economics'));
+  check('«Socialism» = اقتصاد', classifyBook(['Socialism']).includes('economics'));
+  check('«Politics» = سياسة', classifyBook(['Politics']).includes('politics'));
+  check('«Physics» = علوم', classifyBook(['Physics']).includes('science'));
+  check('«Algebra» = رياضيات', classifyBook(['Algebra']).includes('math'));
+  check('«Football» = رياضة', classifyBook(['Football']).includes('sports'));
+  check('«Medicine» = طب', classifyBook(['Medicine']).includes('medicine'));
+  check('«Painting» = فنون', classifyBook(['Painting']).includes('arts'));
+  check('«Mythology» = أساطير', classifyBook(['Mythology']).includes('mythology'));
+  check('«Comic books» = كوميكس', classifyBook(['Comic books']).includes('comics'));
+  check('«Manga» = مانغا', classifyBook(['Manga']).includes('manga'));
+  check('«Fantasy fiction» = فانتازيا', classifyBook(['Fantasy fiction']).includes('fantasy'));
+  check('الخيال العلمي ما ياخذ فانتازيا', !classifyBook(['Science fiction']).includes('fantasy'));
+  check('الفانتازيا ما تاخذ خيال علمي', !classifyBook(['Fantasy fiction']).includes('sci_fi'));
+  check('رواية عربية تنوسم أدب عربي', classifyBook(['Fiction'], 'رواية', 'ara').includes('arabic_lit'));
+  check('رواية إنجليزية تنوسم أدب إنجليزي', classifyBook(['Fiction'], 'Novel', 'eng').includes('english_lit'));
+  check('رواية فرنسية تنوسم أدب فرنسي', classifyBook(['Fiction'], 'Roman', 'fre').includes('french_lit'));
+  check('رواية روسية تنوسم أدب روسي', classifyBook(['Fiction'], 'Роман', 'rus').includes('russian_lit'));
+  check('رواية ألمانية تنوسم أدب ألماني', classifyBook(['Fiction'], 'Roman', 'ger').includes('german_lit'));
+  check('كتاب مو أدبي ما ياخذ وسم أدب اللغة', !classifyBook(['Physics'], 'Physics', 'eng').includes('english_lit'));
+  check('«Arabic literature» تنوسم أدب عربي', classifyBook(['Arabic literature']).includes('arabic_lit'));
   check('classifyBook العادي يرجع فاضي لكتاب بلا مواضيع', classifyBook([]).length === 0);
   check('classifyBookStrict يعطي صنف افتراضي', classifyBookStrict([]).join() === DEFAULT_GENRE);
   check('classifyBookStrict يحترم التصنيف الحقيقي', classifyBookStrict(['Arabic poetry']).includes('poetry'));
-  check('التصنيفات محصورة بـ4', classifyBook(['Fiction', 'Poetry', 'Drama', 'History', 'Horror tales', 'Science fiction']).length <= 4);
+  check('التصنيفات محصورة بـ5', classifyBook(['Fiction', 'Poetry', 'Drama', 'History', 'Horror tales', 'Science fiction']).length <= 5);
 }
 
 /* ───────────── النبذة + زر PDF ───────────── */
@@ -413,7 +440,7 @@ const fakeFetch = (async (input: any) => {
     { id: 'OLPD2W', title: 'كتاب محفوظ', author: 'مؤلف', year: 2015, pages: 200, cover: null, lang: 'ara', subject: '', ia: 'locked00id', pd: false },
     { id: 'OLPD3W', title: 'كتاب بلا ia', author: 'مؤلف', year: 1900, pages: 200, cover: null, lang: 'ara', subject: '', pd: true }
   ]);
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
 
   const freeBook = await catalog.byId('OLPD1W');
   const lockedBook = await catalog.byId('OLPD2W');
@@ -445,16 +472,71 @@ const fakeFetch = (async (input: any) => {
 
   // جملة الافتتاح أولى من الطلب
   worksCalls = 0;
-  const withFirst = new BookCatalog(memoryBookStorage(), fakeFetch);
+  const withFirst = new BookCatalog(memoryBookStorage(), fakeFetch, { queryGapMs: 0 });
   const inlineBook = cleanCatalogDoc({ key: '/works/OL77W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: ['A first sentence that is long enough.'] }, 'ara')!;
   const desc5 = await withFirst.describe(inlineBook);
   check('جملة الافتتاح تُستعمل قبل الطلب', desc5.includes('first sentence') && worksCalls === 0);
 }
 
+/* ───────────── تعريب العنوان والمؤلف ───────────── */
+{
+  check('hasArabic يلتقط العربي', hasArabic('عبد الله') && !hasArabic('Abd Allah'));
+  check('stripAuthorPrefix يشيل «تأليف»', stripAuthorPrefix('تأليف: عبد الله بن المقفع') === 'عبد الله بن المقفع');
+  check('stripAuthorPrefix يشيل «بقلم»', stripAuthorPrefix('بقلم نجيب محفوظ') === 'نجيب محفوظ');
+
+  const storage = memoryBookStorage();
+  await storage.put('books:chunk:0000', [
+    { id: 'OLLAT1W', title: 'Children of Gebelawi', author: 'Najib Mahfuz', year: 1959, pages: 552, cover: null, lang: 'ara', subject: 'Arabic fiction' },
+    { id: 'OLLAT2W', title: 'أولاد حارتنا', author: 'نجيب محفوظ', year: 1959, pages: 552, cover: null, lang: 'ara', subject: 'Arabic fiction' }
+  ]);
+
+  const arabicEditionsFetch = (async (input: any) => {
+    const url = String(input);
+    if (url.includes('/editions.json')) {
+      return {
+        ok: true,
+        json: async () => ({
+          entries: [
+            { title: 'Children of Gebelawi', by_statement: 'by Najib Mahfuz' },
+            { title: 'أولاد حارتنا', by_statement: 'تأليف: نجيب محفوظ' }
+          ]
+        })
+      } as any;
+    }
+    return { ok: true, json: async () => ({}) } as any;
+  }) as unknown as typeof fetch;
+
+  const catalog = new BookCatalog(storage, arabicEditionsFetch, { queryGapMs: 0 });
+  const latin = await catalog.byId('OLLAT1W');
+  const localized = await catalog.localize(latin!);
+  check('العنوان يتعرّب من الطبعة العربية', localized.title === 'أولاد حارتنا');
+  check('المؤلف يتعرّب', localized.author === 'نجيب محفوظ');
+  check('التعريب يعلّم النتيجة', localized.localized === true);
+
+  const again = await catalog.localize(latin!);
+  check('التعريب يتكاش', again.title === 'أولاد حارتنا');
+
+  const alreadyArabic = await catalog.byId('OLLAT2W');
+  const untouched = await catalog.localize(alreadyArabic!);
+  check('الكتاب العربي أصلاً ما ينطلب', untouched.title === 'أولاد حارتنا' && untouched.localized === false);
+
+  // كتاب بلا طبعة عربية: يرجع مثل ما هو
+  const noArabicFetch = (async (input: any) => {
+    if (String(input).includes('/editions.json')) {
+      return { ok: true, json: async () => ({ entries: [{ title: 'English Only', by_statement: 'by Someone' }] }) } as any;
+    }
+    return { ok: true, json: async () => ({}) } as any;
+  }) as unknown as typeof fetch;
+  const catalog2 = new BookCatalog(memoryBookStorage(), noArabicFetch, { queryGapMs: 0 });
+  const englishOnly = cleanCatalogDoc({ key: '/works/OLENG9W', title: 'English Only', author_name: ['Someone'] }, 'eng')!;
+  const kept = await catalog2.localize(englishOnly);
+  check('بلا طبعة عربية يبقى الاسم الأصلي', kept.title === 'English Only' && kept.localized === false);
+}
+
 /* ───────────── إعادة الضبط ───────────── */
 {
   const storage = memoryBookStorage();
-  const catalog = new BookCatalog(storage, fakeFetch);
+  const catalog = new BookCatalog(storage, fakeFetch, { queryGapMs: 0 });
   mode = 'ok';
   await catalog.seed(3);
   await catalog.reset();
