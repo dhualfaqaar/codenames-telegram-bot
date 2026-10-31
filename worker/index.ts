@@ -14,9 +14,8 @@ import { CHESS_HERO_JPG_BASE64, DRAWING_HERO_JPG_BASE64, SUDOKU_HERO_JPG_BASE64 
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 import { AmongUsRooms } from '../src/services/amongUsRooms';
 import { amongUsMiniAppHtml } from '../src/services/amongUsMiniApp';
-import { BOOKS_BUILD, BUILD_FEATURES, BUILD_STORAGE_KEY, BUILD_TAG } from '../src/services/buildInfo';
+import { BOOKS_BUILD, BUILD_FEATURES, BUILD_STORAGE_KEY, BUILD_TAG, INTERACTIVE_APP_BUILD } from '../src/services/buildInfo';
 
-export const INTERACTIVE_APP_BUILD = '2026-11-11-game-sounds-v49';
 
 interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -226,6 +225,8 @@ export class BotState {
       if (saved) bot.importState(saved);
     } catch (e) {
       console.error('Failed to load persisted state:', e);
+      // لا نكتب حالة فارغة فوق بيانات محفوظة إذا تعذّر قراءتها.
+      throw new Error('Persisted bot state unavailable');
     }
 
     this.bot = bot;
@@ -507,6 +508,20 @@ export default {
     // Preview builds can exercise isolated browser game rooms without touching the production Durable Object.
     if (env.PREVIEW_MODE === 'true') {
       return Response.json({ ok: true, info: 'Worker Preview; Telegram bot integration is disabled.' });
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/version') {
+      try {
+        return await stub.fetch('https://bot.internal/version');
+      } catch (error: any) {
+        const detail = String(error?.message || error || '');
+        const reason = /quota|limit|exceed/i.test(detail) ? 'resource_limit' :
+          /sqlite|database|storage/i.test(detail) ? 'storage' :
+          /overload/i.test(detail) ? 'overloaded' : 'unavailable';
+        return Response.json({ ok: false, tag: BUILD_TAG, botState: reason }, {
+          status: 503, headers: { 'Cache-Control': 'no-store' }
+        });
+      }
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/api/interactive/profile') {

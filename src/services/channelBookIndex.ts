@@ -42,14 +42,23 @@ export function channelSearchTokens(value: string): string[] {
 
 /** معرّف الرسالة يميّز السجلات؛ مؤشر الكلمات مقسّم بمفاتيح مستقلة. */
 export class ChannelBookIndex {
-  constructor(private storage: BookStorageAdapter) {
-    // Durable Object يدعم FTS5، فيبحث بين كل السجلات المستوردة بلا تحميلها للذاكرة.
-    this.storage.sql?.exec("CREATE VIRTUAL TABLE IF NOT EXISTS channel_book_fts USING fts5(title UNINDEXED, text UNINDEXED, searchable, tokenize='unicode61 remove_diacritics 2')");
+  private sqlInitialized = false;
+  constructor(private storage: BookStorageAdapter) {}
+
+  /** فتح الفهرس عند الحاجة فقط، حتى أي عطل بالفهرس ما يمنع البوت كله من البدء. */
+  private sql(): BookStorageAdapter['sql'] {
+    const sql = this.storage.sql;
+    if (sql && !this.sqlInitialized) {
+      sql.exec("CREATE VIRTUAL TABLE IF NOT EXISTS channel_book_fts USING fts5(title UNINDEXED, text UNINDEXED, searchable, tokenize='unicode61 remove_diacritics 2')");
+      this.sqlInitialized = true;
+    }
+    return sql;
   }
 
   async importBatch(raw: unknown): Promise<number> {
     const batch: any = raw;
     if (batch?.format !== 'lovekotob-index-v1' || !Array.isArray(batch.records) || batch.records.length > MAX_BATCH) throw new Error('invalid batch');
+    const sql = this.sql();
     let added = 0;
     for (const item of batch.records) {
       if (!Number.isSafeInteger(item?.id) || item.id < 1 || item.id > 999999999999 || typeof item?.title !== 'string' || typeof item?.text !== 'string') continue;
@@ -57,9 +66,9 @@ export class ChannelBookIndex {
       const text = item.text.replace(/\s+/g, ' ').trim().slice(0, 500);
       const tokens = channelSearchTokens(`${title} ${text}`).slice(0, 24);
       if (title.length < 2 || !tokens.length) continue;
-      if (this.storage.sql) {
-        this.storage.sql.exec('DELETE FROM channel_book_fts WHERE rowid = ?', item.id);
-        this.storage.sql.exec('INSERT INTO channel_book_fts(rowid, title, text, searchable) VALUES (?, ?, ?, ?)', item.id, title, text, normalizedSearchText(title, text));
+      if (sql) {
+        sql.exec('DELETE FROM channel_book_fts WHERE rowid = ?', item.id);
+        sql.exec('INSERT INTO channel_book_fts(rowid, title, text, searchable) VALUES (?, ?, ?, ?)', item.id, title, text, normalizedSearchText(title, text));
         added++;
         continue;
       }
@@ -81,8 +90,9 @@ export class ChannelBookIndex {
 
   async get(id: string): Promise<ChannelBookRecord | undefined> {
     if (!/^\d{1,12}$/.test(id) || Number(id) < 1) return undefined;
-    if (this.storage.sql) {
-      const rows = [...this.storage.sql.exec('SELECT rowid AS id, title, text FROM channel_book_fts WHERE rowid = ?', Number(id))];
+    const sql = this.sql();
+    if (sql) {
+      const rows = [...sql.exec('SELECT rowid AS id, title, text FROM channel_book_fts WHERE rowid = ?', Number(id))];
       return rows[0] as ChannelBookRecord | undefined;
     }
     return this.storage.get<ChannelBookRecord>(RECORD + id.padStart(12, '0'));
@@ -91,12 +101,13 @@ export class ChannelBookIndex {
   async search(query: string, limit = 5): Promise<ChannelBookRecord[]> {
     const tokens = channelSearchTokens(query).sort((a, b) => b.length - a.length);
     if (!tokens.length) return [];
-    if (this.storage.sql) {
+    const sql = this.sql();
+    if (sql) {
       // جرّب الكلمات الكاملة أولاً؛ البادئات فقط إذا ماكو أي تطابق كامل.
       const terms = tokens.slice(0, 8).map(token => `"${token.replace(/"/g, '""')}"`);
       const select = 'SELECT rowid AS id, title, text FROM channel_book_fts WHERE channel_book_fts MATCH ? ORDER BY rank, rowid DESC LIMIT 2000';
-      let rows = [...this.storage.sql.exec(select, terms.join(' AND '))] as ChannelBookRecord[];
-      if (!rows.length) rows = [...this.storage.sql.exec(select, terms.map(term => `${term}*`).join(' AND '))] as ChannelBookRecord[];
+      let rows = [...sql.exec(select, terms.join(' AND '))] as ChannelBookRecord[];
+      if (!rows.length) rows = [...sql.exec(select, terms.map(term => `${term}*`).join(' AND '))] as ChannelBookRecord[];
       const queryKey = channelNameKey(query);
       const score = (record: ChannelBookRecord): number => {
         const titleWords = channelSearchTokens(record.title);

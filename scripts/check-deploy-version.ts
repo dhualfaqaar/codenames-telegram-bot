@@ -45,6 +45,33 @@ check('الـWorker يخزّن بصمة النسخة', workerSrc.includes('BUILD
 check('مسار /version بلا كاش', workerSrc.includes("'Cache-Control': 'no-store'"));
 check('مسار /version يرجع عدد الكتب', workerSrc.includes('bookCatalogStats()'));
 
+// افحص الصادرات الفعلية ونقطة الدخول الخارجية، لا وجود النص فقط.
+const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
+check('لا توجد صادرات قيم غير صالحة لـWorker', Object.keys(workerModule).every(name => name === 'default' || name === 'BotState'));
+let fetchedPath = '';
+const fakeEnv: any = { BOT_STATE: { idFromName: () => 'main', get: () => ({ fetch: async (url: string) => {
+  fetchedPath = url;
+  return Response.json({ ok: true, tag: BUILD_TAG });
+} }) } };
+const versionResponse = await workerModule.default.fetch(new Request('https://worker.test/version'), fakeEnv, {});
+check('مسار الإصدار الخارجي يتصل بـDO', versionResponse.status === 200 && fetchedPath === 'https://bot.internal/version');
+check('مسار الإصدار الخارجي يرجع بصمة DO', (await versionResponse.json()).tag === BUILD_TAG);
+const badEnv: any = { BOT_STATE: { idFromName: () => 'main', get: () => ({ fetch: async () => { throw new Error('database unavailable'); } }) } };
+const unavailable = await workerModule.default.fetch(new Request('https://worker.test/version'), badEnv, {});
+const unavailableJson: any = await unavailable.json();
+check('خطأ التخزين يعطي 503 واضح بلا تفاصيل خاصة', unavailable.status === 503 && unavailableJson.botState === 'storage' && unavailableJson.tag === BUILD_TAG);
+const writtenKeys: string[] = [];
+const brokenStateStorage: any = {
+  get: async (key: string) => { if (key === 'state') throw new Error('temporary storage fault'); return undefined; },
+  put: async (key: string) => { writtenKeys.push(key); },
+  sql: { exec: () => { throw new Error('index unavailable'); } }
+};
+const brokenBotState = new workerModule.BotState({ storage: brokenStateStorage }, { WEBHOOK_URL: 'https://preview.invalid' });
+let failedSafely = false;
+try { await brokenBotState.fetch(new Request('https://bot.internal/status')); } catch { failedSafely = true; }
+check('فشل قراءة حالة البوت لا يكتب حالة فارغة', failedSafely && !writtenKeys.includes('state'));
+
+
 /* ───────────── البوت فيه /version ───────────── */
 check('البوت يعالج /version', botSrc.includes('/^\\/version(?:@\\w+)?(?:\\s|$)/i'));
 check('البوت يستعمل نص البصمة', botSrc.includes('buildVersionLines'));
