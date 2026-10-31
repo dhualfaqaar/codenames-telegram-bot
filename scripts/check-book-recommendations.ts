@@ -502,7 +502,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   check('شاشة البحث تطلب كتابة اسم', lastScreen().text.includes('اكتب') || lastScreen().text.includes('دوّر'));
   check('شاشة البحث فيها إلغاء', lastScreen().keyboard.includes('svc:books'));
 
-  const waited = anyBot.pendingBookSearch.get('42');
+  const waited = anyBot.pendingBookSearch.get('42:42');
   check('البوت يستنّى نص البحث', Boolean(waited));
 
   calls = [];
