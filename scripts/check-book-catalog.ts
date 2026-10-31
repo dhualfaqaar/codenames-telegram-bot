@@ -9,6 +9,7 @@ import {
   cleanCatalogDoc,
   coverUrl,
   memoryBookStorage,
+  normalizeQuery,
   workUrl
 } from '../src/services/bookCatalog';
 
@@ -98,7 +99,8 @@ const fakeFetch = (async (input: any) => {
   check('كل دفعة بحد أقصى ٢٠٠ كتاب', Array.from(chunksAfterFirst.values()).every(chunk => (chunk as any[]).length <= 200));
 
   const meta = await storage.get<any>('books:meta');
-  check('الـmeta يحفظ العدد والمؤشر', meta.total > 250 && meta.page > 1 && meta.done === false);
+  check('الـmeta يحفظ العدد والمؤشر', meta.total > 250 && meta.done === false);
+  check('البذر يدور بين اللغات (عربية أولاً)', meta.langIndex === 3 && meta.page === 1);
   check('الـmeta يعدّ الطلبات', meta.requests === 3);
 
   // تكرار نفس الصفحة ما يزيد شي (منع التكرار بالمعرّف)
@@ -163,8 +165,11 @@ const fakeFetch = (async (input: any) => {
   const storage = memoryBookStorage();
   const catalog = new BookCatalog(storage, fakeFetch);
   mode = 'fail';
+  const beforeMeta = await storage.get<any>('books:meta');
   const result = await catalog.seed(3);
   check('لو الشبكة تعطّلت البذر ما ينكسر', result.added === 0);
+  check('الفشل **ما** يحرّك مؤشر الصفحة (سبب توقّف المكتبة سابقاً)', (await storage.get<any>('books:meta'))?.page === (beforeMeta?.page ?? 1));
+  check('الفشل ما يعلّم المكتبة «خلصت»', (await storage.get<any>('books:meta'))?.done === false);
   check('الفشل ينحسب بالـmeta', (await storage.get<any>('books:meta'))?.failures >= 1);
   check('ماكو كتب انحفظت من الفشل', (await catalog.stats()).total === 0);
   check('البحث الحيّ يرجع بلا نتائج بدل ما ينكسر', (await catalog.searchRemote('test', 3)).length === 0);
@@ -186,6 +191,90 @@ const fakeFetch = (async (input: any) => {
   const recovered = await catalog.seed(3);
   check('يرجع يشتغل بعد ما تصلح الشبكة', recovered.added > 0);
   check('التأخير يرجع طبيعي بعد النجاح', catalog.nextDelayMs() === 2_500);
+}
+
+/* ───────────── بحث المؤلف: تطبيع عربي + احتياطي ───────────── */
+{
+  check('تطبيع الهمزات (أ = ا)', normalizeQuery('أحمد') === normalizeQuery('احمد'));
+  check('تطبيع الألف الممدودة واللام ألف', normalizeQuery('آمنة') === normalizeQuery('امنه'));
+  check('تطبيع التاء المربوطة (ة = ه)', normalizeQuery('حكاية') === normalizeQuery('حكايه'));
+  check('تطبيع الياء (ى = ي)', normalizeQuery('مصطفى') === normalizeQuery('مصطفي'));
+  check('حذف التشكيل', normalizeQuery('مَحْفوظ') === normalizeQuery('محفوظ'));
+  check('حذف التطويل', normalizeQuery('محـــفوظ') === normalizeQuery('محفوظ'));
+
+  // كتب داخل التخزين مباشرة: نتحقق من مطابقة الاسم وترتيب الكلمات
+  const storage = memoryBookStorage();
+  await storage.put('books:chunk:0000', [
+    { id: 'OL9W', title: 'أولاد حارتنا', author: 'نجيب محفوظ', year: 1959, pages: 240, cover: 11, lang: 'ara', subject: 'Fiction' },
+    { id: 'OL10W', title: 'The Old Man and the Sea', author: 'Ernest Hemingway', year: 1952, pages: 131, cover: 12, lang: 'eng', subject: 'Fiction' }
+  ]);
+  const local = new BookCatalog(storage, fakeFetch);
+  check('البحث باسم المؤلف يلقى كتابه', (await local.searchLocal('نجيب محفوظ', 5)).length === 1);
+  check('البحث بترتيب كلمات مقلوب يشتغل', (await local.searchLocal('محفوظ نجيب', 5)).length === 1);
+  check('البحث بهمزة مختلفة يشتغل', (await local.searchLocal('نجيب محفوظ', 5)).length === 1);
+  check('البحث باسم العائلة لحاله يشتغل', (await local.searchLocal('محفوظ', 5)).length === 1);
+  check('البحث الإنجليزي يتجاهل حالة الحروف', (await local.searchLocal('hemingway', 5)).length === 1);
+  check('البحث باسم مو موجود يرجع فاضي', (await local.searchLocal('اسم وهمي جدا', 5)).length === 0);
+
+  // لو q= فشل (429) لازم يجرّب author=
+  const hits: string[] = [];
+  const flakyFetch = (async (input: any) => {
+    const url = new URL(String(input));
+    hits.push(url.search);
+    if (url.searchParams.get('author')) {
+      return {
+        ok: true,
+        json: async () => ({
+          docs: [{ key: '/works/OL55W', title: 'الطريق', author_name: ['نجيب محفوظ'], first_publish_year: 1961, cover_i: 22 }]
+        })
+      } as any;
+    }
+    return { ok: false, status: 429, json: async () => ({}) } as any;
+  }) as unknown as typeof fetch;
+  const flaky = new BookCatalog(memoryBookStorage(), flakyFetch);
+  const detailed = await flaky.searchDetailed('نجيب محفوظ', 5);
+  check('لو البحث العام فشل يجرّب author', detailed.remote.length === 1 && hits.some(hit => hit.includes('author=')));
+  check('ما يعلّم فشل لو نجح البديل', detailed.remoteFailed === false);
+
+  // ولو كل المحاولات فشلت، نعلّم الفشل حتى نقول «جرّب بعد شوي»
+  const deadFetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as any) as unknown as typeof fetch;
+  const dead = new BookCatalog(memoryBookStorage(), deadFetch);
+  const deadResult = await dead.searchDetailed('نجيب محفوظ', 5);
+  check('كل المحاولات فاشلة = remoteFailed', deadResult.remoteFailed === true && deadResult.remote.length === 0);
+}
+
+/* ───────────── استئناف مكتبة قديمة وقفت على ٣٠٠٠ ───────────── */
+{
+  const storage = memoryBookStorage();
+  // نجهّز مكتبة «متوقفة» مثل النسخة القديمة: ٣٠٠٠ كتاب وdone=true.
+  for (let chunk = 0; chunk < 15; chunk += 1) {
+    const slice = Array.from({ length: 200 }, (_, index) => {
+      const n = chunk * 200 + index;
+      return { id: `OLD${n}`, title: `كتاب قديم ${n}`, author: `مؤلف ${n}`, year: 1990, pages: 200, cover: null, lang: 'ara', subject: '' };
+    });
+    await storage.put(`books:chunk:${String(chunk).padStart(4, '0')}`, slice);
+  }
+  await storage.put('books:meta', {
+    total: 3000, chunkCount: 15, langIndex: 0, queryIndex: 0, page: 1, done: true,
+    updatedAt: Date.now(), requests: 100, failures: 10, rejected: 0, streak: 0, sortStage: 0, wrapCount: 4
+  });
+
+  const catalog = new BookCatalog(storage, fakeFetch);
+  mode = 'ok';
+  const stats = await catalog.stats();
+  check('المكتبة القديمة المتوقفة تنقرأ ٣٠٠٠', stats.total === 3000);
+  check('علم «خلصت» القديم ينرفع تلقائياً', stats.done === false);
+  check('البذر يستأنف من نفس المكتبة', catalog.needsMore() === true);
+
+  let guard = 0;
+  while (catalog.needsMore() && guard < 400) {
+    await catalog.seed(3);
+    guard += 1;
+  }
+  const after = await catalog.stats();
+  check('المكتبة تكمّل لـ١٠,٠٠٠ بعد الاستئناف', after.total >= 10_000);
+  check('الكتب القديمة ما تنحذف', (await catalog.all()).some(book => book.id.startsWith('OLD')));
+  check('الدفعات القديمة تبقى بالتخزين', (await storage.list({ prefix: 'books:chunk:' })).size >= 15);
 }
 
 /* ───────────── إعادة الضبط ───────────── */

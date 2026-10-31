@@ -124,6 +124,7 @@ globalThis.fetch = (async (input: any, init?: any) => {
   calls.push({ method, body });
   if (method === 'getMe') return jsonResponse({ ok: true, result: { id: 1, username: 'testbot', first_name: 'Bot' } });
   if (method === 'getChatAdministrators') return jsonResponse({ ok: true, result: [] });
+  if (method === 'getChatMember') return jsonResponse({ ok: true, result: { status: 'member', user: { id: 42 } } });
   return jsonResponse({ ok: true, result: { message_id: 777, message: { message_id: 777, chat: { id: 42 } } } });
 }) as typeof fetch;
 
@@ -186,10 +187,17 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   const book = all.find(item => screen.text.includes(item.title));
   check('البطاقة تعرض عنوان كتاب حقيقي من القاعدة', Boolean(book));
   check('البطاقة تعرض اسم المؤلف', Boolean(book) && screen.text.includes(book!.author));
-  check('البطاقة تغلّف اسم المؤلف بالخط العريض', screen.text.includes(`*${book!.author}*`));
-  check('البطاقة تعرض سنة النشر', Boolean(book) && screen.text.includes(String(book!.year)));
-  check('البطاقة تعرض عدد الصفحات', Boolean(book) && screen.text.includes(`${book!.pages} صفحة`));
-  check('البطاقة تعرض بلد المؤلف', Boolean(book) && screen.text.includes(book!.country));
+  check('البطاقة فيها سطر «اسم الكتاب»', screen.text.includes(`*اسم الكتاب:* ${book!.title}`));
+  check('البطاقة فيها سطر «المؤلف»', screen.text.includes(`*المؤلف:* ${book!.author}`));
+  check('البطاقة فيها سطر «السنة»', screen.text.includes(`*السنة:* ${book!.year}`));
+  check('البطاقة فيها سطر «الصفحات»', screen.text.includes(`*الصفحات:* ${book!.pages}`));
+  check('البطاقة فيها سطر «البلد»', screen.text.includes(`*البلد:* ${book!.country}`));
+  check('البطاقة فيها عنوان «النبذة»', screen.text.includes('*النبذة:*'));
+  {
+    const lines = screen.text.split('\n').filter(line => line.trim().length > 0);
+    check('كل حقل بسطر مستقل (بلا دمج)', lines.filter(line => line.startsWith('*') && line.includes(':*')).length >= 5);
+    check('ماكو حقلين بنفس السطر', !/\*المؤلف:\*.*\*السنة:\*/u.test(screen.text));
+  }
   check('البطاقة تعرض النبذة', Boolean(book) && screen.text.includes(book!.blurb.slice(0, 20)));
   check('البطاقة فيها زر «كتاب ثاني»', screen.keyboard.includes(`svc:books:again:novel:all:${book!.id}`));
   check('البطاقة فيها تغيير التصنيف والعقد', screen.keyboard.includes('svc:books') && screen.keyboard.includes('svc:books:genre:novel'));
@@ -251,8 +259,9 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   await anyBot.handleExtraServicesCb(press('svc:books:rand'), 'svc:books:rand');
   const randScreen = lastScreen();
   const randCall = calls.find(call => ['sendPhoto', 'editMessageText', 'sendMessage'].includes(call.method));
-  check('الكتاب العشوائي يعرض عنوان حقيقي', /\*[^*]+\*/.test(screenText(randCall)));
-  check('الكتاب العشوائي يذكر اللغة بالعربي', /متوفر بـ(العربية|الإنجليزية|الفرنسية|الألمانية|الروسية)/.test(screenText(randCall)));
+  check('الكتاب العشوائي يعرض عنوان حقيقي', /\*اسم الكتاب:\* \S/.test(screenText(randCall)));
+  check('الكتاب العشوائي يعرض سطر المؤلف', /\*المؤلف:\* \S/.test(screenText(randCall)));
+  check('الكتاب العشوائي يذكر اللغة بالعربي', /\*اللغة:\* (العربية|الإنجليزية|الفرنسية|الألمانية|الروسية)/.test(screenText(randCall)));
   check('الكتاب العشوائي جا بغلاف صورة', calls.some(call => call.method === 'sendPhoto' && String(call.body?.photo || '').includes('covers.openlibrary.org/b/id/')));
   check('الكتاب العشوائي فيه زر كتاب ثاني', randScreen.keyboard.includes('svc:books:rand:'));
 
@@ -270,6 +279,14 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   const searchCall = calls.find(call => call.method === 'sendMessage' || call.method === 'editMessageText');
   check('البحث يرجّع نتائج من المكتبة', screenText(searchCall).includes('نتائج') || screenText(searchCall).includes('ما لكيت'));
   check('نتائج البحث فيها أزرار فتح كتاب', JSON.stringify(searchCall?.body?.reply_markup || {}).includes('svc:books:open:') || String(searchCall?.body?.text || '').includes('ما لكيت'));
+
+  // أوامر سريعة: «كتاب <اسم>» و«/book <اسم>»
+  calls = [];
+  await anyBot.handleMessage({ message_id: 9, chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'لاعب' }, text: 'كتاب نجيب' });
+  check('أمر «كتاب <اسم>» يشتغل مباشرة', calls.some(call => screenText(call).includes('نجيب') || screenText(call).includes('نتائج') || screenText(call).includes('ما لكيت')));
+  calls = [];
+  await anyBot.handleMessage({ message_id: 9, chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'لاعب' }, text: '/book نجيب' });
+  check('أمر «/book <اسم>» يشتغل مباشرة', calls.some(call => screenText(call).includes('نجيب') || screenText(call).includes('نتائج') || screenText(call).includes('ما لكيت')));
 
   const anyBook = (await catalog.all())[0];
   calls = [];
@@ -290,8 +307,9 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books:pick:novel:all');
   const manual = lastScreen();
   check('بطاقة الاقتراح بلا \\n حرفية', !manual.text.includes('\\n'));
-  check('بطاقة الاقتراح تبدأ بعنوان الكتاب', manual.text.startsWith('*'));
-  check('بطاقة الاقتراح فيها سنة وصفحات', /\d{4}/.test(manual.text) && manual.text.includes('صفحة'));
+  check('بطاقة الاقتراح تبدأ بسطر التصنيف', manual.text.split('\n')[0].includes('كل العقود'));
+  check('بطاقة الاقتراح تعرض اسم الكتاب بسطر خاص', /^\*اسم الكتاب:\* \S/m.test(manual.text));
+  check('بطاقة الاقتراح فيها سطر سنة وسطر صفحات', /\*السنة:\* \d{4}/.test(manual.text) && /\*الصفحات:\* \d+/.test(manual.text));
 }
 
 /* ───────────────── ربط السورس ───────────────── */
@@ -299,7 +317,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   const src = readFileSync(resolve(import.meta.dirname, '..', 'server', 'telegramBot.ts'), 'utf8');
   check('الخدمة مربوطة بالراوتر', src.includes("data === 'svc:books' || data.startsWith('svc:books:')"));
   check('كارت الخدمة موجود بالقائمة', src.includes("callback_data: 'svc:books'"));
-  check('البطاقة تعرض المؤلف مع إيموجي بآخر السطر', src.includes('`*${this.mdSafe(book.author)}* ✍️`'));
+  check('البطاقة سطر لكل حقل', src.includes('`*المؤلف:* ${this.mdSafe(book.author)}`'));
   check('ماكو \\n حرفية بملف البوت', !src.includes('\\\\n'));
   check('المكتبة الكبيرة مربوطة بالبوت', src.includes('new BookCatalog(serviceConfig.bookStorage)'));
   check('بذر المكتبة متاح للمنبّه', src.includes('seedBookCatalog'));

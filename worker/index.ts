@@ -240,8 +240,8 @@ export class BotState {
       console.error('Football alert alarm error:', e);
     }
     try {
-      // 📚 بذر مكتبة الكتب من Open Library (كل منبّه ٣ صفحات = ٣٠٠ كتاب).
-      await bot.seedBookCatalog(3);
+      // 📚 بذر مكتبة الكتب من Open Library (كل منبّه ٥ صفحات = ٥٠٠ كتاب).
+      await bot.seedBookCatalog(5);
     } catch (e) {
       console.error('Book catalog seed error:', e);
     }

@@ -2606,11 +2606,18 @@ export class TelegramBotManager {
       return;
     }
 
+    // 📚 بحث سريع بالكتابة: «كتاب نجيب محفوظ» أو «/book نجيب محفوظ»
+    const bookQuery = text.match(/^(?:\/?book|كتاب|كتب)(?:@\w+)?\s+(.{2,})$/i);
+    if (bookQuery && bookQuery[1].trim().length >= 2) {
+      await this.handleBookSearchQuery(chatId, bookQuery[1].trim());
+      return;
+    }
+
     // 📚 انتظار نص بحث عن كتاب (خاص أو مجموعة) — ينتهي بعد 5 دقائق
     const pendingBook = this.pendingBookSearch.get(chatId);
     if (pendingBook && text && !text.startsWith('/')) {
       this.pendingBookSearch.delete(chatId);
-      if (Date.now() - pendingBook.at < 5 * 60_000) {
+      if (Date.now() - pendingBook.at < 10 * 60_000) {
         await this.handleBookSearchQuery(chatId, text);
         return;
       }
@@ -8284,7 +8291,8 @@ export class TelegramBotManager {
         ]);
         keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
         const library = stats.total
-          ? `المكتبة فيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} لغة.`
+          ? `المكتبة فيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} لغة` +
+            (stats.done ? '.' : `، وتكبر بالخلفية لحد ${CATALOG_TARGET.toLocaleString('en-US')}.`)
           : 'المكتبة تتجهّز هسه — جرّب بعد شوية.';
         const text =
           `*اقترحلي كتاب* 📚\n\n` +
@@ -12531,7 +12539,10 @@ export class TelegramBotManager {
   // 📚 كروت الكتب (مكتبة Open Library + الاقتراحات المختارة)
   // ---------------------------------------------------------------------
 
-  /** نص بطاقة كتاب. الإيموجي بآخر السطر حتى ما ينقلب النص العربي بالـRTL. */
+  /**
+   * نص بطاقة كتاب: كل معلومة بسطر مستقل وبعنوان عريض، بلا إيموجي داخل السطر
+   * حتى النص العربي ما ينقلب بالـRTL.
+   */
   private bookCardText(book: {
     title: string;
     author: string;
@@ -12542,18 +12553,17 @@ export class TelegramBotManager {
     meta?: string;
     language?: string;
   }): string {
-    const lines = [`*${this.mdSafe(book.title)}* 📖`];
+    const lines: string[] = [];
     if (book.meta) lines.push(this.mdSafe(book.meta));
-    lines.push('');
-    lines.push(`*${this.mdSafe(book.author)}* ✍️`);
-    const facts: string[] = [];
-    if (book.year) facts.push(`سنة ${book.year}`);
-    if (book.pages) facts.push(`${book.pages} صفحة`);
-    if (book.country) facts.push(this.mdSafe(book.country));
-    if (book.language) facts.push(this.mdSafe(book.language));
-    if (facts.length) lines.push(facts.join(' · '));
+    lines.push(`*اسم الكتاب:* ${this.mdSafe(book.title)}`);
+    lines.push(`*المؤلف:* ${this.mdSafe(book.author)}`);
+    if (book.year) lines.push(`*السنة:* ${book.year}`);
+    if (book.pages) lines.push(`*الصفحات:* ${book.pages}`);
+    if (book.country) lines.push(`*البلد:* ${this.mdSafe(book.country)}`);
+    if (book.language) lines.push(`*اللغة:* ${this.mdSafe(book.language)}`);
     if (book.blurb) {
       lines.push('');
+      lines.push('*النبذة:*');
       lines.push(this.mdSafe(book.blurb));
     }
     return lines.join('\n');
@@ -12578,7 +12588,7 @@ export class TelegramBotManager {
       author: book.author,
       year: book.year,
       pages: book.pages,
-      language: `متوفر بـ${this.catalogLanguageLabel(book.lang)}`
+      language: this.catalogLanguageLabel(book.lang)
     });
     const keyboard = [
       [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:rand:${book.id}` }],
@@ -12637,12 +12647,29 @@ export class TelegramBotManager {
       await this.sendMessage(chatId, 'اكتب حرفين على الأقل من اسم الكتاب أو المؤلف.');
       return;
     }
-    const { local, remote } = await this.bookCatalog.search(clean, 5);
+    const { local, remote, remoteFailed } = await this.bookCatalog.searchDetailed(clean, 5);
     const results = [...local, ...remote].slice(0, 5);
+    if (!results.length && remoteFailed) {
+      await this.sendMessage(
+        chatId,
+        `*المكتبة ما ردّت هسه* ⏳\n\n` +
+          `دوّرت محلياً وما لكيت، والإنترنت ما استجاب للحظة. جرّب بعد دقيقة، ` +
+          `وبنفس الوقت تكدر تصفح بالتصنيفات.`,
+        [
+          [{ text: '🔎 جرّب مرة ثانية', callback_data: 'svc:books:search' }],
+          [{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]
+        ]
+      );
+      return;
+    }
     if (!results.length) {
       await this.sendMessage(
         chatId,
-        `ما لكيت نتيجة لـ *${this.mdSafe(clean)}* 🔎\n\nجرّب الاسم الرسمي للكتاب أو اسم المؤلف لحاله.`,
+        `*ما لكيت نتيجة* لـ ${this.mdSafe(clean)}\n\n` +
+          `دوّرت بالمكتبة وبـOpen Library. جرّب:\n` +
+          `• اسم العائلة بس (مثلاً: محفوظ)\n` +
+          `• الاسم بلا همزات (احمد بدل أحمد)\n` +
+          `• أو اسم الكتاب بالإنجليزي`,
         [[{ text: '🔎 دوّر مرة ثانية', callback_data: 'svc:books:search' }, { text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
       );
       return;
