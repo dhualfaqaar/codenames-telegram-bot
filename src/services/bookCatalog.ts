@@ -31,7 +31,7 @@ export interface CatalogBook {
   first?: string;
   /** معرّف النسخة على Internet Archive (للتحميل) */
   ia?: string;
-  /** نسخة ممسوحة متاحة للعامة (ملكية عامة) */
+  /** إشارة Open Library لنسخة ممسوحة متاحة للعامة، لا تثبت الملكية العامة وحدها */
   pd?: boolean;
 }
 
@@ -577,6 +577,70 @@ export function cleanCatalogDoc(doc: OpenLibraryDoc, fallbackLang: string, prefe
   };
 }
 
+export interface ArchiveFile {
+  /** رابط الملف المباشر على إنترنت أرشيف */
+  url: string;
+  /** معرّف النسخة على إنترنت أرشيف (identifier) */
+  identifier: string;
+  fileName: string;
+  sizeBytes: number | null;
+  /** من وين جبنا المعرّف: بطاقة الكتاب / طبعات Open Library */
+  source: 'catalog' | 'editions';
+}
+
+/**
+ * يختار ملف PDF **حر التحميل** من رد `archive.org/metadata/{id}`.
+ *
+ * قواعد القانونية (خط أحمر):
+ *  - نرفض أي نسخة محفوظة: `access-restricted-item` أو مجموعات `inlibrary` / `printdisabled` / `lending*`.
+ *  - نرفض أي ملف `private: true`.
+ *  - غير هيك نرجّع null — ما نخترع رابط ولا نرسل ملف مقرصن.
+ */
+export function pickArchivePdf(
+  identifier: string,
+  payload: any,
+  source: ArchiveFile['source'] = 'catalog'
+): ArchiveFile | null {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(identifier) || !payload) return null;
+  const meta = payload.metadata || {};
+  // توفر الملف للعامة لا يعني انتهاء حقوقه. نقبل تصريح ملكية عامة صريح فقط.
+  const rights = Array.isArray(meta.rights) ? meta.rights : [meta.rights];
+  const licenses = Array.isArray(meta.licenseurl) ? meta.licenseurl : [meta.licenseurl];
+  const publicDomain = rights.some((value: unknown) => /^(public domain|not_in_copyright|out of copyright)$/i.test(String(value || '').trim())) ||
+    licenses.some((value: unknown) => /^https?:\/\/creativecommons\.org\/publicdomain\/(zero\/1\.0|mark\/1\.0)\/?$/i.test(String(value || '').trim()));
+  if (!publicDomain) return null;
+  if (/^(true|1|yes)$/i.test(String(meta['access-restricted-item'] || ''))) return null;
+  if (/^(true|1|yes)$/i.test(String(meta['is_dark'] || payload.is_dark || ''))) return null;
+  const rawCollection = meta.collection ?? meta.collections ?? [];
+  const collections: string[] = Array.isArray(rawCollection) ? rawCollection.map(String) : [String(rawCollection)];
+  const lowered = collections.map(value => value.toLowerCase());
+  if (lowered.some(value => value === 'inlibrary' || value === 'printdisabled' || value.startsWith('lending'))) return null;
+
+  const files: any[] = Array.isArray(payload.files) ? payload.files : [];
+  const pdfs = files.filter(file => {
+    if (typeof file?.name !== 'string' || !/\.pdf$/i.test(file.name)) return false;
+    if (/^(true|1|yes)$/i.test(String(file.private ?? 'false')) || !/^[^/\\]+$/.test(file.name)) return false;
+    return Number(file.size || 0) > 0;
+  });
+  if (!pdfs.length) return null;
+
+  const exact = identifier.toLowerCase();
+  pdfs.sort((a, b) => {
+    const aExact = a.name.toLowerCase().startsWith(exact) ? 1 : 0;
+    const bExact = b.name.toLowerCase().startsWith(exact) ? 1 : 0;
+    if (aExact !== bExact) return bExact - aExact;
+    return Number(b.size || 0) - Number(a.size || 0);
+  });
+  const chosen = pdfs[0];
+  return {
+    url: `https://archive.org/download/${encodeURIComponent(identifier)}/${encodeURIComponent(chosen.name)}`,
+    identifier,
+    fileName: chosen.name,
+    sizeBytes: Number(chosen.size) || null,
+    source
+  };
+}
+
 export class BookCatalog {
   private storage: BookStorageAdapter;
   private fetchImpl: typeof fetch;
@@ -718,16 +782,12 @@ export class BookCatalog {
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
         signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
       });
-      if (!res?.ok) {
-        this.editionsCache.set(bookId, []);
-        return [];
-      }
+      if (!res?.ok) return [];
       const payload: any = await res.json();
       const entries = Array.isArray(payload?.entries) ? payload.entries : [];
       this.editionsCache.set(bookId, entries);
       return entries;
     } catch {
-      this.editionsCache.set(bookId, []);
       return [];
     }
   }
@@ -813,10 +873,76 @@ export class BookCatalog {
     return text;
   }
 
-  /** رابط تحميل PDF — بس للكتب الممسوحة المتاحة للعامة (ملكية عامة). */
-  downloadPdfUrl(book: CatalogBook): string | null {
-    if (!book.pd || !book.ia) return null;
-    return `https://archive.org/download/${book.ia}/${book.ia}.pdf`;
+  /* ─────────────── ملفات الكتب من إنترنت أرشيف ─────────────── */
+
+  /** كاش بالذاكرة: نتائج الملفات المتاحة فقط. */
+  private archiveCache: Map<string, { at: number; file: ArchiveFile | null }> = new Map();
+  private static readonly ARCHIVE_TTL_MS = 12 * 60 * 60 * 1000;
+
+  private async fetchJsonQuiet(url: string, ms = 9_000): Promise<any | null> {
+    try {
+      const res = await this.fetchImpl(url, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined
+      });
+      if (!res?.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /** بيانات نسخة من إنترنت أرشيف (metadata). */
+  private async archiveMetadata(identifier: string): Promise<any | null> {
+    if (!identifier) return null;
+    return this.fetchJsonQuiet(`https://archive.org/metadata/${encodeURIComponent(identifier)}`);
+  }
+
+  /** أسماء النسخ الممسوحة (ocaid) من طبعات العمل عند Open Library. */
+  private async editionIdentifiers(bookId: string): Promise<string[]> {
+    const editions = await this.fetchEditions(bookId);
+    const ids: string[] = [];
+    for (const edition of editions) {
+      const ocaid = String(edition?.ocaid || '').trim();
+      if (ocaid && !ids.includes(ocaid)) ids.push(ocaid);
+    }
+    return ids;
+  }
+
+  /**
+   * يطلّع ملف PDF حر لكتاب من إنترنت أرشيف — عند الطلب.
+   *
+   * الترتيب: معرّف النسخة المخزّن بالبطاقة ثم معرّفات طبعات نفس العمل.
+   * نتحقق من تصريح الملكية العامة في بيانات إنترنت أرشيف لكل نسخة.
+   *
+   * نرجّع null إذا ماكو ملف حر — واللي يستدعيها يعطي رسالة واضحة، ولا نخترع رابط.
+   */
+  async archivePdf(book: CatalogBook): Promise<ArchiveFile | null> {
+    if (!book?.id) return null;
+    const cached = this.archiveCache.get(book.id);
+    if (cached && Date.now() - cached.at < BookCatalog.ARCHIVE_TTL_MS) return cached.file;
+    const remember = (file: ArchiveFile | null): ArchiveFile | null => {
+      this.archiveCache.set(book.id, { at: Date.now(), file });
+      return file;
+    };
+
+    const checked = new Set<string>();
+    const check = async (id: string, source: ArchiveFile['source']): Promise<ArchiveFile | null> => {
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id) || checked.has(id)) return null;
+      checked.add(id);
+      return pickArchivePdf(id, await this.archiveMetadata(id), source);
+    };
+    if (book.ia) {
+      const file = await check(book.ia, 'catalog');
+      if (file) return remember(file);
+    }
+    const identifiers = await this.editionIdentifiers(book.id);
+    for (const id of identifiers.slice(0, 3)) {
+      const file = await check(id, 'editions');
+      if (file) return remember(file);
+    }
+    // لا نخزن النتائج السلبية حتى يقدر يعيد المحاولة إذا المصدر ما استجاب.
+    return null;
   }
 
   /** تصنيفات كتاب: من الحقل المخزّن، أو محسوبة من مواضيعه (كتب قديمة بلا حقل). */
@@ -934,7 +1060,13 @@ export class BookCatalog {
 
   async byId(id: string): Promise<CatalogBook | undefined> {
     await this.load();
-    return this.index.get(id);
+    const local = this.index.get(id);
+    if (local) return local;
+    try {
+      const saved = await this.storage.get<{ at: number; books: CatalogBook[] }>('books:recent-search-results');
+      if (saved && Date.now() - saved.at < 24 * 60 * 60 * 1000) return saved.books.find(book => book.id === id);
+    } catch { /* البحث الحي اختياري */ }
+    return undefined;
   }
 
   async countByLanguage(): Promise<Array<{ code: string; label: string; count: number }>> {
@@ -1009,9 +1141,18 @@ export class BookCatalog {
     }
     const remoteResult = await this.searchRemoteDetailed(clean, limit);
     const seen = new Set(local.map(book => book.id));
+    const remote = remoteResult.books.filter(book => !seen.has(book.id));
+    if (remote.length) {
+      try {
+        const previous = await this.storage.get<{ at: number; books: CatalogBook[] }>('books:recent-search-results');
+        const old = previous && Date.now() - previous.at < 24 * 60 * 60 * 1000 ? previous.books : [];
+        const freshIds = new Set(remote.map(book => book.id));
+        await this.storage.put('books:recent-search-results', { at: Date.now(), books: [...remote, ...old.filter(book => !freshIds.has(book.id))].slice(0, 100) });
+      } catch { /* نتائج البحث المحلية تبقى شغالة */ }
+    }
     return {
       local,
-      remote: remoteResult.books.filter(book => !seen.has(book.id)),
+      remote,
       remoteFailed: remoteResult.failed
     };
   }

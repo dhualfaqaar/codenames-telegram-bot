@@ -7,19 +7,19 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-31-books-v41';
+export const BUILD_TAG = '2026-10-31-books-v42';
 
 /** ملخّص اللي بهذي النسخة — يظهر بـ /version حتى نتأكد إن الميزة موجودة. */
 export const BUILD_FEATURES: string[] = [
   'مكتبة كتب 20,000 من Open Library',
   '29 صنف (علم نفس، آداب بلغات، سياسة، اقتصاد، علوم…)',
   'نبذة حقيقية لكل كتاب (بلا تلفيق) + تلخيص Gemini',
-  'زر PDF للكتب الحرة + رابط الصفحة',
+  'إرسال PDF من إنترنت أرشيف للملكية العامة',
   'تعريب العنوان والمؤلف من الطبعات العربية'
 ];
 
 /** بصمة قسم الكتب — تتغير مع كل تعديل بمنطق الكتب. */
-export const BOOKS_BUILD = 'books-2026-10-31-29genres';
+export const BOOKS_BUILD = 'books-2026-10-31-archive-pdf';
 
 /** مفتاح التخزين اللي نربط بيه وقت أول تشغيل لهذي النسخة. */
 export const BUILD_STORAGE_KEY = 'build:seen';
