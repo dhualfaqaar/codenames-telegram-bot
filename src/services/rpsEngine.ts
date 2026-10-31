@@ -38,6 +38,8 @@ export interface RPSGame {
   botOpponent?: boolean;
   /** المباراة تجمع شخصين طابقهما البوت وتعرض نسخة خاصة لكل لاعب. */
   privateMatch?: boolean;
+  /** صاحب المباراة (الناشر) — هو الوحيد اللي يقدر يبدأها أو يفتح غيرها. */
+  createdBy?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -90,6 +92,7 @@ export function createGame(
     status: 'lobby',
     history: [],
     channel: true,
+    createdBy: createdBy ? String(createdBy) : undefined,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };

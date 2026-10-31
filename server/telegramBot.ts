@@ -3450,17 +3450,13 @@ export class TelegramBotManager {
         return;
       }
       const title = cb.message?.chat.title || 'المجموعة';
-      const newLobby = CodenamesEngine.createLobby(
-        chatId,
-        title,
-        game?.wordPack || 'arabic_standard',
-        this.customWords,
-        game?.createdBy ?? userId
-      );
-      this.games.set(chatId, newLobby);
-
+      const previousMessageId = game?.messageId || cb.message?.message_id;
+      // لعبة جديدة = رسالة جديدة، والقديمة المنتهية تنحذف بعد ما تنزل الجديدة.
+      const launched = await this.startNewGameLobby(chatId, title, game?.createdBy ?? userId);
+      if (launched.messageId) {
+        await this.retireFinishedBoard(chatId, previousMessageId);
+      }
       await this.answerCallbackQuery(cb.id, 'تم بدء جولة جديدة! اختاروا الفرق 🔄');
-      await this.updateTelegramGameBoard(chatId, newLobby, cb.message?.message_id);
       return;
     }
 
@@ -4934,7 +4930,11 @@ export class TelegramBotManager {
       this.mmGames.delete(chatId);
 
       if (kind === 'mm') {
-        const game = GG.mmCreate(chatId, message.chat.title || 'المحادثة');
+        const game = GG.mmCreate(
+          chatId,
+          message.chat.title || 'المحادثة',
+          deployerUserId ? String(deployerUserId) : undefined
+        );
         game.messageId = message.message_id;
         if (deployerUserId) {
           GG.mmJoin(game, deployerUserId, deployerName);
@@ -4955,7 +4955,13 @@ export class TelegramBotManager {
         ? (kind as GG.QuizKind)
         : 'general';
       const speedMode = gqMark[2] === 'speed';
-      const game = GG.createQuiz(chatId, message.chat.title || 'المحادثة', kind2, speedMode);
+      const game = GG.createQuiz(
+        chatId,
+        message.chat.title || 'المحادثة',
+        kind2,
+        speedMode,
+        deployerUserId ? String(deployerUserId) : undefined
+      );
       game.messageId = message.message_id;
       if (deployerUserId) {
         GG.quizJoin(game, deployerUserId, deployerName);
@@ -5696,6 +5702,7 @@ export class TelegramBotManager {
 
     if (op === 'nw') {
       const mode = ARX.ARENA_MODES[modeCandidate] ? modeCandidate : game.mode;
+      const oldMessageId = game.messageId;
       const fresh = ARX.createArenaLobby(cbChatId, game.chatName || 'المحادثة', mode);
       ARX.arenaJoin(fresh, playerId, playerName);
       fresh.inlineMessageId = game.inlineMessageId;
@@ -5713,6 +5720,7 @@ export class TelegramBotManager {
         if (sent?.result?.message_id) {
           fresh.messageId = sent.result.message_id;
           this.arenaGames.set(cbChatId, fresh);
+          await this.retireFinishedBoard(cbChatId, oldMessageId);
         }
       }
       await this.answerCallbackQuery(cb.id, '🆕 تم فتح لوبي مباراة جديدة!');
@@ -5923,6 +5931,11 @@ export class TelegramBotManager {
 
     // ⏭️ ختم الجولة حتى ما تعلق
     if (op === 'gqskip') {
+      const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, '⏭️ بس ناشر اللعبة يقدر يختم الجولة', true);
+        return;
+      }
       const r = GG.quizSkip(game, playerId);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) {
@@ -5949,16 +5962,28 @@ export class TelegramBotManager {
       return;
     }
 
-    // 🔄 لعبة جديدة — نبقي نتيجة اللعبة السابقة محفوظة فوق ونرسل لوحة جديدة بأسفلها
+    // 🔄 لعبة جديدة — للناشر فقط: تنحذف اللعبة المنتهية وتنزل الجديدة برسالة جديدة
     if (op === 'gqn') {
-      const fresh = GG.createQuiz(game.chatId, game.chatName, game.kind, Boolean(game.speedMode));
+      const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, '🔄 بس ناشر اللعبة يقدر يفتح لعبة جديدة', true);
+        return;
+      }
+      const fresh = GG.createQuiz(
+        game.chatId,
+        game.chatName,
+        game.kind,
+        Boolean(game.speedMode),
+        game.hostId || playerId
+      );
       GG.quizJoin(fresh, playerId, playerName);
-      fresh.messageId = game.messageId;
       fresh.inlineMessageId = game.inlineMessageId;
       this.gqGames.set(game.chatId, fresh);
       if (game.inlineMessageId) {
+        fresh.messageId = game.messageId;
         await this.paintQuiz(fresh);
       } else {
+        const oldMessageId = game.messageId;
         const sent = await this.sendMessage(
           game.chatId,
           await this.withBotFooter(GG.renderQuiz(fresh), true),
@@ -5968,11 +5993,30 @@ export class TelegramBotManager {
         if (sent?.ok && sent.result?.message_id) {
           fresh.messageId = sent.result.message_id;
           this.gqGames.set(game.chatId, fresh);
+          // اللعبة القديمة المنتهية تنحذف بعد ما نزلت الجديدة بنجاح.
+          await this.retireFinishedBoard(game.chatId, oldMessageId);
         } else {
+          fresh.messageId = oldMessageId;
           await this.paintQuiz(fresh);
         }
       }
       await this.answerCallbackQuery(cb.id, '🔄 لعبة جديدة — انضموا!');
+      return;
+    }
+
+    // ▶️ كمّل اللعبة المجمّدة — للناشر فقط
+    if (op === 'gqr') {
+      const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, allowed.msg, true);
+        return;
+      }
+      const r = GG.quizResume(game);
+      await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
+      if (r.ok) {
+        await this.paintQuiz(game);
+        this.scheduleLocalQuizTimer();
+      }
       return;
     }
 
@@ -5984,11 +6028,14 @@ export class TelegramBotManager {
       return;
     }
 
-    // 🎮 ابدأ
+    // 🎮 ابدأ — بس ناشر اللعبة (أو مشرف القناة) يبدأها
     if (op === 'gqs') {
-      // إذا ضغط «ابدأ» لاعب مو مسجّل، نضيفه تلقائياً؛ يمنع ظهور العدد واحد مع وجود لاعب آخر انضم.
-      if (game.status === 'lobby' && !game.players.some(p => p.id === playerId)) {
-        GG.quizJoin(game, playerId, playerName);
+      if (game.status === 'lobby') {
+        const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
+        if (!allowed.ok) {
+          await this.answerCallbackQuery(cb.id, allowed.msg, true);
+          return;
+        }
       }
       const r = GG.quizStart(game);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
@@ -6055,7 +6102,13 @@ export class TelegramBotManager {
 
     // 🔄 لعبة جديدة — نبقي نتيجة اللعبة السابقة محفوظة فوق ونرسل لوحة جديدة بأسفلها
     if (data.startsWith('mmn:')) {
-      const fresh = GG.mmCreate(game.chatId, game.chatName);
+      const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, '🔄 بس ناشر اللعبة يقدر يفتح لعبة جديدة', true);
+        return;
+      }
+      const oldMessageId = game.messageId;
+      const fresh = GG.mmCreate(game.chatId, game.chatName, game.hostId || playerId);
       GG.mmJoin(fresh, playerId, playerName);
       this.mmGames.set(game.chatId, fresh);
       const sent = game.chatId
@@ -6069,6 +6122,7 @@ export class TelegramBotManager {
       if (sent?.ok && sent.result?.message_id) {
         fresh.messageId = sent.result.message_id;
         this.mmGames.set(game.chatId, fresh);
+        await this.retireFinishedBoard(game.chatId, oldMessageId, fresh.inlineMessageId);
       } else {
         fresh.messageId = game.messageId;
         fresh.inlineMessageId = game.inlineMessageId;
@@ -6094,6 +6148,11 @@ export class TelegramBotManager {
     }
 
     if (data.startsWith('mms:')) {
+      const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, allowed.msg, true);
+        return;
+      }
       const r = GG.mmStart(game);
       await this.answerCallbackQuery(cb.id, r.msg, !r.ok);
       if (r.ok) await this.paintMM(game);
@@ -10343,11 +10402,18 @@ export class TelegramBotManager {
     let game = this.amongUsGames.get(chatId);
 
     if (op === 'n') {
+      const oldMessageId = game?.messageId;
       const fresh = AU.createLobby(chatId, cb.message?.chat.title || 'المحادثة');
       AU.join(fresh, userId, userName);
       const sent = await this.sendMessage(chatId, await this.withBotFooter(AU.renderBoard(fresh), true), AU.boardKeyboard(fresh), 'MarkdownV2');
-      if (sent?.ok && sent.result?.message_id) fresh.messageId = Number(sent.result.message_id);
-      this.amongUsGames.set(chatId, fresh);
+      if (sent?.ok && sent.result?.message_id) {
+        fresh.messageId = Number(sent.result.message_id);
+        this.amongUsGames.set(chatId, fresh);
+        await this.retireFinishedBoard(chatId, oldMessageId);
+      } else {
+        fresh.messageId = oldMessageId;
+        this.amongUsGames.set(chatId, fresh);
+      }
       await this.answerCallbackQuery(cb.id, 'فتحت لوبي جديد 🚀');
       return;
     }
@@ -10612,6 +10678,7 @@ export class TelegramBotManager {
     }
 
     if (op === 'n') {
+      const oldMessageId = game?.messageId;
       const fresh = MF.createMafiaLobby(chatId, cb.message?.chat.title || 'المحادثة', userId);
       MF.mafiaJoin(fresh, userId, userName);
       this.mafiaGames.set(chatId, fresh);
@@ -10625,6 +10692,7 @@ export class TelegramBotManager {
       if (sent?.result?.message_id) {
         fresh.messageId = sent.result.message_id;
         this.mafiaGames.set(chatId, fresh);
+        await this.retireFinishedBoard(chatId, oldMessageId);
       }
       await this.answerCallbackQuery(cb.id, '🕵️ تم فتح لوبي مافيا جديد!');
       return;
@@ -10774,6 +10842,7 @@ export class TelegramBotManager {
     if (cb.inline_message_id && game && !game.inlineMessageId) game.inlineMessageId = cb.inline_message_id;
 
     if (op === 'n') {
+      const oldMessageId = game?.messageId;
       const fresh = OOL.createOOLLobby(chatId, cb.message?.chat.title || 'المحادثة', userId);
       OOL.oolJoin(fresh, userId, userName);
       fresh.inlineMessageId = game?.inlineMessageId || cb.inline_message_id;
@@ -10790,6 +10859,7 @@ export class TelegramBotManager {
         if (sent?.result?.message_id) {
           fresh.messageId = sent.result.message_id;
           this.oolGames.set(chatId, fresh);
+          await this.retireFinishedBoard(chatId, oldMessageId);
         }
       }
       await this.answerCallbackQuery(cb.id, '🎭 تم فتح جولة جديدة!');
@@ -11230,11 +11300,16 @@ export class TelegramBotManager {
         ? CH.createChessBotGame(chatId, uid, cb.from.first_name || 'لاعب', botElo)
         : CH.createChessLobby(chatId, cb.message?.chat.title || 'المحادثة');
       if (!botRematch) CH.chessJoin(fresh, uid, cb.from.first_name);
-      if (game?.messageId) fresh.messageId = game.messageId;
-      if (game?.inlineMessageId || cb.inline_message_id) fresh.inlineMessageId = game?.inlineMessageId || cb.inline_message_id;
+      const oldMessageId = game?.messageId;
+      if (game?.inlineMessageId || cb.inline_message_id) {
+        fresh.inlineMessageId = game?.inlineMessageId || cb.inline_message_id;
+        fresh.messageId = oldMessageId;
+      }
       this.chessGames.set(chatId, fresh);
       await this.answerCallbackQuery(cb.id, botRematch ? 'بدأت مباراة جديدة ضد البوت.' : 'بدأت لوحة جديدة.');
+      // بلا messageId قديم → paintChessBoard يرسل لوحة جديدة، وبعدها تنحذف المنتهية.
       await this.paintChessBoard(fresh);
+      if (!fresh.inlineMessageId) await this.retireFinishedBoard(chatId, oldMessageId);
       return;
     }
     if (!game && (op === 'join' || op === 'start') && chatId) {
@@ -11714,7 +11789,7 @@ export class TelegramBotManager {
 
     if (!game && (action === 'join' || action === 'start') && chatId) {
       const requestedRounds = parseInt(parts.find(x => ['5', '10', '15'].includes(x)) || '5', 10);
-      game = RPS.createGame(chatId, cb.message?.chat.title || 'محادثة خاصة', requestedRounds);
+      game = RPS.createGame(chatId, cb.message?.chat.title || 'محادثة خاصة', requestedRounds, userId);
       if (cb.message?.message_id && cb.message.chat.type !== 'private') game.messageId = cb.message.message_id;
       if (cb.inline_message_id) game.inlineMessageId = cb.inline_message_id;
       if (action === 'start') RPS.join(game, userId, userName);
@@ -11743,6 +11818,11 @@ export class TelegramBotManager {
     if (action === 'start') {
       if (game.status !== 'lobby') {
         await this.answerCallbackQuery(cb.id, 'المباراة شغّالة بالفعل', true);
+        return;
+      }
+      const allowed = await this.canHostStartGame(cb, chatId, game.createdBy);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, allowed.msg, true);
         return;
       }
       if (game.players.length < 2) {
@@ -11785,14 +11865,40 @@ export class TelegramBotManager {
         await this.paintRPSBoard(started);
         return;
       }
+      const allowed = await this.canHostStartGame(cb, chatId, game.createdBy);
+      if (!allowed.ok) {
+        await this.answerCallbackQuery(cb.id, '🔄 بس ناشر المباراة يقدر يفتح مباراة جديدة', true);
+        return;
+      }
       const human = game.players.find(p => !p.isBot);
+      const oldMessageId = game.messageId;
       const fresh = game.botOpponent && human
         ? RPS.createBotGame(chatId, game.chatTitle, game.totalRounds, human.id, human.name)
-        : RPS.createGame(chatId, game.chatTitle, game.totalRounds);
-      if (game.inlineMessageId) fresh.inlineMessageId = game.inlineMessageId;
-      this.rpsGames.set(chatId, fresh);
+        : RPS.createGame(chatId, game.chatTitle, game.totalRounds, game.createdBy || userId);
+      if (game.inlineMessageId) {
+        fresh.inlineMessageId = game.inlineMessageId;
+        fresh.messageId = oldMessageId;
+        this.rpsGames.set(chatId, fresh);
+        await this.answerCallbackQuery(cb.id, '🔄 مباراة جديدة');
+        await this.paintRPSBoard(fresh);
+        return;
+      }
+      const sent = await this.sendMessage(
+        chatId,
+        await this.withBotFooter(RPS.renderGame(fresh), true),
+        RPS.boardKeyboard(fresh),
+        'MarkdownV2'
+      );
+      if (sent?.ok && sent.result?.message_id) {
+        fresh.messageId = Number(sent.result.message_id);
+        this.rpsGames.set(chatId, fresh);
+        await this.retireFinishedBoard(chatId, oldMessageId);
+      } else {
+        fresh.messageId = oldMessageId;
+        this.rpsGames.set(chatId, fresh);
+        await this.paintRPSBoard(fresh);
+      }
       await this.answerCallbackQuery(cb.id, '🔄 مباراة جديدة');
-      await this.paintRPSBoard(fresh);
       return;
     }
 
@@ -12825,6 +12931,49 @@ export class TelegramBotManager {
   /**
    * Telegram API: deleteMessage (used when re-sharing a fresh lobby into a channel)
    */
+  /**
+   * يحذف رسالة لعبة منتهية قبل ما تنزل اللعبة الجديدة برسالة جديدة نظيفة.
+   * الحذف «أفضل جهد»: لو فشل (صلاحيات، أقدم من 48 ساعة، رسالة إنلاين) نكمل عادي.
+   */
+  private async retireFinishedBoard(
+    chatId: string,
+    messageId?: number | string | null,
+    inlineMessageId?: string | null
+  ): Promise<boolean> {
+    const numeric = Number(messageId);
+    if (!chatId || !numeric || numeric <= 0 || inlineMessageId) return false;
+    try {
+      const res = await this.deleteMessage(chatId, numeric);
+      return Boolean(res?.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * لعبة جماعية تبدأها بس اللي نشرتها (أو مشرف القناة / مالك البوت).
+   * اللوحات القديمة اللي ما بيها ناشر تبقى مفتوحة حتى ما تتعطل.
+   */
+  private async canHostStartGame(
+    cb: TelegramCallbackQuery,
+    chatId: string,
+    hostId?: string | null
+  ): Promise<{ ok: boolean; msg: string }> {
+    const userId = String(cb.from.id);
+    if (!hostId) return { ok: true, msg: '' };
+    if (String(hostId) === userId) return { ok: true, msg: '' };
+    if (this.isOwner(userId)) return { ok: true, msg: '' };
+    if (chatId && /^-?\d{4,}$/.test(chatId)) {
+      try {
+        const admins = await this.getChatAdministrators(chatId);
+        if (admins.some(a => String(a?.user?.id || '') === userId)) return { ok: true, msg: '' };
+      } catch {
+        /* القناة ما ترجع المشرفين؟ نكمل بالرفض الودّي */
+      }
+    }
+    return { ok: false, msg: '🎮 بس اللي نشر اللعبة (أو مشرف القناة) يقدر يبدأها' };
+  }
+
   public async deleteMessage(chatId: string, messageId: number): Promise<any> {
     if (!this.token) return null;
     try {
