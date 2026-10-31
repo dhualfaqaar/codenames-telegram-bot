@@ -5,7 +5,35 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as Books from '../src/services/bookRecommendationEngine';
+import { BookCatalog, memoryBookStorage } from '../src/services/bookCatalog';
 import { TelegramBotManager } from '../server/telegramBot';
+
+/** صفحات Open Library وهمية للمكتبة الكبيرة داخل الفحص. */
+function fakeCatalogPage(lang: string, page: number) {
+  return {
+    numFound: 4000,
+    docs: Array.from({ length: 100 }, (_, index) => {
+      const n = (page - 1) * 100 + index;
+      const title = lang === 'ara' ? `رواية عربية رقم ${n}` : `Novel number ${n}`;
+      return {
+        key: `/works/OL${lang}${n}W`,
+        title,
+        author_name: [lang === 'ara' ? `كاتب عربي ${n % 300}` : `Writer ${n % 300}`],
+        first_publish_year: 1910 + (n % 110),
+        number_of_pages_median: 120 + (n % 380),
+        cover_i: 5000 + (n % 900),
+        language: [lang],
+        subject: ['Fiction']
+      };
+    })
+  };
+}
+const fakeCatalogFetch = (async (input: any) => {
+  const parsed = new URL(String(typeof input === 'string' ? input : input.url));
+  const lang = (parsed.searchParams.get('q') || '').replace('language:', '') || 'ara';
+  const page = Number(parsed.searchParams.get('page') || '1');
+  return { ok: true, json: async () => fakeCatalogPage(lang, page) } as any;
+}) as unknown as typeof fetch;
 
 let passed = 0;
 const check = (name: string, condition: unknown) => {
@@ -112,11 +140,20 @@ const press = (data: string) => ({
 function lastScreen() {
   const edits = calls.filter(call => call.method === 'editMessageText');
   const sends = calls.filter(call => call.method === 'sendMessage');
-  const call = edits.length ? edits[edits.length - 1] : sends[sends.length - 1];
+  const photos = calls.filter(call => call.method === 'sendPhoto');
+  const call = photos.length
+    ? photos[photos.length - 1]
+    : edits.length ? edits[edits.length - 1] : sends[sends.length - 1];
   return {
-    text: String(call?.body?.text || ''),
-    keyboard: JSON.stringify(call?.body?.reply_markup?.inline_keyboard || [])
+    text: String(call?.body?.caption || call?.body?.text || ''),
+    keyboard: JSON.stringify(call?.body?.reply_markup?.inline_keyboard || []),
+    method: call?.method || ''
   };
+}
+
+/** نص أي رسالة انبعتت (نص أو كابشن صورة). */
+function screenText(call?: Call) {
+  return String(call?.body?.caption || call?.body?.text || '');
 }
 
 calls = [];
@@ -128,7 +165,7 @@ await anyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
 {
   const screen = lastScreen();
   check('شاشة الكتب تعرض كل التصنيفات', genres.every(genre => screen.keyboard.includes(`svc:books:genre:${genre}`)));
-  check('شاشة الكتب فيها اقتراح عشوائي', screen.keyboard.includes('svc:books:pick:all:all'));
+  check('شاشة الكتب فيها اقتراح عشوائي', screen.keyboard.includes('svc:books:pick:all:all') || screen.keyboard.includes('svc:books:rand'));
   check('شاشة الكتب فيها رجوع للخدمات', screen.keyboard.includes('svc:main'));
   check('شاشة الكتب تشرح الخدمة', screen.text.includes('اقترحلي كتاب'));
 }
@@ -149,7 +186,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   const book = all.find(item => screen.text.includes(item.title));
   check('البطاقة تعرض عنوان كتاب حقيقي من القاعدة', Boolean(book));
   check('البطاقة تعرض اسم المؤلف', Boolean(book) && screen.text.includes(book!.author));
-  check('البطاقة تعرض اسم المؤلف بعد كلمة المؤلف', screen.text.includes('المؤلف:'));
+  check('البطاقة تغلّف اسم المؤلف بالخط العريض', screen.text.includes(`*${book!.author}*`));
   check('البطاقة تعرض سنة النشر', Boolean(book) && screen.text.includes(String(book!.year)));
   check('البطاقة تعرض عدد الصفحات', Boolean(book) && screen.text.includes(`${book!.pages} صفحة`));
   check('البطاقة تعرض بلد المؤلف', Boolean(book) && screen.text.includes(book!.country));
@@ -192,12 +229,82 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   check('العقد الغلط ينرفض', calls.some(call => call.method === 'answerCallbackQuery'));
 }
 
+/* ───────────────── الجولة 37: الرسالة نظيفة والمكتبة كبيرة ───────────────── */
+{
+  const catalog = new BookCatalog(memoryBookStorage(), fakeCatalogFetch);
+  await catalog.seed(3);
+  anyBot.bookCatalog = catalog;
+
+  calls = [];
+  await anyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
+  const screen = lastScreen();
+  check('رسالة الخدمة بلا \\n حرفية', !screen.text.includes('\\n'));
+  check('رسالة الخدمة بلا شرطات مزدوجة --', !screen.text.includes('--'));
+  check('رسالة الخدمة تبدأ بالعربي والإيموجي بآخر السطر', /^\*[^*]+\*\s*📚/u.test(screen.text));
+  check('رسالة الخدمة تعرض عدد كتب المكتبة', /\d{1,3},\d{3}/.test(screen.text) || screen.text.includes('كتاب من'));
+  check('شاشة الكتب فيها زر كتاب عشوائي جديد', screen.keyboard.includes('svc:books:rand'));
+  check('شاشة الكتب فيها زر البحث', screen.keyboard.includes('svc:books:search'));
+  check('شاشة الخدمة ما تستعمل فاصل طويل', !screen.text.includes('━━━'));
+  check('الأسطر بالرسالة حقيقية (أكثر من سطر)', screen.text.split('\n').length >= 3);
+
+  calls = [];
+  await anyBot.handleExtraServicesCb(press('svc:books:rand'), 'svc:books:rand');
+  const randScreen = lastScreen();
+  const randCall = calls.find(call => ['sendPhoto', 'editMessageText', 'sendMessage'].includes(call.method));
+  check('الكتاب العشوائي يعرض عنوان حقيقي', /\*[^*]+\*/.test(screenText(randCall)));
+  check('الكتاب العشوائي يذكر اللغة بالعربي', /متوفر بـ(العربية|الإنجليزية|الفرنسية|الألمانية|الروسية)/.test(screenText(randCall)));
+  check('الكتاب العشوائي جا بغلاف صورة', calls.some(call => call.method === 'sendPhoto' && String(call.body?.photo || '').includes('covers.openlibrary.org/b/id/')));
+  check('الكتاب العشوائي فيه زر كتاب ثاني', randScreen.keyboard.includes('svc:books:rand:'));
+
+  // البحث: ضغط الزر ثم إرسال نص
+  calls = [];
+  await anyBot.handleExtraServicesCb(press('svc:books:search'), 'svc:books:search');
+  check('شاشة البحث تطلب كتابة اسم', lastScreen().text.includes('اكتب') || lastScreen().text.includes('دوّر'));
+  check('شاشة البحث فيها إلغاء', lastScreen().keyboard.includes('svc:books'));
+
+  const waited = anyBot.pendingBookSearch.get('42');
+  check('البوت يستنّى نص البحث', Boolean(waited));
+
+  calls = [];
+  await anyBot.handleBookSearchQuery('42', 'كتاب');
+  const searchCall = calls.find(call => call.method === 'sendMessage' || call.method === 'editMessageText');
+  check('البحث يرجّع نتائج من المكتبة', screenText(searchCall).includes('نتائج') || screenText(searchCall).includes('ما لكيت'));
+  check('نتائج البحث فيها أزرار فتح كتاب', JSON.stringify(searchCall?.body?.reply_markup || {}).includes('svc:books:open:') || String(searchCall?.body?.text || '').includes('ما لكيت'));
+
+  const anyBook = (await catalog.all())[0];
+  calls = [];
+  await anyBot.handleBookSearchQuery('42', anyBook.title.slice(0, 6));
+  const foundCall = calls.find(call => call.method === 'sendMessage' || call.method === 'editMessageText');
+  check('البحث بالعنوان يلقى الكتاب', screenText(foundCall).includes(anyBook.title.slice(0, 8)));
+
+  calls = [];
+  await anyBot.handleExtraServicesCb(press(`svc:books:open:${anyBook.id}`), `svc:books:open:${anyBook.id}`);
+  check('فتح كتاب من النتائج يشتغل', calls.some(call => call.method === 'answerCallbackQuery'));
+
+  calls = [];
+  await anyBot.handleExtraServicesCb(press('svc:books:open:OLNOPE'), 'svc:books:open:OLNOPE');
+  check('معرّف غلط ينرفض بلطف', calls.some(call => call.method === 'answerCallbackQuery'));
+
+  // بطاقة الاقتراحات اليدوية بعد التنظيف
+  calls = [];
+  await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books:pick:novel:all');
+  const manual = lastScreen();
+  check('بطاقة الاقتراح بلا \\n حرفية', !manual.text.includes('\\n'));
+  check('بطاقة الاقتراح تبدأ بعنوان الكتاب', manual.text.startsWith('*'));
+  check('بطاقة الاقتراح فيها سنة وصفحات', /\d{4}/.test(manual.text) && manual.text.includes('صفحة'));
+}
+
 /* ───────────────── ربط السورس ───────────────── */
 {
   const src = readFileSync(resolve(import.meta.dirname, '..', 'server', 'telegramBot.ts'), 'utf8');
   check('الخدمة مربوطة بالراوتر', src.includes("data === 'svc:books' || data.startsWith('svc:books:')"));
   check('كارت الخدمة موجود بالقائمة', src.includes("callback_data: 'svc:books'"));
-  check('البطاقة تعرض المؤلف صراحة', src.includes('✍️ المؤلف:'));
+  check('البطاقة تعرض المؤلف مع إيموجي بآخر السطر', src.includes('`*${this.mdSafe(book.author)}* ✍️`'));
+  check('ماكو \\n حرفية بملف البوت', !src.includes('\\\\n'));
+  check('المكتبة الكبيرة مربوطة بالبوت', src.includes('new BookCatalog(serviceConfig.bookStorage)'));
+  check('بذر المكتبة متاح للمنبّه', src.includes('seedBookCatalog'));
+  check('بحث الكتاب الحيّ مربوط', readFileSync(resolve(import.meta.dirname, '..', 'src', 'services', 'bookCatalog.ts'), 'utf8').includes('searchRemote') && src.includes('this.bookCatalog.search'));
+  check('البوت يقبل تخزين الكتب من الـWorker', readFileSync(resolve(import.meta.dirname, '..', 'worker', 'index.ts'), 'utf8').includes('bookStorage: this.state.storage'));
 }
 
 console.log(`Book recommendation checks passed: ${passed} assertions (${all.length} books, ${genres.length} genres, menu → genre → decade → book card).`);

@@ -21,6 +21,8 @@ import { audioFileMeta, canWriteId3Tags, isTelegramVoice, sniffAudioContainer } 
 import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
 import * as Books from '../src/services/bookRecommendationEngine';
+import { BookCatalog, CATALOG_LANGUAGES, CATALOG_TARGET, coverUrl } from '../src/services/bookCatalog';
+import type { BookStorageAdapter, CatalogBook } from '../src/services/bookCatalog';
 import * as Cinema from '../src/services/cinemaServices';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
@@ -1139,6 +1141,10 @@ export class TelegramBotManager {
   private pendingRouletteText: Set<string> = new Set();
   private pendingAgeCalc: Set<string> = new Set();
   private pendingCinemaFlows: Map<string, CinemaFlowState> = new Map();
+  /** محادثات تنتظر نص بحث عن كتاب (chat id). */
+  private pendingBookSearch: Map<string, { at: number }> = new Map();
+  /** مكتبة الكتب الكبيرة المبنية من Open Library. */
+  private bookCatalog!: BookCatalog;
   private footballTeamFollows: Map<string, FootballTeamFollow> = new Map();
   private pendingFootballFollow: Set<string> = new Set();
   private cinemaSubtitleResults: Map<string, Cinema.OpenSubtitleResult[]> = new Map();
@@ -1164,7 +1170,14 @@ export class TelegramBotManager {
     initialToken?: string,
     ownerId?: string,
     externalScheduler: boolean = false,
-    serviceConfig: { geminiApiKey?: string; openSubtitlesApiKey?: string; openSubtitlesUserAgent?: string; interactiveGamesUrl?: string } = {}
+    serviceConfig: {
+      geminiApiKey?: string;
+      openSubtitlesApiKey?: string;
+      openSubtitlesUserAgent?: string;
+      interactiveGamesUrl?: string;
+      /** تخزين Durable Object لمكتبة الكتب الكبيرة (اختياري). */
+      bookStorage?: BookStorageAdapter;
+    } = {}
   ) {
     if (initialToken) {
       this.token = initialToken.trim();
@@ -1175,6 +1188,7 @@ export class TelegramBotManager {
     this.openSubtitlesApiKey = String(serviceConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
     this.openSubtitlesUserAgent = String(serviceConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
     this.interactiveGamesUrl = String(serviceConfig.interactiveGamesUrl || process.env.INTERACTIVE_GAMES_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/interactive').trim();
+    this.bookCatalog = new BookCatalog(serviceConfig.bookStorage);
     this.seedInitialMatchHistory();
   }
 
@@ -2590,6 +2604,16 @@ export class TelegramBotManager {
     if (youtMatch && youtMatch[1].trim()) {
       await this.handleYoutSongSearch(chatId, youtMatch[1].trim(), message.message_id);
       return;
+    }
+
+    // 📚 انتظار نص بحث عن كتاب (خاص أو مجموعة) — ينتهي بعد 5 دقائق
+    const pendingBook = this.pendingBookSearch.get(chatId);
+    if (pendingBook && text && !text.startsWith('/')) {
+      this.pendingBookSearch.delete(chatId);
+      if (Date.now() - pendingBook.at < 5 * 60_000) {
+        await this.handleBookSearchQuery(chatId, text);
+        return;
+      }
     }
 
     // 🤫 إكمال خطوات الخدمات الإضافية بالخاص
@@ -8237,13 +8261,14 @@ export class TelegramBotManager {
       return;
     }
 
-    // ── 📚 اقترحلي كتاب: تصنيف ← عقد ← كتاب بمؤلفه ──
+    // ── 📚 اقترحلي كتاب: مكتبة كبيرة (Open Library) + اقتراحات مختارة ──
     if (data === 'svc:books' || data.startsWith('svc:books:')) {
       const parts = data.split(':');
       const isBookGenre = (value: string): value is Books.BookGenre =>
         (Object.keys(Books.BOOK_GENRE_LABELS) as Books.BookGenre[]).includes(value as Books.BookGenre);
 
       if (data === 'svc:books') {
+        const stats = await this.bookCatalog.stats();
         const genres = Books.bookGenres();
         const keyboard: any[][] = [];
         for (let i = 0; i < genres.length; i += 2) {
@@ -8253,12 +8278,18 @@ export class TelegramBotManager {
           if (second) row.push({ text: Books.BOOK_GENRE_LABELS[second], callback_data: `svc:books:genre:${second}` });
           keyboard.push(row);
         }
-        keyboard.push([{ text: '🎲 اقتراح عشوائي', callback_data: 'svc:books:pick:all:all' }]);
+        keyboard.push([
+          { text: '🎲 كتاب عشوائي', callback_data: 'svc:books:rand' },
+          { text: '🔎 دوّر كتاب', callback_data: 'svc:books:search' }
+        ]);
         keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
+        const library = stats.total
+          ? `المكتبة فيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} لغة.`
+          : 'المكتبة تتجهّز هسه — جرّب بعد شوية.';
         const text =
-          `📚 *اقترحلي كتاب*\\n${SEP}\\n` +
-          `اختار التصنيف، وأنا أطلعلك كتاب مع مؤلفه وسنته وكم صفحة.\\n` +
-          `_كل الاقتراحات مختارة يدوياً — بلا خدمة خارجية._`;
+          `*اقترحلي كتاب* 📚\n\n` +
+          `${library}\n` +
+          `اختار تصنيف من تحت، أو خلّيني أختارلك كتاب عشوائي، أو دوّر على كتاب بالاسم أو المؤلف.`;
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');
@@ -8278,7 +8309,7 @@ export class TelegramBotManager {
         }
         keyboard.push([{ text: '🗓️ أي عقد', callback_data: `svc:books:pick:${genre}:all` }]);
         keyboard.push([{ text: '🔙 تغيير التصنيف', callback_data: 'svc:books' }]);
-        const text = `📚 *${Books.BOOK_GENRE_LABELS[genre]}*\\n${SEP}\\nاختار عقداً من عشر سنوات؛ مثلاً السبعينات تعني 1970–1979:`;
+        const text = `*${Books.BOOK_GENRE_LABELS[genre]}* 📚\n\nاختار عقد من عشر سنوات؛ مثلاً السبعينات تعني 1970–1979:`;
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');
@@ -8306,20 +8337,22 @@ export class TelegramBotManager {
             })()
           : Books.pickBook(pickGenre as Books.BookGenre, decade, excludeId);
         if (!item) {
-          await this.answerCallbackQuery(cb.id, 'ما لكيت كتاب مطابق؛ جرّب عقداً أو تصنيفاً ثاني.', true);
+          await this.answerCallbackQuery(cb.id, 'ما لكيت كتاب مطابق؛ جرّب عقد أو تصنيف ثاني.', true);
           return;
         }
         const genreLabel = pickGenre === 'all'
           ? 'اقتراح عشوائي'
           : Books.BOOK_GENRE_LABELS[pickGenre as Books.BookGenre];
         const decadesLabel = decade === 'all' ? 'كل العقود' : `عقد ${Books.bookDecadeLabel(decade)}`;
-        const text =
-          `📚 *اقتراح كتاب*\\n${SEP}\\n` +
-          `${genreLabel} · ${decadesLabel}\\n\\n` +
-          `📖 *${this.mdSafe(item.title)}*\\n` +
-          `✍️ المؤلف: *${this.mdSafe(item.author)}*\\n` +
-          `🗓️ سنة ${item.year} · ${item.pages} صفحة · ${this.mdSafe(item.country)}\\n\\n` +
-          `${this.mdSafe(item.blurb)}`;
+        const text = this.bookCardText({
+          title: item.title,
+          author: item.author,
+          year: item.year,
+          pages: item.pages,
+          country: item.country,
+          blurb: item.blurb,
+          meta: `${genreLabel} · ${decadesLabel}`
+        });
         const backGenre = pickGenre === 'all' ? 'svc:books' : `svc:books:genre:${pickGenre}`;
         const keyboard = [
           [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:again:${pickGenre}:${decadeText}:${item.id}` }],
@@ -8330,6 +8363,44 @@ export class TelegramBotManager {
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      // 🎲 كتاب عشوائي من المكتبة الكبيرة
+      if (parts[2] === 'rand') {
+        const excludeId = parts[3];
+        const book = await this.bookCatalog.pickRandom({ excludeId });
+        if (!book) {
+          await this.answerCallbackQuery(cb.id, 'المكتبة بعدها تتجهّز — جرّب بعد شوية.', true);
+          return;
+        }
+        await this.sendCatalogBookCard(cb, chatId, messageId, book, `كتاب عشوائي من المكتبة`);
+        return;
+      }
+
+      // 🔎 بحث بالاسم أو المؤلف
+      if (parts[2] === 'search') {
+        this.pendingBookSearch.set(userId, { at: Date.now() });
+        const text =
+          `*دوّر على كتاب* 🔎\n\n` +
+          `اكتب اسم الكتاب أو اسم المؤلف وأنا أدوّرلك بالمكتبة وبالإنترنت.\n` +
+          `مثال: *نجيب محفوظ* أو *مئة عام من العزلة*.`;
+        const keyboard = [[{ text: '🔙 إلغاء', callback_data: 'svc:books' }]];
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      // 📖 فتح كتاب من نتائج البحث
+      if (parts[2] === 'open') {
+        const id = parts[3] || '';
+        const book = await this.bookCatalog.byId(id);
+        if (!book) {
+          await this.answerCallbackQuery(cb.id, 'الكتاب مو موجود بالمكتبة؛ دوّر من جديد.', true);
+          return;
+        }
+        await this.sendCatalogBookCard(cb, chatId, messageId, book, 'من المكتبة');
         return;
       }
 
@@ -12456,6 +12527,171 @@ export class TelegramBotManager {
   }
 
   /** Remove characters that break Telegram Markdown from dynamic values. */
+  // ---------------------------------------------------------------------
+  // 📚 كروت الكتب (مكتبة Open Library + الاقتراحات المختارة)
+  // ---------------------------------------------------------------------
+
+  /** نص بطاقة كتاب. الإيموجي بآخر السطر حتى ما ينقلب النص العربي بالـRTL. */
+  private bookCardText(book: {
+    title: string;
+    author: string;
+    year?: number | null;
+    pages?: number | null;
+    country?: string;
+    blurb?: string;
+    meta?: string;
+    language?: string;
+  }): string {
+    const lines = [`*${this.mdSafe(book.title)}* 📖`];
+    if (book.meta) lines.push(this.mdSafe(book.meta));
+    lines.push('');
+    lines.push(`*${this.mdSafe(book.author)}* ✍️`);
+    const facts: string[] = [];
+    if (book.year) facts.push(`سنة ${book.year}`);
+    if (book.pages) facts.push(`${book.pages} صفحة`);
+    if (book.country) facts.push(this.mdSafe(book.country));
+    if (book.language) facts.push(this.mdSafe(book.language));
+    if (facts.length) lines.push(facts.join(' · '));
+    if (book.blurb) {
+      lines.push('');
+      lines.push(this.mdSafe(book.blurb));
+    }
+    return lines.join('\n');
+  }
+
+  /** اسم اللغة بالعربي من رمزها. */
+  private catalogLanguageLabel(code: string): string {
+    return CATALOG_LANGUAGES.find(entry => entry.code === code)?.label || code;
+  }
+
+  /** يبعت بطاقة كتاب من المكتبة الكبيرة: بغلاف لو موجود، وبلا غلاف كنص. */
+  private async sendCatalogBookCard(
+    cb: TelegramCallbackQuery,
+    chatId: string,
+    messageId: number | undefined,
+    book: CatalogBook,
+    header: string
+  ): Promise<void> {
+    const caption = this.bookCardText({
+      meta: header,
+      title: book.title,
+      author: book.author,
+      year: book.year,
+      pages: book.pages,
+      language: `متوفر بـ${this.catalogLanguageLabel(book.lang)}`
+    });
+    const keyboard = [
+      [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:rand:${book.id}` }],
+      [{ text: '🔎 دوّر كتاب', callback_data: 'svc:books:search' }],
+      [{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }],
+      [{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]
+    ];
+    const cover = coverUrl(book.cover, 'M');
+    let delivered = false;
+    if (cover) {
+      const sent = await this.sendPhoto(chatId, cover, caption, keyboard);
+      if (sent?.ok) {
+        delivered = true;
+        // البطاقة نزلت برسالة جديدة، فنحذف شاشة الخيارات القديمة حتى ما تتراكم.
+        if (messageId) await this.retireFinishedBoard(chatId, messageId);
+      }
+    }
+    if (!delivered) {
+      if (messageId) {
+        const edited = await this.editMessageText(chatId, messageId, caption, keyboard);
+        if (edited?.ok) delivered = true;
+      }
+      if (!delivered) await this.sendMessage(chatId, caption, keyboard);
+    }
+    await this.answerCallbackQuery(cb.id, '');
+  }
+
+  /** يرسل صورة برابط مع كابشن وأزرار. */
+  private async sendPhoto(
+    chatId: string,
+    photoUrl: string,
+    caption: string,
+    inlineKeyboard?: any[][],
+    parseMode: string = 'Markdown'
+  ): Promise<any> {
+    if (!this.token) return null;
+    try {
+      const body: any = { chat_id: chatId, photo: photoUrl, caption, parse_mode: parseMode };
+      if (inlineKeyboard) body.reply_markup = { inline_keyboard: inlineKeyboard };
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('sendPhoto failed:', e);
+      return null;
+    }
+  }
+
+  /** نتيجة بحث الكتاب: تفضيل المكتبة المحلية وبعدها Open Library. */
+  private async handleBookSearchQuery(chatId: string, query: string): Promise<void> {
+    const clean = String(query || '').trim();
+    if (clean.length < 2) {
+      await this.sendMessage(chatId, 'اكتب حرفين على الأقل من اسم الكتاب أو المؤلف.');
+      return;
+    }
+    const { local, remote } = await this.bookCatalog.search(clean, 5);
+    const results = [...local, ...remote].slice(0, 5);
+    if (!results.length) {
+      await this.sendMessage(
+        chatId,
+        `ما لكيت نتيجة لـ *${this.mdSafe(clean)}* 🔎\n\nجرّب الاسم الرسمي للكتاب أو اسم المؤلف لحاله.`,
+        [[{ text: '🔎 دوّر مرة ثانية', callback_data: 'svc:books:search' }, { text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
+      );
+      return;
+    }
+    const lines = results.map((book, index) => {
+      const year = book.year ? ` · ${book.year}` : '';
+      const lang = book.lang ? ` · ${this.catalogLanguageLabel(book.lang)}` : '';
+      return `${index + 1}) *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}${year}${lang}`;
+    });
+    const keyboard = results.map(book => [
+      { text: `📖 ${book.title.slice(0, 28)} — ${book.author.slice(0, 20)}`, callback_data: `svc:books:open:${book.id}` }
+    ]);
+    keyboard.push([{ text: '🔎 دوّر غير كتاب', callback_data: 'svc:books:search' }]);
+    keyboard.push([{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]);
+    await this.sendMessage(
+      chatId,
+      `*نتائج البحث عن* ${this.mdSafe(clean)} 🔎\n\n${lines.join('\n')}\n\nاضغط على الكتاب حتى تشوف تفاصيله:`,
+      keyboard
+    );
+  }
+
+  /** عدد كتب المكتبة الكبيرة (للاختبارات ولوحة المالك). */
+  public async bookCatalogStats(): Promise<{ total: number; languages: number; done: boolean }> {
+    return this.bookCatalog.stats();
+  }
+
+  /** يبذر دفعة من مكتبة Open Library. ينادى من منبّه الـDurable Object. */
+  public async seedBookCatalog(queries = 3): Promise<{ added: number; total: number; done: boolean }> {
+    try {
+      return await this.bookCatalog.seed(queries);
+    } catch (e) {
+      console.error('seedBookCatalog failed:', e);
+      return { added: 0, total: 0, done: false };
+    }
+  }
+
+  public bookCatalogNeedsMore(): boolean {
+    return this.bookCatalog.needsMore();
+  }
+
+  /** تأخير دفعة البذر الجاية بالمللي ثانية. */
+  public bookCatalogNextDelayMs(): number {
+    return this.bookCatalog.nextDelayMs();
+  }
+
+  public async bookCatalogSummary(): Promise<string> {
+    return this.bookCatalog.summaryText();
+  }
+
   private mdSafe(value: string): string {
     return (value || '').replace(/[*_`\[\]]/g, '');
   }

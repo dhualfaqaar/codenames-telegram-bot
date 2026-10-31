@@ -196,7 +196,9 @@ export class BotState {
       geminiApiKey: this.env.GEMINI_API_KEY,
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
-      interactiveGamesUrl: interactiveGamesUrl.toString()
+      interactiveGamesUrl: interactiveGamesUrl.toString(),
+      // مكتبة الكتب الكبيرة تنحفظ بمفاتيح مستقلة داخل نفس الـDurable Object.
+      bookStorage: this.state.storage as any
     });
     try {
       const saved = await this.state.storage.get('state');
@@ -215,6 +217,8 @@ export class BotState {
       const deadlines: number[] = [];
       const nextQuizAt = bot.getNextQuizDeadline();
       if (nextQuizAt !== null) deadlines.push(nextQuizAt);
+      // 📚 المكتبة بعدها ناقصة؟ نجدول دفعة بذر قريبة.
+      if (bot.bookCatalogNeedsMore()) deadlines.push(Date.now() + bot.bookCatalogNextDelayMs());
       if (bot.hasActiveFootballAlerts()) deadlines.push(Date.now() + 10_000);
       if (deadlines.length) await this.state.storage.setAlarm(Math.min(...deadlines));
       else await this.state.storage.deleteAlarm();
@@ -234,6 +238,12 @@ export class BotState {
       await bot.processFootballAlerts();
     } catch (e) {
       console.error('Football alert alarm error:', e);
+    }
+    try {
+      // 📚 بذر مكتبة الكتب من Open Library (كل منبّه ٣ صفحات = ٣٠٠ كتاب).
+      await bot.seedBookCatalog(3);
+    } catch (e) {
+      console.error('Book catalog seed error:', e);
     }
     try {
       await this.state.storage.put('state', bot.exportState());
