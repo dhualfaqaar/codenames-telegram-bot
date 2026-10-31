@@ -8,6 +8,9 @@ import {
   CATALOG_TARGET,
   cleanCatalogDoc,
   coverUrl,
+  GENRE_SEED_SUBJECTS,
+  SEED_SOURCES,
+  classifyBook,
   memoryBookStorage,
   normalizeQuery,
   workUrl
@@ -19,22 +22,33 @@ const check = (name: string, condition: unknown) => {
   passed += 1;
 };
 
-/** يولّد صفحة Open Library وهمية: ١٠٠ نتيجة بأسماء مختلفة. */
-function fakePage(lang: string, page: number, opts: { skipData?: boolean } = {}) {
+/** يحلّل استعلام البذر: language:xx و subject:"..." */
+function parseQuery(url: string) {
+  const q = new URL(url).searchParams.get('q') || '';
+  const lang = (q.match(/language:([a-z]{3})/) || [])[1] || 'ara';
+  const subject = (q.match(/subject:"([^"]+)"/) || [])[1] || '';
+  const page = Number(new URL(url).searchParams.get('page') || '1');
+  return { q, lang, subject, page };
+}
+
+/** يولّد صفحة Open Library وهمية: ١٠٠ نتيجة مختلفة لكل (استعلام، صفحة). */
+function fakePage(lang: string, page: number, subject = '', q = '') {
   return {
     numFound: 5000,
     docs: Array.from({ length: 100 }, (_, index) => {
       const n = (page - 1) * 100 + index;
-      if (opts.skipData && index % 3 === 0) return { key: `/works/OL${n}W`, title: '' };
+      const seed = `${q}#${n}`;
+      let hash = 0;
+      for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) % 1_000_000_007;
       return {
-        key: `/works/OL${lang}${n}W`,
+        key: `/works/OL${hash}W`,
         title: `كتاب ${lang} رقم ${n}`,
         author_name: [`مؤلف ${lang} ${n % 500}`],
         first_publish_year: 1900 + (n % 120),
         number_of_pages_median: 100 + (n % 400),
-        cover_i: n % 900 + 100,
+        cover_i: (n % 900) + 100,
         language: [lang],
-        subject: ['Fiction']
+        subject: subject ? [subject] : ['Fiction']
       };
     })
   };
@@ -48,11 +62,13 @@ const fakeFetch = (async (input: any) => {
   requestLog.push(url);
   if (mode === 'fail') throw new Error('network down');
   const parsed = new URL(url);
-  const lang = (parsed.searchParams.get('q') || '').replace('language:', '') || 'ara';
-  const page = Number(parsed.searchParams.get('page') || '1');
   if (mode === 'garbage') return { ok: true, json: async () => ({ nope: true }) } as any;
   if (mode === 'empty') return { ok: true, json: async () => ({ numFound: 0, docs: [] }) } as any;
-  return { ok: true, json: async () => fakePage(lang, page) } as any;
+  const { q, lang, subject, page } = parseQuery(url);
+  if (parsed.searchParams.get('author') || parsed.searchParams.get('q') === 'lord of the rings') {
+    return { ok: true, json: async () => fakePage(lang, page, subject) } as any;
+  }
+  return { ok: true, json: async () => fakePage(lang, page, subject, q) } as any;
 }) as unknown as typeof fetch;
 
 /* ───────────── تنظيف سجلات Open Library ───────────── */
@@ -100,7 +116,11 @@ const fakeFetch = (async (input: any) => {
 
   const meta = await storage.get<any>('books:meta');
   check('الـmeta يحفظ العدد والمؤشر', meta.total > 250 && meta.done === false);
-  check('البذر يدور بين اللغات (عربية أولاً)', meta.langIndex === 3 && meta.page === 1);
+  check('البذر يدور بين المصادر (عربية أولاً)', meta.sourceIndex === 3 && meta.page === 1);
+  check('أول ثلاثة مصادر كلها عربية', SEED_SOURCES.slice(0, 3).every(source => source.lang === 'ara'));
+  check('المصادر تغطي كل الأصناف', Object.keys(GENRE_SEED_SUBJECTS).every(genre =>
+    SEED_SOURCES.some(source => source.genre === genre)));
+  check('المصادر تغطي 29 لغة', new Set(SEED_SOURCES.map(source => source.lang)).size >= 29);
   check('الـmeta يعدّ الطلبات', meta.requests === 3);
 
   // تكرار نفس الصفحة ما يزيد شي (منع التكرار بالمعرّف)
@@ -132,6 +152,29 @@ const fakeFetch = (async (input: any) => {
   check('العربية منبذرة أولاً', byLang.some(entry => entry.code === 'ara'));
   check('ملخص المكتبة يذكر العدد', (await catalog.summaryText()).includes('المكتبة'));
   check('الملخص يذكر أنها مكتملة', (await catalog.summaryText()).includes('مكتملة'));
+
+  // كل صنف لازم إله كتب كثيرة — مو ٤–٦ كتب
+  const genreTotals: number[] = [];
+  for (const genre of Object.keys(GENRE_SEED_SUBJECTS)) {
+    genreTotals.push((await catalog.genreStats(genre)).total);
+  }
+  check('كل صنف إله ≥100 كتاب بالمكتبة الكبيرة', genreTotals.every(total => total >= 100));
+  check('الأصناف الاثنا عشر كلها موجودة', genreTotals.length === 12);
+
+  const pool = await catalog.booksByGenre('novel', 'all');
+  check('صنف الرواية عنده مئات الكتب', pool.length >= 200);
+  const seen = new Set<string>();
+  let lastId: string | undefined;
+  for (let round = 0; round < 60; round += 1) {
+    const pick = await catalog.pickByGenre('novel', 'all', lastId);
+    if (!pick) break;
+    seen.add(pick.book.id);
+    lastId = pick.book.id;
+  }
+  check('٦٠ سحبة تعطي ≥55 عنوان مختلف', seen.size >= 55);
+
+  const widenedPick = await catalog.pickByGenre('horror', 1000, undefined);
+  check('عقد فاضي يوسّع للصنف بدل الفراغ', Boolean(widenedPick) && widenedPick!.widened === true);
 }
 
 /* ───────────── البحث والاقتراح العشوائي ───────────── */
@@ -275,6 +318,25 @@ const fakeFetch = (async (input: any) => {
   check('المكتبة تكمّل لـ١٠,٠٠٠ بعد الاستئناف', after.total >= 10_000);
   check('الكتب القديمة ما تنحذف', (await catalog.all()).some(book => book.id.startsWith('OLD')));
   check('الدفعات القديمة تبقى بالتخزين', (await storage.list({ prefix: 'books:chunk:' })).size >= 15);
+}
+
+/* ───────────── تصنيف الكتب من المواضيع ───────────── */
+{
+  check('«Science fiction» = خيال علمي', classifyBook(['Science fiction']).includes('sci_fi'));
+  check('«Detective and mystery stories» = بوليسي', classifyBook(['Detective and mystery stories']).includes('mystery'));
+  check('«Arabic poetry» = شعر', classifyBook(['Arabic poetry']).includes('poetry'));
+  check('«Biography» = سيرة', classifyBook(['Biography']).includes('biography'));
+  check('«Horror tales» = رعب', classifyBook(['Horror tales']).includes('horror'));
+  check('«Juvenile fiction» = أطفال', classifyBook(['Juvenile fiction']).includes('children'));
+  check('«History» = تاريخ', classifyBook(['History']).includes('history'));
+  check('«Drama» = مسرحيات', classifyBook(['Drama']).includes('theater'));
+  check('«Self-help» = تطوير الذات', classifyBook(['Self-help']).includes('self_help'));
+  check('«Philosophy» = فلسفة', classifyBook(['Philosophy']).includes('philosophy'));
+  check('«Short stories» = قصة قصيرة', classifyBook(['Short stories']).includes('short_stories'));
+  check('«Fiction» = رواية', classifyBook(['Fiction']).includes('novel'));
+  check('مواضيع عربية تنصنّف', classifyBook(['شعر عربي']).includes('poetry') && classifyBook(['رواية عربية']).includes('novel'));
+  check('كتاب بلا مواضيع ما ينصنّف خطأ', classifyBook([]).length === 0);
+  check('التصنيفات محصورة بـ4', classifyBook(['Fiction', 'Poetry', 'Drama', 'History', 'Horror tales', 'Science fiction']).length <= 4);
 }
 
 /* ───────────── إعادة الضبط ───────────── */

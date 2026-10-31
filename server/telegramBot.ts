@@ -8306,18 +8306,36 @@ export class TelegramBotManager {
 
       const genre = parts[3] || '';
       if (parts[2] === 'genre' && isBookGenre(genre)) {
-        const decades = Books.bookDecades(genre);
+        // العقود من المكتبة الكبيرة أولاً (مع عدد الكتب)، ونضمّها لعقود القاعدة
+        // المختارة حتى ما يختفي أي عقد.
+        const genreStats = await this.bookCatalog.genreStats(genre);
+        const catalogDecades = new Map(genreStats.decades.map(entry => [entry.decade, entry.count]));
+        const decades = Array.from(
+          new Set([...catalogDecades.keys(), ...Books.bookDecades(genre)])
+        ).sort((a, b) => b - a);
+        const label = (decade: number) => {
+          const count = catalogDecades.get(decade) || 0;
+          return count > 0
+            ? `${Books.bookDecadeLabel(decade)} · ${count}`
+            : `${Books.bookDecadeLabel(decade)} · ${Books.booksFor(genre).filter(book => Books.bookDecade(book.year) === decade).length}`;
+        };
         const keyboard: any[][] = [];
         for (let i = 0; i < decades.length; i += 2) {
           const first = decades[i];
           const second = decades[i + 1];
-          const row = [{ text: Books.bookDecadeLabel(first), callback_data: `svc:books:pick:${genre}:${first}` }];
-          if (second !== undefined) row.push({ text: Books.bookDecadeLabel(second), callback_data: `svc:books:pick:${genre}:${second}` });
+          const row = [{ text: label(first), callback_data: `svc:books:pick:${genre}:${first}` }];
+          if (second !== undefined) row.push({ text: label(second), callback_data: `svc:books:pick:${genre}:${second}` });
           keyboard.push(row);
         }
-        keyboard.push([{ text: '🗓️ أي عقد', callback_data: `svc:books:pick:${genre}:all` }]);
+        keyboard.push([{ text: `🗓️ أي عقد · ${genreStats.total}`, callback_data: `svc:books:pick:${genre}:all` }]);
         keyboard.push([{ text: '🔙 تغيير التصنيف', callback_data: 'svc:books' }]);
-        const text = `*${Books.BOOK_GENRE_LABELS[genre]}* 📚\n\nاختار عقد من عشر سنوات؛ مثلاً السبعينات تعني 1970–1979:`;
+        const pool = genreStats.total
+          ? `المكتبة فيها *${genreStats.total.toLocaleString('en-US')}* كتاب بهذا التصنيف.`
+          : 'هذا التصنيف بعدها يتجهّز بالمكتبة.';
+        const text =
+          `*${Books.BOOK_GENRE_LABELS[genre]}*\n\n` +
+          `${pool}\n` +
+          `اختار عقد من عشر سنوات؛ الرقم جنب العقد هو عدد الكتب المتوفرة فيه:`;
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');
@@ -8337,33 +8355,75 @@ export class TelegramBotManager {
           await this.answerCallbackQuery(cb.id, 'العقد غير صالح؛ ابدأ من جديد.', true);
           return;
         }
-        const item = pickGenre === 'all'
-          ? (() => {
-              const pool = Books.allBooks().filter(book => book.id !== excludeId);
-              const source = pool.length ? pool : Books.allBooks();
-              return source[Math.floor(Math.random() * source.length)];
-            })()
-          : Books.pickBook(pickGenre as Books.BookGenre, decade, excludeId);
-        if (!item) {
-          await this.answerCallbackQuery(cb.id, 'ما لكيت كتاب مطابق؛ جرّب عقد أو تصنيف ثاني.', true);
-          return;
-        }
         const genreLabel = pickGenre === 'all'
           ? 'اقتراح عشوائي'
           : Books.BOOK_GENRE_LABELS[pickGenre as Books.BookGenre];
         const decadesLabel = decade === 'all' ? 'كل العقود' : `عقد ${Books.bookDecadeLabel(decade)}`;
-        const text = this.bookCardText({
-          title: item.title,
-          author: item.author,
-          year: item.year,
-          pages: item.pages,
-          country: item.country,
-          blurb: item.blurb,
-          meta: `${genreLabel} · ${decadesLabel}`
-        });
+
+        // المصدر الأول: المكتبة الكبيرة (١٠,٠٠٠ كتاب). القاعدة المختارة (٧٢) صارت
+        // احتياط بس — قبل هذا كانت هي المصدر الوحيد، فكان «كتاب ثاني» يلف بين
+        // ٤–٦ كتب فقط.
+        let text = '';
+        let itemId = '';
+        let widened = false;
+        if (pickGenre === 'all') {
+          const fromCatalog = await this.bookCatalog.pickRandom({ excludeId });
+          if (fromCatalog) {
+            itemId = fromCatalog.id;
+            text = this.bookCardText({
+              title: fromCatalog.title,
+              author: fromCatalog.author,
+              year: fromCatalog.year,
+              pages: fromCatalog.pages,
+              language: this.catalogLanguageLabel(fromCatalog.lang),
+              meta: `${genreLabel} · ${decadesLabel}`
+            });
+          }
+        } else {
+          const fromCatalog = await this.bookCatalog.pickByGenre(pickGenre, decade, excludeId);
+          if (fromCatalog) {
+            itemId = fromCatalog.book.id;
+            widened = fromCatalog.widened;
+            text = this.bookCardText({
+              title: fromCatalog.book.title,
+              author: fromCatalog.book.author,
+              year: fromCatalog.book.year,
+              pages: fromCatalog.book.pages,
+              language: this.catalogLanguageLabel(fromCatalog.book.lang),
+              meta: `${genreLabel} · ${decadesLabel}`
+            });
+          }
+        }
+
+        // احتياط: قاعدة الكتب المختارة يدوياً (مع النبذة والبلد).
+        if (!text) {
+          const fallback = pickGenre === 'all'
+            ? (() => {
+                const pool = Books.allBooks().filter(book => book.id !== excludeId);
+                const source = pool.length ? pool : Books.allBooks();
+                return source[Math.floor(Math.random() * source.length)];
+              })()
+            : Books.pickBook(pickGenre as Books.BookGenre, decade, excludeId);
+          if (!fallback) {
+            await this.answerCallbackQuery(cb.id, 'ما لكيت كتاب مطابق؛ جرّب عقد أو تصنيف ثاني.', true);
+            return;
+          }
+          itemId = fallback.id;
+          text = this.bookCardText({
+            title: fallback.title,
+            author: fallback.author,
+            year: fallback.year,
+            pages: fallback.pages,
+            country: fallback.country,
+            blurb: fallback.blurb,
+            meta: `${genreLabel} · ${decadesLabel}`
+          });
+        }
+        if (widened) text += '\n\nما لكيت كتاب بهذا العقد بالتحديد، فاخترتلك من نفس التصنيف.';
+
         const backGenre = pickGenre === 'all' ? 'svc:books' : `svc:books:genre:${pickGenre}`;
         const keyboard = [
-          [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:again:${pickGenre}:${decadeText}:${item.id}` }],
+          [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:again:${pickGenre}:${decadeText}:${itemId}` }],
           [{ text: '🔄 تغيير العقد', callback_data: backGenre }],
           [{ text: '📚 تغيير التصنيف', callback_data: 'svc:books' }],
           [{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]

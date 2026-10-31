@@ -9,30 +9,44 @@ import { BookCatalog, memoryBookStorage } from '../src/services/bookCatalog';
 import { TelegramBotManager } from '../server/telegramBot';
 
 /** صفحات Open Library وهمية للمكتبة الكبيرة داخل الفحص. */
-function fakeCatalogPage(lang: string, page: number) {
+function fakeCatalogPage(lang: string, page: number, subject: string, q: string) {
   return {
     numFound: 4000,
     docs: Array.from({ length: 100 }, (_, index) => {
       const n = (page - 1) * 100 + index;
-      const title = lang === 'ara' ? `رواية عربية رقم ${n}` : `Novel number ${n}`;
+      const seed = `${q}#${n}`;
+      let hash = 0;
+      for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) % 1_000_000_007;
+      const title = lang === 'ara' ? `رواية عربية رقم ${hash % 100000}` : `Novel number ${hash % 100000}`;
       return {
-        key: `/works/OL${lang}${n}W`,
+        key: `/works/OL${lang}${hash}W`,
         title,
-        author_name: [lang === 'ara' ? `كاتب عربي ${n % 300}` : `Writer ${n % 300}`],
+        author_name: [lang === 'ara' ? `كاتب عربي ${hash % 300}` : `Writer ${hash % 300}`],
         first_publish_year: 1910 + (n % 110),
         number_of_pages_median: 120 + (n % 380),
         cover_i: 5000 + (n % 900),
         language: [lang],
-        subject: ['Fiction']
+        subject: subject ? [subject] : ['Fiction']
       };
     })
   };
 }
 const fakeCatalogFetch = (async (input: any) => {
   const parsed = new URL(String(typeof input === 'string' ? input : input.url));
-  const lang = (parsed.searchParams.get('q') || '').replace('language:', '') || 'ara';
+  const q = parsed.searchParams.get('q') || '';
+  const lang = (q.match(/language:([a-z]{3})/) || [])[1] || 'ara';
+  const subject = (q.match(/subject:"([^"]+)"/) || [])[1] || '';
   const page = Number(parsed.searchParams.get('page') || '1');
-  return { ok: true, json: async () => fakeCatalogPage(lang, page) } as any;
+  const authorQuery = parsed.searchParams.get('author') || '';
+  if (authorQuery) {
+    return {
+      ok: true,
+      json: async () => ({
+        docs: [{ key: '/works/OLAUTHOR1W', title: 'أولاد حارتنا', author_name: [authorQuery], first_publish_year: 1959, cover_i: 77, language: ['ara'], subject: ['Arabic fiction'] }]
+      })
+    } as any;
+  }
+  return { ok: true, json: async () => fakeCatalogPage(lang, page, subject, q) } as any;
 }) as unknown as typeof fetch;
 
 let passed = 0;
@@ -240,8 +254,43 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
 /* ───────────────── الجولة 37: الرسالة نظيفة والمكتبة كبيرة ───────────────── */
 {
   const catalog = new BookCatalog(memoryBookStorage(), fakeCatalogFetch);
-  await catalog.seed(3);
+  await catalog.seed(40);
   anyBot.bookCatalog = catalog;
+
+  // شاشة الصنف لازم تعرض عدد كتب المكتبة الكبيرة (مو ٤–٦ كتب)
+  calls = [];
+  await anyBot.handleExtraServicesCb(press('svc:books:genre:novel'), 'svc:books:genre:novel');
+  const genreScreen = lastScreen();
+  check('شاشة الصنف تعرض عدد كتب المكتبة', /المكتبة فيها \*?[\d,]+\*? كتاب/.test(genreScreen.text));
+  check('أزرار العقود تعرض عدد الكتب', /\d{4}–\d{4} · \d+/.test(genreScreen.keyboard));
+  check('زر «أي عقد» يعرض الإجمالي', /أي عقد · \d+/.test(genreScreen.keyboard));
+
+  // «كتاب ثاني» داخل صنف+عقد لازم يعطي عناوين كثيرة مو نفس ٤ كتب
+  {
+    const titles = new Set<string>();
+    let previous = '';
+    for (let round = 0; round < 40; round += 1) {
+      calls = [];
+      const data = round === 0
+        ? 'svc:books:pick:novel:all'
+        : `svc:books:again:novel:all:${previous}`;
+      await anyBot.handleExtraServicesCb(press(data), data);
+      const text = lastScreen().text;
+      const title = (text.match(/\*اسم الكتاب:\* (.+)/) || [])[1];
+      const id = (lastScreen().keyboard.match(/svc:books:again:novel:all:([^"]+)"/) || [])[1];
+      if (title) titles.add(title);
+      if (id) previous = id;
+    }
+    check('٤٠ سحبة داخل صنف تعطي ≥20 عنوان مختلف', titles.size >= 20);
+  }
+
+  // صنف برعب: يرجع من المكتبة الكبيرة (معرّفات OL) مو من القاعدة القديمة
+  {
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:pick:horror:all'), 'svc:books:pick:horror:all');
+    const keyboard = lastScreen().keyboard;
+    check('سحب صنف آخر يرجع كتاب من المكتبة الكبيرة', /svc:books:again:horror:all:OL/.test(keyboard));
+  }
 
   calls = [];
   await anyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
