@@ -64,7 +64,7 @@ function fakePage(lang: string, page: number, subject = '', q = '') {
 let requestLog: string[] = [];
 let mode: 'ok' | 'fail' | 'garbage' | 'empty' = 'ok';
 
-let workDescription: any = { description: 'A short description from Open Library about the work itself.' };
+let workDescription: any = { description: 'A novel that follows a family across three generations in a small town, exploring memory and loss.' };
 let worksCalls = 0;
 
 const fakeFetch = (async (input: any) => {
@@ -451,31 +451,96 @@ const fakeFetch = (async (input: any) => {
 
   // النبذة: من works API + كاش
   worksCalls = 0;
-  workDescription = { description: 'وصف العمل الكامل من أوبن لايبراري.' };
+  workDescription = { description: 'رواية تتابع عائلة على مدى ثلاثة أجيال في بلدة صغيرة، وتتناول الذاكرة والفقد والبحث عن العدل.' };
   const desc1 = await catalog.describe(freeBook!);
-  check('النبذة تجي من works API', desc1 === 'وصف العمل الكامل من أوبن لايبراري.');
+  check('النبذة تجي من works API', desc1.startsWith('رواية تتابع عائلة'));
   const desc2 = await catalog.describe(freeBook!);
   check('النبذة تتكاش (بلا طلب ثاني)', desc2 === desc1 && worksCalls === 1);
 
   // وصف على شكل {value: ...}
   worksCalls = 0;
-  workDescription = { description: { value: 'وصف بصيغة الكائن.' } };
+  workDescription = { description: { value: 'وصف بصيغة الكائن يشرح فكرة الكتاب وأسلوبه في السرد والحوار.' } };
   const desc3 = await catalog.describe(lockedBook!);
-  check('النبذة تتعامل مع وصف {value}', desc3 === 'وصف بصيغة الكائن.');
+  check('النبذة تتعامل مع وصف {value}', desc3.startsWith('وصف بصيغة الكائن'));
 
-  // بلا وصف نهائياً: جملة من البيانات
+  // بلا وصف نهائياً: ولا كلمة — ما نلفّق نبذة من السنة والصفحات
   worksCalls = 0;
   workDescription = 'none';
   const desc4 = await catalog.describe(noIaBook!);
-  check('بلا وصف نكوّن جملة من البيانات', desc4.length > 10 && desc4.includes('1900'));
-  check('الجملة الاحتياطية تذكر اللغة', /متوفر بـ/.test(desc4));
+  check('بلا وصف: النبذة فاضية (بلا تلفيق)', desc4 === '');
+  check('بلا وصف: ما تذكر السنة', !desc4.includes('1900'));
+  check('بلا وصف: ما تذكر اللغة', !desc4.includes('متوفر بـ'));
+  check('بلا وصف: ما تكتب «كتاب من تصنيف»', !desc4.includes('كتاب من تصنيف'));
 
-  // جملة الافتتاح أولى من الطلب
+  // الترتيب: وصف العمل أولاً، وبعده وصف الطبعة، وبعده جملة الافتتاح
   worksCalls = 0;
+  workDescription = 'none';
   const withFirst = new BookCatalog(memoryBookStorage(), fakeFetch, { queryGapMs: 0 });
-  const inlineBook = cleanCatalogDoc({ key: '/works/OL77W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: ['A first sentence that is long enough.'] }, 'ara')!;
+  const inlineBook = cleanCatalogDoc(
+    { key: '/works/OL77W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: ['A first sentence that is long enough to count as a description.'] },
+    'ara'
+  )!;
   const desc5 = await withFirst.describe(inlineBook);
-  check('جملة الافتتاح تُستعمل قبل الطلب', desc5.includes('first sentence') && worksCalls === 0);
+  check('جملة الافتتاح تُستعمل لما ماكو وصف', desc5.includes('first sentence'));
+
+  // وصف الطبعة يُستعمل قبل جملة الافتتاح
+  {
+    const editionsFetch = (async (input: any) => {
+      const url = String(input);
+      if (url.includes('/editions')) {
+        return {
+          ok: true,
+          json: async () => ({ entries: [{ description: 'وصف الطبعة يشرح موضوع الكتاب وأسلوبه في السرد الطويل.' }] })
+        } as any;
+      }
+      return { ok: true, json: async () => ({}) } as any;
+    }) as unknown as typeof fetch;
+    const byEdition = new BookCatalog(memoryBookStorage(), editionsFetch, { queryGapMs: 0 });
+    const desc6 = await byEdition.describe(inlineBook);
+    check('وصف الطبعة يُستعمل قبل جملة الافتتاح', desc6.startsWith('وصف الطبعة'));
+  }
+
+  // وصف رديء (بيانات نشر) يُرفض حتى لو جاء من الـAPI
+  {
+    const junkFetch = (async (input: any) => {
+      const url = String(input);
+      if (url.includes('/editions')) return { ok: true, json: async () => ({ entries: [] }) } as any;
+      return { ok: true, json: async () => ({ description: '190 صفحة · متوفر بـara · صدر سنة 1900' }) } as any;
+    }) as unknown as typeof fetch;
+    const junkCatalog = new BookCatalog(memoryBookStorage(), junkFetch, { queryGapMs: 0 });
+    const junkDesc = await junkCatalog.describe({
+      id: 'OLJUNK1W', title: 'كتاب', author: 'مؤلف', year: 1900, pages: 190, cover: null, lang: 'ara', subject: ''
+    });
+    check('وصف بيانات النشر يُرفض', junkDesc === '');
+  }
+
+  // تلخيص Gemini: يُستعمل لما كل المصادر فشلت
+  {
+    const emptyFetch = (async (input: any) => {
+      const url = String(input);
+      if (url.includes('/editions')) return { ok: true, json: async () => ({ entries: [] }) } as any;
+      return { ok: true, json: async () => ({}) } as any;
+    }) as unknown as typeof fetch;
+    let summarizerCalls = 0;
+    const withAI = new BookCatalog(memoryBookStorage(), emptyFetch, {
+      queryGapMs: 0,
+      summarizer: async book => {
+        summarizerCalls += 1;
+        return `نبذة مولّدة عن ${book.title}: تتناول الفكرة الأساسية بأسلوب سردي واضح ومؤثر.`;
+      }
+    });
+    const aiDesc = await withAI.describe({
+      id: 'OLAI1W', title: 'الطريق', author: 'نجيب محفوظ', year: 1961, pages: 140, cover: null, lang: 'ara', subject: 'Fiction'
+    });
+    check('تلخيص Gemini يُستعمل كحل أخير', aiDesc.includes('نبذة مولّدة عن الطريق'));
+    check('التلخيص يتنادى مرة وحدة', summarizerCalls === 1);
+
+    // نُكرر: لازم يجي من الكاش بلا نداء ثاني
+    await withAI.describe({
+      id: 'OLAI1W', title: 'الطريق', author: 'نجيب محفوظ', year: 1961, pages: 140, cover: null, lang: 'ara', subject: 'Fiction'
+    });
+    check('التلخيص يتكاش', summarizerCalls === 1);
+  }
 }
 
 /* ───────────── تعريب العنوان والمؤلف ───────────── */

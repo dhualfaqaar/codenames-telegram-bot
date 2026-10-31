@@ -30,7 +30,8 @@
     "test:sfx:dom": "node scripts/check-game-sfx-dom.mjs",
     "test:gq": "tsx scripts/check-group-games-host.ts",
     "test:books": "tsx scripts/check-book-recommendations.ts",
-    "test:books:catalog": "tsx scripts/check-book-catalog.ts"
+    "test:books:catalog": "tsx scripts/check-book-catalog.ts",
+    "test:books:desc": "tsx scripts/check-book-descriptions.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
