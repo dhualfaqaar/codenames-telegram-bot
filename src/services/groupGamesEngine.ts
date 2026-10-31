@@ -393,6 +393,13 @@ function mathRows(): GQRow[] {
   return rows;
 }
 
+/** هل هذا المستخدم هو ناشر اللعبة؟ (لو اللوحة قديمة بلا ناشر نسمح حتى ما تتعطل) */
+export function isGameHost(game: { hostId?: string } | null | undefined, userId: string): boolean {
+  if (!game) return false;
+  if (!game.hostId) return true;
+  return String(game.hostId) === String(userId);
+}
+
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 10;
 
@@ -497,7 +504,12 @@ export interface QuizGame {
   kind: QuizKind;
   /** نظام السرعة: نقطة واحدة لأول إجابة صحيحة في كل جولة. */
   speedMode?: boolean;
-  status: 'lobby' | 'playing' | 'result' | 'game_over';
+  status: 'lobby' | 'playing' | 'result' | 'paused' | 'game_over';
+  /** صاحب اللعبة (الناشر) — هو الوحيد اللي يقدر يبدأها أو يصفّرها. */
+  hostId?: string;
+  /** جولات متتالية انتهت بلا أي جواب — بعد ثنتين نجمّد اللوحة. */
+  emptyRounds?: number;
+  pausedAt?: number;
   players: QuizPlayer[];
   round: number;
   totalRounds: number;
@@ -661,12 +673,14 @@ function pickFreshDeck(chatId: string, kind: QuizKind): string[][] {
   return picked;
 }
 
-export function createQuiz(chatId: string, chatName: string, kind: QuizKind, speedMode = false): QuizGame {
+export function createQuiz(chatId: string, chatName: string, kind: QuizKind, speedMode = false, hostId?: string): QuizGame {
   const deck = pickFreshDeck(chatId, kind);
   return {
     chatId,
     chatName,
     kind,
+    hostId,
+    emptyRounds: 0,
     speedMode,
     status: 'lobby',
     players: [],
@@ -707,6 +721,16 @@ function loadRound(game: QuizGame) {
   }
 }
 
+/** يوقظ اللوحة المجمّدة بعد ما يضغط الناشر «متابعة». */
+export function quizResume(game: QuizGame): { ok: boolean; msg: string } {
+  if (game.status !== 'paused') return { ok: false, msg: '⚠️ اللعبة مو مجمّدة' };
+  game.status = 'playing';
+  game.emptyRounds = 0;
+  game.pausedAt = undefined;
+  loadRound(game);
+  return { ok: true, msg: '▶️ كملنا اللعبة!' };
+}
+
 export function quizStart(game: QuizGame): { ok: boolean; msg: string } {
   if (game.status !== 'lobby') return { ok: false, msg: '⚠️ اللعبة بدأت أصلاً' };
   if (game.players.length < MIN_PLAYERS) {
@@ -715,6 +739,8 @@ export function quizStart(game: QuizGame): { ok: boolean; msg: string } {
   game.status = 'playing';
   game.qIndex = 0;
   game.round = 1;
+  game.emptyRounds = 0;
+  game.pausedAt = undefined;
   loadRound(game);
   return { ok: true, msg: '🎮 بدأت اللعبة!' };
 }
@@ -787,6 +813,8 @@ export function quizAnswer(game: QuizGame, id: string, name: string, idx: number
 /** يختم الجولة على طول (بس لاعب جاوب أصلاً يكدر يضغطها) */
 export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string } {
   if (game.status !== 'playing') return { ok: false, msg: '⏳ ماكو جولة مفتوحة' };
+  // الناشر تفاعل يدوياً — ما نعتبرها جولة فاضية.
+  game.emptyRounds = 0;
   const p = game.players.find(x => x.id === id);
   if (!p) return { ok: false, msg: '🚫 مو مشترك بهاللعبة' };
   if (!p.done) return { ok: false, msg: '⚠️ جاوب أول وبعدين ختم الجولة' };
@@ -799,7 +827,20 @@ export function quizSkip(game: QuizGame, id: string): { ok: boolean; msg: string
 }
 
 /** بعد عرض نتيجة الجولة أو انتهاء 10 ثواني: نتأكد ماكو نهاية مبكرة ونجهّز الجولة الجاية أو نختم */
-export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean } {
+export function quizAdvance(game: QuizGame): { over: boolean; smart: boolean; paused?: boolean } {
+  // 🧊 ماكو أي جواب بهالجولة؟ نعدّها؛ وبعد جولتين فاضيتين نجمّد اللوحة
+  // بدل ما تخلص عشر جولات بصمت والناس ما شافت شي.
+  const answered = game.players.some(p => p.roundHit !== undefined);
+  game.emptyRounds = answered ? 0 : (game.emptyRounds || 0) + 1;
+  if (!answered && game.emptyRounds >= 2) {
+    game.status = 'paused';
+    game.pausedAt = Date.now();
+    game.roundDeadline = undefined;
+    game.resultDeadline = undefined;
+    game.lastLine = '';
+    return { over: false, smart: false, paused: true };
+  }
+
   // 🧠 نهاية ذكية (وضع السرعة): إذا المتصدر مستحيل ينلحق
   if (isSpeedQuiz(game) && game.players.length) {
     const ordered = game.players.slice().sort((a, b) => b.score - a.score);
@@ -844,6 +885,16 @@ export function renderQuiz(game: QuizGame): string {
     } else {
       lines.push(game.players.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n'));
     }
+    return lines.join('\n');
+  }
+
+  if (game.status === 'paused') {
+    const lines = [`${meta.emoji} *${meta.title}${modeLabel}*`, `⏸ *وقّفنا اللعبة مؤقتاً*`];
+    lines.push(`ما وصلنا أي جواب بآخر جولتين، فجمّدنا اللوحة حتى ما تخلص بصمت\\.`);
+    lines.push(`الجولة *${game.round}* من *${game.totalRounds}* جاهزة — ناشر اللعبة يكدر يكملها أو يفتح لعبة جديدة\\!`);
+    lines.push(SEP);
+    const ranked = game.players.slice().sort((a, b) => b.score - a.score);
+    lines.push(ranked.length ? ranked.map((p, i) => scoreLine(i + 1, p.name, p.score)).join('\n') : '_ماكو أحد بعد_');
     return lines.join('\n');
   }
 
@@ -916,6 +967,13 @@ export function quizKeyboard(game: QuizGame): any[][] {
     return [[{ text: '⏳ الجولة الجاية…', callback_data: `gqv:${game.kind}:${mode}:${chatId}` }]];
   }
 
+  if (game.status === 'paused') {
+    return [
+      [{ text: '▶️ كمّل اللعبة', callback_data: `gqr:${game.kind}:${mode}:${chatId}` }],
+      [{ text: '🔄 لعبة جديدة', callback_data: `gqn:${game.kind}:${mode}:${chatId}` }]
+    ];
+  }
+
   return [[{ text: '🔄 لعبة جديدة', callback_data: `gqn:${game.kind}:${mode}:${chatId}` }]];
 }
 
@@ -938,6 +996,8 @@ export interface MMGame {
   messageId?: number;
   inlineMessageId?: string;
   status: 'lobby' | 'playing' | 'game_over';
+  /** صاحب اللعبة (الناشر). */
+  hostId?: string;
   players: MMPlayer[];
   turnIdx: number;
   secret: string;
@@ -950,12 +1010,13 @@ export interface MMGame {
 
 export const MM_MAX_TRIES_EACH = 6;
 
-export function mmCreate(chatId: string, chatName: string): MMGame {
+export function mmCreate(chatId: string, chatName: string, hostId?: string): MMGame {
   const digits = shuffle(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']).slice(0, 4);
   return {
     chatId,
     chatName,
     status: 'lobby',
+    hostId,
     players: [],
     turnIdx: 0,
     secret: digits.join(''),
