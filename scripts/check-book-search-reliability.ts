@@ -2,6 +2,15 @@ import assert from 'node:assert/strict';
 import { TelegramBotManager } from '../server/telegramBot';
 import { memoryBookStorage } from '../src/services/bookCatalog';
 
+// An inaccessible SQLite index must not prevent the bot itself from starting.
+const failingStorage = memoryBookStorage();
+let sqlCalls = 0;
+failingStorage.sql = { exec() { sqlCalls++; throw new Error('index unavailable'); } };
+const resilient: any = new TelegramBotManager('TEST:TOKEN', '42', false, { bookStorage: failingStorage });
+assert.equal(sqlCalls, 0);
+await assert.rejects(() => resilient.channelBookIndex.search('الغريب'));
+assert.equal(sqlCalls, 1);
+
 const storage = memoryBookStorage();
 const messages: string[] = [];
 const keyboards: any[] = [];

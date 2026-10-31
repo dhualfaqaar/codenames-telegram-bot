@@ -8,7 +8,7 @@ import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMin
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
 const cloudflareWorker = workerModule.default;
-const INTERACTIVE_APP_BUILD = workerModule.INTERACTIVE_APP_BUILD as string;
+const { INTERACTIVE_APP_BUILD } = await import('../src/services/buildInfo');
 import { InteractiveGameRooms, MemoryRoomStorage } from '../src/services/interactiveGameRooms';
 
 function assert(condition: unknown, message: string): asserts condition {
