@@ -10,6 +10,7 @@
  */
 
 import { LITERARY_GENRES, LITERATURE_BY_LANGUAGE } from './bookRecommendationEngine';
+import { isUsableDescription, tidyDescription } from './bookDescriptions';
 import type { BookGenre } from './bookRecommendationEngine';
 
 export interface CatalogBook {
@@ -590,14 +591,18 @@ export class BookCatalog {
   /** فاصل الطلبات بالمللي ثانية (الفحوص تخليه صفر حتى تشتغل بسرعة). */
   private queryGapMs: number;
 
+  /** يلخّص كتاباً بالعربي (يُمرَّر من البوت عبر Gemini). يرجع '' لو فشل. */
+  private summarizer: ((book: CatalogBook) => Promise<string>) | null;
+
   constructor(
     storage?: BookStorageAdapter,
     fetchImpl?: typeof fetch,
-    options: { queryGapMs?: number } = {}
+    options: { queryGapMs?: number; summarizer?: (book: CatalogBook) => Promise<string> } = {}
   ) {
     this.storage = storage || memoryBookStorage();
     this.fetchImpl = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : (null as unknown as typeof fetch));
     this.queryGapMs = options.queryGapMs ?? 400;
+    this.summarizer = options.summarizer || null;
   }
 
   /** يحمّل المكتبة من التخزين مرة وحدة. */
@@ -664,15 +669,9 @@ export class BookCatalog {
       /* التخزين مو دايماً متاح */
     }
 
-    const url = `https://openlibrary.org/works/${book.id}/editions.json?limit=60`;
     try {
-      const res = await this.fetchImpl(url, {
-        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
-      });
-      if (!res?.ok) return original;
-      const payload: any = await res.json();
-      const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+      const entries = await this.fetchEditions(book.id);
+      if (!entries.length) return original;
       let arabicTitle = '';
       let arabicAuthor = '';
       for (const entry of entries) {
@@ -709,57 +708,109 @@ export class BookCatalog {
     }
   }
 
+  /** طبعات العمل (كاش بالذاكرة لكل عملية) — تستعملها النبذة والتعريب سوية. */
+  private editionsCache: Map<string, any[]> = new Map();
+
+  private async fetchEditions(bookId: string): Promise<any[]> {
+    if (this.editionsCache.has(bookId)) return this.editionsCache.get(bookId) || [];
+    try {
+      const res = await this.fetchImpl(`https://openlibrary.org/works/${bookId}/editions.json?limit=60`, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
+      });
+      if (!res?.ok) {
+        this.editionsCache.set(bookId, []);
+        return [];
+      }
+      const payload: any = await res.json();
+      const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+      this.editionsCache.set(bookId, entries);
+      return entries;
+    } catch {
+      this.editionsCache.set(bookId, []);
+      return [];
+    }
+  }
+
   /**
-   * نبذة الكتاب: من حقل جملة الافتتاح، أو من وصف العمل عند Open Library
-   * (`/works/{id}.json`). الوصف يُكاش بالتخزين حتى ما ينطلب مرتين.
+   * نبذة الكتاب: **شرح عن الكتاب**، مو بيانات نشر.
+   *
+   * المصادر بالترتيب:
+   *  ١) وصف العمل عند Open Library (`/works/{id}.json`)
+   *  ٢) وصف أول طبعة عندها وصف (`editions.json`)
+   *  ٣) جملة الافتتاح
+   *  ٤) تلخيص عربي من Gemini (لو المفتاح متوفر)
+   *
+   * إذا كلها فشلت نرجع '' — ولا نختلق جملة من السنة/الصفحات. (هذا كان الخلل:
+   * «كتاب من تصنيف … · صدر سنة … · 200 صفحة» تظهر كنبذة.)
    */
   async describe(book: CatalogBook): Promise<string> {
     const cacheKey = `books:desc:${book.id}`;
     try {
-      const cached = await this.storage.get<string>(cacheKey);
-      if (cached) return cached;
+      const cached = await this.storage.get<string | { empty: true; at: number }>(cacheKey);
+      if (typeof cached === 'string' && cached) return cached;
+      if (cached && typeof cached === 'object' && cached.empty) {
+        // كاش سلبي لست ساعات حتى ما نضرب الـAPI كل مرة.
+        if (Date.now() - cached.at < 6 * 60 * 60 * 1000) return '';
+      }
     } catch {
-      /* التخزين مو دايماً متاح بالفحوص */
+      /* التخزين مو دايماً متاح */
     }
 
-    let text = cleanDescription(book.first || '');
+    let text = '';
+
+    // ١) وصف العمل
+    try {
+      const res = await this.fetchImpl(`https://openlibrary.org/works/${book.id}.json`, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
+      });
+      if (res?.ok) {
+        const payload: any = await res.json();
+        const raw = payload?.description;
+        const candidate = tidyDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
+        if (isUsableDescription(candidate, book)) text = candidate;
+      }
+    } catch {
+      /* نكمل للمصدر التالي */
+    }
+
+    // ٢) وصف طبعة
     if (!text) {
-      const url = `https://openlibrary.org/works/${book.id}.json`;
-      try {
-        const res = await this.fetchImpl(url, {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
-        });
-        if (res?.ok) {
-          const payload: any = await res.json();
-          const raw = payload?.description;
-          text = cleanDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
+      const entries = await this.fetchEditions(book.id);
+      for (const entry of entries) {
+        const raw = entry?.description;
+        const candidate = tidyDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
+        if (isUsableDescription(candidate, book)) {
+          text = candidate;
+          break;
         }
-      } catch {
-        text = '';
       }
     }
 
-    // لو ماكو وصف نهائياً، نكوّن جملة من البيانات بدل ما تبقى البطاقة فاضية.
-    if (!text) text = this.fallbackDescription(book);
-    if (text.length > 400) text = `${text.slice(0, 397).trim()}…`;
+    // ٣) جملة الافتتاح
+    if (!text) {
+      const candidate = tidyDescription(book.first || '');
+      if (isUsableDescription(candidate, book)) text = candidate;
+    }
+
+    // ٤) تلخيص عربي من Gemini
+    if (!text && this.summarizer) {
+      try {
+        const summary = await this.summarizer(book);
+        if (isUsableDescription(summary, book)) text = summary;
+      } catch {
+        /* ما نكسر البطاقة */
+      }
+    }
+
     try {
-      await this.storage.put(cacheKey, text);
+      if (text) await this.storage.put(cacheKey, text);
+      else await this.storage.put(cacheKey, { empty: true, at: Date.now() });
     } catch {
       /* الكاش اختياري */
     }
     return text;
-  }
-
-  /** جملة وصف من بيانات الكتاب (احتياط دائم). */
-  fallbackDescription(book: CatalogBook): string {
-    const genreLabel = (this.genresOf(book)[0] || 'book');
-    const parts: string[] = [];
-    parts.push(`كتاب من تصنيف «${genreLabel}»`);
-    if (book.year) parts.push(`صدر سنة ${book.year}`);
-    if (book.pages) parts.push(`${book.pages} صفحة`);
-    parts.push(`متوفر بـ${book.lang}`);
-    return `${parts.join(' · ')}.`;
   }
 
   /** رابط تحميل PDF — بس للكتب الممسوحة المتاحة للعامة (ملكية عامة). */

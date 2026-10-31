@@ -22,6 +22,7 @@ import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
 import * as Books from '../src/services/bookRecommendationEngine';
 import { BookCatalog, CATALOG_LANGUAGES, CATALOG_TARGET, coverUrl, workUrl } from '../src/services/bookCatalog';
+import { isArabicText, isUsableDescription, summarizeBookWithGemini } from '../src/services/bookDescriptions';
 import type { BookStorageAdapter, CatalogBook } from '../src/services/bookCatalog';
 import * as Cinema from '../src/services/cinemaServices';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
@@ -1190,7 +1191,23 @@ export class TelegramBotManager {
     this.openSubtitlesApiKey = String(serviceConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
     this.openSubtitlesUserAgent = String(serviceConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
     this.interactiveGamesUrl = String(serviceConfig.interactiveGamesUrl || process.env.INTERACTIVE_GAMES_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/interactive').trim();
-    this.bookCatalog = new BookCatalog(serviceConfig.bookStorage);
+    // تلخيص عربي للكتب اللي ما إلها وصف عند Open Library (نفس مفتاح Gemini).
+    this.bookCatalog = new BookCatalog(serviceConfig.bookStorage, undefined, {
+      summarizer: async book => {
+        if (!this.geminiApiKey) return '';
+        return summarizeBookWithGemini(
+          {
+            title: book.title,
+            author: book.author,
+            year: book.year,
+            subjects: book.subject ? [book.subject] : [],
+            genres: book.genres,
+            language: book.lang
+          },
+          this.geminiApiKey
+        );
+      }
+    });
     this.seedInitialMatchHistory();
   }
 
@@ -12693,12 +12710,12 @@ export class TelegramBotManager {
     if (book.pages) lines.push(`*الصفحات:* ${book.pages}`);
     if (book.country) lines.push(`*البلد:* ${this.mdSafe(book.country)}`);
     if (book.language) lines.push(`*اللغة:* ${this.mdSafe(book.language)}`);
-    const blurb = book.blurb || book.description;
+    // «النبذة» بس إذا عندنا وصف حقيقي عن الكتاب — مو بيانات نشر مكررة.
+    const rawBlurb = String(book.blurb || book.description || '').trim();
+    const blurb = rawBlurb && isUsableDescription(rawBlurb, book) ? rawBlurb : '';
     if (blurb) {
-      // الوصف من Open Library غالباً إنجليزي — نوضح ذلك بدل ما نلخبط المستخدم.
-      const arabic = /[\u0600-\u06FF]/.test(blurb);
       lines.push('');
-      lines.push(arabic ? '*النبذة:*' : '*النبذة (بالإنجليزية):*');
+      lines.push(isArabicText(blurb) ? '*النبذة:*' : '*النبذة (بالإنجليزية):*');
       lines.push(this.mdSafe(blurb));
     }
     return lines.join('\n');
