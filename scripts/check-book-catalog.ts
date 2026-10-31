@@ -9,6 +9,7 @@ import {
   cleanCatalogDoc,
   coverUrl,
   GENRE_SEED_SUBJECTS,
+  cleanDescription,
   PHILOSOPHY_MIN,
   PHILOSOPHY_SOURCES,
   SEED_SOURCES,
@@ -61,9 +62,18 @@ function fakePage(lang: string, page: number, subject = '', q = '') {
 let requestLog: string[] = [];
 let mode: 'ok' | 'fail' | 'garbage' | 'empty' = 'ok';
 
+let workDescription: any = { description: 'A short description from Open Library about the work itself.' };
+let worksCalls = 0;
+
 const fakeFetch = (async (input: any) => {
   const url = String(typeof input === 'string' ? input : input.url);
   requestLog.push(url);
+  if (url.includes('/works/') && url.endsWith('.json')) {
+    worksCalls += 1;
+    if (mode === 'fail') throw new Error('network down');
+    if (workDescription === 'none') return { ok: true, json: async () => ({}) } as any;
+    return { ok: true, json: async () => workDescription } as any;
+  }
   if (mode === 'fail') throw new Error('network down');
   const parsed = new URL(url);
   if (mode === 'garbage') return { ok: true, json: async () => ({ nope: true }) } as any;
@@ -379,6 +389,66 @@ const fakeFetch = (async (input: any) => {
   check('classifyBookStrict يعطي صنف افتراضي', classifyBookStrict([]).join() === DEFAULT_GENRE);
   check('classifyBookStrict يحترم التصنيف الحقيقي', classifyBookStrict(['Arabic poetry']).includes('poetry'));
   check('التصنيفات محصورة بـ4', classifyBook(['Fiction', 'Poetry', 'Drama', 'History', 'Horror tales', 'Science fiction']).length <= 4);
+}
+
+/* ───────────── النبذة + زر PDF ───────────── */
+{
+  check('field جملة الافتتاح تنحفظ', cleanCatalogDoc({
+    key: '/works/OL1W', title: 'كتاب', author_name: ['مؤلف'],
+    first_sentence: ['It was the best of times, it was the worst of times.']
+  }, 'ara')?.first?.startsWith('It was the best'));
+  check('جملة افتتاح كنص مفرد تنحفظ', cleanCatalogDoc({
+    key: '/works/OL2W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: 'A single sentence string here.' as any
+  }, 'ara')?.first?.includes('single sentence'));
+  check('جملة قصيرة جداً تنرفض', cleanCatalogDoc({ key: '/works/OL3W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: ['ok'] }, 'ara')?.first === undefined);
+  check('معرّف Internet Archive ينحفظ', cleanCatalogDoc({ key: '/works/OL4W', title: 'كتاب', author_name: ['مؤلف'], ia: ['someid00test'] }, 'ara')?.ia === 'someid00test');
+  check('public_scan_b = true يعني ملكية عامة', cleanCatalogDoc({ key: '/works/OL5W', title: 'كتاب', author_name: ['مؤلف'], public_scan_b: true }, 'ara')?.pd === true);
+  check('بلا public_scan_b مو ملكية عامة', cleanCatalogDoc({ key: '/works/OL6W', title: 'كتاب', author_name: ['مؤلف'] }, 'ara')?.pd === false);
+  check('تنظيف الوصف من HTML', cleanDescription('<p>وصف <b>مهم</b></p>') === 'وصف مهم');
+  check('تنظيف الوصف من روابط ماركداون', cleanDescription('نص [رابط](https://x.y) هنا') === 'نص رابط هنا');
+
+  const storage = memoryBookStorage();
+  await storage.put('books:chunk:0000', [
+    { id: 'OLPD1W', title: 'كتاب حر', author: 'مؤلف', year: 1900, pages: 200, cover: null, lang: 'ara', subject: '', ia: 'freetest00id', pd: true },
+    { id: 'OLPD2W', title: 'كتاب محفوظ', author: 'مؤلف', year: 2015, pages: 200, cover: null, lang: 'ara', subject: '', ia: 'locked00id', pd: false },
+    { id: 'OLPD3W', title: 'كتاب بلا ia', author: 'مؤلف', year: 1900, pages: 200, cover: null, lang: 'ara', subject: '', pd: true }
+  ]);
+  const catalog = new BookCatalog(storage, fakeFetch);
+
+  const freeBook = await catalog.byId('OLPD1W');
+  const lockedBook = await catalog.byId('OLPD2W');
+  const noIaBook = await catalog.byId('OLPD3W');
+  check('رابط PDF يتكوّن للكتاب الحر', catalog.downloadPdfUrl(freeBook!) === 'https://archive.org/download/freetest00id/freetest00id.pdf');
+  check('ماكو PDF لكتاب محفوظ الحقوق', catalog.downloadPdfUrl(lockedBook!) === null);
+  check('ماكو PDF بلا معرّف أرشيف', catalog.downloadPdfUrl(noIaBook!) === null);
+
+  // النبذة: من works API + كاش
+  worksCalls = 0;
+  workDescription = { description: 'وصف العمل الكامل من أوبن لايبراري.' };
+  const desc1 = await catalog.describe(freeBook!);
+  check('النبذة تجي من works API', desc1 === 'وصف العمل الكامل من أوبن لايبراري.');
+  const desc2 = await catalog.describe(freeBook!);
+  check('النبذة تتكاش (بلا طلب ثاني)', desc2 === desc1 && worksCalls === 1);
+
+  // وصف على شكل {value: ...}
+  worksCalls = 0;
+  workDescription = { description: { value: 'وصف بصيغة الكائن.' } };
+  const desc3 = await catalog.describe(lockedBook!);
+  check('النبذة تتعامل مع وصف {value}', desc3 === 'وصف بصيغة الكائن.');
+
+  // بلا وصف نهائياً: جملة من البيانات
+  worksCalls = 0;
+  workDescription = 'none';
+  const desc4 = await catalog.describe(noIaBook!);
+  check('بلا وصف نكوّن جملة من البيانات', desc4.length > 10 && desc4.includes('1900'));
+  check('الجملة الاحتياطية تذكر اللغة', /متوفر بـ/.test(desc4));
+
+  // جملة الافتتاح أولى من الطلب
+  worksCalls = 0;
+  const withFirst = new BookCatalog(memoryBookStorage(), fakeFetch);
+  const inlineBook = cleanCatalogDoc({ key: '/works/OL77W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: ['A first sentence that is long enough.'] }, 'ara')!;
+  const desc5 = await withFirst.describe(inlineBook);
+  check('جملة الافتتاح تُستعمل قبل الطلب', desc5.includes('first sentence') && worksCalls === 0);
 }
 
 /* ───────────── إعادة الضبط ───────────── */
