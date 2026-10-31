@@ -9,6 +9,8 @@ import {
   cleanCatalogDoc,
   coverUrl,
   GENRE_SEED_SUBJECTS,
+  PHILOSOPHY_MIN,
+  PHILOSOPHY_SOURCES,
   SEED_SOURCES,
   DEFAULT_GENRE,
   classifyBook,
@@ -118,7 +120,10 @@ const fakeFetch = (async (input: any) => {
 
   const meta = await storage.get<any>('books:meta');
   check('الـmeta يحفظ العدد والمؤشر', meta.total > 250 && meta.done === false);
-  check('البذر يدور بين المصادر (عربية أولاً)', meta.sourceIndex === 3 && meta.page === 1);
+  check('البذر يبدأ بتعويض الفلسفة أولاً', meta.phiIndex === 3 && meta.sourceIndex === 0);
+  check('مصادر الفلسفة كلها موسومة فلسفة', PHILOSOPHY_SOURCES.every(source => source.genre === 'philosophy'));
+  check('مصادر الفلسفة تغطي عدة لغات', new Set(PHILOSOPHY_SOURCES.map(source => source.lang)).size >= 8);
+  check('مصادر الفلسفة تغطي مواضيع متعددة', PHILOSOPHY_SOURCES.some(source => source.q.includes('Stoicism')) && PHILOSOPHY_SOURCES.some(source => source.q.includes('Ethics')));
   check('أول ثلاثة مصادر كلها عربية', SEED_SOURCES.slice(0, 3).every(source => source.lang === 'ara'));
   check('المصادر تغطي كل الأصناف', Object.keys(GENRE_SEED_SUBJECTS).every(genre =>
     SEED_SOURCES.some(source => source.genre === genre)));
@@ -185,6 +190,26 @@ const fakeFetch = (async (input: any) => {
   check('كل الكتب موزعة على الأصناف', sum >= distribution.total && distribution.total >= 10_000);
   check('الأصناف الاثنا عشر كلها فيها كتب', distribution.genres.length === 12);
   check('أصغر صنف عنده ≥50 كتاب', distribution.genres[distribution.genres.length - 1].count >= 50);
+  const philosophy = distribution.genres.find(entry => entry.genre === 'philosophy')?.count || 0;
+  check('الفلسفة ≥1000 كتاب', philosophy >= PHILOSOPHY_MIN);
+  check('عدّاد الفلسفة يطابق genreStats', philosophy === (await catalog.genreStats('philosophy')).total);
+  check('philosophyCount يطابق التوزيع', catalog.philosophyCount() === philosophy);
+  check('المكتبة تعتبر مكتملة (هدف + فلسفة)', catalog.isComplete() === true);
+  check('needsMore صار false', catalog.needsMore() === false);
+
+  // ما يكرر آخر ١٥ كتاب بالصنف
+  {
+    const seenIds: string[] = [];
+    let repeats = 0;
+    for (let round = 0; round < 40; round += 1) {
+      const pick = await catalog.pickByGenre('philosophy', 'all', undefined, seenIds);
+      if (!pick) break;
+      if (seenIds.includes(pick.book.id)) repeats += 1;
+      seenIds.push(pick.book.id);
+      if (seenIds.length > 15) seenIds.shift();
+    }
+    check('ما يكرر كتاب خلال آخر ١٥ سحبة', repeats === 0);
+  }
   console.log(
     'توزيع المكتبة على الأصناف:',
     distribution.genres.map(entry => `${entry.genre}=${entry.count}`).join(' · '),

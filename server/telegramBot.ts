@@ -1143,6 +1143,8 @@ export class TelegramBotManager {
   private pendingCinemaFlows: Map<string, CinemaFlowState> = new Map();
   /** محادثات تنتظر نص بحث عن كتاب (chat id). */
   private pendingBookSearch: Map<string, { at: number }> = new Map();
+  /** آخر الكتب اللي انعرضت لكل محادثة — حتى «كتاب ثاني» ما يكررها. */
+  private recentBooks: Map<string, string[]> = new Map();
   /** مكتبة الكتب الكبيرة المبنية من Open Library. */
   private bookCatalog!: BookCatalog;
   private footballTeamFollows: Map<string, FootballTeamFollow> = new Map();
@@ -8296,19 +8298,17 @@ export class TelegramBotManager {
           { text: '🔎 دوّر كتاب', callback_data: 'svc:books:search' }
         ]);
         keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
-        const library = stats.total
-          ? `المكتبة فيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} لغة، ` +
-            `موزعة على *${distribution.genres.length}* صنف` +
-            (stats.done ? '.' : ` (وتكبر بالخلفية لحد ${CATALOG_TARGET.toLocaleString('en-US')}).`)
-          : 'المكتبة تتجهّز هسه — جرّب بعد شوية.';
-        const genreHint = distribution.genres.length
-          ? `الرقم جنب كل صنف هو عدد كتبه بالمكتبة.`
-          : `اختار التصنيف اللي يعجبك.`;
-        const text =
-          `*اقترحلي كتاب* 📚\n\n` +
-          `${library}\n` +
-          `${genreHint}\n` +
-          `أو خلّيني أختارلك كتاب عشوائي، أو دوّر على كتاب بالاسم أو المؤلف.`;
+        // نص عراقي بحت، وبلا أرقام ناقصة: لو المكتبة صفر ما نطبع رقم.
+        const languagesWord = stats.languages >= 3 ? 'لغات' : 'لغة';
+        const library = stats.total > 0
+          ? `المكتبة بيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} ${languagesWord}، ومقسّمة على *${distribution.genres.length}* صنف.` +
+            (stats.done ? '' : `\nوبعدها تكبر بالخلفية لحد ${CATALOG_TARGET.toLocaleString('en-US')}.`)
+          : 'المكتبة بعدها تتجهّز — جرّب بعد شوية.';
+        const lines = [`*اقترحلي كتاب* 📚`, '', library];
+        // سطر «الرقم جنب الصنف» بلا معنى لو المكتبة فاضية — ما نكرر الكلام.
+        if (stats.total > 0 && distribution.genres.length) lines.push('الرقم اللي جنب كل صنف = عدد كتبه.');
+        lines.push('اختار صنف من تحت، أو دوس «كتاب عشوائي»، أو «دوّر كتاب» واكتب اسم الكتاب أو المؤلف.');
+        const text = lines.join('\n');
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');
@@ -8340,13 +8340,13 @@ export class TelegramBotManager {
         }
         keyboard.push([{ text: `🗓️ أي عقد · ${genreStats.total}`, callback_data: `svc:books:pick:${genre}:all` }]);
         keyboard.push([{ text: '🔙 تغيير التصنيف', callback_data: 'svc:books' }]);
-        const pool = genreStats.total
-          ? `المكتبة فيها *${genreStats.total.toLocaleString('en-US')}* كتاب بهذا التصنيف.`
-          : 'هذا التصنيف بعدها يتجهّز بالمكتبة.';
+        const pool = genreStats.total > 0
+          ? `المكتبة بيها *${genreStats.total.toLocaleString('en-US')}* كتاب بهذا الصنف.`
+          : 'هذا الصنف بعدها يتجهّز بالمكتبة — جرّب بعد شوية.';
         const text =
           `*${Books.BOOK_GENRE_LABELS[genre]}*\n\n` +
           `${pool}\n` +
-          `اختار عقد من عشر سنوات؛ الرقم جنب العقد هو عدد الكتب المتوفرة فيه:`;
+          `اختار عقد، والرقم اللي جنبه = عدد كتبه:`;
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');
@@ -8377,8 +8377,9 @@ export class TelegramBotManager {
         let text = '';
         let itemId = '';
         let widened = false;
+        const seen = this.recentBooks.get(chatId) || [];
         if (pickGenre === 'all') {
-          const fromCatalog = await this.bookCatalog.pickRandom({ excludeId });
+          const fromCatalog = await this.bookCatalog.pickRandom({ excludeId, excludeIds: seen });
           if (fromCatalog) {
             itemId = fromCatalog.id;
             text = this.bookCardText({
@@ -8391,7 +8392,7 @@ export class TelegramBotManager {
             });
           }
         } else {
-          const fromCatalog = await this.bookCatalog.pickByGenre(pickGenre, decade, excludeId);
+          const fromCatalog = await this.bookCatalog.pickByGenre(pickGenre, decade, excludeId, seen);
           if (fromCatalog) {
             itemId = fromCatalog.book.id;
             widened = fromCatalog.widened;
@@ -8432,6 +8433,13 @@ export class TelegramBotManager {
         }
         if (widened) text += '\n\nما لكيت كتاب بهذا العقد بالتحديد، فاخترتلك من نفس التصنيف.';
 
+        // نحفظ آخر ١٥ كتاب انعرضوا بهذي المحادثة حتى ما تتكرر بسرعة.
+        {
+          const history = (this.recentBooks.get(chatId) || []).filter(id => id !== itemId);
+          history.push(itemId);
+          this.recentBooks.set(chatId, history.slice(-15));
+        }
+
         const backGenre = pickGenre === 'all' ? 'svc:books' : `svc:books:genre:${pickGenre}`;
         const keyboard = [
           [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:again:${pickGenre}:${decadeText}:${itemId}` }],
@@ -8462,7 +8470,7 @@ export class TelegramBotManager {
         this.pendingBookSearch.set(userId, { at: Date.now() });
         const text =
           `*دوّر على كتاب* 🔎\n\n` +
-          `اكتب اسم الكتاب أو اسم المؤلف وأنا أدوّرلك بالمكتبة وبالإنترنت.\n` +
+          `اكتب اسم الكتاب أو اسم المؤلف وأنا أدوّرلك بالمكتبة وبالنت.\n` +
           `مثال: *نجيب محفوظ* أو *مئة عام من العزلة*.`;
         const keyboard = [[{ text: '🔙 إلغاء', callback_data: 'svc:books' }]];
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
