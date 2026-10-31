@@ -31,7 +31,8 @@
     "test:gq": "tsx scripts/check-group-games-host.ts",
     "test:books": "tsx scripts/check-book-recommendations.ts",
     "test:books:catalog": "tsx scripts/check-book-catalog.ts",
-    "test:books:desc": "tsx scripts/check-book-descriptions.ts"
+    "test:books:desc": "tsx scripts/check-book-descriptions.ts",
+    "test:deploy": "tsx scripts/check-deploy-version.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
