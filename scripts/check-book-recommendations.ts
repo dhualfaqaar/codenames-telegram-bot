@@ -282,6 +282,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
       if (id) previous = id;
     }
     check('٤٠ سحبة داخل صنف تعطي ≥20 عنوان مختلف', titles.size >= 20);
+    check('السحب داخل الصنف يستعمل المكتبة الكبيرة', previous.startsWith('OL'));
   }
 
   // صنف برعب: يرجع من المكتبة الكبيرة (معرّفات OL) مو من القاعدة القديمة
@@ -308,6 +309,8 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   await anyBot.handleExtraServicesCb(press('svc:books:rand'), 'svc:books:rand');
   const randScreen = lastScreen();
   const randCall = calls.find(call => ['sendPhoto', 'editMessageText', 'sendMessage'].includes(call.method));
+  check('كل زر صنف يعرض عدد كتبه', (screen.keyboard.match(/· \d+/g) || []).length >= 12);
+  check('الشاشة تقول إن الكتب موزعة على أصناف', screen.text.includes('موزعة على'));
   check('الكتاب العشوائي يعرض عنوان حقيقي', /\*اسم الكتاب:\* \S/.test(screenText(randCall)));
   check('الكتاب العشوائي يعرض سطر المؤلف', /\*المؤلف:\* \S/.test(screenText(randCall)));
   check('الكتاب العشوائي يذكر اللغة بالعربي', /\*اللغة:\* (العربية|الإنجليزية|الفرنسية|الألمانية|الروسية)/.test(screenText(randCall)));

@@ -10,7 +10,9 @@ import {
   coverUrl,
   GENRE_SEED_SUBJECTS,
   SEED_SOURCES,
+  DEFAULT_GENRE,
   classifyBook,
+  classifyBookStrict,
   memoryBookStorage,
   normalizeQuery,
   workUrl
@@ -175,6 +177,19 @@ const fakeFetch = (async (input: any) => {
 
   const widenedPick = await catalog.pickByGenre('horror', 1000, undefined);
   check('عقد فاضي يوسّع للصنف بدل الفراغ', Boolean(widenedPick) && widenedPick!.widened === true);
+
+  // التغطية: كل الـ10,000 لازم يكونون داخل الأصناف
+  const distribution = await catalog.genreDistribution();
+  const sum = distribution.genres.reduce((total, entry) => total + entry.count, 0);
+  check('صفر كتاب بدون صنف', distribution.unclassified === 0);
+  check('كل الكتب موزعة على الأصناف', sum >= distribution.total && distribution.total >= 10_000);
+  check('الأصناف الاثنا عشر كلها فيها كتب', distribution.genres.length === 12);
+  check('أصغر صنف عنده ≥50 كتاب', distribution.genres[distribution.genres.length - 1].count >= 50);
+  console.log(
+    'توزيع المكتبة على الأصناف:',
+    distribution.genres.map(entry => `${entry.genre}=${entry.count}`).join(' · '),
+    `| مجموع=${sum} من ${distribution.total}`
+  );
 }
 
 /* ───────────── البحث والاقتراح العشوائي ───────────── */
@@ -335,7 +350,9 @@ const fakeFetch = (async (input: any) => {
   check('«Short stories» = قصة قصيرة', classifyBook(['Short stories']).includes('short_stories'));
   check('«Fiction» = رواية', classifyBook(['Fiction']).includes('novel'));
   check('مواضيع عربية تنصنّف', classifyBook(['شعر عربي']).includes('poetry') && classifyBook(['رواية عربية']).includes('novel'));
-  check('كتاب بلا مواضيع ما ينصنّف خطأ', classifyBook([]).length === 0);
+  check('classifyBook العادي يرجع فاضي لكتاب بلا مواضيع', classifyBook([]).length === 0);
+  check('classifyBookStrict يعطي صنف افتراضي', classifyBookStrict([]).join() === DEFAULT_GENRE);
+  check('classifyBookStrict يحترم التصنيف الحقيقي', classifyBookStrict(['Arabic poetry']).includes('poetry'));
   check('التصنيفات محصورة بـ4', classifyBook(['Fiction', 'Poetry', 'Drama', 'History', 'Horror tales', 'Science fiction']).length <= 4);
 }
 
