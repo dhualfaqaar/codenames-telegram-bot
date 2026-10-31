@@ -7,6 +7,7 @@
  * so the bot stays online 24/7 with no server that can sleep.
  */
 import { TelegramBotManager } from '../server/telegramBot';
+import { PartitionedBotState } from '../src/services/partitionedBotState';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from '../src/assets/botAvatarBase64';
@@ -200,6 +201,8 @@ export class BotState {
   private readonly interactiveRooms: InteractiveGameRooms;
   private readonly amongUsRooms: AmongUsRooms;
   private bot: TelegramBotManager | null = null;
+  private botLoading: Promise<TelegramBotManager> | null = null;
+  private readonly stateStore: PartitionedBotState;
   // Serialize state writes, and remember failed writes for the next opportunity.
   private stateSaveQueue: Promise<void> = Promise.resolve();
   private stateSavePending = false;
@@ -207,7 +210,7 @@ export class BotState {
   private async saveBotState(bot: TelegramBotManager): Promise<void> {
     this.stateSavePending = true;
     const save = this.stateSaveQueue.then(async () => {
-      await this.state.storage.put('state', bot.exportState());
+      await this.stateStore.save(bot.exportState());
       this.stateSavePending = false;
     });
     this.stateSaveQueue = save.catch(() => { this.stateSavePending = true; });
@@ -217,6 +220,7 @@ export class BotState {
   constructor(state: any, env: Env) {
     this.state = state;
     this.env = env;
+    this.stateStore = new PartitionedBotState(state.storage);
     this.interactiveRooms = new InteractiveGameRooms(state.storage);
     // The player name always comes from the signed Telegram payload, never the client text.
     this.amongUsRooms = new AmongUsRooms(state.storage, async initData => {
@@ -247,6 +251,11 @@ export class BotState {
 
   private async getBot(): Promise<TelegramBotManager> {
     if (this.bot) return this.bot;
+    if (!this.botLoading) this.botLoading = this.loadBot();
+    try { return await this.botLoading; } finally { this.botLoading = null; }
+  }
+
+  private async loadBot(): Promise<TelegramBotManager> {
     await this.ensureBuildSeen();
 
     const interactiveGamesUrl = new URL('/interactive', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL);
@@ -261,7 +270,7 @@ export class BotState {
     });
     let saved: unknown;
     try {
-      saved = await this.state.storage.get('state');
+      saved = await this.stateStore.load();
     } catch (e) {
       logRuntimeFailure('BOT_STATE_STORAGE_READ_FAILED', e, this.env);
       // لا نكتب حالة فارغة فوق بيانات محفوظة إذا تعذّر قراءتها.
