@@ -727,10 +727,11 @@ export class BookCatalog {
           this.meta.langIndex = 0;
           await this.storage.put(META_KEY, this.meta);
         }
-      } catch {
-        this.books = [];
-        this.index = new Map();
-        this.meta = { ...EMPTY_META };
+      } catch (error) {
+        // Never treat an unreadable persisted catalog as an empty one: a later
+        // seed could otherwise overwrite its existing chunks. Allow a retry.
+        this.loaded = null;
+        throw error;
       }
     })();
     return this.loaded;

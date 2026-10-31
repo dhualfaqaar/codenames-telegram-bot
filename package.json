@@ -37,7 +37,8 @@
     "test:books:channel": "tsx scripts/check-channel-book-pdf.ts",
     "test:books:repairs": "tsx scripts/check-book-repairs.ts",
     "test:books:channel-search": "tsx scripts/check-channel-search.ts",
-    "test:books:search-reliability": "tsx scripts/check-book-search-reliability.ts"
+    "test:books:search-reliability": "tsx scripts/check-book-search-reliability.ts",
+    "test:storage-quota": "tsx scripts/check-storage-quota.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

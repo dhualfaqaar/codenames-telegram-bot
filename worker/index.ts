@@ -191,6 +191,9 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
 // ---------------------------------------------------------------------------
 // Durable Object: owns the bot + persisted game state
 // ---------------------------------------------------------------------------
+const BOOK_SEED_NEXT_AT = 'books:seed:next-at';
+const BOOK_SEED_INTERVAL_MS = 60 * 60 * 1000;
+
 export class BotState {
   private readonly state: any;
   private readonly env: Env;
@@ -241,12 +244,7 @@ export class BotState {
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
       interactiveGamesUrl: interactiveGamesUrl.toString(),
       // مكتبة الكتب الكبيرة تنحفظ بمفاتيح مستقلة داخل نفس الـDurable Object.
-      bookStorage: this.state.storage as any,
-      scheduleChannelImport: async () => {
-        const existing = await this.state.storage.getAlarm();
-        const next = Date.now() + 2_000;
-        if (existing === null || existing > next) await this.state.storage.setAlarm(next);
-      }
+      bookStorage: this.state.storage as any
     });
     let saved: unknown;
     try {
@@ -277,16 +275,20 @@ export class BotState {
       const nextQuizAt = bot.getNextQuizDeadline();
       if (nextQuizAt !== null) deadlines.push(nextQuizAt);
       // 📚 المكتبة بعدها ناقصة؟ نجدول دفعة بذر قريبة.
-      if (bot.bookCatalogNeedsMore()) deadlines.push(Date.now() + bot.bookCatalogNextDelayMs());
-      if (await bot.channelImportPending()) deadlines.push(Date.now() + 2_000);
+      if (bot.bookCatalogNeedsMore()) {
+        const nextSeed = await this.state.storage.get<number>(BOOK_SEED_NEXT_AT);
+        deadlines.push(Math.max(Date.now() + 2_500, nextSeed || 0));
+      }
+      // Channel import is paused; never schedule a two-second indexing loop.
       if (bot.hasActiveFootballAlerts()) deadlines.push(Date.now() + 10_000);
       if (deadlines.length) {
         const existing = await this.state.storage.getAlarm();
         const next = Math.min(...deadlines);
-        // Don't postpone an already-scheduled import while updates keep arriving.
-        await this.state.storage.setAlarm(existing !== null && existing > Date.now() ? Math.min(existing, next) : next);
+        // Do not rewrite an alarm that already fires early enough.
+        if (existing === null || existing > next) await this.state.storage.setAlarm(next);
+      } else if (await this.state.storage.getAlarm() !== null) {
+        await this.state.storage.deleteAlarm();
       }
-      else await this.state.storage.deleteAlarm();
     } catch (e) {
       console.error('Failed to sync alarm:', e);
     }
@@ -294,13 +296,8 @@ export class BotState {
 
   async alarm(): Promise<void> {
     const bot = await this.getBot();
-    // Re-arm before indexing, including an earlier upcoming quiz deadline.
-    // Do not pre-arm an already-expired game timer, which could loop forever.
-    if (await bot.channelImportPending()) {
-      const now = Date.now();
-      const quiz = bot.getNextQuizDeadline();
-      await this.state.storage.setAlarm(quiz !== null && quiz > now ? Math.min(quiz, now + 2_000) : now + 2_000);
-    }
+    // Compare serialized snapshots, not mutable object references, before persisting.
+    const before = JSON.stringify(bot.exportState());
     try {
       await bot.processQuizTimers();
     } catch (e) {
@@ -312,18 +309,19 @@ export class BotState {
       console.error('Football alert alarm error:', e);
     }
     try {
-      await bot.processChannelImport();
-    } catch (e) {
-      console.error('Channel index alarm error:', e);
-    }
-    try {
-      // 📚 بذر مكتبة الكتب من Open Library (كل منبّه ٥ صفحات = ٥٠٠ كتاب).
-      await bot.seedBookCatalog(5);
+      const now = Date.now();
+      const nextSeed = await this.state.storage.get<number>(BOOK_SEED_NEXT_AT);
+      if (bot.bookCatalogNeedsMore() && (!nextSeed || nextSeed <= now)) {
+        // Reserve first: a crash or an unrelated alarm cannot trigger repeated seed writes.
+        await this.state.storage.put(BOOK_SEED_NEXT_AT, now + BOOK_SEED_INTERVAL_MS);
+        await bot.seedBookCatalog(1);
+      }
     } catch (e) {
       console.error('Book catalog seed error:', e);
     }
     try {
-      await this.state.storage.put('state', bot.exportState());
+      const after = bot.exportState();
+      if (JSON.stringify(after) !== before) await this.state.storage.put('state', after);
     } catch (e) {
       console.error('Failed to persist state in alarm:', e);
     }
