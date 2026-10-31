@@ -87,6 +87,34 @@ const brokenBotState = new workerModule.BotState({ storage: brokenStateStorage }
 let failedSafely = false;
 try { await brokenBotState.fetch(new Request('https://bot.internal/status')); } catch { failedSafely = true; }
 check('فشل قراءة حالة البوت لا يكتب حالة فارغة', failedSafely && !writtenKeys.includes('state'));
+// The original storage error must appear as explicit, sanitized text, not just a stack trace.
+const diagnostics: string[] = [];
+console.error = (...args: unknown[]) => { diagnostics.push(args.map(String).join(' ')); };
+try {
+  const errorWithCause = new Error(`storage read failed ${fakeSecret} https://example.org/private`, { cause: new Error('quota reached secret-test-value') });
+  errorWithCause.name = 'StorageError';
+  const failRead: any = {
+    get: async () => { throw errorWithCause; },
+    put: async (key: string) => { writtenKeys.push(key); },
+    sql: { exec: () => [] }
+  };
+  const failReadObject = new workerModule.BotState({ storage: failRead }, { WEBHOOK_URL: 'https://preview.invalid', TELEGRAM_BOT_TOKEN: fakeSecret, WEBHOOK_SECRET: 'secret-test-value' });
+  try { await failReadObject.fetch(new Request('https://bot.internal/status')); } catch { /* expected */ }
+  check('تسجيل سبب فشل قراءة الحالة صراحة', diagnostics.some(line => line.includes('BOT_STATE_STORAGE_READ_FAILED') && line.includes('StorageError') && line.includes('storage read failed') && line.includes('quota reached')));
+  check('تسجيل سبب فشل بصمة البناء صراحة', diagnostics.some(line => line.includes('BOT_BUILD_STAMP_READ_FAILED') && line.includes('storage read failed')));
+  check('سجل القراءة لا يتضمن أسراراً أو روابط', diagnostics.every(line => !line.includes(fakeSecret) && !line.includes('secret-test-value') && !line.includes('example.org')));
+  diagnostics.length = 0;
+  const badRestore: any = {
+    get: async (key: string) => key === 'state' ? { users: [123] } : undefined,
+    put: async (key: string) => { writtenKeys.push(key); },
+    sql: { exec: () => [] }
+  };
+  const failRestoreObject = new workerModule.BotState({ storage: badRestore }, { WEBHOOK_URL: 'https://preview.invalid' });
+  try { await failRestoreObject.fetch(new Request('https://bot.internal/status')); } catch { /* expected */ }
+  check('تمييز خطأ استعادة الحالة عن خطأ قراءتها', diagnostics.some(line => line.includes('BOT_STATE_RESTORE_FAILED')) && !diagnostics.some(line => line.includes('BOT_STATE_STORAGE_READ_FAILED')));
+  check('فشل استعادة الحالة لا يكتب فوقها', !writtenKeys.includes('state'));
+} finally { console.error = oldError; }
+
 
 
 /* ───────────── البوت فيه /version ───────────── */

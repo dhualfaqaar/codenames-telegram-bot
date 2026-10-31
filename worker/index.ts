@@ -37,7 +37,9 @@ const DEFAULT_WEBHOOK_URL = 'https://codenames-telegram-bot.codenames-dhualfaqaa
 
 /** Diagnostic logs must never include credentials or request URLs. */
 function safeRuntimeError(error: unknown, env: Partial<Env>): string {
-  let detail = error instanceof Error ? error.message : String(error || 'unknown error');
+  const message = error && typeof error === 'object' && typeof (error as any).message === 'string'
+    ? (error as any).message : String(error ?? 'unknown error');
+  let detail = message || '(empty error message)';
   for (const secret of [env.TELEGRAM_BOT_TOKEN, env.WEBHOOK_SECRET, env.GEMINI_API_KEY, env.OPENSUBTITLES_API_KEY]) {
     if (secret && secret.length >= 4) detail = detail.split(secret).join('[redacted]');
   }
@@ -47,6 +49,13 @@ function safeRuntimeError(error: unknown, env: Partial<Env>): string {
     .replace(/[\r\n\t]+/g, ' ').slice(0, 600);
 }
 
+/** Log strings explicitly: serializing Error objects can lose their message. */
+function logRuntimeFailure(stage: string, error: unknown, env: Partial<Env>): void {
+  const value = error && typeof error === 'object' ? error as { name?: unknown; cause?: unknown } : null;
+  const name = typeof value?.name === 'string' ? safeRuntimeError(value.name, env).slice(0, 80) : typeof error;
+  const cause = value?.cause === undefined ? undefined : safeRuntimeError(value.cause, env);
+  console.error(stage, JSON.stringify({ name, message: safeRuntimeError(error, env), ...(cause === undefined ? {} : { cause }) }));
+}
 
 async function verifyTelegramWebAppInitData(initData: string, botToken: string): Promise<{ id: string; name: string } | null> {
   if (!initData || initData.length > 8192 || !botToken) return null;
@@ -205,12 +214,18 @@ export class BotState {
    * وصل فعلاً للـWorker الشغّال — بدل التخمين.
    */
   private async ensureBuildSeen(): Promise<void> {
+    let seen: { tag: string; at: number } | undefined;
     try {
-      const seen = await this.state.storage.get<{ tag: string; at: number }>(BUILD_STORAGE_KEY);
-      if (seen?.tag === BUILD_TAG) return;
+      seen = await this.state.storage.get<{ tag: string; at: number }>(BUILD_STORAGE_KEY);
+    } catch (e) {
+      logRuntimeFailure('BOT_BUILD_STAMP_READ_FAILED', e, this.env);
+      return;
+    }
+    if (seen?.tag === BUILD_TAG) return;
+    try {
       await this.state.storage.put(BUILD_STORAGE_KEY, { tag: BUILD_TAG, at: Date.now() });
     } catch (e) {
-      console.error('ensureBuildSeen failed:', e);
+      logRuntimeFailure('BOT_BUILD_STAMP_WRITE_FAILED', e, this.env);
     }
   }
 
@@ -233,13 +248,22 @@ export class BotState {
         if (existing === null || existing > next) await this.state.storage.setAlarm(next);
       }
     });
+    let saved: unknown;
     try {
-      const saved = await this.state.storage.get('state');
-      if (saved) bot.importState(saved);
+      saved = await this.state.storage.get('state');
     } catch (e) {
-      console.error('Failed to load persisted state:', e);
+      logRuntimeFailure('BOT_STATE_STORAGE_READ_FAILED', e, this.env);
       // لا نكتب حالة فارغة فوق بيانات محفوظة إذا تعذّر قراءتها.
       throw new Error('Persisted bot state unavailable');
+    }
+    if (saved) {
+      try {
+        bot.importState(saved);
+      } catch (e) {
+        logRuntimeFailure('BOT_STATE_RESTORE_FAILED', e, this.env);
+        // بيانات موجودة لكن تعذّر استعادتها: لا نستبدلها بحالة فارغة.
+        throw new Error('Persisted bot state unavailable');
+      }
     }
 
     this.bot = bot;
