@@ -200,6 +200,19 @@ export class BotState {
   private readonly interactiveRooms: InteractiveGameRooms;
   private readonly amongUsRooms: AmongUsRooms;
   private bot: TelegramBotManager | null = null;
+  // Serialize state writes, and remember failed writes for the next opportunity.
+  private stateSaveQueue: Promise<void> = Promise.resolve();
+  private stateSavePending = false;
+
+  private async saveBotState(bot: TelegramBotManager): Promise<void> {
+    this.stateSavePending = true;
+    const save = this.stateSaveQueue.then(async () => {
+      await this.state.storage.put('state', bot.exportState());
+      this.stateSavePending = false;
+    });
+    this.stateSaveQueue = save.catch(() => { this.stateSavePending = true; });
+    return save;
+  }
 
   constructor(state: any, env: Env) {
     this.state = state;
@@ -321,7 +334,7 @@ export class BotState {
     }
     try {
       const after = bot.exportState();
-      if (JSON.stringify(after) !== before) await this.state.storage.put('state', after);
+      if (this.stateSavePending || JSON.stringify(after) !== before) await this.saveBotState(bot);
     } catch (e) {
       console.error('Failed to persist state in alarm:', e);
     }
@@ -368,7 +381,7 @@ export class BotState {
       const avatarSync = await bot.applyAndDeliverOfficialAvatar(false);
       if (avatarSync.sent || avatarSync.applied) {
         try {
-          await this.state.storage.put('state', bot.exportState());
+          await this.saveBotState(bot);
         } catch {
           // ignore
         }
@@ -394,8 +407,14 @@ export class BotState {
 
     if (new URL(request.url).pathname === '/football-alerts') {
       try {
-        await bot.processFootballAlerts();
-        await this.state.storage.put('state', bot.exportState());
+        // Cron runs every five minutes even when nobody follows a team.
+        // In that case it does not change bot state, but retry an earlier failed save.
+        if (bot.hasActiveFootballAlerts()) {
+          await bot.processFootballAlerts();
+          await this.saveBotState(bot);
+        } else if (this.stateSavePending) {
+          await this.saveBotState(bot);
+        }
         await this.syncAlarm(bot);
         return Response.json({ ok: true });
       } catch (error) {
@@ -426,10 +445,12 @@ export class BotState {
       }
     }
 
-    await bot.handleUpdate(update);
+    const changed = await bot.handleUpdate(update);
 
     try {
-      await this.state.storage.put('state', bot.exportState());
+      // Only the explicitly ignored channel posts are known to be state-free.
+      // Do not skip a retry of an earlier failed write.
+      if (changed !== false || this.stateSavePending) await this.saveBotState(bot);
     } catch (e) {
       console.error('Failed to persist state:', e);
     }

@@ -7,7 +7,7 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-31-books-v51';
+export const BUILD_TAG = '2026-10-31-capacity-v52';
 
 /** بصمة واجهة الألعاب، وليست نقطة دخول Worker مستقلة. */
 export const INTERACTIVE_APP_BUILD = '2026-11-11-game-sounds-v49';

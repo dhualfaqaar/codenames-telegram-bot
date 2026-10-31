@@ -66,3 +66,101 @@ scheduled = null;
 await restarted.alarm();
 assert.equal(seeds, 1);
 console.log('Storage quota safeguards passed.');
+
+// Ordinary channel posts are discarded before commands or bookkeeping.
+// The worker can avoid writing the giant bot state for these, but must still
+// persist ordinary updates and retry any failed prior write.
+const { TelegramBotManager } = await import('../server/telegramBot');
+const actualBot = new TelegramBotManager('TEST:TOKEN', '42', true);
+const ignored = { update_id: 100, channel_post: { message_id: 1, date: 1, chat: { id: -1, type: 'channel' }, text: 'منشور عادي' } } as any;
+const beforeIgnored = JSON.stringify(actualBot.exportState());
+assert.equal(await actualBot.handleUpdate(ignored), false);
+assert.equal(JSON.stringify(actualBot.exportState()), beforeIgnored);
+
+let persisted = { value: 0 };
+let writeAttempts = 0;
+let failNext = false;
+let changedValue = 0;
+let footballActive = false;
+let footballCalls = 0;
+const storage2: any = {
+  get: async () => undefined,
+  put: async (key: string, snapshot: any) => {
+    if (key !== 'state') return;
+    writeAttempts++;
+    if (failNext) { failNext = false; throw new Error('simulated write failure'); }
+    persisted = structuredClone(snapshot);
+  },
+  getAlarm: async () => null,
+  setAlarm: async () => {},
+  deleteAlarm: async () => {}
+};
+const bot2 = {
+  handleUpdate: async (update: any) => {
+    if (update.ignored) return false;
+    changedValue = update.value;
+  },
+  exportState: () => ({ value: changedValue }),
+  getNextQuizDeadline: () => null,
+  bookCatalogNeedsMore: () => false,
+  hasActiveFootballAlerts: () => footballActive,
+  processFootballAlerts: async () => { footballCalls++; changedValue++; }
+};
+const worker2: any = new BotState({ storage: storage2 }, {} as any);
+worker2.bot = bot2;
+const update = (payload: any) => worker2.fetch(new Request('https://bot.internal/update', { method: 'POST', body: JSON.stringify(payload) }));
+const cron = () => worker2.fetch(new Request('https://bot.internal/football-alerts', { method: 'POST' }));
+for (let i = 0; i < 500; i++) await update({ update_id: i + 1, ignored: true });
+for (let i = 0; i < 500; i++) assert.equal((await cron()).status, 200);
+assert.equal(writeAttempts, 0);
+assert.equal(footballCalls, 0);
+await update({ update_id: 1001, value: 1 });
+assert.deepEqual(persisted, { value: 1 });
+assert.equal(writeAttempts, 1);
+// An ignored update must not conceal an earlier failed save.
+failNext = true;
+const oldError = console.error;
+console.error = () => {};
+try { await update({ update_id: 1002, value: 2 }); } finally { console.error = oldError; }
+assert.deepEqual(persisted, { value: 1 });
+await update({ update_id: 1003, ignored: true });
+assert.deepEqual(persisted, { value: 2 });
+assert.equal(writeAttempts, 3);
+footballActive = true;
+await cron();
+assert.equal(footballCalls, 1);
+assert.deepEqual(persisted, { value: 3 });
+console.log('Idle traffic and failed-write retry checks passed.');
+
+// In-flight writes must be serialized: a slower old write cannot overwrite a
+// newer state. Changes made while a write is blocked are saved by the next one.
+let releaseFirst!: () => void;
+let enteredFirst!: () => void;
+const entered = new Promise<void>(resolve => { enteredFirst = resolve; });
+const waitFirst = new Promise<void>(resolve => { releaseFirst = resolve; });
+const snapshots: number[] = [];
+let concurrentValue = 1;
+const concurrentStorage: any = { put: async (_: string, snapshot: any) => {
+  const value = snapshot.value;
+  if (!snapshots.length) { enteredFirst(); await waitFirst; }
+  snapshots.push(value);
+} };
+const concurrentWorker: any = new BotState({ storage: concurrentStorage }, {} as any);
+const concurrentBot: any = { exportState: () => ({ value: concurrentValue }) };
+const firstWrite = concurrentWorker.saveBotState(concurrentBot);
+await entered;
+concurrentValue = 2;
+const secondWrite = concurrentWorker.saveBotState(concurrentBot);
+releaseFirst();
+await Promise.all([firstWrite, secondWrite]);
+assert.deepEqual(snapshots, [1, 2]);
+
+// Whisper triggers and bot-origin posts must not be treated as ignorable.
+const routedBot: any = new TelegramBotManager('TEST:TOKEN', '42', true);
+let routed = 0;
+routedBot.ensureCommandsSynced = async () => {};
+routedBot.handleMessage = async () => { routed++; };
+await routedBot.handleUpdate({ ...ignored, update_id: 101, channel_post: { ...ignored.channel_post, text: 'همسة' } });
+await routedBot.handleUpdate({ ...ignored, update_id: 102, channel_post: { ...ignored.channel_post, via_bot: { id: 1, is_bot: true, first_name: 'bot' } } });
+assert.equal(routed, 2);
+console.log('Concurrent writes and channel trigger checks passed.');

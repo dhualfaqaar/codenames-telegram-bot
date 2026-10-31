@@ -2340,7 +2340,8 @@ export class TelegramBotManager {
       // نتجاهل منشورات القناة العادية، باستثناء كلمات تشغيل الهمسة المباشرة.
       if (update.channel_post && !update.channel_post.via_bot &&
           !this.isWhisperLauncherTrigger(update.channel_post.text || '') &&
-          !this.isPublishedWhisperCard(update.channel_post)) return;
+          !this.isPublishedWhisperCard(update.channel_post)) return false; // no persisted state was touched
+
       await this.ensureCommandsSynced();
       const incoming = update.message || update.channel_post;
 
