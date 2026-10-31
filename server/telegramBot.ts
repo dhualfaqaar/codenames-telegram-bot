@@ -23,6 +23,7 @@ import * as Reco from '../src/services/recommendationEngine';
 import * as Books from '../src/services/bookRecommendationEngine';
 import { BookCatalog, CATALOG_LANGUAGES, CATALOG_TARGET, coverUrl, workUrl } from '../src/services/bookCatalog';
 import { isArabicText, isUsableDescription, summarizeBookWithGemini } from '../src/services/bookDescriptions';
+import { BUILD_TAG, buildVersionLines } from '../src/services/buildInfo';
 import type { BookStorageAdapter, CatalogBook } from '../src/services/bookCatalog';
 import * as Cinema from '../src/services/cinemaServices';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
@@ -2468,6 +2469,27 @@ export class TelegramBotManager {
     const senderName = sender ? (sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '')) : 'مجهول';
 
     const isStartCommand = /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
+
+    // 🔎 /version — أي نسخة شغالة فعلاً؟ (المالك يشوف التفاصيل)
+    if (/^\/version(?:@\w+)?(?:\s|$)/i.test(text)) {
+      const extra: string[] = [];
+      try {
+        const stats = await this.bookCatalogStats();
+        extra.push(
+          `*المكتبة:* ${stats.total.toLocaleString('en-US')} كتاب · ${stats.languages} لغة · ${stats.done ? 'مكتملة' : 'تكمّل بالخلفية'}`
+        );
+        const distribution = await this.bookCatalog.genreDistribution();
+        extra.push(`*الأصناف:* ${distribution.genres.length}`);
+      } catch {
+        extra.push('*المكتبة:* ما ردّت');
+      }
+      if (!sender || !this.isOwner(sender.id)) {
+        await this.sendMessage(chatId, `*بصمة البناء:* \`${BUILD_TAG}\``);
+        return;
+      }
+      await this.sendMessage(chatId, buildVersionLines(extra).join('\n'));
+      return;
+    }
 
     // 🧪 /dltest <رابط> — تشخيص كامل: كل نداء شبكة، رمزه، وزمنه.
     const isDlTest = /^\/dltest(?:@\w+)?(?:\s|$)/i.test(text);
@@ -8293,6 +8315,13 @@ export class TelegramBotManager {
       const isBookGenre = (value: string): value is Books.BookGenre =>
         (Object.keys(Books.BOOK_GENRE_LABELS) as Books.BookGenre[]).includes(value as Books.BookGenre);
 
+      // 🔄 تحديث: نرسل شاشة جديدة بدل تعديل القديمة (القديمة قد تكون نسخة قديمة).
+      if (data === 'svc:books:refresh') {
+        if (messageId) await this.retireFinishedBoard(chatId, messageId);
+        await this.handleExtraServicesCb({ ...cb, message: { ...cb.message, message_id: 0 } } as any, 'svc:books');
+        return;
+      }
+
       if (data === 'svc:books') {
         const stats = await this.bookCatalog.stats();
         // عدد كتب كل صنف بالمكتبة الكبيرة (مع القاعدة المختارة كاحتياط).
@@ -8323,6 +8352,8 @@ export class TelegramBotManager {
           { text: '🎲 كتاب عشوائي', callback_data: 'svc:books:rand' },
           { text: '🔎 دوّر كتاب', callback_data: 'svc:books:search' }
         ]);
+        // الرسائل القديمة بنافذة الشات ما تتحدث لحالها — هذا الزر يبني الشاشة من جديد.
+        keyboard.push([{ text: '🔄 تحديث الشاشة', callback_data: 'svc:books:refresh' }]);
         keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
         // نص عراقي بحت، وبلا أرقام ناقصة: لو المكتبة صفر ما نطبع رقم.
         const languagesWord = stats.languages >= 3 ? 'لغات' : 'لغة';

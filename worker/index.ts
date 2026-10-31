@@ -14,6 +14,7 @@ import { CHESS_HERO_JPG_BASE64, DRAWING_HERO_JPG_BASE64, SUDOKU_HERO_JPG_BASE64 
 import { InteractiveGameRooms } from '../src/services/interactiveGameRooms';
 import { AmongUsRooms } from '../src/services/amongUsRooms';
 import { amongUsMiniAppHtml } from '../src/services/amongUsMiniApp';
+import { BOOKS_BUILD, BUILD_FEATURES, BUILD_STORAGE_KEY, BUILD_TAG } from '../src/services/buildInfo';
 
 export const INTERACTIVE_APP_BUILD = '2026-11-11-game-sounds-v49';
 
@@ -187,8 +188,23 @@ export class BotState {
     });
   }
 
+  /**
+   * يسجّل وقت أول تشغيل لهذي النسخة. `/version` يعرضه حتى نتأكد إن النشر
+   * وصل فعلاً للـWorker الشغّال — بدل التخمين.
+   */
+  private async ensureBuildSeen(): Promise<void> {
+    try {
+      const seen = await this.state.storage.get<{ tag: string; at: number }>(BUILD_STORAGE_KEY);
+      if (seen?.tag === BUILD_TAG) return;
+      await this.state.storage.put(BUILD_STORAGE_KEY, { tag: BUILD_TAG, at: Date.now() });
+    } catch (e) {
+      console.error('ensureBuildSeen failed:', e);
+    }
+  }
+
   private async getBot(): Promise<TelegramBotManager> {
     if (this.bot) return this.bot;
+    await this.ensureBuildSeen();
 
     const interactiveGamesUrl = new URL('/interactive', this.env.WEBHOOK_URL || DEFAULT_WEBHOOK_URL);
     interactiveGamesUrl.searchParams.set('app_build', INTERACTIVE_APP_BUILD);
@@ -259,6 +275,35 @@ export class BotState {
     if (pathname.startsWith('/api/interactive/rooms') || pathname.startsWith('/api/interactive/matchmaking')) return this.interactiveRooms.handle(request);
     const bot = await this.getBot();
     if (pathname === '/interactive-config' && request.method === 'GET') return Response.json({ botUsername: await bot.getBotUsername() }, { headers: { 'Cache-Control': 'public, max-age=300' } });
+
+    // 🔎 /version — أي نسخة شغالة؟ (بلا كاش حتى تكون القراءة حقيقية)
+    if (pathname === '/version' && request.method === 'GET') {
+      let seen: { tag: string; at: number } | null = null;
+      try {
+        seen = (await this.state.storage.get<{ tag: string; at: number }>(BUILD_STORAGE_KEY)) || null;
+      } catch {
+        seen = null;
+      }
+      let books: { total: number; languages: number; done: boolean } | null = null;
+      try {
+        books = await bot.bookCatalogStats();
+      } catch {
+        books = null;
+      }
+      return Response.json(
+        {
+          ok: true,
+          tag: BUILD_TAG,
+          booksBuild: BOOKS_BUILD,
+          features: BUILD_FEATURES,
+          servingSince: seen?.tag === BUILD_TAG ? seen.at : null,
+          staleStamp: seen && seen.tag !== BUILD_TAG ? seen : null,
+          books,
+          now: Date.now()
+        },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    }
 
     if (request.method !== 'POST') {
       const avatarSync = await bot.applyAndDeliverOfficialAvatar(false);
