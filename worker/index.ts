@@ -214,7 +214,12 @@ export class BotState {
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
       interactiveGamesUrl: interactiveGamesUrl.toString(),
       // مكتبة الكتب الكبيرة تنحفظ بمفاتيح مستقلة داخل نفس الـDurable Object.
-      bookStorage: this.state.storage as any
+      bookStorage: this.state.storage as any,
+      scheduleChannelImport: async () => {
+        const existing = await this.state.storage.getAlarm();
+        const next = Date.now() + 2_000;
+        if (existing === null || existing > next) await this.state.storage.setAlarm(next);
+      }
     });
     try {
       const saved = await this.state.storage.get('state');
@@ -235,8 +240,14 @@ export class BotState {
       if (nextQuizAt !== null) deadlines.push(nextQuizAt);
       // 📚 المكتبة بعدها ناقصة؟ نجدول دفعة بذر قريبة.
       if (bot.bookCatalogNeedsMore()) deadlines.push(Date.now() + bot.bookCatalogNextDelayMs());
+      if (await bot.channelImportPending()) deadlines.push(Date.now() + 2_000);
       if (bot.hasActiveFootballAlerts()) deadlines.push(Date.now() + 10_000);
-      if (deadlines.length) await this.state.storage.setAlarm(Math.min(...deadlines));
+      if (deadlines.length) {
+        const existing = await this.state.storage.getAlarm();
+        const next = Math.min(...deadlines);
+        // Don't postpone an already-scheduled import while updates keep arriving.
+        await this.state.storage.setAlarm(existing !== null && existing > Date.now() ? Math.min(existing, next) : next);
+      }
       else await this.state.storage.deleteAlarm();
     } catch (e) {
       console.error('Failed to sync alarm:', e);
@@ -245,6 +256,13 @@ export class BotState {
 
   async alarm(): Promise<void> {
     const bot = await this.getBot();
+    // Re-arm before indexing, including an earlier upcoming quiz deadline.
+    // Do not pre-arm an already-expired game timer, which could loop forever.
+    if (await bot.channelImportPending()) {
+      const now = Date.now();
+      const quiz = bot.getNextQuizDeadline();
+      await this.state.storage.setAlarm(quiz !== null && quiz > now ? Math.min(quiz, now + 2_000) : now + 2_000);
+    }
     try {
       await bot.processQuizTimers();
     } catch (e) {
@@ -254,6 +272,11 @@ export class BotState {
       await bot.processFootballAlerts();
     } catch (e) {
       console.error('Football alert alarm error:', e);
+    }
+    try {
+      await bot.processChannelImport();
+    } catch (e) {
+      console.error('Channel index alarm error:', e);
     }
     try {
       // 📚 بذر مكتبة الكتب من Open Library (كل منبّه ٥ صفحات = ٥٠٠ كتاب).

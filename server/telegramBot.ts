@@ -23,6 +23,7 @@ import * as Reco from '../src/services/recommendationEngine';
 import * as Books from '../src/services/bookRecommendationEngine';
 import { BookCatalog, CATALOG_LANGUAGES, coverUrl, memoryBookStorage } from '../src/services/bookCatalog';
 import { ChannelBookIndex, channelNameKey } from '../src/services/channelBookIndex';
+import { ChannelImportQueue } from '../src/services/channelImportQueue';
 import { isArabicText, isUsableDescription, localizeBookWithGemini, summarizeBookWithGemini } from '../src/services/bookDescriptions';
 import { BUILD_TAG, buildVersionLines } from '../src/services/buildInfo';
 import type { BookStorageAdapter, CatalogBook } from '../src/services/bookCatalog';
@@ -1153,6 +1154,7 @@ export class TelegramBotManager {
   /** مكتبة الكتب الكبيرة المبنية من Open Library. */
   private bookCatalog!: BookCatalog;
   private channelBookIndex: ChannelBookIndex;
+  private channelImportQueue: ChannelImportQueue;
   private footballTeamFollows: Map<string, FootballTeamFollow> = new Map();
   private pendingFootballFollow: Set<string> = new Set();
   private cinemaSubtitleResults: Map<string, Cinema.OpenSubtitleResult[]> = new Map();
@@ -1185,6 +1187,7 @@ export class TelegramBotManager {
       interactiveGamesUrl?: string;
       /** تخزين Durable Object لمكتبة الكتب الكبيرة (اختياري). */
       bookStorage?: BookStorageAdapter;
+      scheduleChannelImport?: () => Promise<void>;
     } = {}
   ) {
     if (initialToken) {
@@ -1196,7 +1199,9 @@ export class TelegramBotManager {
     this.openSubtitlesApiKey = String(serviceConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
     this.openSubtitlesUserAgent = String(serviceConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
     this.interactiveGamesUrl = String(serviceConfig.interactiveGamesUrl || process.env.INTERACTIVE_GAMES_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/interactive').trim();
-    this.channelBookIndex = new ChannelBookIndex(serviceConfig.bookStorage || memoryBookStorage());
+    const channelStorage = serviceConfig.bookStorage || memoryBookStorage();
+    this.channelBookIndex = new ChannelBookIndex(channelStorage);
+    this.channelImportQueue = new ChannelImportQueue(channelStorage, this.channelBookIndex, serviceConfig.scheduleChannelImport);
     // تلخيص عربي للكتب اللي ما إلها وصف عند Open Library (نفس مفتاح Gemini).
     this.bookCatalog = new BookCatalog(serviceConfig.bookStorage, undefined, {
       summarizer: async (book, source) => {
@@ -2474,6 +2479,34 @@ export class TelegramBotManager {
     const text = message.text?.trim() || '';
     const sender = message.from;
     const senderName = sender ? (sender.first_name + (sender.last_name ? ` ${sender.last_name}` : '')) : 'مجهول';
+
+    // حزمة فهرس واحدة فقط، من مالك البوت؛ لا تحتوي ملفات الكتب.
+    if (message.chat.type === 'private' && sender && this.isOwner(sender.id) &&
+        String(message.document?.file_name || '') === 'lovekotob-import.json') {
+      const doc = message.document;
+      if (!Number.isSafeInteger(doc.file_size) || doc.file_size <= 0 || doc.file_size > 18 * 1024 * 1024) {
+        await this.sendMessage(chatId, 'حجم ملف الفهرس غير صالح.');
+        return;
+      }
+      try {
+        const download = await this.downloadTelegramFileBytes(String(doc.file_id || ''));
+        if (!download || download.bytes.length !== doc.file_size) throw new Error('invalid size');
+        const state = await this.channelImportQueue.stage(JSON.parse(new TextDecoder().decode(download.bytes)), chatId);
+        await this.sendMessage(chatId, `بديت أفهرس ${state.expected.toLocaleString('en-US')} رسالة PDF على دفعات. أدزلك رسالة من أخلص. للتقدّم اكتب /channelindex`);
+      } catch (error: any) {
+        await this.sendMessage(chatId, error?.message === 'busy' ? 'الفهرسة شغالة هسه، انتظر تكمل قبل إرسال ملف ثاني.' : 'ما كدرت أقرأ ملف الفهرس. تأكد من الملف وجرّب مرة ثانية.');
+      }
+      return;
+    }
+
+    if (/^\/channelindex(?:@\w+)?(?:\s|$)/i.test(text)) {
+      if (!sender || !this.isOwner(sender.id) || message.chat.type !== 'private') return;
+      const state = await this.channelImportQueue.state();
+      if (!state) { await this.sendMessage(chatId, 'ماكو فهرس قناة مستورد بعد.'); return; }
+      const status = state.status === 'processing' ? 'تشتغل' : state.status === 'done' ? 'مكتملة' : 'توقفت بسبب خطأ';
+      await this.sendMessage(chatId, `الفهرسة ${status}.\nانفهرس ${state.indexed.toLocaleString('en-US')} من ${state.expected.toLocaleString('en-US')} رسالة.`);
+      return;
+    }
 
     // فهرسة دفعات أسماء PDF من تصدير القناة؛ المالك فقط وبملف محدود الحجم.
     if (message.chat.type === 'private' && sender && this.isOwner(sender.id) &&
@@ -8594,11 +8627,24 @@ export class TelegramBotManager {
         const matches = [] as CatalogBook[];
         for (const book of candidates) {
           const localized = await this.bookCatalog.localize(book);
-          const titleMatches = channelNameKey(book.title) === channelNameKey(entry.title) || channelNameKey(localized.title) === channelNameKey(entry.title);
-          const authorNames = [book.author, localized.author].map(channelNameKey).filter(name => name.length >= 3);
-          const evidence = channelNameKey(entry.text);
-          // الاسم المؤلف لازم يرد بالنص المستورد؛ لا نخمن عند تطابق عناوين شائعة.
-          if (titleMatches && authorNames.some(name => evidence.includes(name))) matches.push(book);
+          // المطابقة الموثوقة أشد من فهرس البحث: لا نحذف ال التعريف أو لام الاسم.
+          const words = (value: string) => channelNameKey(value).split(' ').filter(word => word.length >= 2 && word.length <= 40);
+          const fields = [words(entry.title), words(entry.text)];
+          const titleForms = [localized.title, book.title].map(words).filter(parts => parts.length > 0);
+          const authorForms = [localized.author, book.author].map(words).filter(parts => parts.length > 0);
+          const contains = (phrase: string[], author = false) => fields.some(field => field.some((_, start) =>
+            phrase.every((part, offset) => field[start + offset] === part || (author && offset === 0 && field[start] === `ل${part}`))
+          ));
+          const titleForm = titleForms.find(parts => contains(parts));
+          const authorForm = authorForms.find(parts => contains(parts, true));
+          // كلمة عنوان وحدها لا تصلح دليلاً مستقلاً على المؤلف.
+          const separateAuthor = titleForm && authorForm?.some(word => !titleForm.includes(word));
+          const known = new Set([...(titleForm || []), ...(authorForm || [])]);
+          if (authorForm?.[0]) known.add(`ل${authorForm[0]}`);
+          const fillers = new Set(['كتاب', 'روايه', 'للكاتب', 'الكاتب', 'تاليف', 'بقلم', 'pdf']);
+          // يمنع عنواناً قريباً مثل «الغريب وقصص أخرى» من التطابق مع «الغريب» وحده.
+          const extra = words(entry.title).some(word => !known.has(word) && !fillers.has(word));
+          if (titleForm && authorForm && separateAuthor && !extra && !matches.some(match => match.id === book.id)) matches.push(book);
         }
         if (matches.length !== 1) {
           await this.answerCallbackQuery(cb.id, 'ما كدرت أتأكد من نسخة حرة مطابقة لهذا العنوان.', true);
@@ -13027,8 +13073,10 @@ export class TelegramBotManager {
       { text: `📥 PDF: ${loc.title.slice(0, 28)} — ${loc.author.slice(0, 20)}`, callback_data: `svc:books:pdf:${book.id}` }
     ]);
     for (const item of channelResults) {
-      lines.push(`القناة: ${this.mdSafe(item.title)}`);
-      keyboard.push([{ text: `PDF: ${item.title.slice(0, 35)}`, callback_data: `svc:books:chpdf:${item.id}` }]);
+      const ambiguous = channelResults.some(other => other.id !== item.id && other.title === item.title && other.text !== item.text);
+      const label = ambiguous && item.text ? `${item.title} — ${item.text.slice(0, 70)}` : item.title;
+      lines.push(`القناة: ${this.mdSafe(label)}`);
+      keyboard.push([{ text: `PDF: ${label.slice(0, 55)}`, callback_data: `svc:books:chpdf:${item.id}` }]);
     }
     keyboard.push([{ text: '🔎 دوّر غير كتاب', callback_data: 'svc:books:search' }]);
     keyboard.push([{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]);
@@ -13040,6 +13088,20 @@ export class TelegramBotManager {
   }
 
   /** عدد كتب المكتبة الكبيرة (للاختبارات ولوحة المالك). */
+  public async channelImportPending(): Promise<boolean> {
+    return (await this.channelImportQueue.state())?.status === 'processing';
+  }
+
+  public async processChannelImport(): Promise<void> {
+    if (!(await this.channelImportPending())) return;
+    const state = await this.channelImportQueue.processOne();
+    if (state?.status === 'done') {
+      await this.sendMessage(state.chatId, `اكتملت الفهرسة: انضاف ${state.indexed.toLocaleString('en-US')} من ${state.expected.toLocaleString('en-US')} رسالة. نتائج PDF تبقى خاضعة للتحقق من الإتاحة والحقوق.`);
+    } else if (state?.status === 'error') {
+      await this.sendMessage(state.chatId, `توقفت الفهرسة بعد ${state.indexed.toLocaleString('en-US')} رسالة بسبب خطأ. تكدر ترسل ملف الفهرس مرة ثانية.`);
+    }
+  }
+
   public async bookCatalogStats(): Promise<{ total: number; languages: number; done: boolean }> {
     return this.bookCatalog.stats();
   }

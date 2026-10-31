@@ -16,12 +16,28 @@ export function channelNameKey(value: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
+const STOP_WORDS = new Set(['كتاب', 'كتب', 'روايه', 'روايات', 'الكاتب', 'كاتب', 'للكاتب', 'المؤلف', 'مؤلف', 'تاليف', 'تأليف', 'بقلم', 'pdf', 'by']);
+
+/** صيغ متقاربة للبحث فقط، وليست دليلاً على هوية الكتاب أو حق نشره. */
+function canonicalWord(value: string): string {
+  let word = value;
+  if (/^لل[\u0621-\u064a]{3,}$/.test(word)) word = `ال${word.slice(2)}`;
+  else if (/^ل[\u0621-\u064a]{4,}$/.test(word)) word = word.slice(1);
+  if (/^ال[\u0621-\u064a]{3,}$/.test(word)) word = word.slice(2);
+  return word;
+}
+
+function rawWords(value: string): string[] {
+  return channelNameKey(value).split(' ').filter(word => word.length >= 2 && word.length <= 40);
+}
+
 function normalizedSearchText(title: string, text: string): string {
-  return channelNameKey(`${title} ${text}`);
+  const words = rawWords(`${title} ${text}`);
+  return [...words, ...words.map(canonicalWord)].join(' ');
 }
 
 export function channelSearchTokens(value: string): string[] {
-  return [...new Set(channelNameKey(value).split(' ').filter(word => word.length >= 2 && word.length <= 40))];
+  return [...new Set(rawWords(value).filter(word => !STOP_WORDS.has(word)).map(canonicalWord).filter(word => word.length >= 2))];
 }
 
 /** معرّف الرسالة يميّز السجلات؛ مؤشر الكلمات مقسّم بمفاتيح مستقلة. */
@@ -76,10 +92,27 @@ export class ChannelBookIndex {
     const tokens = channelSearchTokens(query).sort((a, b) => b.length - a.length);
     if (!tokens.length) return [];
     if (this.storage.sql) {
-      // الكلمات مقيدة كمعامل SQL وآمنة من حقن صيغة FTS.
-      const phrase = tokens.slice(0, 8).map(token => `"${token.replace(/"/g, '""')}"*`).join(' AND ');
-      const rows = this.storage.sql.exec('SELECT rowid AS id, title, text FROM channel_book_fts WHERE channel_book_fts MATCH ? ORDER BY rank, rowid DESC LIMIT ?', phrase, Math.max(1, Math.min(limit, 10)));
-      return [...rows] as ChannelBookRecord[];
+      // جرّب الكلمات الكاملة أولاً؛ البادئات فقط إذا ماكو أي تطابق كامل.
+      const terms = tokens.slice(0, 8).map(token => `"${token.replace(/"/g, '""')}"`);
+      const select = 'SELECT rowid AS id, title, text FROM channel_book_fts WHERE channel_book_fts MATCH ? ORDER BY rank, rowid DESC LIMIT 2000';
+      let rows = [...this.storage.sql.exec(select, terms.join(' AND '))] as ChannelBookRecord[];
+      if (!rows.length) rows = [...this.storage.sql.exec(select, terms.map(term => `${term}*`).join(' AND '))] as ChannelBookRecord[];
+      const queryKey = channelNameKey(query);
+      const score = (record: ChannelBookRecord): number => {
+        const titleWords = channelSearchTokens(record.title);
+        const inTitle = tokens.every(token => titleWords.some(word => word === token));
+        const titleKey = channelNameKey(record.title);
+        return (titleKey === queryKey ? 1000 : 0) + (titleKey.startsWith(`${queryKey} `) ? 100 : 0) + (inTitle ? 500 : 0) - titleWords.length;
+      };
+      const ranked = rows.map(record => ({ record, score: score(record) })).sort((left, right) => right.score - left.score || right.record.id - left.record.id);
+      const unique = new Map<string, ChannelBookRecord>();
+      for (const { record } of ranked) {
+        const titleWords = channelSearchTokens(record.title);
+        const extraWords = channelSearchTokens(record.text).filter(word => !titleWords.includes(word) && !['lovekitab', 'forever'].includes(word));
+        const key = `${[...titleWords].sort().join(' ')}|${extraWords.sort().join(' ')}`;
+        if (!unique.has(key)) unique.set(key, record);
+      }
+      return [...unique.values()].slice(0, Math.max(1, Math.min(limit, 10)));
     }
     // النسخة المحلية بلا SQLite محدودة لمنع تحميل فهرس كبير بالذاكرة.
     const entries = await this.storage.list<ChannelBookRecord>({ prefix: `${TERM}${encodeURIComponent(tokens[0])}`, limit: 1000 });
