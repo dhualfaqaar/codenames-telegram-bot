@@ -584,6 +584,8 @@ export interface ArchiveFile {
   identifier: string;
   fileName: string;
   sizeBytes: number | null;
+  /** بصمة ملف أرشيف، لمطابقة محتوى ملف القناة قبل إرساله. */
+  sha1?: string;
   /** من وين جبنا المعرّف: بطاقة الكتاب / طبعات Open Library */
   source: 'catalog' | 'editions';
 }
@@ -637,6 +639,7 @@ export function pickArchivePdf(
     identifier,
     fileName: chosen.name,
     sizeBytes: Number(chosen.size) || null,
+    sha1: /^[0-9a-f]{40}$/i.test(String(chosen.sha1 || '')) ? String(chosen.sha1).toLowerCase() : undefined,
     source
   };
 }
@@ -943,6 +946,21 @@ export class BookCatalog {
     }
     // لا نخزن النتائج السلبية حتى يقدر يعيد المحاولة إذا المصدر ما استجاب.
     return null;
+  }
+
+  /** ملف محوّل من القناة، نربطه ببصمته وليس باسم قابل للالتباس. */
+  async rememberChannelPdf(sha1: string, fileId: string, size: number): Promise<void> {
+    if (!/^[a-f0-9]{40}$/.test(sha1) || !fileId || fileId.length > 1024 || !Number.isSafeInteger(size) || size < 5 || size > 20 * 1024 * 1024) throw new Error('invalid channel file');
+    await this.storage.put(`books:channel-pdf:${sha1}`, { fileId, size });
+  }
+
+  /** لا يُستخدم إلا بعد التحقق من حقوق نسخة أرشيف وبصمتها. */
+  async channelPdf(sha1?: string, size?: number | null): Promise<string | null> {
+    if (!sha1 || !/^[a-f0-9]{40}$/.test(sha1) || !size) return null;
+    try {
+      const record = await this.storage.get<{ fileId: string; size: number }>(`books:channel-pdf:${sha1}`);
+      return typeof record?.fileId === 'string' && record.fileId.length <= 1024 && record.size === size ? record.fileId : null;
+    } catch { return null; }
   }
 
   /** تصنيفات كتاب: من الحقل المخزّن، أو محسوبة من مواضيعه (كتب قديمة بلا حقل). */
