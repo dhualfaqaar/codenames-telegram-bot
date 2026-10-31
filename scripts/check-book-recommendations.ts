@@ -40,6 +40,10 @@ const fakeCatalogFetch = (async (input: any) => {
   const lang = (q.match(/language:([a-z]{3})/) || [])[1] || 'ara';
   const subject = (q.match(/subject:"([^"]+)"/) || [])[1] || '';
   const page = Number(parsed.searchParams.get('page') || '1');
+  if (parsed.hostname === 'archive.org' && parsed.pathname.startsWith('/metadata/')) {
+    const id = parsed.pathname.split('/').pop() || '';
+    return { ok: true, json: async () => ({ metadata: { rights: id.startsWith('locked') ? 'copyright' : 'Public Domain' }, files: [{ name: `${id}.pdf`, size: '1234' }] }) } as any;
+  }
   if (parsed.pathname.includes('/editions')) {
     return {
       ok: true,
@@ -142,6 +146,7 @@ check('عقد فاضي يرجع بلا كتاب (ما ينكسر)', Books.pickBo
 /* ───────────────── التدفّق الحقيقي عبر البوت ───────────────── */
 type Call = { method: string; body: any };
 let calls: Call[] = [];
+let failDocument = false;
 const jsonResponse = (data: unknown) =>
   new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -155,6 +160,7 @@ globalThis.fetch = (async (input: any, init?: any) => {
     body = null;
   }
   calls.push({ method, body });
+  if (method === 'sendDocument' && failDocument) return jsonResponse({ ok: false, description: 'network error' });
   if (method === 'getMe') return jsonResponse({ ok: true, result: { id: 1, username: 'testbot', first_name: 'Bot' } });
   if (method === 'getChatAdministrators') return jsonResponse({ ok: true, result: [] });
   if (method === 'getChatMember') return jsonResponse({ ok: true, result: { status: 'member', user: { id: 42 } } });
@@ -290,6 +296,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     check('نص الخدمة يستعمل «بيها» العراقية', lower.includes('بيها') || lower.includes('بعدها تتجهّز'));
     check('نص الخدمة بلا «..» أو أرقام ناقصة', !/\.\.|\*\s*\*/.test(lower));
     check('نص الخدمة بلا شرطات مكررة', !lower.includes('--'));
+    check('نص الخدمة بلا جملة النمو بالخلفية', !lower.includes('تكبر بالخلفية'));
   }
 
   // شاشة الصنف لازم تعرض عدد كتب المكتبة الكبيرة (مو ٤–٦ كتب)
@@ -327,7 +334,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     const card = lastScreen();
     check('البطاقة فيها «النبذة»', card.text.includes('*النبذة:*'));
     check('النبذة مو فاضية', /\*النبذة:\*\n\S/.test(card.text));
-    check('البطاقة فيها زر «صفحة الكتاب»', card.keyboard.includes('openlibrary.org/works/'));
+    check('البطاقة بلا زر صفحة الكتاب', !card.keyboard.includes('openlibrary.org/works/'));
     if (card.keyboard.includes('svc:books:pdf:')) {
       const bookId = (card.keyboard.match(/svc:books:pdf:([^"]+)"/) || [])[1];
       calls = [];
@@ -351,7 +358,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     anyBot.bookCatalog = special;
 
     calls = [];
-    await anyBot.handleExtraServicesCb(press('svc:books:open:OLFREE1W'), 'svc:books:open:OLFREE1W');
+    await anyBot.sendCatalogBookCard(press('svc:books:rand'), '42', undefined, (await special.byId('OLFREE1W'))!, 'من المكتبة');
     const freeCard = lastScreen();
     check('كتاب حر يعرض زر PDF', freeCard.keyboard.includes('svc:books:pdf:OLFREE1W'));
     check('بطاقة الكتاب الحر فيها نبذة', freeCard.text.includes('*النبذة:*'));
@@ -360,17 +367,23 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLFREE1W'), 'svc:books:pdf:OLFREE1W');
     const docCall = calls.find(call => call.method === 'sendDocument');
     check('ضغط PDF يرسل ملف من archive.org', Boolean(docCall) && String(docCall!.body.document) === 'https://archive.org/download/freebook00id/freebook00id.pdf');
+    check('المستند بلا رابط صفحة الكتاب', !JSON.stringify(docCall?.body).includes('openlibrary.org'));
+    calls = [];
+    failDocument = true;
+    await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLFREE1W'), 'svc:books:pdf:OLFREE1W');
+    failDocument = false;
+    check('فشل إرسال الملف ما يتحول لرابط أو سبب مختلق', calls.some(call => call.method === 'sendMessage' && String(call.body.text).includes('ما كدرت أرسل')) && !JSON.stringify(calls.filter(call => call.method === 'sendMessage')).includes('archive.org/download/'));
+
 
     calls = [];
-    await anyBot.handleExtraServicesCb(press('svc:books:open:OLPAID1W'), 'svc:books:open:OLPAID1W');
+    await anyBot.sendCatalogBookCard(press('svc:books:rand'), '42', undefined, (await special.byId('OLPAID1W'))!, 'من المكتبة');
     const paidCard = lastScreen();
-    check('كتاب محفوظ الحقوق بلا زر PDF', !paidCard.keyboard.includes('svc:books:pdf:'));
-    check('كتاب محفوظ الحقوق عنده رابط الصفحة', paidCard.keyboard.includes('openlibrary.org/works/OLPAID1W'));
+    check('زر PDF متوفر للتحقق عند الطلب', paidCard.keyboard.includes('svc:books:pdf:'));
+    check('كتاب محفوظ الحقوق بلا رابط الصفحة', !paidCard.keyboard.includes('openlibrary.org/works/'));
 
     calls = [];
     await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLPAID1W'), 'svc:books:pdf:OLPAID1W');
-    const alert = calls.find(call => call.method === 'answerCallbackQuery');
-    check('ضغط PDF لكتاب محفوظ يعطي تنبيه', Boolean(alert) && JSON.stringify(alert!.body).includes('PDF'));
+    check('ضغط PDF لكتاب محفوظ يعطي تنبيه', calls.some(call => call.method === 'sendMessage' && String(call.body.text).includes('PDF')) && !calls.some(call => call.method === 'sendDocument'));
 
     anyBot.bookCatalog = catalog;
   }
@@ -389,7 +402,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     }) as unknown as typeof fetch;
     anyBot.bookCatalog = new BookCatalog(storage, emptyApiFetch, { queryGapMs: 0 });
     calls = [];
-    await anyBot.handleExtraServicesCb(press('svc:books:open:OLENG1W'), 'svc:books:open:OLENG1W');
+    await anyBot.sendCatalogBookCard(press('svc:books:rand'), '42', undefined, (await anyBot.bookCatalog.byId('OLENG1W'))!, 'من المكتبة');
     const card = lastScreen();
     check('الوصف الإنجليزي موسوم بذلك', card.text.includes('*النبذة (بالإنجليزية):*'));
     check('الوصف الإنجليزي يظهر كامل', card.text.includes('political treatise'));
@@ -409,7 +422,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     }) as unknown as typeof fetch;
     anyBot.bookCatalog = new BookCatalog(storage, emptyApiFetch, { queryGapMs: 0 });
     calls = [];
-    await anyBot.handleExtraServicesCb(press('svc:books:open:OLNODESC1W'), 'svc:books:open:OLNODESC1W');
+    await anyBot.sendCatalogBookCard(press('svc:books:rand'), '42', undefined, (await anyBot.bookCatalog.byId('OLNODESC1W'))!, 'من المكتبة');
     const card = lastScreen();
     check('بلا وصف: ماكو قسم «النبذة»', !card.text.includes('النبذة'));
     check('بلا وصف: ماكو «كتاب من تصنيف»', !card.text.includes('كتاب من تصنيف'));
@@ -434,7 +447,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     ]);
     anyBot.bookCatalog = new BookCatalog(storage, fakeCatalogFetch, { queryGapMs: 0 });
     calls = [];
-    await anyBot.handleExtraServicesCb(press('svc:books:open:OLAR1W'), 'svc:books:open:OLAR1W');
+    await anyBot.sendCatalogBookCard(press('svc:books:rand'), '42', undefined, (await anyBot.bookCatalog.byId('OLAR1W'))!, 'من المكتبة');
     const card = lastScreen();
     check('العنوان يطلع بالعربي', card.text.includes('عنوان عربي للكتاب') && !card.text.includes('Children of Gebelawi'));
     check('المؤلف يطلع بالعربي', card.text.includes('عبد الله') && !card.text.includes('Najib Mahfuz'));
@@ -496,7 +509,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   await anyBot.handleBookSearchQuery('42', 'كتاب');
   const searchCall = calls.find(call => call.method === 'sendMessage' || call.method === 'editMessageText');
   check('البحث يرجّع نتائج من المكتبة', screenText(searchCall).includes('نتائج') || screenText(searchCall).includes('ما لكيت'));
-  check('نتائج البحث فيها أزرار فتح كتاب', JSON.stringify(searchCall?.body?.reply_markup || {}).includes('svc:books:open:') || String(searchCall?.body?.text || '').includes('ما لكيت'));
+  check('نتائج البحث فيها أزرار PDF مباشرة', JSON.stringify(searchCall?.body?.reply_markup || {}).includes('svc:books:pdf:') || String(searchCall?.body?.text || '').includes('ما لكيت'));
 
   // أوامر سريعة: «كتاب <اسم>» و«/book <اسم>»
   calls = [];

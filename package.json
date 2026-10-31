@@ -32,7 +32,8 @@
     "test:books": "tsx scripts/check-book-recommendations.ts",
     "test:books:catalog": "tsx scripts/check-book-catalog.ts",
     "test:books:desc": "tsx scripts/check-book-descriptions.ts",
-    "test:deploy": "tsx scripts/check-deploy-version.ts"
+    "test:deploy": "tsx scripts/check-deploy-version.ts",
+    "test:books:archive": "tsx scripts/check-book-archive.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

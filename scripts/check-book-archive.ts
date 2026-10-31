@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { BookCatalog, memoryBookStorage, pickArchivePdf, type CatalogBook } from '../src/services/bookCatalog';
+
+const book: CatalogBook = { id: 'OL123W', title: 'Test', author: 'Author', year: 1900, pages: 100, cover: null, lang: 'eng', subject: '', ia: 'scan1', pd: false };
+const good = { metadata: { rights: 'Public Domain' }, files: [{ name: 'book file.pdf', size: '123' }] };
+assert.equal(pickArchivePdf('scan1', good)?.url, 'https://archive.org/download/scan1/book%20file.pdf');
+assert.equal(pickArchivePdf('scan1', { ...good, metadata: {} }), null);
+assert.equal(pickArchivePdf('scan1', { ...good, metadata: { rights: 'Not public domain' } }), null);
+assert.equal(pickArchivePdf('scan1', { ...good, metadata: { rights: 'Public Domain', collection: ['inlibrary'] } }), null);
+assert.equal(pickArchivePdf('scan1', { ...good, metadata: { rights: 'Public Domain', 'access-restricted-item': '1' } }), null);
+assert.equal(pickArchivePdf('scan1', { ...good, is_dark: true }), null);
+assert.equal(pickArchivePdf('scan1', { ...good, files: [{ name: 'book.pdf', private: 'true', size: 123 }] }), null);
+assert.equal(pickArchivePdf('scan1', { ...good, files: [{ name: '../book.pdf', size: 123 }] }), null);
+assert.equal(pickArchivePdf('../scan', good), null);
+assert.ok(pickArchivePdf('scan1', { ...good, metadata: { licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' } }));
+
+let requests: string[] = [];
+let fail = false;
+const fake = (async (input: any) => {
+  const url = String(input); requests.push(url);
+  if (fail) throw new Error('offline');
+  if (url.includes('/editions.json')) return new Response(JSON.stringify({ entries: [{ ocaid: 'scan2' }] }));
+  if (url.includes('/metadata/scan1')) return new Response(JSON.stringify({ metadata: { rights: 'copyright' }, files: good.files }));
+  if (url.includes('/metadata/scan2')) return new Response(JSON.stringify(good));
+  return new Response(JSON.stringify({ docs: [{ key: '/works/OL456W', title: 'Other title', author_name: ['Author'] }] }));
+}) as typeof fetch;
+const storage = memoryBookStorage();
+const catalog = new BookCatalog(storage, fake, { queryGapMs: 0 });
+const file = await catalog.archivePdf(book);
+assert.equal(file?.identifier, 'scan2');
+assert.equal(file?.source, 'editions');
+assert.equal(book.pd, false);
+const count = requests.length;
+assert.equal((await catalog.archivePdf(book))?.identifier, 'scan2');
+assert.equal(requests.length, count);
+const failedCatalog = new BookCatalog(memoryBookStorage(), fake);
+fail = true;
+assert.equal(await failedCatalog.archivePdf(book), null);
+fail = false;
+assert.equal((await failedCatalog.archivePdf(book))?.identifier, 'scan2');
+const result = await catalog.searchDetailed('Other title', 5);
+assert.equal(result.remote[0].id, 'OL456W');
+const reloaded = new BookCatalog(storage, fake);
+assert.equal((await reloaded.byId('OL456W'))?.title, 'Other title');
+console.log('Archive PDF checks passed.');

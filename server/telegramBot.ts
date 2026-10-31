@@ -21,7 +21,7 @@ import { audioFileMeta, canWriteId3Tags, isTelegramVoice, sniffAudioContainer } 
 import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
 import * as Books from '../src/services/bookRecommendationEngine';
-import { BookCatalog, CATALOG_LANGUAGES, CATALOG_TARGET, coverUrl, workUrl } from '../src/services/bookCatalog';
+import { BookCatalog, CATALOG_LANGUAGES, coverUrl } from '../src/services/bookCatalog';
 import { isArabicText, isUsableDescription, summarizeBookWithGemini } from '../src/services/bookDescriptions';
 import { BUILD_TAG, buildVersionLines } from '../src/services/buildInfo';
 import type { BookStorageAdapter, CatalogBook } from '../src/services/bookCatalog';
@@ -8358,8 +8358,7 @@ export class TelegramBotManager {
         // نص عراقي بحت، وبلا أرقام ناقصة: لو المكتبة صفر ما نطبع رقم.
         const languagesWord = stats.languages >= 3 ? 'لغات' : 'لغة';
         const library = stats.total > 0
-          ? `المكتبة بيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} ${languagesWord}، ومقسّمة على *${distribution.genres.length}* صنف.` +
-            (stats.done ? '' : `\nوبعدها تكبر بالخلفية لحد ${CATALOG_TARGET.toLocaleString('en-US')}.`)
+          ? `المكتبة بيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} ${languagesWord}، ومقسّمة على *${distribution.genres.length}* صنف.`
           : 'المكتبة بعدها تتجهّز — جرّب بعد شوية.';
         const lines = [`*اقترحلي كتاب* 📚`, '', library];
         // سطر «الرقم جنب الصنف» بلا معنى لو المكتبة فاضية — ما نكرر الكلام.
@@ -8509,9 +8508,7 @@ export class TelegramBotManager {
         const backGenre = pickGenre === 'all' ? 'svc:books' : `svc:books:genre:${pickGenre}`;
         const keyboard: any[][] = [];
         if (pickedCatalogBook) {
-          const pdfUrl = this.bookCatalog.downloadPdfUrl(pickedCatalogBook);
-          if (pdfUrl) keyboard.push([{ text: '📥 نزّل الكتاب PDF', callback_data: `svc:books:pdf:${pickedCatalogBook.id}` }]);
-          keyboard.push([{ text: '🔗 صفحة الكتاب', url: workUrl(pickedCatalogBook) }]);
+          keyboard.push([{ text: '📥 نزّل الكتاب PDF', callback_data: `svc:books:pdf:${pickedCatalogBook.id}` }]);
         }
         keyboard.push([{ text: '🎲 كتاب ثاني', callback_data: `svc:books:again:${pickGenre}:${decadeText}:${itemId}` }]);
         keyboard.push([{ text: '🔄 تغيير العقد', callback_data: backGenre }]);
@@ -8549,43 +8546,37 @@ export class TelegramBotManager {
         return;
       }
 
-      // 📖 فتح كتاب من نتائج البحث
-      if (parts[2] === 'open') {
+      // 📥 ملف الكتاب PDF — نجيبه من إنترنت أرشيف عند الضغط (كتب الملكية العامة بس)
+      if (parts[2] === 'pdf' || parts[2] === 'open') {
         const id = parts[3] || '';
         const book = await this.bookCatalog.byId(id);
         if (!book) {
           await this.answerCallbackQuery(cb.id, 'الكتاب مو موجود بالمكتبة؛ دوّر من جديد.', true);
           return;
         }
-        await this.sendCatalogBookCard(cb, chatId, messageId, book, 'من المكتبة');
-        return;
-      }
-
-      // 📥 تحميل الكتاب PDF (كتب الملكية العامة بس)
-      if (parts[2] === 'pdf') {
-        const id = parts[3] || '';
-        const book = await this.bookCatalog.byId(id);
-        const pdfUrl = book ? this.bookCatalog.downloadPdfUrl(book) : null;
-        if (!book || !pdfUrl) {
-          await this.answerCallbackQuery(cb.id, 'هذا الكتاب ماكو نسخة PDF حرة منه.', true);
-          return;
-        }
-        await this.answerCallbackQuery(cb.id, 'جاري إرسال الملف…');
-        const sent = await this.sendPdfDocument(
-          chatId,
-          pdfUrl,
-          `📄 *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}`,
-          [[{ text: '🔗 صفحة الكتاب', url: workUrl(book) }], [{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
-        );
-        if (!sent?.ok) {
-          // الملف كبير على تيليجرام؟ نعطيه رابط مباشر بدل ما يضيع.
+        await this.answerCallbackQuery(cb.id, 'جاري أرسل الملف…');
+        const file = await this.bookCatalog.archivePdf(book);
+        if (!file) {
+          // ما نلفّق ملف ولا نرسل نسخة محفوظة — نقولها بصراحة.
           await this.sendMessage(
             chatId,
-            `الملف كبير على الإرسال المباشر 📄\n\nتكدر تنزّله من هنا:`,
-            [
-              [{ text: '📥 نزّل PDF', url: pdfUrl }],
-              [{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]
-            ]
+            `ما لكيت ملف PDF من الملكية العامة لهذا الكتاب هسه.\n\n` +
+              `جرّب «كتاب ثاني» أو دوّر كتاب ثاني.`,
+            [[{ text: '🎲 كتاب ثاني', callback_data: `svc:books:rand:${book.id}` }], [{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
+          );
+          return;
+        }
+        const sent = await this.sendPdfDocument(
+          chatId,
+          file.url,
+          `📄 *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}`,
+          [[{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
+        );
+        if (!sent?.ok) {
+          await this.sendMessage(
+            chatId,
+            `ما كدرت أرسل ملف PDF هسه. جرّب مرة ثانية.`,
+            [[{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]]
           );
         }
         return;
@@ -12798,21 +12789,17 @@ export class TelegramBotManager {
     await this.answerCallbackQuery(cb.id, '');
   }
 
-  /** أزرار بطاقة الكتاب: PDF للكتب الحرة، ورابط الصفحة للباقي. */
+  /** أزرار بطاقة الكتاب: زر الملف دايمًا موجود — والملف نجيب من إنترنت أرشيف عند الضغط. */
   private async bookActionRows(book: CatalogBook): Promise<any[][]> {
     const rows: any[][] = [];
-    const pdfUrl = this.bookCatalog.downloadPdfUrl(book);
-    if (pdfUrl) {
-      rows.push([{ text: '📥 نزّل الكتاب PDF', callback_data: `svc:books:pdf:${book.id}` }]);
-    }
-    rows.push([{ text: '🔗 صفحة الكتاب', url: workUrl(book) }]);
+    rows.push([{ text: '📥 نزّل الكتاب PDF', callback_data: `svc:books:pdf:${book.id}` }]);
     rows.push([{ text: '🎲 كتاب ثاني', callback_data: `svc:books:rand:${book.id}` }]);
     rows.push([{ text: '🔎 دوّر كتاب', callback_data: 'svc:books:search' }]);
     rows.push([{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]);
     return rows;
   }
 
-  /** يرسل ملف PDF من رابط (بحد تيليجرام)، ولو فشل يعطي زر رابط مباشر. */
+  /** يرسل ملف PDF من إنترنت أرشيف عبر تيليجرام. */
   private async sendPdfDocument(chatId: string, url: string, caption: string, keyboard?: any[][]): Promise<any> {
     if (!this.token) return null;
     try {
@@ -12898,13 +12885,13 @@ export class TelegramBotManager {
       return `${index + 1}) *${this.mdSafe(loc.title)}* — ${this.mdSafe(loc.author)}${year}${lang}`;
     });
     const keyboard = localizedResults.map(({ book, loc }) => [
-      { text: `📖 ${loc.title.slice(0, 28)} — ${loc.author.slice(0, 20)}`, callback_data: `svc:books:open:${book.id}` }
+      { text: `📥 PDF: ${loc.title.slice(0, 28)} — ${loc.author.slice(0, 20)}`, callback_data: `svc:books:pdf:${book.id}` }
     ]);
     keyboard.push([{ text: '🔎 دوّر غير كتاب', callback_data: 'svc:books:search' }]);
     keyboard.push([{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]);
     await this.sendMessage(
       chatId,
-      `*نتائج البحث عن* ${this.mdSafe(clean)} 🔎\n\n${lines.join('\n')}\n\nاضغط على الكتاب حتى تشوف تفاصيله:`,
+      `*نتائج البحث عن* ${this.mdSafe(clean)} 🔎\n\n${lines.join('\n')}\n\nاضغط على الكتاب حتى أرسل ملفه PDF إذا متوفر من الملكية العامة:`,
       keyboard
     );
   }

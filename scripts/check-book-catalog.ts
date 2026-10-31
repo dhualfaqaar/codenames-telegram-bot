@@ -429,8 +429,8 @@ const fakeFetch = (async (input: any) => {
   }, 'ara')?.first?.includes('single sentence'));
   check('جملة قصيرة جداً تنرفض', cleanCatalogDoc({ key: '/works/OL3W', title: 'كتاب', author_name: ['مؤلف'], first_sentence: ['ok'] }, 'ara')?.first === undefined);
   check('معرّف Internet Archive ينحفظ', cleanCatalogDoc({ key: '/works/OL4W', title: 'كتاب', author_name: ['مؤلف'], ia: ['someid00test'] }, 'ara')?.ia === 'someid00test');
-  check('public_scan_b = true يعني ملكية عامة', cleanCatalogDoc({ key: '/works/OL5W', title: 'كتاب', author_name: ['مؤلف'], public_scan_b: true }, 'ara')?.pd === true);
-  check('بلا public_scan_b مو ملكية عامة', cleanCatalogDoc({ key: '/works/OL6W', title: 'كتاب', author_name: ['مؤلف'] }, 'ara')?.pd === false);
+  check('public_scan_b يحفظ إشارة النسخة المتاحة', cleanCatalogDoc({ key: '/works/OL5W', title: 'كتاب', author_name: ['مؤلف'], public_scan_b: true }, 'ara')?.pd === true);
+  check('بلا public_scan_b ماكو إشارة نسخة متاحة', cleanCatalogDoc({ key: '/works/OL6W', title: 'كتاب', author_name: ['مؤلف'] }, 'ara')?.pd === false);
   check('تنظيف الوصف من HTML', cleanDescription('<p>وصف <b>مهم</b></p>') === 'وصف مهم');
   check('تنظيف الوصف من روابط ماركداون', cleanDescription('نص [رابط](https://x.y) هنا') === 'نص رابط هنا');
 
@@ -445,9 +445,6 @@ const fakeFetch = (async (input: any) => {
   const freeBook = await catalog.byId('OLPD1W');
   const lockedBook = await catalog.byId('OLPD2W');
   const noIaBook = await catalog.byId('OLPD3W');
-  check('رابط PDF يتكوّن للكتاب الحر', catalog.downloadPdfUrl(freeBook!) === 'https://archive.org/download/freetest00id/freetest00id.pdf');
-  check('ماكو PDF لكتاب محفوظ الحقوق', catalog.downloadPdfUrl(lockedBook!) === null);
-  check('ماكو PDF بلا معرّف أرشيف', catalog.downloadPdfUrl(noIaBook!) === null);
 
   // النبذة: من works API + كاش
   worksCalls = 0;
