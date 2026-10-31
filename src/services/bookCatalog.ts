@@ -36,10 +36,12 @@ export interface CatalogBook {
 }
 
 export interface BookStorageAdapter {
+  /** SQLite متاح في Durable Object؛ اختياري للتشغيل المحلي. */
+  sql?: { exec(query: string, ...bindings: any[]): Iterable<any> };
   get<T = unknown>(key: string): Promise<T | undefined>;
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<void>;
-  list<T = unknown>(options?: { prefix?: string }): Promise<Map<string, T>>;
+  list<T = unknown>(options?: { prefix?: string; limit?: number }): Promise<Map<string, T>>;
 }
 
 export interface CatalogMeta {
@@ -454,6 +456,12 @@ const API_FIELDS =
   'key,title,author_name,first_publish_year,number_of_pages_median,cover_i,language,subject,first_sentence,ia,public_scan_b';
 const USER_AGENT = 'CodenamesTelegramBot/1.0 (book catalog; https://t.me/code_games)';
 
+// مطابقة ISBN 9789776829435: https://books.google.com/books?vid=ISBN9789776829435
+// اسم المؤلف: https://kataranovels.com/novelist/أحمد-الملك/
+const VERIFIED_ARABIC_NAMES: Record<string, { title: string; author: string }> = {
+  OL32121331W: { title: 'سأعود حين يفيض النهر', author: 'أحمد الملك' }
+};
+
 const META_KEY = 'books:meta';
 const CHUNK_PREFIX = 'books:chunk:';
 
@@ -489,10 +497,13 @@ export function memoryBookStorage(): BookStorageAdapter {
     async delete(key: string) {
       store.delete(key);
     },
-    async list<T>(options?: { prefix?: string }) {
+    async list<T>(options?: { prefix?: string; limit?: number }) {
       const prefix = options?.prefix || '';
       const out = new Map<string, T>();
-      for (const [key, value] of store) if (key.startsWith(prefix)) out.set(key, value as T);
+      for (const [key, value] of [...store].sort(([a], [b]) => a.localeCompare(b))) {
+        if (key.startsWith(prefix)) out.set(key, value as T);
+        if (options?.limit && out.size >= options.limit) break;
+      }
       return out;
     }
   };
@@ -732,6 +743,9 @@ export class BookCatalog {
    * النتيجة تتكاش بالتخزين حتى ما نعيد الطلب.
    */
   async localize(book: CatalogBook): Promise<{ title: string; author: string; localized: boolean }> {
+    // الاسم العربي المؤكد لنفس معرّف العمل، من فهرسة الطبعة برقم ISBN 9789776829435.
+    const verified = VERIFIED_ARABIC_NAMES[book.id];
+    if (verified) return { ...verified, localized: true };
     let title = isArabicName(book.title) ? cleanArabicName(book.title) : '';
     let author = isArabicName(book.author) ? cleanArabicName(book.author) : '';
     if (title && author) return { title, author, localized: false };
@@ -764,6 +778,14 @@ export class BookCatalog {
         const names: unknown[] = [record?.name, record?.personal_name, ...(Array.isArray(record?.alternate_names) ? record.alternate_names : [])];
         const found = names.find(value => typeof value === 'string' && isArabicName(value));
         if (typeof found === 'string') author = cleanArabicName(found);
+        // الاسم المرتبط بنفس مؤلف Open Library، مو بحث تقريبي عن شخص مختلف.
+        const wikidata = record?.remote_ids?.wikidata;
+        if (!author && typeof wikidata === 'string' && /^Q[1-9]\d*$/.test(wikidata)) {
+          const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${wikidata}&props=labels&languages=ar&format=json`;
+          const entity = await this.fetchJsonQuiet(url);
+          const arabic = entity?.entities?.[wikidata]?.labels?.ar?.value;
+          if (typeof arabic === 'string' && isArabicName(arabic)) author = cleanArabicName(arabic);
+        }
       }
     }
     if ((!title || !author) && this.localizer) {
@@ -817,19 +839,19 @@ export class BookCatalog {
         const data: any = await response.json();
         const raw = data?.description;
         const candidate = tidyDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
-        if (isUsableDescription(candidate, book)) original = candidate;
+        if (isUsableDescription(candidate, book, true)) original = candidate;
       }
     } catch { /* نجرّب الطبعات */ }
     if (!isArabicText(original)) {
       for (const entry of await this.fetchEditions(book.id)) {
         const raw = entry?.description;
         const candidate = tidyDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
-        if (!isUsableDescription(candidate, book)) continue;
+        if (!isUsableDescription(candidate, book, true)) continue;
         if (isArabicText(candidate)) { original = candidate; break; }
         if (!original) original = candidate;
       }
     }
-    let text = isArabicText(original) ? original : '';
+    let text = isArabicText(original) && isUsableDescription(original, book) ? original : '';
     // الترجمة تعتمد على وصف حقيقي، وليست اختلاقاً من بيانات النشر.
     if (!text && original && this.summarizer) {
       try {
@@ -1104,9 +1126,10 @@ export class BookCatalog {
     const words = needle.split(' ').filter(word => word.length >= 2);
     const scored: Array<{ book: CatalogBook; score: number }> = [];
     for (const book of this.books) {
-      const title = normalizeQuery(book.title);
-      const author = normalizeQuery(book.author);
-      const haystack = `${title} ${author}`;
+      const alias = VERIFIED_ARABIC_NAMES[book.id];
+      const title = normalizeQuery(alias?.title || book.title);
+      const author = normalizeQuery(alias?.author || book.author);
+      const haystack = `${title} ${author} ${normalizeQuery(book.title)} ${normalizeQuery(book.author)}`;
       let score = 0;
       if (title === needle) score += 120;
       if (author === needle) score += 100;
