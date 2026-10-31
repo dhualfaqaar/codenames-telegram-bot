@@ -17,7 +17,25 @@ export type BookGenre =
   | 'mystery'
   | 'horror'
   | 'biography'
-  | 'children';
+  | 'children'
+  // الجولة 40: أصناف إضافية (علم نفس، آداب بلغات، سياسة، اقتصاد، علوم…)
+  | 'psychology'
+  | 'arabic_lit'
+  | 'english_lit'
+  | 'french_lit'
+  | 'russian_lit'
+  | 'german_lit'
+  | 'politics'
+  | 'economics'
+  | 'science'
+  | 'math'
+  | 'sports'
+  | 'medicine'
+  | 'arts'
+  | 'mythology'
+  | 'comics'
+  | 'manga'
+  | 'fantasy';
 
 export type BookDecade = number | 'all';
 
@@ -44,8 +62,37 @@ export const BOOK_GENRE_LABELS: Record<BookGenre, string> = {
   mystery: 'بوليسي وغموض',
   horror: 'رعب',
   biography: 'سيرة وواقعي',
-  children: 'أطفال وحكايات'
+  children: 'أطفال وحكايات',
+  psychology: 'علم نفس',
+  arabic_lit: 'أدب عربي',
+  english_lit: 'أدب إنجليزي',
+  french_lit: 'أدب فرنسي',
+  russian_lit: 'أدب روسي',
+  german_lit: 'أدب ألماني',
+  politics: 'سياسة',
+  economics: 'اقتصاد',
+  science: 'علوم',
+  math: 'رياضيات',
+  sports: 'رياضة',
+  medicine: 'طب وصحة',
+  arts: 'فنون وموسيقى',
+  mythology: 'أساطير وفلكلور',
+  comics: 'كوميكس',
+  manga: 'مانغا',
+  fantasy: 'فانتازيا'
 };
+
+/** الأصناف الأدبية المرتبطة بلغة الكتاب (أدب عربي/إنجليزي/فرنسي/روسي/ألماني). */
+export const LITERATURE_BY_LANGUAGE: Record<string, BookGenre> = {
+  ara: 'arabic_lit',
+  eng: 'english_lit',
+  fre: 'french_lit',
+  rus: 'russian_lit',
+  ger: 'german_lit'
+};
+
+/** أصناف تعتبر «أدب» — عليها نضيف وسم أدب اللغة. */
+export const LITERARY_GENRES: BookGenre[] = ['novel', 'short_stories', 'poetry', 'theater'];
 
 // كل الكتب مختارة يدوياً: عربية أولاً ثم عالمية مترجمة.
 const BOOKS: BookRecommendation[] = [
@@ -149,6 +196,14 @@ const BOOKS: BookRecommendation[] = [
 ];
 
 export function bookGenres(): BookGenre[] {
+  // كل الأصناف المعروفة (مو بس اللي بالقاعدة المختارة) حتى تظهر بالشاشة،
+  // والكتب تجي من المكتبة الكبيرة، والقاعدة المختارة احتياط.
+  return (Object.keys(BOOK_GENRE_LABELS) as BookGenre[])
+    .sort((a, b) => BOOK_GENRE_LABELS[a].localeCompare(BOOK_GENRE_LABELS[b], 'ar'));
+}
+
+/** الأصناف اللي عندها كتب بالقاعدة المختارة يدوياً. */
+export function curatedGenres(): BookGenre[] {
   return Array.from(new Set(BOOKS.flatMap(book => book.genres)))
     .sort((a, b) => BOOK_GENRE_LABELS[a].localeCompare(BOOK_GENRE_LABELS[b], 'ar'));
 }

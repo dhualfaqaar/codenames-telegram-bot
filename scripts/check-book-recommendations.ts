@@ -40,6 +40,17 @@ const fakeCatalogFetch = (async (input: any) => {
   const lang = (q.match(/language:([a-z]{3})/) || [])[1] || 'ara';
   const subject = (q.match(/subject:"([^"]+)"/) || [])[1] || '';
   const page = Number(parsed.searchParams.get('page') || '1');
+  if (parsed.pathname.includes('/editions')) {
+    return {
+      ok: true,
+      json: async () => ({
+        entries: [
+          { title: 'Latin Only Title', by_statement: 'by Someone' },
+          { title: 'عنوان عربي للكتاب', by_statement: 'تأليف: عبد الله' }
+        ]
+      })
+    } as any;
+  }
   if (parsed.pathname.includes('/works/')) {
     return { ok: true, json: async () => ({ description: 'وصف تفصيلي للكتاب من أوبن لايبراري.' }) } as any;
   }
@@ -77,19 +88,21 @@ check('كل كتاب إله بلد مؤلف', all.every(book => book.country.tri
 check('كل كتاب إله تصنيف واحد على الأقل', all.every(book => book.genres.length >= 1));
 check('كل كتاب مؤلفه مو نفس عنوانه', all.every(book => book.author !== book.title));
 
-check('التصنيفات 12 تصنيف', genres.length === 12);
-check('كل تصنيف إله ≥3 كتب', genres.every(genre => Books.booksFor(genre).length >= 3));
-check('كل تصنيف إله ≥2 عقود', genres.every(genre => Books.bookDecades(genre).length >= 2));
+check('التصنيفات 29 تصنيف', genres.length === 29);
+check('كل تصنيف إله اسم عربي', genres.every(genre => Books.BOOK_GENRE_LABELS[genre].length > 1));
+check('كل تصنيف بالقاعدة المختارة إله ≥3 كتب', Books.curatedGenres().every(genre => Books.booksFor(genre).length >= 3));
+check('الأصناف الجديدة موجودة', ['psychology', 'arabic_lit', 'english_lit', 'french_lit', 'russian_lit', 'german_lit', 'politics', 'economics', 'science', 'math', 'sports', 'medicine', 'arts', 'mythology', 'comics', 'manga', 'fantasy'].every(genre => genres.includes(genre as Books.BookGenre)));
+check('كل تصنيف بالقاعدة المختارة إله ≥2 عقود', Books.curatedGenres().every(genre => Books.bookDecades(genre).length >= 2));
 check('العقود مرتبة تنازلياً', genres.every(genre => {
   const decades = Books.bookDecades(genre);
   return decades.every((decade, index) => index === 0 || decades[index - 1] > decade);
 }));
 check('عقد أي كتاب يطابق حساب السنة', all.every(book => Books.bookDecade(book.year) === Math.floor(book.year / 10) * 10));
 check('تسمية العقد تغطي عشر سنوات', Books.bookDecadeLabel(1970) === '1970–1979');
-check('كل تصنيف عربي مسمّى', genres.every(genre => Books.BOOK_GENRE_LABELS[genre].length > 1));
+
 
 check('الترشيح يحترم التصنيف', (() => {
-  for (const genre of genres) {
+  for (const genre of Books.curatedGenres()) {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const book = Books.pickBook(genre, 'all');
       if (!book || !book.genres.includes(genre)) return false;
@@ -98,7 +111,7 @@ check('الترشيح يحترم التصنيف', (() => {
   return true;
 })());
 check('الترشيح يحترم العقد', (() => {
-  for (const genre of genres) {
+  for (const genre of Books.curatedGenres()) {
     for (const decade of Books.bookDecades(genre)) {
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const book = Books.pickBook(genre, decade);
@@ -109,7 +122,7 @@ check('الترشيح يحترم العقد', (() => {
   return true;
 })());
 check('الاستبعاد يمنع تكرار نفس الكتاب', (() => {
-  for (const genre of genres) {
+  for (const genre of Books.curatedGenres()) {
     const sample = Books.booksFor(genre);
     if (sample.length < 2) continue;
     const excluded = sample[0].id;
@@ -382,6 +395,31 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     calls = [];
     await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLNOPE'), 'svc:books:pdf:OLNOPE');
     check('PDF لكتاب مو موجود ينرفض', calls.some(call => call.method === 'answerCallbackQuery'));
+  }
+
+  // تعريب العنوان/المؤلف عند وجود طبعة عربية
+  {
+    const storage = memoryBookStorage();
+    await storage.put('books:chunk:0000', [
+      { id: 'OLAR1W', title: 'Children of Gebelawi', author: 'Najib Mahfuz', year: 1959, pages: 552, cover: null, lang: 'ara', subject: 'Arabic fiction', genres: ['novel', 'arabic_lit'] }
+    ]);
+    anyBot.bookCatalog = new BookCatalog(storage, fakeCatalogFetch, { queryGapMs: 0 });
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:open:OLAR1W'), 'svc:books:open:OLAR1W');
+    const card = lastScreen();
+    check('العنوان يطلع بالعربي', card.text.includes('عنوان عربي للكتاب') && !card.text.includes('Children of Gebelawi'));
+    check('المؤلف يطلع بالعربي', card.text.includes('عبد الله') && !card.text.includes('Najib Mahfuz'));
+    anyBot.bookCatalog = catalog;
+  }
+
+  // الأصناف الجديدة تظهر بالشاشة وبأعدادها
+  {
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
+    const screen = lastScreen();
+    const expected = ['علم نفس', 'أدب عربي', 'أدب إنجليزي', 'أدب فرنسي', 'أدب روسي', 'أدب ألماني', 'سياسة', 'اقتصاد', 'علوم', 'رياضيات', 'رياضة', 'طب وصحة', 'فنون وموسيقى', 'أساطير وفلكلور', 'كوميكس', 'مانغا', 'فانتازيا'];
+    check('كل الأصناف الجديدة بالشاشة', expected.every(label => screen.keyboard.includes(label)));
+    check('عدد أزرار الأصناف 29', (screen.keyboard.match(/svc:books:genre:/g) || []).length === 29);
   }
 
   // صنف برعب: يرجع من المكتبة الكبيرة (معرّفات OL) مو من القاعدة القديمة
