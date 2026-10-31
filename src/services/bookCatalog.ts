@@ -25,6 +25,12 @@ export interface CatalogBook {
   subject: string;
   /** تصنيفات الكتاب من مواضيعه عند Open Library (مفاتيح BookGenre) */
   genres?: string[];
+  /** جملة الافتتاح من Open Library (تصلح كنبذة قصيرة) */
+  first?: string;
+  /** معرّف النسخة على Internet Archive (للتحميل) */
+  ia?: string;
+  /** نسخة ممسوحة متاحة للعامة (ملكية عامة) */
+  pd?: boolean;
 }
 
 export interface BookStorageAdapter {
@@ -66,6 +72,9 @@ export interface CatalogMeta {
 interface OpenLibraryDoc {
   key?: string;
   title?: string;
+  first_sentence?: string[] | string;
+  ia?: string[];
+  public_scan_b?: boolean;
   author_name?: string[];
   first_publish_year?: number;
   number_of_pages_median?: number;
@@ -321,7 +330,8 @@ const MAX_WRAP = 3;
 const FETCH_ATTEMPTS = 3;
 /** ترتيب Open Library لكل مرحلة: نكرر اللغات بترتيب مختلف حتى نتجاوز التكرار. */
 const SORT_STAGES = ['', 'new', 'old', 'random'];
-const API_FIELDS = 'key,title,author_name,first_publish_year,number_of_pages_median,cover_i,language,subject';
+const API_FIELDS =
+  'key,title,author_name,first_publish_year,number_of_pages_median,cover_i,language,subject,first_sentence,ia,public_scan_b';
 const USER_AGENT = 'CodenamesTelegramBot/1.0 (book catalog; https://t.me/code_games)';
 
 const META_KEY = 'books:meta';
@@ -370,6 +380,15 @@ export function memoryBookStorage(): BookStorageAdapter {
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+/** ينظّف وصف Open Library من الوسوم والأسطر المتعددة. */
+export function cleanDescription(value: string): string {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function tidy(value: string, max: number): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -404,6 +423,9 @@ export function cleanCatalogDoc(doc: OpenLibraryDoc, fallbackLang: string, prefe
   const pages = Number(doc.number_of_pages_median);
   const cover = Number(doc.cover_i);
   const subjects = (doc.subject || []).map(item => String(item || ''));
+  const firstRaw = Array.isArray(doc.first_sentence) ? doc.first_sentence[0] : doc.first_sentence;
+  const firstSentence = tidy(String(firstRaw || ''), 240);
+  const ia = tidy(String(doc.ia?.[0] || ''), 80);
   const subject = tidy(subjects[0] || '', 40);
   return {
     id,
@@ -414,7 +436,10 @@ export function cleanCatalogDoc(doc: OpenLibraryDoc, fallbackLang: string, prefe
     cover: Number.isFinite(cover) && cover > 0 ? cover : null,
     lang: tidy(String((preferFallbackLang ? fallbackLang : doc.language?.[0]) || fallbackLang), 8) || fallbackLang,
     subject,
-    genres: classifyBookStrict(subjects, title)
+    genres: classifyBookStrict(subjects, title),
+    first: firstSentence.length > 15 ? firstSentence : undefined,
+    ia: ia || undefined,
+    pd: doc.public_scan_b === true
   };
 }
 
@@ -477,6 +502,65 @@ export class BookCatalog {
       }
     })();
     return this.loaded;
+  }
+
+  /**
+   * نبذة الكتاب: من حقل جملة الافتتاح، أو من وصف العمل عند Open Library
+   * (`/works/{id}.json`). الوصف يُكاش بالتخزين حتى ما ينطلب مرتين.
+   */
+  async describe(book: CatalogBook): Promise<string> {
+    const cacheKey = `books:desc:${book.id}`;
+    try {
+      const cached = await this.storage.get<string>(cacheKey);
+      if (cached) return cached;
+    } catch {
+      /* التخزين مو دايماً متاح بالفحوص */
+    }
+
+    let text = cleanDescription(book.first || '');
+    if (!text) {
+      const url = `https://openlibrary.org/works/${book.id}.json`;
+      try {
+        const res = await this.fetchImpl(url, {
+          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+          signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
+        });
+        if (res?.ok) {
+          const payload: any = await res.json();
+          const raw = payload?.description;
+          text = cleanDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
+        }
+      } catch {
+        text = '';
+      }
+    }
+
+    // لو ماكو وصف نهائياً، نكوّن جملة من البيانات بدل ما تبقى البطاقة فاضية.
+    if (!text) text = this.fallbackDescription(book);
+    if (text.length > 400) text = `${text.slice(0, 397).trim()}…`;
+    try {
+      await this.storage.put(cacheKey, text);
+    } catch {
+      /* الكاش اختياري */
+    }
+    return text;
+  }
+
+  /** جملة وصف من بيانات الكتاب (احتياط دائم). */
+  fallbackDescription(book: CatalogBook): string {
+    const genreLabel = (this.genresOf(book)[0] || 'book');
+    const parts: string[] = [];
+    parts.push(`كتاب من تصنيف «${genreLabel}»`);
+    if (book.year) parts.push(`صدر سنة ${book.year}`);
+    if (book.pages) parts.push(`${book.pages} صفحة`);
+    parts.push(`متوفر بـ${book.lang}`);
+    return `${parts.join(' · ')}.`;
+  }
+
+  /** رابط تحميل PDF — بس للكتب الممسوحة المتاحة للعامة (ملكية عامة). */
+  downloadPdfUrl(book: CatalogBook): string | null {
+    if (!book.pd || !book.ia) return null;
+    return `https://archive.org/download/${book.ia}/${book.ia}.pdf`;
   }
 
   /** تصنيفات كتاب: من الحقل المخزّن، أو محسوبة من مواضيعه (كتب قديمة بلا حقل). */

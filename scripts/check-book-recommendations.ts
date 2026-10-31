@@ -26,7 +26,10 @@ function fakeCatalogPage(lang: string, page: number, subject: string, q: string)
         number_of_pages_median: 120 + (n % 380),
         cover_i: 5000 + (n % 900),
         language: [lang],
-        subject: subject ? [subject] : ['Fiction']
+        subject: subject ? [subject] : ['Fiction'],
+        first_sentence: [`جملة افتتاح للكتاب ${hash % 1000}.`],
+        ia: lang === 'ara' ? [`free${hash}id`] : undefined,
+        public_scan_b: lang === 'ara'
       };
     })
   };
@@ -37,6 +40,9 @@ const fakeCatalogFetch = (async (input: any) => {
   const lang = (q.match(/language:([a-z]{3})/) || [])[1] || 'ara';
   const subject = (q.match(/subject:"([^"]+)"/) || [])[1] || '';
   const page = Number(parsed.searchParams.get('page') || '1');
+  if (parsed.pathname.includes('/works/')) {
+    return { ok: true, json: async () => ({ description: 'وصف تفصيلي للكتاب من أوبن لايبراري.' }) } as any;
+  }
   const authorQuery = parsed.searchParams.get('author') || '';
   if (authorQuery) {
     return {
@@ -262,7 +268,10 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     calls = [];
     await anyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
     const bookScreen = lastScreen();
-    const FORBIDDEN = ['تريد', 'تريده', 'من جوا', 'اضغط', 'لغات مختلفة', 'فيها', 'اختر '];
+    const FORBIDDEN = ['تريد', 'تريده', 'لغات مختلفة', 'فيها'];
+    check('النص يستعمل صيغة «الرقم اللي بصف كل صنف»', bookScreen.text.includes('الرقم اللي بصف كل صنف هو عدد كتبه'));
+    check('النص يستعمل «من جوا» (لهجة عراقية)', bookScreen.text.includes('من جوا'));
+    check('النص يستعمل «اضغط» مثل ما طلب المستخدم', bookScreen.text.includes('اضغط «كتاب عشوائي»'));
     const lower = bookScreen.text;
     check('نص الخدمة بلا كلمات خليجية', FORBIDDEN.every(word => !lower.includes(word)));
     check('نص الخدمة يستعمل «بيها» العراقية', lower.includes('بيها') || lower.includes('بعدها تتجهّز'));
@@ -296,6 +305,83 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     }
     check('٤٠ سحبة داخل صنف تعطي ≥20 عنوان مختلف', titles.size >= 20);
     check('السحب داخل الصنف يستعمل المكتبة الكبيرة', previous.startsWith('OL'));
+  }
+
+  // النبذة + أزرار PDF/الرابط على بطاقة المكتبة الكبيرة
+  {
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:rand'), 'svc:books:rand');
+    const card = lastScreen();
+    check('البطاقة فيها «النبذة»', card.text.includes('*النبذة:*'));
+    check('النبذة مو فاضية', /\*النبذة:\*\n\S/.test(card.text));
+    check('البطاقة فيها زر «صفحة الكتاب»', card.keyboard.includes('openlibrary.org/works/'));
+    if (card.keyboard.includes('svc:books:pdf:')) {
+      const bookId = (card.keyboard.match(/svc:books:pdf:([^"]+)"/) || [])[1];
+      calls = [];
+      await anyBot.handleExtraServicesCb(press(`svc:books:pdf:${bookId}`), `svc:books:pdf:${bookId}`);
+      check('زر PDF يرسل مستند', calls.some(call => call.method === 'sendDocument'));
+      const doc = calls.find(call => call.method === 'sendDocument');
+      check('رابط المستند من archive.org', String(doc?.body?.document || '').includes('archive.org/download/'));
+    } else {
+      check('كتاب غير حر ما يعرض زر PDF', !card.keyboard.includes('svc:books:pdf:'));
+    }
+  }
+
+  // حالتان محددتان: كتاب حر (زر PDF) وكتاب محفوظ (بلا زر PDF)
+  {
+    const storage = memoryBookStorage();
+    await storage.put('books:chunk:0000', [
+      { id: 'OLFREE1W', title: 'كتاب حر', author: 'مؤلف حر', year: 1890, pages: 210, cover: null, lang: 'ara', subject: 'Philosophy', genres: ['philosophy'], ia: 'freebook00id', pd: true },
+      { id: 'OLPAID1W', title: 'كتاب محفوظ', author: 'مؤلف حديث', year: 2018, pages: 300, cover: null, lang: 'ara', subject: 'Philosophy', genres: ['philosophy'], ia: 'locked00id', pd: false }
+    ]);
+    const special = new BookCatalog(storage, fakeCatalogFetch);
+    anyBot.bookCatalog = special;
+
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:open:OLFREE1W'), 'svc:books:open:OLFREE1W');
+    const freeCard = lastScreen();
+    check('كتاب حر يعرض زر PDF', freeCard.keyboard.includes('svc:books:pdf:OLFREE1W'));
+    check('بطاقة الكتاب الحر فيها نبذة', freeCard.text.includes('*النبذة:*'));
+
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLFREE1W'), 'svc:books:pdf:OLFREE1W');
+    const docCall = calls.find(call => call.method === 'sendDocument');
+    check('ضغط PDF يرسل ملف من archive.org', Boolean(docCall) && String(docCall!.body.document) === 'https://archive.org/download/freebook00id/freebook00id.pdf');
+
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:open:OLPAID1W'), 'svc:books:open:OLPAID1W');
+    const paidCard = lastScreen();
+    check('كتاب محفوظ الحقوق بلا زر PDF', !paidCard.keyboard.includes('svc:books:pdf:'));
+    check('كتاب محفوظ الحقوق عنده رابط الصفحة', paidCard.keyboard.includes('openlibrary.org/works/OLPAID1W'));
+
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLPAID1W'), 'svc:books:pdf:OLPAID1W');
+    const alert = calls.find(call => call.method === 'answerCallbackQuery');
+    check('ضغط PDF لكتاب محفوظ يعطي تنبيه', Boolean(alert) && JSON.stringify(alert!.body).includes('PDF'));
+
+    anyBot.bookCatalog = catalog;
+  }
+
+  // وصف إنجليزي: يوضح «النبذة (بالإنجليزية)» بدل ما يلخبط
+  {
+    const storage = memoryBookStorage();
+    await storage.put('books:chunk:0000', [
+      { id: 'OLENG1W', title: 'The Prince', author: 'Machiavelli', year: 1515, pages: 140, cover: null, lang: 'eng', subject: 'Philosophy', genres: ['philosophy'], first: 'A short political treatise about power and how rulers keep it.', pd: false }
+    ]);
+    anyBot.bookCatalog = new BookCatalog(storage, fakeCatalogFetch);
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:open:OLENG1W'), 'svc:books:open:OLENG1W');
+    const card = lastScreen();
+    check('الوصف الإنجليزي موسوم بذلك', card.text.includes('*النبذة (بالإنجليزية):*'));
+    check('الوصف الإنجليزي يظهر كامل', card.text.includes('political treatise'));
+    anyBot.bookCatalog = catalog;
+  }
+
+  // كتاب محفوظ الحقوق: الضغط على PDF يرد برسالة تنبيه
+  {
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books:pdf:OLNOPE'), 'svc:books:pdf:OLNOPE');
+    check('PDF لكتاب مو موجود ينرفض', calls.some(call => call.method === 'answerCallbackQuery'));
   }
 
   // صنف برعب: يرجع من المكتبة الكبيرة (معرّفات OL) مو من القاعدة القديمة
