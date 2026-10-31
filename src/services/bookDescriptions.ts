@@ -31,6 +31,7 @@ export function isUsableDescription(text: string, book?: Pick<CatalogBook, 'titl
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   if (value.length < MIN_DESCRIPTION_LENGTH) return false;
   if (METADATA_PATTERNS.some(pattern => pattern.test(value))) return false;
+  if (/(?:\b\d{4}\b|[٠-٩]{4}|(?:عدد\s+)?الصفحات|\d+\s*صفحة|سنة\s+[\d٠-٩]|لغة الكتاب|تصنيف الكتاب)/i.test(value)) return false;
   if (book) {
     const title = String(book.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
     const author = String(book.author || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -53,9 +54,23 @@ export function tidyDescription(value: string, max = 400): string {
   return clean.length > max ? `${clean.slice(0, max - 3).trim()}…` : clean;
 }
 
-/** هل النص عربي؟ (نستعمله لوسم النبذة الإنجليزية) */
+/** هل أغلب حروف النص عربية؟ */
 export function isArabicText(value: string): boolean {
-  return /[\u0600-\u06FF]/.test(String(value || ''));
+  const text = String(value || '');
+  const letters = text.match(/\p{L}/gu) || [];
+  const arabic = text.match(/[\u0621-\u063a\u0641-\u064a\u066e-\u06d3]/g) || [];
+  return arabic.length >= 4 && arabic.length / Math.max(letters.length, 1) >= 0.75;
+}
+
+export function isArabicName(value: string): boolean {
+  if (/غير معروف|غير متوفر|لا أعرف|مجهول|لا يوجد/i.test(String(value || ''))) return false;
+  const letters = String(value || '').match(/\p{L}/gu) || [];
+  const arabic = String(value || '').match(/[\u0621-\u063a\u0641-\u064a\u066e-\u06d3]/g) || [];
+  return arabic.length >= 2 && arabic.length / Math.max(letters.length, 1) >= 0.9;
+}
+
+export function cleanArabicName(value: string): string {
+  return String(value || '').normalize('NFC').replace(/[\u064b-\u065f\u0670\u06d6-\u06ed]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 export interface BookSummaryInput {
@@ -68,23 +83,11 @@ export interface BookSummaryInput {
 }
 
 /** يبني برومبت التلخيص (مصدَّر حتى يفحصه الاختبار). */
-export function buildBookSummaryPrompt(book: BookSummaryInput): string {
-  const facts: string[] = [`العنوان: ${book.title}`, `المؤلف: ${book.author}`];
-  if (book.year) facts.push(`سنة النشر: ${book.year}`);
-  if (book.genres?.length) facts.push(`التصنيف: ${book.genres.join('، ')}`);
-  if (book.subjects?.length) facts.push(`المواضيع: ${book.subjects.slice(0, 8).join('، ')}`);
-  if (book.language) facts.push(`اللغة: ${book.language}`);
-  return (
-    'أنت محرر كتب عربي. اكتب نبذة قصيرة عن الكتاب المذكور أدناه.\n' +
-    'الشروط:\n' +
-    '- جملتين بالعربية الفصحى المبسطة، بين ٢٥ و٦٠ كلمة.\n' +
-    '- تشرح **موضوع الكتاب وفكرته**، مو بيانات النشر.\n' +
-    '- ممنوع ذكر السنة أو عدد الصفحات أو اللغة أو التصنيف.\n' +
-    '- إذا ما تعرف الكتاب، اكتب من المواضيع والتصنيف وصفاً عاماً أميناً بلا اختلاق أحداث أو شخصيات.\n' +
-    '- بلا مقدمات مثل «هذا الكتاب» أو «يتحدث الكتاب».\n\n' +
-    `${facts.join('\n')}\n\n` +
-    'أرجع JSON فقط بالشكل: {"description":"..."}'
-  );
+export function buildBookSummaryPrompt(book: BookSummaryInput, source = ''): string {
+  return 'ترجم وصف الكتاب الآتي إلى العربية المبسطة باختصار وأمانة، ولا تضف أي معلومة غير موجودة في النص. ' +
+    'لا تذكر بيانات النشر أو السنة أو الصفحات أو اللغة أو التصنيف. إن لم يكن النص وصفاً للكتاب أرجع وصفاً فارغاً.\n' +
+    `العنوان: ${book.title}\nالمؤلف: ${book.author}\nالوصف المصدر: ${source}\n` +
+    'أرجع JSON فقط بالشكل: {"description":"..."}';
 }
 
 /** يستخرج الوصف من رد Gemini (JSON أو نص خام). */
@@ -118,10 +121,10 @@ export function parseSummaryResponse(text: string): string {
 export async function summarizeBookWithGemini(
   book: BookSummaryInput,
   geminiApiKey: string,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number; source?: string } = {}
 ): Promise<string> {
   const key = String(geminiApiKey || '').trim();
-  if (!key) return '';
+  if (!key || !isUsableDescription(options.source || '', book)) return '';
   const doFetch = options.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   if (!doFetch) return '';
   try {
@@ -131,8 +134,8 @@ export async function summarizeBookWithGemini(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: buildBookSummaryPrompt(book) }] }],
-          generationConfig: { temperature: 0.4, responseMimeType: 'application/json', maxOutputTokens: 300 }
+          contents: [{ parts: [{ text: buildBookSummaryPrompt(book, options.source || '') }] }],
+          generationConfig: { temperature: 0.1, responseMimeType: 'application/json', maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
         }),
         signal: AbortSignal.timeout(options.timeoutMs ?? 12_000)
       }
@@ -143,8 +146,34 @@ export async function summarizeBookWithGemini(
       payload?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') || ''
     ).trim();
     const summary = parseSummaryResponse(text);
-    return isUsableDescription(summary) ? summary : '';
+    return isUsableDescription(summary, book) && isArabicText(summary) ? summary : '';
   } catch {
     return '';
   }
+}
+
+/** تحويل الأسماء للعربية، من دون إضافة عناوين أو مؤلفين غير مذكورين. */
+export async function localizeBookWithGemini(
+  book: Pick<CatalogBook, 'title' | 'author'>, geminiApiKey: string,
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}
+): Promise<{ title: string; author: string } | null> {
+  if (!geminiApiKey) return null;
+  const doFetch = options.fetchImpl || fetch;
+  const prompt = 'اكتب عنوان الكتاب واسم المؤلف بالعربية. استعمل الاسم العربي المعروف إن كان واضحاً؛ ' +
+    'وإلا ترجم العنوان وانقل اسم المؤلف صوتياً بأحرف عربية. لا تغيّر هوية المؤلف ولا تخترع معلومات. ' +
+    'أرجع JSON فقط بمفتاحي title و author.\n' + JSON.stringify({ title: book.title, author: book.author });
+  try {
+    const res = await doFetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1, responseMimeType: 'application/json', maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } } }),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 12000)
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const raw = String(data?.candidates?.[0]?.content?.parts?.map((x: any) => x.text || '').join('') || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const parsed = JSON.parse(raw);
+    const title = tidyDescription(typeof parsed?.title === 'string' ? parsed.title : '', 200);
+    const author = tidyDescription(typeof parsed?.author === 'string' ? parsed.author : '', 150);
+    return { title: isArabicName(title) ? cleanArabicName(title) : '', author: isArabicName(author) ? cleanArabicName(author) : '' };
+  } catch { return null; }
 }

@@ -404,8 +404,8 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
     calls = [];
     await anyBot.sendCatalogBookCard(press('svc:books:rand'), '42', undefined, (await anyBot.bookCatalog.byId('OLENG1W'))!, 'من المكتبة');
     const card = lastScreen();
-    check('الوصف الإنجليزي موسوم بذلك', card.text.includes('*النبذة (بالإنجليزية):*'));
-    check('الوصف الإنجليزي يظهر كامل', card.text.includes('political treatise'));
+    check('بدون وصف عربي لا تعرض نبذة إنجليزية', !card.text.includes('النبذة'));
+    check('جملة الافتتاح لا تعرض كنبذة', !card.text.includes('political treatise'));
     anyBot.bookCatalog = catalog;
   }
 
@@ -563,7 +563,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   check('البطاقة سطر لكل حقل', src.includes('`*المؤلف:* ${this.mdSafe(book.author)}`'));
   check('ماكو \\n حرفية بملف البوت', !src.includes('\\\\n'));
   check('المكتبة الكبيرة مربوطة بالبوت', src.includes('new BookCatalog(serviceConfig.bookStorage'));
-  check('البوت يمرّر ملخّص Gemini للمكتبة', src.includes('summarizer: async book =>'));
+  check('البوت يمرّر ملخّص Gemini للمكتبة', src.includes('summarizer: async (book, source) =>'));
   check('البوت يستعمل خدمة النبذات', src.includes('summarizeBookWithGemini'));
   check('النبذة تُفحص ببوابة الجودة قبل العرض', src.includes('isUsableDescription(rawBlurb'));
   check('بذر المكتبة متاح للمنبّه', src.includes('seedBookCatalog'));

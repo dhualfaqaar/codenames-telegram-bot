@@ -54,11 +54,11 @@ check('الإنجليزي ينعرف', !isArabicText('A novel in English'));
   });
   check('البرومبت يذكر العنوان', prompt.includes('الطريق'));
   check('البرومبت يذكر المؤلف', prompt.includes('نجيب محفوظ'));
-  check('البرومبت يطلب العربية', prompt.includes('بالعربية'));
-  check('البرومبت يمنع ذكر السنة والصفحات', prompt.includes('ممنوع ذكر السنة'));
-  check('البرومبت يمنع اختلاق الأحداث', prompt.includes('بلا اختلاق'));
+  check('البرومبت يطلب العربية', prompt.includes('العربية'));
+  check('البرومبت يمنع ذكر السنة والصفحات', prompt.includes('السنة أو الصفحات'));
+  check('البرومبت يمنع اختلاق الأحداث', prompt.includes('ولا تضف أي معلومة'));
   check('البرومبت يطلب JSON', prompt.includes('{"description"'));
-  check('البرومبت يحدد الطول', prompt.includes('٢٥ و٦٠ كلمة'));
+  check('البرومبت يطلب وصف المصدر', prompt.includes('الوصف المصدر'));
 }
 
 /* ───────────── تحليل رد Gemini ───────────── */
@@ -80,26 +80,26 @@ check('JSON غلط ما ينكسر', typeof parseSummaryResponse('{oops') === 's
     } as any;
   }) as unknown as typeof fetch;
 
-  const summary = await summarizeBookWithGemini({ title: 'الطريق', author: 'نجيب محفوظ' }, 'TEST_KEY', { fetchImpl: okFetch });
+  const summary = await summarizeBookWithGemini({ title: 'الطريق', author: 'نجيب محفوظ' }, 'TEST_KEY', { fetchImpl: okFetch, source: 'A man searches for his father and confronts difficult choices in a changing city.' });
   check('التلخيص يرجع نص عربي', summary.startsWith('رواية تتبع'));
   check('النداء يستعمل مفتاح Gemini', Boolean(body?.contents?.[0]?.parts?.[0]?.text));
 
-  const noKey = await summarizeBookWithGemini({ title: 'x', author: 'y' }, '', { fetchImpl: okFetch });
+  const noKey = await summarizeBookWithGemini({ title: 'x', author: 'y' }, '', { fetchImpl: okFetch, source: 'A man searches for his father and confronts difficult choices in a changing city.' });
   check('بلا مفتاح ماكو نداء', noKey === '');
 
   const failFetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as any) as unknown as typeof fetch;
-  const failed = await summarizeBookWithGemini({ title: 'x', author: 'y' }, 'TEST_KEY', { fetchImpl: failFetch });
+  const failed = await summarizeBookWithGemini({ title: 'x', author: 'y' }, 'TEST_KEY', { fetchImpl: failFetch, source: 'A man searches for his father and confronts difficult choices in a changing city.' });
   check('فشل الـAPI يرجع فاضي', failed === '');
 
   const throwFetch = (async () => { throw new Error('network'); }) as unknown as typeof fetch;
-  const thrown = await summarizeBookWithGemini({ title: 'x', author: 'y' }, 'TEST_KEY', { fetchImpl: throwFetch });
+  const thrown = await summarizeBookWithGemini({ title: 'x', author: 'y' }, 'TEST_KEY', { fetchImpl: throwFetch, source: 'A man searches for his father and confronts difficult choices in a changing city.' });
   check('خطأ الشبكة ما ينكسر', thrown === '');
 
   const junkFetch = (async () => ({
     ok: true,
     json: async () => ({ candidates: [{ content: { parts: [{ text: '{"description":"N/A"}' }] } }] })
   }) as any) as unknown as typeof fetch;
-  const junk = await summarizeBookWithGemini({ title: 'x', author: 'y' }, 'TEST_KEY', { fetchImpl: junkFetch });
+  const junk = await summarizeBookWithGemini({ title: 'x', author: 'y' }, 'TEST_KEY', { fetchImpl: junkFetch, source: 'A man searches for his father and confronts difficult choices in a changing city.' });
   check('رد رديء (N/A) ينرفض', junk === '');
 }
 
