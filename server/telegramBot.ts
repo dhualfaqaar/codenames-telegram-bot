@@ -20,6 +20,7 @@ import * as EXT from '../src/services/extraToolsEngine';
 import { audioFileMeta, canWriteId3Tags, isTelegramVoice, sniffAudioContainer } from '../src/services/audioFormats';
 import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
+import * as Books from '../src/services/bookRecommendationEngine';
 import * as Cinema from '../src/services/cinemaServices';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
@@ -8236,6 +8237,106 @@ export class TelegramBotManager {
       return;
     }
 
+    // ── 📚 اقترحلي كتاب: تصنيف ← عقد ← كتاب بمؤلفه ──
+    if (data === 'svc:books' || data.startsWith('svc:books:')) {
+      const parts = data.split(':');
+      const isBookGenre = (value: string): value is Books.BookGenre =>
+        (Object.keys(Books.BOOK_GENRE_LABELS) as Books.BookGenre[]).includes(value as Books.BookGenre);
+
+      if (data === 'svc:books') {
+        const genres = Books.bookGenres();
+        const keyboard: any[][] = [];
+        for (let i = 0; i < genres.length; i += 2) {
+          const first = genres[i];
+          const second = genres[i + 1];
+          const row = [{ text: Books.BOOK_GENRE_LABELS[first], callback_data: `svc:books:genre:${first}` }];
+          if (second) row.push({ text: Books.BOOK_GENRE_LABELS[second], callback_data: `svc:books:genre:${second}` });
+          keyboard.push(row);
+        }
+        keyboard.push([{ text: '🎲 اقتراح عشوائي', callback_data: 'svc:books:pick:all:all' }]);
+        keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
+        const text =
+          `📚 *اقترحلي كتاب*\\n${SEP}\\n` +
+          `اختار التصنيف، وأنا أطلعلك كتاب مع مؤلفه وسنته وكم صفحة.\\n` +
+          `_كل الاقتراحات مختارة يدوياً — بلا خدمة خارجية._`;
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      const genre = parts[3] || '';
+      if (parts[2] === 'genre' && isBookGenre(genre)) {
+        const decades = Books.bookDecades(genre);
+        const keyboard: any[][] = [];
+        for (let i = 0; i < decades.length; i += 2) {
+          const first = decades[i];
+          const second = decades[i + 1];
+          const row = [{ text: Books.bookDecadeLabel(first), callback_data: `svc:books:pick:${genre}:${first}` }];
+          if (second !== undefined) row.push({ text: Books.bookDecadeLabel(second), callback_data: `svc:books:pick:${genre}:${second}` });
+          keyboard.push(row);
+        }
+        keyboard.push([{ text: '🗓️ أي عقد', callback_data: `svc:books:pick:${genre}:all` }]);
+        keyboard.push([{ text: '🔙 تغيير التصنيف', callback_data: 'svc:books' }]);
+        const text = `📚 *${Books.BOOK_GENRE_LABELS[genre]}*\\n${SEP}\\nاختار عقداً من عشر سنوات؛ مثلاً السبعينات تعني 1970–1979:`;
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      if (parts[2] === 'pick' || parts[2] === 'again') {
+        const pickGenre = parts[3] || 'all';
+        const decadeText = parts[4] || 'all';
+        const excludeId = parts[2] === 'again' ? parts[5] : undefined;
+        const decade: Books.BookDecade = decadeText === 'all' ? 'all' : Number(decadeText);
+        if (pickGenre !== 'all' && !isBookGenre(pickGenre)) {
+          await this.answerCallbackQuery(cb.id, 'التصنيف غير معروف؛ ابدأ من جديد.', true);
+          return;
+        }
+        if (decade !== 'all' && (!Number.isInteger(decade) || decade < 900 || decade > 2030)) {
+          await this.answerCallbackQuery(cb.id, 'العقد غير صالح؛ ابدأ من جديد.', true);
+          return;
+        }
+        const item = pickGenre === 'all'
+          ? (() => {
+              const pool = Books.allBooks().filter(book => book.id !== excludeId);
+              const source = pool.length ? pool : Books.allBooks();
+              return source[Math.floor(Math.random() * source.length)];
+            })()
+          : Books.pickBook(pickGenre as Books.BookGenre, decade, excludeId);
+        if (!item) {
+          await this.answerCallbackQuery(cb.id, 'ما لكيت كتاب مطابق؛ جرّب عقداً أو تصنيفاً ثاني.', true);
+          return;
+        }
+        const genreLabel = pickGenre === 'all'
+          ? 'اقتراح عشوائي'
+          : Books.BOOK_GENRE_LABELS[pickGenre as Books.BookGenre];
+        const decadesLabel = decade === 'all' ? 'كل العقود' : `عقد ${Books.bookDecadeLabel(decade)}`;
+        const text =
+          `📚 *اقتراح كتاب*\\n${SEP}\\n` +
+          `${genreLabel} · ${decadesLabel}\\n\\n` +
+          `📖 *${this.mdSafe(item.title)}*\\n` +
+          `✍️ المؤلف: *${this.mdSafe(item.author)}*\\n` +
+          `🗓️ سنة ${item.year} · ${item.pages} صفحة · ${this.mdSafe(item.country)}\\n\\n` +
+          `${this.mdSafe(item.blurb)}`;
+        const backGenre = pickGenre === 'all' ? 'svc:books' : `svc:books:genre:${pickGenre}`;
+        const keyboard = [
+          [{ text: '🎲 كتاب ثاني', callback_data: `svc:books:again:${pickGenre}:${decadeText}:${item.id}` }],
+          [{ text: '🔄 تغيير العقد', callback_data: backGenre }],
+          [{ text: '📚 تغيير التصنيف', callback_data: 'svc:books' }],
+          [{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]
+        ];
+        if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+        else await this.sendMessage(chatId, text, keyboard);
+        await this.answerCallbackQuery(cb.id, '');
+        return;
+      }
+
+      await this.answerCallbackQuery(cb.id, 'الاختيار غير معروف؛ ابدأ من جديد.', true);
+      return;
+    }
+
     // ── القائمة الرئيسية للخدمات الأخرى ──
     if (data === 'svc:main') {
       const text =
@@ -8261,6 +8362,9 @@ export class TelegramBotManager {
         ],
         [
           { text: '🎬 اقترحلي مشاهدة', callback_data: 'svc:recommend' },
+          { text: '📚 اقترحلي كتاب', callback_data: 'svc:books' }
+        ],
+        [
           { text: '🎂 حساب العمر', callback_data: 'svc:age' }
         ],
         [
