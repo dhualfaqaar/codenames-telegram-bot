@@ -8276,13 +8276,19 @@ export class TelegramBotManager {
 
       if (data === 'svc:books') {
         const stats = await this.bookCatalog.stats();
+        // عدد كتب كل صنف بالمكتبة الكبيرة (مع القاعدة المختارة كاحتياط).
+        const distribution = await this.bookCatalog.genreDistribution();
+        const catalogCounts = new Map(distribution.genres.map(entry => [entry.genre, entry.count]));
         const genres = Books.bookGenres();
+        const countFor = (genre: Books.BookGenre) =>
+          (catalogCounts.get(genre) || 0) + Books.booksFor(genre).length;
+        const labelFor = (genre: Books.BookGenre) => `${Books.BOOK_GENRE_LABELS[genre]} · ${countFor(genre)}`;
         const keyboard: any[][] = [];
         for (let i = 0; i < genres.length; i += 2) {
           const first = genres[i];
           const second = genres[i + 1];
-          const row = [{ text: Books.BOOK_GENRE_LABELS[first], callback_data: `svc:books:genre:${first}` }];
-          if (second) row.push({ text: Books.BOOK_GENRE_LABELS[second], callback_data: `svc:books:genre:${second}` });
+          const row = [{ text: labelFor(first), callback_data: `svc:books:genre:${first}` }];
+          if (second) row.push({ text: labelFor(second), callback_data: `svc:books:genre:${second}` });
           keyboard.push(row);
         }
         keyboard.push([
@@ -8291,13 +8297,18 @@ export class TelegramBotManager {
         ]);
         keyboard.push([{ text: '🔙 رجوع للخدمات', callback_data: 'svc:main' }]);
         const library = stats.total
-          ? `المكتبة فيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} لغة` +
-            (stats.done ? '.' : `، وتكبر بالخلفية لحد ${CATALOG_TARGET.toLocaleString('en-US')}.`)
+          ? `المكتبة فيها *${stats.total.toLocaleString('en-US')}* كتاب من ${stats.languages} لغة، ` +
+            `موزعة على *${distribution.genres.length}* صنف` +
+            (stats.done ? '.' : ` (وتكبر بالخلفية لحد ${CATALOG_TARGET.toLocaleString('en-US')}).`)
           : 'المكتبة تتجهّز هسه — جرّب بعد شوية.';
+        const genreHint = distribution.genres.length
+          ? `الرقم جنب كل صنف هو عدد كتبه بالمكتبة.`
+          : `اختار التصنيف اللي يعجبك.`;
         const text =
           `*اقترحلي كتاب* 📚\n\n` +
           `${library}\n` +
-          `اختار تصنيف من تحت، أو خلّيني أختارلك كتاب عشوائي، أو دوّر على كتاب بالاسم أو المؤلف.`;
+          `${genreHint}\n` +
+          `أو خلّيني أختارلك كتاب عشوائي، أو دوّر على كتاب بالاسم أو المؤلف.`;
         if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
         else await this.sendMessage(chatId, text, keyboard);
         await this.answerCallbackQuery(cb.id, '');

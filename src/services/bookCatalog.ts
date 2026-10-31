@@ -116,19 +116,70 @@ export const CATALOG_LANGUAGES: Array<{ code: string; label: string; queries?: s
 ];
 
 export const GENRE_SUBJECTS: Record<BookGenre, string[]> = {
-  novel: ['fiction', 'novel', 'novels', 'roman', 'romans', 'erzählung', 'رواية', 'روايات', 'أدب'],
-  short_stories: ['short stories', 'short story', 'tales', 'nouvelles', 'قصص قصيرة', 'قصة قصيرة'],
-  poetry: ['poetry', 'poems', 'poem', 'verse', 'poésie', 'gedichte', 'شعر', 'قصائد', 'ديوان'],
-  theater: ['drama', 'plays', 'theater', 'theatre', 'théâtre', 'مسرح', 'مسرحيات', 'دراما'],
-  history: ['history', 'historical', 'historiography', 'histoire', 'geschichte', 'تاريخ', 'تاريخي'],
-  philosophy: ['philosophy', 'philosophical', 'ethics', 'logic', 'philosophie', 'فلسفة', 'منطق'],
-  self_help: ['self-help', 'self help', 'conduct of life', 'success', 'motivation', 'psychology', 'popular works', 'تطوير الذات', 'تنمية بشرية'],
-  sci_fi: ['science fiction', 'sci-fi', 'fantasy', 'space', 'dystopia', 'science-fiction', 'خيال علمي', 'فانتازيا'],
-  mystery: ['mystery', 'detective', 'crime', 'thriller', 'suspense', 'police', 'roman policier', 'krimi', 'بوليسي', 'غموض', 'جريمة'],
-  horror: ['horror', 'ghost', 'vampire', 'gothic', 'épouvante', 'رعب', 'أشباح'],
-  biography: ['biography', 'autobiography', 'memoir', 'memoirs', 'diaries', 'letters', 'biographie', 'سيرة', 'مذكرات', 'سيرة ذاتية'],
-  children: ['juvenile', 'children', 'fairy tales', 'picture book', 'young adult', 'enfants', 'kinder', 'أطفال', 'حكايات']
+  novel: [
+    'fiction', 'novel', 'novels', 'roman', 'romans', 'erzählung', 'literature', 'literary',
+    'novela', 'romanzo', 'romance', 'prose', 'narrative', 'storytelling',
+    'رواية', 'روايات', 'أدب', 'قصص', 'حكاية'
+  ],
+  short_stories: [
+    'short stories', 'short story', 'tales', 'nouvelles', 'novellen', 'cuentos',
+    'anthology', 'collected stories', 'قصص قصيرة', 'قصة قصيرة', 'مختارات'
+  ],
+  poetry: [
+    'poetry', 'poems', 'poem', 'verse', 'verses', 'poet', 'poets', 'poésie', 'gedichte',
+    'poesía', 'poesia', 'versos', 'شعر', 'قصائد', 'ديوان', 'شاعر', 'منظومة'
+  ],
+  theater: [
+    'drama', 'plays', 'play', 'theater', 'theatre', 'tragedy', 'comedy', 'stage',
+    'théâtre', 'dramaturgy', 'مسرح', 'مسرحيات', 'دراما', 'مسرحية'
+  ],
+  history: [
+    'history', 'historical', 'historiography', 'chronicle', 'chronicles', 'civilization',
+    'war', 'wars', 'empire', 'revolution', 'histoire', 'geschichte', 'historia',
+    'تاريخ', 'تاريخي', 'حضارة', 'حروب', 'ثورة', 'دولة'
+  ],
+  philosophy: [
+    'philosophy', 'philosophical', 'philosopher', 'ethics', 'metaphysics', 'logic',
+    'epistemology', 'political philosophy', 'existentialism', 'stoicism', 'philosophie',
+    'فلسفة', 'فلسفي', 'منطق', 'أخلاق', 'ميتافيزيقا', 'وجودية'
+  ],
+  self_help: [
+    'self-help', 'self help', 'self improvement', 'conduct of life', 'personal growth',
+    'success', 'motivation', 'psychology', 'popular works', 'habits', 'productivity',
+    'mindfulness', 'développement personnel', 'تطوير الذات', 'تنمية بشرية', 'تطوير',
+    'نفسي', 'علم النفس', 'عادات', 'نجاح'
+  ],
+  sci_fi: [
+    'science fiction', 'sci-fi', 'scifi', 'fantasy', 'space', 'spaceship', 'dystopia',
+    'utopia', 'time travel', 'robots', 'aliens', 'cyberpunk', 'science-fiction',
+    'خيال علمي', 'فانتازيا', 'مستقبل', 'فضاء', 'روبوت'
+  ],
+  mystery: [
+    'mystery', 'detective', 'crime', 'criminal', 'thriller', 'suspense', 'police',
+    'murder', 'spy', 'espionage', 'noir', 'roman policier', 'krimi', 'novela negra',
+    'بوليسي', 'غموض', 'جريمة', 'جرائم', 'تحقيق', 'مخبر', 'قتل'
+  ],
+  horror: [
+    'horror', 'ghost', 'ghosts', 'vampire', 'gothic', 'supernatural', 'monster',
+    'zombie', 'haunted', 'épouvante', 'terrifying', 'رعب', 'أشباح', 'وحوش', 'مصاصي الدماء'
+  ],
+  biography: [
+    'biography', 'biographies', 'autobiography', 'memoir', 'memoirs', 'diaries', 'diary',
+    'letters', 'correspondence', 'life and times', 'biographie', 'lebenslauf',
+    'سيرة', 'سيرة ذاتية', 'مذكرات', 'يوميات', 'رسائل', 'ترجمة حياة'
+  ],
+  children: [
+    'juvenile', 'juvenile fiction', 'children', 'childrens', "children's", 'fairy tales',
+    'fairy tale', 'picture book', 'young adult', 'kids', 'nursery', 'bedtime',
+    'enfants', 'kinder', 'أطفال', 'حكايات', 'حكاية', 'طفل', 'صغار'
+  ]
 };
+
+/**
+ * التصنيف الافتراضي لأي كتاب ما قدرنا نصنّفه من مواضيعه. الهدف: **صفر كتاب
+ * بدون صنف** — كل كتب المكتبة لازم تنحسب على صنف واحد على الأقل.
+ */
+export const DEFAULT_GENRE: BookGenre = 'novel';
 
 /** يستخرج تصنيفات الكتاب من مواضيعه (ويعتمد على العنوان كخط ثاني). */
 export function classifyBook(subjects: string[], title = ''): string[] {
@@ -138,6 +189,15 @@ export function classifyBook(subjects: string[], title = ''): string[] {
     if (GENRE_SUBJECTS[genre].some(word => haystack.includes(word))) found.push(genre);
   }
   return found.slice(0, 4);
+}
+
+/**
+ * نفس التصنيف بس يضمن نتيجة: لو ما طابقت المواضيع شي نرجع التصنيف الافتراضي
+ * حتى ما يبقى أي كتاب خارج الأصناف (هذا كان سبب «مكتبة ١٠,٠٠٠ وأصناف قليلة»).
+ */
+export function classifyBookStrict(subjects: string[], title = ''): string[] {
+  const found = classifyBook(subjects, title);
+  return found.length ? found : [DEFAULT_GENRE];
 }
 
 /** المواضيع اللي نبذر بيها لكل تصنيف حتى المكتبة تغطي كل الأصناف. */
@@ -308,7 +368,7 @@ export function cleanCatalogDoc(doc: OpenLibraryDoc, fallbackLang: string, prefe
     cover: Number.isFinite(cover) && cover > 0 ? cover : null,
     lang: tidy(String((preferFallbackLang ? fallbackLang : doc.language?.[0]) || fallbackLang), 8) || fallbackLang,
     subject,
-    genres: classifyBook(subjects, title)
+    genres: classifyBookStrict(subjects, title)
   };
 }
 
@@ -373,9 +433,31 @@ export class BookCatalog {
   /** تصنيفات كتاب: من الحقل المخزّن، أو محسوبة من مواضيعه (كتب قديمة بلا حقل). */
   genresOf(book: CatalogBook): string[] {
     if (book.genres && book.genres.length) return book.genres;
-    const computed = classifyBook(book.subject ? [book.subject] : [], book.title);
+    const computed = classifyBookStrict(book.subject ? [book.subject] : [], book.title);
     book.genres = computed;
     return computed;
+  }
+
+  /** توزيع المكتبة على الأصناف + عدد الكتب اللي بلا صنف (لازم يكون صفر). */
+  async genreDistribution(): Promise<{ total: number; unclassified: number; genres: Array<{ genre: string; count: number }> }> {
+    await this.load();
+    const counts = new Map<string, number>();
+    let unclassified = 0;
+    for (const book of this.books) {
+      const genres = this.genresOf(book);
+      if (!genres.length) {
+        unclassified += 1;
+        continue;
+      }
+      for (const genre of genres) counts.set(genre, (counts.get(genre) || 0) + 1);
+    }
+    return {
+      total: this.books.length,
+      unclassified,
+      genres: Array.from(counts.entries())
+        .map(([genre, count]) => ({ genre, count }))
+        .sort((a, b) => b.count - a.count)
+    };
   }
 
   /** كل كتب صنف معيّن (اختياري: داخل عقد معيّن). */
@@ -666,6 +748,8 @@ export class BookCatalog {
             const genres = new Set(book.genres || []);
             genres.add(source.genre);
             book.genres = Array.from(genres).slice(0, 4);
+          } else if (!book.genres || !book.genres.length) {
+            book.genres = [DEFAULT_GENRE];
           }
           if (this.index.has(book.id)) continue;
           this.index.set(book.id, book);
