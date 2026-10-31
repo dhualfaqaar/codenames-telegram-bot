@@ -15,6 +15,8 @@ const check = (name: string, condition: unknown) => {
 const root = resolve(import.meta.dirname, '..');
 const workerSrc = readFileSync(resolve(root, 'worker', 'index.ts'), 'utf8');
 const botSrc = readFileSync(resolve(root, 'server', 'telegramBot.ts'), 'utf8');
+const config = readFileSync(resolve(root, 'wrangler.toml'), 'utf8');
+check('تسجيل الأعطال مفعّل بالإعدادات', /\[observability\][\s\S]*?enabled\s*=\s*true/.test(config));
 
 /* ───────────── بصمة البناء ───────────── */
 check('بصمة البناء موجودة', BUILD_TAG.length >= 8);
@@ -60,6 +62,21 @@ const badEnv: any = { BOT_STATE: { idFromName: () => 'main', get: () => ({ fetch
 const unavailable = await workerModule.default.fetch(new Request('https://worker.test/version'), badEnv, {});
 const unavailableJson: any = await unavailable.json();
 check('خطأ التخزين يعطي 503 واضح بلا تفاصيل خاصة', unavailable.status === 503 && unavailableJson.botState === 'storage' && unavailableJson.tag === BUILD_TAG);
+// The diagnostic log preserves useful errors without credentials, even when a runtime error contains them.
+const captured: string[] = [];
+const oldError = console.error;
+const fakeSecret = '123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ_test';
+console.error = (...args: unknown[]) => { captured.push(args.map(String).join(' ')); };
+try {
+  const envWithSecret: any = { TELEGRAM_BOT_TOKEN: fakeSecret, WEBHOOK_SECRET: 'secret-test-value', BOT_STATE: {
+    idFromName: () => 'main', get: () => ({ fetch: async () => { throw new Error(`storage ${fakeSecret} secret-test-value https://example.org/private`); } })
+  } };
+  const safeResponse = await workerModule.default.fetch(new Request('https://worker.test/version'), envWithSecret, {});
+  check('خطأ DO يُسجّل بلا أسرار أو روابط', safeResponse.status === 503 && captured.some(line => line.includes('storage')) && captured.every(line => !line.includes(fakeSecret) && !line.includes('secret-test-value') && !line.includes('example.org')));
+  const payload = JSON.stringify(await safeResponse.json());
+  check('تفاصيل الخطأ لا تظهر بالرد العام', !payload.includes(fakeSecret) && !payload.includes('secret-test-value'));
+} finally { console.error = oldError; }
+
 const writtenKeys: string[] = [];
 const brokenStateStorage: any = {
   get: async (key: string) => { if (key === 'state') throw new Error('temporary storage fault'); return undefined; },

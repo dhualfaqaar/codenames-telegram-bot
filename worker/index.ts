@@ -35,6 +35,19 @@ interface Env {
 
 const DEFAULT_WEBHOOK_URL = 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev';
 
+/** Diagnostic logs must never include credentials or request URLs. */
+function safeRuntimeError(error: unknown, env: Partial<Env>): string {
+  let detail = error instanceof Error ? error.message : String(error || 'unknown error');
+  for (const secret of [env.TELEGRAM_BOT_TOKEN, env.WEBHOOK_SECRET, env.GEMINI_API_KEY, env.OPENSUBTITLES_API_KEY]) {
+    if (secret && secret.length >= 4) detail = detail.split(secret).join('[redacted]');
+  }
+  return detail.replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/\b\d{5,}:[A-Za-z0-9_-]{20,}\b/g, '[redacted]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/[\r\n\t]+/g, ' ').slice(0, 600);
+}
+
+
 async function verifyTelegramWebAppInitData(initData: string, botToken: string): Promise<{ id: string; name: string } | null> {
   if (!initData || initData.length > 8192 || !botToken) return null;
   try {
@@ -514,7 +527,8 @@ export default {
       try {
         return await stub.fetch('https://bot.internal/version');
       } catch (error: any) {
-        const detail = String(error?.message || error || '');
+        const detail = safeRuntimeError(error, env);
+        console.error('BotState version probe failed:', detail);
         const reason = /quota|limit|exceed/i.test(detail) ? 'resource_limit' :
           /sqlite|database|storage/i.test(detail) ? 'storage' :
           /overload/i.test(detail) ? 'overloaded' : 'unavailable';
@@ -571,7 +585,7 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body
         })
-        .catch((err: unknown) => console.error('DO webhook processing error:', err))
+        .catch((err: unknown) => console.error('DO webhook processing error:', safeRuntimeError(err, env)))
     );
 
     return new Response('ok');

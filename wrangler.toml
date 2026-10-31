@@ -3,6 +3,11 @@ main = "worker/index.ts"
 compatibility_date = "2025-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# Persist Worker and Durable Object logs for production diagnostics.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # وصلة الاستقبال + مؤقت يفحصها كل 5 دقائق (يرجّعها تلقائياً لو مسحت)
 [vars]
 WEBHOOK_URL = "https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev"
