@@ -478,7 +478,7 @@ const fakeFetch = (async (input: any) => {
     'ara'
   )!;
   const desc5 = await withFirst.describe(inlineBook);
-  check('جملة الافتتاح تُستعمل لما ماكو وصف', desc5.includes('first sentence'));
+  check('جملة الافتتاح مو نبذة ولا تعرض بلا وصف حقيقي', desc5 === '');
 
   // وصف الطبعة يُستعمل قبل جملة الافتتاح
   {
@@ -516,12 +516,13 @@ const fakeFetch = (async (input: any) => {
     const emptyFetch = (async (input: any) => {
       const url = String(input);
       if (url.includes('/editions')) return { ok: true, json: async () => ({ entries: [] }) } as any;
-      return { ok: true, json: async () => ({}) } as any;
+      return { ok: true, json: async () => ({ description: 'A man searches for his father and confronts difficult choices in a changing city.' }) } as any;
     }) as unknown as typeof fetch;
     let summarizerCalls = 0;
     const withAI = new BookCatalog(memoryBookStorage(), emptyFetch, {
       queryGapMs: 0,
-      summarizer: async book => {
+      summarizer: async (book, source) => {
+        check('الملخص يستلم وصفاً حقيقياً', source.includes('searches for his father'));
         summarizerCalls += 1;
         return `نبذة مولّدة عن ${book.title}: تتناول الفكرة الأساسية بأسلوب سردي واضح ومؤثر.`;
       }
@@ -529,7 +530,7 @@ const fakeFetch = (async (input: any) => {
     const aiDesc = await withAI.describe({
       id: 'OLAI1W', title: 'الطريق', author: 'نجيب محفوظ', year: 1961, pages: 140, cover: null, lang: 'ara', subject: 'Fiction'
     });
-    check('تلخيص Gemini يُستعمل كحل أخير', aiDesc.includes('نبذة مولّدة عن الطريق'));
+    check('ترجمة الوصف الحقيقي تستعمل Gemini', aiDesc.includes('نبذة مولّدة عن الطريق'));
     check('التلخيص يتنادى مرة وحدة', summarizerCalls === 1);
 
     // نُكرر: لازم يجي من الكاش بلا نداء ثاني

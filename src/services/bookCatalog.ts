@@ -10,7 +10,7 @@
  */
 
 import { LITERARY_GENRES, LITERATURE_BY_LANGUAGE } from './bookRecommendationEngine';
-import { isUsableDescription, tidyDescription } from './bookDescriptions';
+import { cleanArabicName, isArabicName, isArabicText, isUsableDescription, tidyDescription } from './bookDescriptions';
 import type { BookGenre } from './bookRecommendationEngine';
 
 export interface CatalogBook {
@@ -586,8 +586,8 @@ export interface ArchiveFile {
   sizeBytes: number | null;
   /** بصمة ملف أرشيف، لمطابقة محتوى ملف القناة قبل إرساله. */
   sha1?: string;
-  /** من وين جبنا المعرّف: بطاقة الكتاب / طبعات Open Library */
-  source: 'catalog' | 'editions';
+  /** من وين جبنا المعرّف: البطاقة أو طبعات العمل أو بحث أرشيف بمعرّف العمل */
+  source: 'catalog' | 'editions' | 'archive-search';
 }
 
 /**
@@ -608,7 +608,10 @@ export function pickArchivePdf(
   // توفر الملف للعامة لا يعني انتهاء حقوقه. نقبل تصريح ملكية عامة صريح فقط.
   const rights = Array.isArray(meta.rights) ? meta.rights : [meta.rights];
   const licenses = Array.isArray(meta.licenseurl) ? meta.licenseurl : [meta.licenseurl];
-  const publicDomain = rights.some((value: unknown) => /^(public domain|not_in_copyright|out of copyright)$/i.test(String(value || '').trim())) ||
+  if (rights.some((value: unknown) => /copyright/i.test(String(value || '')) && !/^(not_in_copyright|out of copyright)$/i.test(String(value || '').trim()))) return null;
+  const status = String(meta['possible-copyright-status'] || '').trim().toUpperCase();
+  if (status && status !== 'NOT_IN_COPYRIGHT') return null;
+  const publicDomain = status === 'NOT_IN_COPYRIGHT' || rights.some((value: unknown) => /^(public domain|not_in_copyright|out of copyright)$/i.test(String(value || '').trim())) ||
     licenses.some((value: unknown) => /^https?:\/\/creativecommons\.org\/publicdomain\/(zero\/1\.0|mark\/1\.0)\/?$/i.test(String(value || '').trim()));
   if (!publicDomain) return null;
   if (/^(true|1|yes)$/i.test(String(meta['access-restricted-item'] || ''))) return null;
@@ -620,7 +623,7 @@ export function pickArchivePdf(
 
   const files: any[] = Array.isArray(payload.files) ? payload.files : [];
   const pdfs = files.filter(file => {
-    if (typeof file?.name !== 'string' || !/\.pdf$/i.test(file.name)) return false;
+    if (typeof file?.name !== 'string' || !/\.pdf$/i.test(file.name) || /encrypted/i.test(file.name) || /encrypted/i.test(String(file.format || ''))) return false;
     if (/^(true|1|yes)$/i.test(String(file.private ?? 'false')) || !/^[^/\\]+$/.test(file.name)) return false;
     return Number(file.size || 0) > 0;
   });
@@ -628,10 +631,13 @@ export function pickArchivePdf(
 
   const exact = identifier.toLowerCase();
   pdfs.sort((a, b) => {
-    const aExact = a.name.toLowerCase().startsWith(exact) ? 1 : 0;
-    const bExact = b.name.toLowerCase().startsWith(exact) ? 1 : 0;
+    const aFits = Number(a.size) <= 20 * 1024 * 1024 ? 1 : 0;
+    const bFits = Number(b.size) <= 20 * 1024 * 1024 ? 1 : 0;
+    if (aFits !== bFits) return bFits - aFits;
+    const aExact = a.name.toLowerCase() === `${exact}.pdf` ? 1 : 0;
+    const bExact = b.name.toLowerCase() === `${exact}.pdf` ? 1 : 0;
     if (aExact !== bExact) return bExact - aExact;
-    return Number(b.size || 0) - Number(a.size || 0);
+    return Number(a.size) - Number(b.size);
   });
   const chosen = pdfs[0];
   return {
@@ -659,17 +665,19 @@ export class BookCatalog {
   private queryGapMs: number;
 
   /** يلخّص كتاباً بالعربي (يُمرَّر من البوت عبر Gemini). يرجع '' لو فشل. */
-  private summarizer: ((book: CatalogBook) => Promise<string>) | null;
+  private summarizer: ((book: CatalogBook, source: string) => Promise<string>) | null;
+  private localizer: ((book: CatalogBook) => Promise<{ title: string; author: string } | null>) | null;
 
   constructor(
     storage?: BookStorageAdapter,
     fetchImpl?: typeof fetch,
-    options: { queryGapMs?: number; summarizer?: (book: CatalogBook) => Promise<string> } = {}
+    options: { queryGapMs?: number; summarizer?: (book: CatalogBook, source: string) => Promise<string>; localizer?: (book: CatalogBook) => Promise<{ title: string; author: string } | null> } = {}
   ) {
     this.storage = storage || memoryBookStorage();
     this.fetchImpl = fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : (null as unknown as typeof fetch));
     this.queryGapMs = options.queryGapMs ?? 400;
     this.summarizer = options.summarizer || null;
+    this.localizer = options.localizer || null;
   }
 
   /** يحمّل المكتبة من التخزين مرة وحدة. */
@@ -724,55 +732,51 @@ export class BookCatalog {
    * النتيجة تتكاش بالتخزين حتى ما نعيد الطلب.
    */
   async localize(book: CatalogBook): Promise<{ title: string; author: string; localized: boolean }> {
-    const original = { title: book.title, author: book.author, localized: false };
-    if (hasArabic(`${book.title} ${book.author}`)) return original;
-
-    const cacheKey = `books:loc:${book.id}`;
+    let title = isArabicName(book.title) ? cleanArabicName(book.title) : '';
+    let author = isArabicName(book.author) ? cleanArabicName(book.author) : '';
+    if (title && author) return { title, author, localized: false };
+    const cacheKey = `books:loc:v2:${book.id}`;
     try {
-      const cached = await this.storage.get<{ title: string; author: string } | null>(cacheKey);
-      if (cached === null) return original;
-      if (cached) return { title: cached.title, author: cached.author, localized: true };
-    } catch {
-      /* التخزين مو دايماً متاح */
-    }
-
-    try {
+      const cached = await this.storage.get<{ title: string; author: string }>(cacheKey);
+      if (!title && isArabicName(cached?.title || '')) title = cleanArabicName(cached!.title);
+      if (!author && isArabicName(cached?.author || '')) author = cleanArabicName(cached!.author);
+    } catch { /* اختياري */ }
+    if (!title || !author) {
       const entries = await this.fetchEditions(book.id);
-      if (!entries.length) return original;
-      let arabicTitle = '';
-      let arabicAuthor = '';
       for (const entry of entries) {
-        const title = cleanDescription(String(entry?.title || ''));
-        if (!arabicTitle && hasArabic(title)) arabicTitle = title;
-        if (!arabicAuthor) {
-          const statement = cleanDescription(String(entry?.by_statement || ''));
-          const candidate = stripAuthorPrefix(statement);
-          if (hasArabic(candidate)) arabicAuthor = candidate;
-          else {
-            const contribution = (entry?.contributions || []).map((item: any) => String(item || '')).find(hasArabic);
-            if (contribution) arabicAuthor = cleanDescription(contribution);
-          }
+        const candidate = cleanDescription(String(entry?.title || ''));
+        if (!title && isArabicName(candidate)) title = cleanArabicName(candidate);
+        if (!author) {
+          const name = stripAuthorPrefix(cleanDescription(String(entry?.by_statement || '')));
+          if (isArabicName(name)) author = cleanArabicName(name);
         }
-        if (arabicTitle && arabicAuthor) break;
+        if (title && author) break;
       }
-      if (!arabicTitle) {
-        try {
-          await this.storage.put(cacheKey, null);
-        } catch {
-          /* اختياري */
-        }
-        return original;
-      }
-      const result = { title: arabicTitle, author: arabicAuthor || book.author };
-      try {
-        await this.storage.put(cacheKey, result);
-      } catch {
-        /* اختياري */
-      }
-      return { ...result, localized: true };
-    } catch {
-      return original;
     }
+    // الاسم الشائع لعبد الله كثيراً ما يُكتب باللاتيني بطرق مختلفة.
+    if (!author && /^(?:abd[ -]?(?:a|u)llah)$/i.test(book.author.normalize('NFKD').replace(/[\u0300-\u036fʻʿ’']/g, ''))) author = 'عبد الله';
+    if (!author && /^OL[0-9a-z]+W$/i.test(book.id)) {
+      // المؤلف مرتبط بالعمل نفسه، فالأسماء البديلة أدق من تخمين عنوان مشابه.
+      const work = await this.fetchJsonQuiet(`https://openlibrary.org/works/${encodeURIComponent(book.id)}.json`);
+      const authorKey = work?.authors?.[0]?.author?.key;
+      if (typeof authorKey === 'string' && /^\/authors\/OL\d+A$/i.test(authorKey)) {
+        const record = await this.fetchJsonQuiet(`https://openlibrary.org${authorKey}.json`);
+        const names: unknown[] = [record?.name, record?.personal_name, ...(Array.isArray(record?.alternate_names) ? record.alternate_names : [])];
+        const found = names.find(value => typeof value === 'string' && isArabicName(value));
+        if (typeof found === 'string') author = cleanArabicName(found);
+      }
+    }
+    if ((!title || !author) && this.localizer) {
+      try {
+        const translated = await this.localizer(book);
+        if (!title && isArabicName(translated?.title || '')) title = cleanArabicName(translated!.title);
+        if (!author && isArabicName(translated?.author || '')) author = cleanArabicName(translated!.author);
+      } catch { /* احتفظ بالأصل بدل اسم مختلق */ }
+    }
+    if (title || author) {
+      try { await this.storage.put(cacheKey, { title, author }); } catch { /* اختياري */ }
+    }
+    return { title: title || book.title, author: author || book.author, localized: Boolean(title || author) };
   }
 
   /** طبعات العمل (كاش بالذاكرة لكل عملية) — تستعملها النبذة والتعريب سوية. */
@@ -795,83 +799,46 @@ export class BookCatalog {
     }
   }
 
-  /**
-   * نبذة الكتاب: **شرح عن الكتاب**، مو بيانات نشر.
-   *
-   * المصادر بالترتيب:
-   *  ١) وصف العمل عند Open Library (`/works/{id}.json`)
-   *  ٢) وصف أول طبعة عندها وصف (`editions.json`)
-   *  ٣) جملة الافتتاح
-   *  ٤) تلخيص عربي من Gemini (لو المفتاح متوفر)
-   *
-   * إذا كلها فشلت نرجع '' — ولا نختلق جملة من السنة/الصفحات. (هذا كان الخلل:
-   * «كتاب من تصنيف … · صدر سنة … · 200 صفحة» تظهر كنبذة.)
-   */
+  /** وصف عربي موثوق المصدر؛ نترجم وصف العمل أو الطبعة فقط، ولا نختلق نبذة. */
   async describe(book: CatalogBook): Promise<string> {
-    const cacheKey = `books:desc:${book.id}`;
+    const cacheKey = `books:desc:ar:v2:${book.id}`;
     try {
-      const cached = await this.storage.get<string | { empty: true; at: number }>(cacheKey);
-      if (typeof cached === 'string' && cached) return cached;
-      if (cached && typeof cached === 'object' && cached.empty) {
-        // كاش سلبي لست ساعات حتى ما نضرب الـAPI كل مرة.
-        if (Date.now() - cached.at < 6 * 60 * 60 * 1000) return '';
-      }
-    } catch {
-      /* التخزين مو دايماً متاح */
-    }
+      const cached = await this.storage.get<string>(cacheKey);
+      if (cached && isArabicText(cached) && isUsableDescription(cached, book)) return cached;
+    } catch { /* اختياري */ }
 
-    let text = '';
-
-    // ١) وصف العمل
+    let original = '';
     try {
-      const res = await this.fetchImpl(`https://openlibrary.org/works/${book.id}.json`, {
+      const response = await this.fetchImpl(`https://openlibrary.org/works/${book.id}.json`, {
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10_000) : undefined
+        signal: AbortSignal.timeout(10_000)
       });
-      if (res?.ok) {
-        const payload: any = await res.json();
-        const raw = payload?.description;
+      if (response.ok) {
+        const data: any = await response.json();
+        const raw = data?.description;
         const candidate = tidyDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
-        if (isUsableDescription(candidate, book)) text = candidate;
+        if (isUsableDescription(candidate, book)) original = candidate;
       }
-    } catch {
-      /* نكمل للمصدر التالي */
-    }
-
-    // ٢) وصف طبعة
-    if (!text) {
-      const entries = await this.fetchEditions(book.id);
-      for (const entry of entries) {
+    } catch { /* نجرّب الطبعات */ }
+    if (!isArabicText(original)) {
+      for (const entry of await this.fetchEditions(book.id)) {
         const raw = entry?.description;
         const candidate = tidyDescription(typeof raw === 'string' ? raw : String(raw?.value || ''));
-        if (isUsableDescription(candidate, book)) {
-          text = candidate;
-          break;
-        }
+        if (!isUsableDescription(candidate, book)) continue;
+        if (isArabicText(candidate)) { original = candidate; break; }
+        if (!original) original = candidate;
       }
     }
-
-    // ٣) جملة الافتتاح
-    if (!text) {
-      const candidate = tidyDescription(book.first || '');
-      if (isUsableDescription(candidate, book)) text = candidate;
-    }
-
-    // ٤) تلخيص عربي من Gemini
-    if (!text && this.summarizer) {
+    let text = isArabicText(original) ? original : '';
+    // الترجمة تعتمد على وصف حقيقي، وليست اختلاقاً من بيانات النشر.
+    if (!text && original && this.summarizer) {
       try {
-        const summary = await this.summarizer(book);
-        if (isUsableDescription(summary, book)) text = summary;
-      } catch {
-        /* ما نكسر البطاقة */
-      }
+        const translated = await this.summarizer(book, original);
+        if (isArabicText(translated) && isUsableDescription(translated, book)) text = translated;
+      } catch { /* نخفي النبذة إذا الترجمة فشلت */ }
     }
-
-    try {
-      if (text) await this.storage.put(cacheKey, text);
-      else await this.storage.put(cacheKey, { empty: true, at: Date.now() });
-    } catch {
-      /* الكاش اختياري */
+    if (text) {
+      try { await this.storage.put(cacheKey, text); } catch { /* اختياري */ }
     }
     return text;
   }
@@ -939,8 +906,27 @@ export class BookCatalog {
       const file = await check(book.ia, 'catalog');
       if (file) return remember(file);
     }
+    // بحث بمعرّف العمل نفسه، لا بالعنوان الملتبس؛ كل نتيجة تُفحص مجدداً.
+    if (/^OL[0-9a-z]+W$/i.test(book.id)) {
+      const query = `openlibrary_work:${book.id} AND possible-copyright-status:NOT_IN_COPYRIGHT`;
+      const result = await this.fetchJsonQuiet(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl%5B%5D=identifier&rows=12&output=json`);
+      const docs: any[] = Array.isArray(result?.response?.docs) ? result.response.docs : [];
+      const ids = docs.map(doc => String(doc?.identifier || '')).filter(id => /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id) && !checked.has(id)).slice(0, 12);
+      for (let i = 0; i < ids.length; i += 4) {
+        const batch = await Promise.all(ids.slice(i, i + 4).map(async id => {
+          checked.add(id);
+          const data = await this.archiveMetadata(id);
+          const work = data?.metadata?.openlibrary_work;
+          const works = Array.isArray(work) ? work : [work];
+          if (!works.some((item: unknown) => String(item).replace(/^\/works\//, '') === book.id)) return null;
+          return pickArchivePdf(id, data, 'archive-search');
+        }));
+        const file = batch.find(Boolean);
+        if (file) return remember(file);
+      }
+    }
     const identifiers = await this.editionIdentifiers(book.id);
-    for (const id of identifiers.slice(0, 3)) {
+    for (const id of identifiers.slice(0, 6)) {
       const file = await check(id, 'editions');
       if (file) return remember(file);
     }

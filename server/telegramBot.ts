@@ -22,7 +22,7 @@ import * as Football from '../src/services/footballFixturesEngine';
 import * as Reco from '../src/services/recommendationEngine';
 import * as Books from '../src/services/bookRecommendationEngine';
 import { BookCatalog, CATALOG_LANGUAGES, coverUrl } from '../src/services/bookCatalog';
-import { isArabicText, isUsableDescription, summarizeBookWithGemini } from '../src/services/bookDescriptions';
+import { isArabicText, isUsableDescription, localizeBookWithGemini, summarizeBookWithGemini } from '../src/services/bookDescriptions';
 import { BUILD_TAG, buildVersionLines } from '../src/services/buildInfo';
 import type { BookStorageAdapter, CatalogBook } from '../src/services/bookCatalog';
 import * as Cinema from '../src/services/cinemaServices';
@@ -1196,7 +1196,7 @@ export class TelegramBotManager {
     this.interactiveGamesUrl = String(serviceConfig.interactiveGamesUrl || process.env.INTERACTIVE_GAMES_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/interactive').trim();
     // تلخيص عربي للكتب اللي ما إلها وصف عند Open Library (نفس مفتاح Gemini).
     this.bookCatalog = new BookCatalog(serviceConfig.bookStorage, undefined, {
-      summarizer: async book => {
+      summarizer: async (book, source) => {
         if (!this.geminiApiKey) return '';
         return summarizeBookWithGemini(
           {
@@ -1207,9 +1207,11 @@ export class TelegramBotManager {
             genres: book.genres,
             language: book.lang
           },
-          this.geminiApiKey
+          this.geminiApiKey,
+          { source }
         );
-      }
+      },
+      localizer: book => localizeBookWithGemini(book, this.geminiApiKey)
     });
     this.seedInitialMatchHistory();
   }
@@ -8577,13 +8579,16 @@ export class TelegramBotManager {
           );
           return;
         }
-        const caption = `📄 *${this.mdSafe(book.title)}* — ${this.mdSafe(book.author)}`;
+        const localized = await this.bookCatalog.localize(book);
+        const caption = `📄 *${this.mdSafe(localized.title)}* — ${this.mdSafe(localized.author)}`;
         const keyboard = [[{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]];
         // لا نرسل نسخة القناة إلا إذا طابقت بصمة وحجم نسخة أرشيف المتحقق من حقوقها.
         const channelFile = await this.bookCatalog.channelPdf(file.sha1, file.sizeBytes);
         let sent = channelFile ? await this.sendPdfDocument(chatId, channelFile, caption, keyboard) : null;
         // قد يتعطل معرّف تيليجرام؛ المصدر المتحقق منه يبقى احتياطياً.
         if (!sent?.ok) sent = await this.sendPdfDocument(chatId, file.url, caption, keyboard);
+        // Telegram أحياناً ما يجلب الروابط أو يرفض حجمها؛ نرفع نسخة أرشيف بعد التحقق.
+        if (!sent?.ok) sent = await this.uploadArchivePdf(chatId, file.url, file.sizeBytes, caption, keyboard, file.sha1);
         if (!sent?.ok) {
           await this.sendMessage(
             chatId,
@@ -12746,10 +12751,10 @@ export class TelegramBotManager {
     if (book.language) lines.push(`*اللغة:* ${this.mdSafe(book.language)}`);
     // «النبذة» بس إذا عندنا وصف حقيقي عن الكتاب — مو بيانات نشر مكررة.
     const rawBlurb = String(book.blurb || book.description || '').trim();
-    const blurb = rawBlurb && isUsableDescription(rawBlurb, book) ? rawBlurb : '';
+    const blurb = rawBlurb && isArabicText(rawBlurb) && isUsableDescription(rawBlurb, book) ? rawBlurb : '';
     if (blurb) {
       lines.push('');
-      lines.push(isArabicText(blurb) ? '*النبذة:*' : '*النبذة (بالإنجليزية):*');
+      lines.push('*النبذة:*');
       lines.push(this.mdSafe(blurb));
     }
     return lines.join('\n');
@@ -12842,6 +12847,45 @@ export class TelegramBotManager {
       // لا نسجل رمز البوت أو رابط التحميل في السجلات.
       return false;
     }
+  }
+
+  /** احتياطاً نرفع PDF حر بعد تنزيل محدود الحجم، بدون تسجيل الرابط أو الرمز. */
+  private async uploadArchivePdf(chatId: string, url: string, size: number | null, caption: string, keyboard: any[][], sha1?: string): Promise<any> {
+    const limit = 30 * 1024 * 1024;
+    if (!this.token || !size || size < 5 || size > limit || !url.startsWith('https://archive.org/download/')) return null;
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+      if (!response.ok || !response.body) return null;
+      const header = Number(response.headers.get('content-length'));
+      if (header && (header !== size || header > limit)) return null;
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        total += part.value.byteLength;
+        if (total > size || total > limit) { await reader.cancel(); return null; }
+        chunks.push(part.value);
+      }
+      if (total !== size) return null;
+      const blob = new Blob(chunks as BlobPart[], { type: 'application/pdf' });
+      const prefix = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+      if (String.fromCharCode(...prefix) !== '%PDF-') return null;
+      if (sha1) {
+        const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', await blob.arrayBuffer()));
+        if (Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('') !== sha1) return null;
+      }
+      const form = new FormData();
+      form.set('chat_id', chatId);
+      form.set('document', blob, 'book.pdf');
+      form.set('caption', caption);
+      form.set('reply_markup', JSON.stringify({ inline_keyboard: keyboard }));
+      const sent = await fetch(`https://api.telegram.org/bot${this.token}/sendDocument`, {
+        method: 'POST', body: form, signal: AbortSignal.timeout(45_000)
+      });
+      return await sent.json();
+    } catch { return null; }
   }
 
   /** يرسل ملف PDF بمعرّف تيليجرام أو برابط أرشيف. */
