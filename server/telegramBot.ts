@@ -1879,6 +1879,7 @@ export class TelegramBotManager {
       pendingRouletteText: Array.from(this.pendingRouletteText.values()),
       pendingAgeCalc: Array.from(this.pendingAgeCalc.values()),
       pendingCinemaFlows: Array.from(this.pendingCinemaFlows.entries()),
+      pendingBookSearch: Array.from(this.pendingBookSearch.entries()).filter(([, pending]) => Date.now() - pending.at < 24 * 60 * 60_000).slice(-1000),
       footballTeamFollows: Array.from(this.footballTeamFollows.entries()),
       pendingFootballFollow: Array.from(this.pendingFootballFollow.values()),
       cinemaSubtitleResults: Array.from(this.cinemaSubtitleResults.entries()),
@@ -1942,6 +1943,11 @@ export class TelegramBotManager {
     if (Array.isArray(state.pendingRouletteText)) this.pendingRouletteText = new Set(state.pendingRouletteText);
     if (Array.isArray(state.pendingAgeCalc)) this.pendingAgeCalc = new Set(state.pendingAgeCalc);
     if (Array.isArray(state.pendingCinemaFlows)) this.pendingCinemaFlows = new Map(state.pendingCinemaFlows);
+    if (Array.isArray(state.pendingBookSearch)) {
+      this.pendingBookSearch = new Map(state.pendingBookSearch.filter((entry: any) =>
+        Array.isArray(entry) && typeof entry[0] === 'string' && Number.isFinite(entry[1]?.at) && Date.now() - entry[1].at < 24 * 60 * 60_000
+      ).slice(-1000));
+    }
     if (Array.isArray(state.footballTeamFollows)) this.footballTeamFollows = new Map(state.footballTeamFollows);
     if (Array.isArray(state.pendingFootballFollow)) this.pendingFootballFollow = new Set(state.pendingFootballFollow);
     if (Array.isArray(state.cinemaSubtitleResults)) this.cinemaSubtitleResults = new Map(state.cinemaSubtitleResults);
@@ -2719,18 +2725,22 @@ export class TelegramBotManager {
     // 📚 بحث سريع بالكتابة: «كتاب نجيب محفوظ» أو «/book نجيب محفوظ»
     const bookQuery = text.match(/^(?:\/?book|كتاب|كتب)(?:@\w+)?\s+(.{2,})$/i);
     if (bookQuery && bookQuery[1].trim().length >= 2) {
+      this.pendingBookSearch.delete(`${chatId}:${sender?.id || ''}`);
       await this.handleBookSearchQuery(chatId, bookQuery[1].trim());
       return;
     }
 
     // 📚 انتظار نص بحث عن كتاب (خاص أو مجموعة) — ينتهي بعد 5 دقائق
-    const pendingBook = this.pendingBookSearch.get(chatId);
+    const bookSearchKey = `${chatId}:${sender?.id || ''}`;
+    const pendingBook = this.pendingBookSearch.get(bookSearchKey);
     if (pendingBook && text && !text.startsWith('/')) {
-      this.pendingBookSearch.delete(chatId);
+      this.pendingBookSearch.delete(bookSearchKey);
       if (Date.now() - pendingBook.at < 10 * 60_000) {
         await this.handleBookSearchQuery(chatId, text);
-        return;
+      } else {
+        await this.sendMessage(chatId, 'انتهى انتظار البحث. دوس «دوّر كتاب» واكتب الاسم من جديد.');
       }
+      return;
     }
 
     // 🤫 إكمال خطوات الخدمات الإضافية بالخاص
@@ -7968,7 +7978,7 @@ export class TelegramBotManager {
   // ✨ الخدمات الإضافية: 🤫 همسة | 📥 تحميل سوشيال ميديا | 🎵 الأغاني («يوت»)
   // ---------------------------------------------------------------------
 
-  private async handleExtraServicesCb(cb: TelegramCallbackQuery, data: string) {
+  private async handleExtraServicesCb(cb: TelegramCallbackQuery, data: string, bookCallbackAcknowledged = false) {
     const userId = String(cb.from.id);
     const userName = cb.from.first_name + (cb.from.last_name ? ` ${cb.from.last_name}` : '');
     const chatId = String(cb.message?.chat.id || userId);
@@ -8392,6 +8402,7 @@ export class TelegramBotManager {
       }
 
       if (data === 'svc:books') {
+        this.pendingBookSearch.delete(`${chatId}:${userId}`);
         const stats = await this.bookCatalog.stats();
         // عدد كتب كل صنف بالمكتبة الكبيرة (مع القاعدة المختارة كاحتياط).
         const distribution = await this.bookCatalog.genreDistribution();
@@ -8603,7 +8614,7 @@ export class TelegramBotManager {
 
       // 🔎 بحث بالاسم أو المؤلف
       if (parts[2] === 'search') {
-        this.pendingBookSearch.set(userId, { at: Date.now() });
+        this.pendingBookSearch.set(`${chatId}:${userId}`, { at: Date.now() });
         const text =
           `*دوّر على كتاب* 🔎\n\n` +
           `اكتب اسم الكتاب أو اسم المؤلف وأنا أدوّرلك بالمكتبة وبالنت.\n` +
@@ -8617,53 +8628,74 @@ export class TelegramBotManager {
 
       // نتيجة القناة: نطلب تطابق عنوان غير ملتبس ثم نستخدم مسار التحقق من الحقوق.
       if (parts[2] === 'chpdf') {
-        const entry = await this.channelBookIndex.get(parts[3] || '');
-        if (!entry) {
-          await this.answerCallbackQuery(cb.id, 'النتيجة مو موجودة بالفهرس؛ دوّر من جديد.', true);
-          return;
+        await this.answerCallbackQuery(cb.id, 'جاري التحقق من الكتاب والملف…');
+        try {
+          const entry = await this.withBookTimeout(this.channelBookIndex.get(parts[3] || ''), 4_000);
+          if (!entry) {
+            await this.sendMessage(chatId, 'النتيجة مو موجودة بالفهرس؛ دوّر من جديد.');
+            return;
+          }
+          const result = await this.withBookTimeout(this.bookCatalog.searchDetailed(entry.title, 10), 8_000);
+          const candidates = [...result.local, ...result.remote];
+          const localizedCandidates = await Promise.all(candidates.map(async book => ({
+            book,
+            localized: await this.withBookTimeout(this.bookCatalog.localize(book), 6_000).catch(() => ({ title: book.title, author: book.author, localized: false }))
+          })));
+          const matches = [] as CatalogBook[];
+          for (const { book, localized } of localizedCandidates) {
+            // المطابقة الموثوقة أشد من فهرس البحث: لا نحذف ال التعريف أو لام الاسم.
+            const words = (value: string) => channelNameKey(value).split(' ').filter(word => word.length >= 2 && word.length <= 40);
+            const fields = [words(entry.title), words(entry.text)];
+            const titleForms = [localized.title, book.title].map(words).filter(parts => parts.length > 0);
+            const authorForms = [localized.author, book.author].map(words).filter(parts => parts.length > 0);
+            const contains = (phrase: string[], author = false) => fields.some(field => field.some((_, start) =>
+              phrase.every((part, offset) => field[start + offset] === part || (author && offset === 0 && field[start] === `ل${part}`))
+            ));
+            const titleForm = titleForms.find(parts => contains(parts));
+            const authorForm = authorForms.find(parts => contains(parts, true));
+            // كلمة عنوان وحدها لا تصلح دليلاً مستقلاً على المؤلف.
+            const separateAuthor = titleForm && authorForm?.some(word => !titleForm.includes(word));
+            const known = new Set([...(titleForm || []), ...(authorForm || [])]);
+            if (authorForm?.[0]) known.add(`ل${authorForm[0]}`);
+            const fillers = new Set(['كتاب', 'روايه', 'للكاتب', 'الكاتب', 'تاليف', 'بقلم', 'pdf']);
+            // يمنع عنواناً قريباً مثل «الغريب وقصص أخرى» من التطابق مع «الغريب» وحده.
+            const extra = words(entry.title).some(word => !known.has(word) && !fillers.has(word));
+            if (titleForm && authorForm && separateAuthor && !extra && !matches.some(match => match.id === book.id)) matches.push(book);
+          }
+          if (matches.length !== 1) {
+            await this.sendMessage(chatId, 'ما كدرت أتأكد من هوية الكتاب من بيانات القناة، لذلك ما أگدر أرسل ملفه.');
+            return;
+          }
+          await this.handleExtraServicesCb(cb, `svc:books:pdf:${matches[0].id}`, true);
+        } catch (error) {
+          console.error('Channel book verification failed:', error);
+          await this.sendMessage(chatId, 'تعذّر التحقق من الكتاب هسه. جرّب مرة ثانية.');
         }
-        const result = await this.bookCatalog.searchDetailed(entry.title, 10);
-        const candidates = [...result.local, ...result.remote];
-        const matches = [] as CatalogBook[];
-        for (const book of candidates) {
-          const localized = await this.bookCatalog.localize(book);
-          // المطابقة الموثوقة أشد من فهرس البحث: لا نحذف ال التعريف أو لام الاسم.
-          const words = (value: string) => channelNameKey(value).split(' ').filter(word => word.length >= 2 && word.length <= 40);
-          const fields = [words(entry.title), words(entry.text)];
-          const titleForms = [localized.title, book.title].map(words).filter(parts => parts.length > 0);
-          const authorForms = [localized.author, book.author].map(words).filter(parts => parts.length > 0);
-          const contains = (phrase: string[], author = false) => fields.some(field => field.some((_, start) =>
-            phrase.every((part, offset) => field[start + offset] === part || (author && offset === 0 && field[start] === `ل${part}`))
-          ));
-          const titleForm = titleForms.find(parts => contains(parts));
-          const authorForm = authorForms.find(parts => contains(parts, true));
-          // كلمة عنوان وحدها لا تصلح دليلاً مستقلاً على المؤلف.
-          const separateAuthor = titleForm && authorForm?.some(word => !titleForm.includes(word));
-          const known = new Set([...(titleForm || []), ...(authorForm || [])]);
-          if (authorForm?.[0]) known.add(`ل${authorForm[0]}`);
-          const fillers = new Set(['كتاب', 'روايه', 'للكاتب', 'الكاتب', 'تاليف', 'بقلم', 'pdf']);
-          // يمنع عنواناً قريباً مثل «الغريب وقصص أخرى» من التطابق مع «الغريب» وحده.
-          const extra = words(entry.title).some(word => !known.has(word) && !fillers.has(word));
-          if (titleForm && authorForm && separateAuthor && !extra && !matches.some(match => match.id === book.id)) matches.push(book);
-        }
-        if (matches.length !== 1) {
-          await this.answerCallbackQuery(cb.id, 'ما كدرت أتأكد من نسخة حرة مطابقة لهذا العنوان.', true);
-          return;
-        }
-        await this.handleExtraServicesCb(cb, `svc:books:pdf:${matches[0].id}`);
         return;
       }
 
       // 📥 ملف الكتاب PDF — نجيبه من إنترنت أرشيف عند الضغط (كتب الملكية العامة بس)
       if (parts[2] === 'pdf' || parts[2] === 'open') {
         const id = parts[3] || '';
-        const book = await this.bookCatalog.byId(id);
-        if (!book) {
-          await this.answerCallbackQuery(cb.id, 'الكتاب مو موجود بالمكتبة؛ دوّر من جديد.', true);
+        if (!bookCallbackAcknowledged) await this.answerCallbackQuery(cb.id, 'جاري التحقق من الملف…');
+        let book: CatalogBook | null | undefined;
+        try {
+          book = await this.withBookTimeout(this.bookCatalog.byId(id), 8_000);
+        } catch {
+          await this.sendMessage(chatId, 'تعذّر الوصول لبيانات الكتاب هسه. جرّب مرة ثانية.');
           return;
         }
-        await this.answerCallbackQuery(cb.id, 'جاري أرسل الملف…');
-        const file = await this.bookCatalog.archivePdf(book);
+        if (!book) {
+          await this.sendMessage(chatId, 'الكتاب مو موجود بالمكتبة؛ دوّر من جديد.');
+          return;
+        }
+        let file;
+        try {
+          file = await this.withBookTimeout(this.bookCatalog.archivePdf(book), 15_000);
+        } catch {
+          await this.sendMessage(chatId, 'تعذّر التحقق من ملف PDF هسه. جرّب مرة ثانية.');
+          return;
+        }
         if (!file) {
           // ما نلفّق ملف ولا نرسل نسخة محفوظة — نقولها بصراحة.
           await this.sendMessage(
@@ -8674,7 +8706,8 @@ export class TelegramBotManager {
           );
           return;
         }
-        const localized = await this.bookCatalog.localize(book);
+        const localized = await this.withBookTimeout(this.bookCatalog.localize(book), 6_000)
+          .catch(() => ({ title: book!.title, author: book!.author, localized: false }));
         const caption = `📄 *${this.mdSafe(localized.title)}* — ${this.mdSafe(localized.author)}`;
         const keyboard = [[{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]];
         // لا نرسل نسخة القناة إلا إذا طابقت بصمة وحجم نسخة أرشيف المتحقق من حقوقها.
@@ -13025,6 +13058,17 @@ export class TelegramBotManager {
     }
   }
 
+  private async withBookTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([promise, new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('book lookup timeout')), ms);
+      })]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   /** نتيجة بحث الكتاب: تفضيل المكتبة المحلية وبعدها Open Library. */
   private async handleBookSearchQuery(chatId: string, query: string): Promise<void> {
     const clean = String(query || '').trim();
@@ -13032,9 +13076,25 @@ export class TelegramBotManager {
       await this.sendMessage(chatId, 'اكتب حرفين على الأقل من اسم الكتاب أو المؤلف.');
       return;
     }
-    const { local, remote, remoteFailed } = await this.bookCatalog.searchDetailed(clean, 5);
+    // خلّي الفهرسين مستقلين: تعطل واحد منهم ما يسكت البحث كله.
+    const [catalogAttempt, channelAttempt] = await Promise.allSettled([
+      this.withBookTimeout(this.bookCatalog.searchDetailed(clean, 5), 8_000),
+      this.withBookTimeout(this.channelBookIndex.search(clean, 5), 8_000)
+    ]);
+    let local: CatalogBook[] = [];
+    let remote: CatalogBook[] = [];
+    let remoteFailed = catalogAttempt.status === 'rejected' || channelAttempt.status === 'rejected';
+    if (catalogAttempt.status === 'fulfilled') {
+      local = catalogAttempt.value.local;
+      remote = catalogAttempt.value.remote;
+      remoteFailed ||= catalogAttempt.value.remoteFailed;
+    } else {
+      console.error('Book search unavailable:', catalogAttempt.reason);
+      try { local = await this.withBookTimeout(this.bookCatalog.searchLocal(clean, 5), 2_000); } catch { /* الرد البديل أدناه */ }
+    }
+    if (channelAttempt.status === 'rejected') console.error('Channel index search unavailable:', channelAttempt.reason);
     const results = [...local, ...remote].slice(0, 5);
-    const channelResults = await this.channelBookIndex.search(clean, 5);
+    const channelResults = channelAttempt.status === 'fulfilled' ? channelAttempt.value : [];
     if (!results.length && !channelResults.length && remoteFailed) {
       await this.sendMessage(
         chatId,
@@ -13062,7 +13122,7 @@ export class TelegramBotManager {
     }
     // نعرّب نتائج البحث كذلك (بالتوازي حتى ما يتأخر الرد).
     const localizedResults = await Promise.all(
-      results.map(async book => ({ book, loc: await this.bookCatalog.localize(book) }))
+      results.map(async book => ({ book, loc: await this.withBookTimeout(this.bookCatalog.localize(book), 6_000).catch(() => ({ title: book.title, author: book.author, localized: false })) }))
     );
     const lines = localizedResults.map(({ book, loc }, index) => {
       const year = book.year ? ` · ${book.year}` : '';
@@ -13070,21 +13130,22 @@ export class TelegramBotManager {
       return `${index + 1}) *${this.mdSafe(loc.title)}* — ${this.mdSafe(loc.author)}${year}${lang}`;
     });
     const keyboard = localizedResults.map(({ book, loc }) => [
-      { text: `📥 PDF: ${loc.title.slice(0, 28)} — ${loc.author.slice(0, 20)}`, callback_data: `svc:books:pdf:${book.id}` }
+      { text: `تحقق PDF: ${loc.title.slice(0, 28)} — ${loc.author.slice(0, 20)}`, callback_data: `svc:books:pdf:${book.id}` }
     ]);
     for (const item of channelResults) {
       const ambiguous = channelResults.some(other => other.id !== item.id && other.title === item.title && other.text !== item.text);
       const label = ambiguous && item.text ? `${item.title} — ${item.text.slice(0, 70)}` : item.title;
       lines.push(`القناة: ${this.mdSafe(label)}`);
-      keyboard.push([{ text: `PDF: ${label.slice(0, 55)}`, callback_data: `svc:books:chpdf:${item.id}` }]);
+      keyboard.push([{ text: `تحقق PDF: ${label.slice(0, 50)}`, callback_data: `svc:books:chpdf:${item.id}` }]);
     }
     keyboard.push([{ text: '🔎 دوّر غير كتاب', callback_data: 'svc:books:search' }]);
     keyboard.push([{ text: '📚 خدمة الكتب', callback_data: 'svc:books' }]);
-    await this.sendMessage(
-      chatId,
-      `*نتائج البحث عن* ${this.mdSafe(clean)} 🔎\n\n${lines.join('\n')}\n\nاضغط على الكتاب حتى أرسل ملفه PDF إذا متوفر من الملكية العامة:`,
-      keyboard
-    );
+    const text = `*نتائج البحث عن* ${this.mdSafe(clean)} 🔎\n\n${lines.join('\n')}\n\nاضغط على الكتاب حتى أرسل ملفه PDF إذا متوفر من الملكية العامة:`;
+    const sent = await this.sendMessage(chatId, text, keyboard);
+    // بعض أسماء الملفات فيها محارف تكسر Markdown؛ أعد المحاولة بنص عادي.
+    if (!sent?.ok && /parse|entities/i.test(String(sent?.description || ''))) {
+      await this.sendMessage(chatId, text.replace(/[*]/g, ''), keyboard, '');
+    }
   }
 
   /** عدد كتب المكتبة الكبيرة (للاختبارات ولوحة المالك). */
@@ -13775,9 +13836,9 @@ export class TelegramBotManager {
     try {
       const body: any = {
         chat_id: chatId,
-        text,
-        parse_mode: parseMode
+        text
       };
+      if (parseMode) body.parse_mode = parseMode;
 
       if (inlineKeyboard && inlineKeyboard.length > 0) {
         body.reply_markup = { inline_keyboard: inlineKeyboard };

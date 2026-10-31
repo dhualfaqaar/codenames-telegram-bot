@@ -7,7 +7,7 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-31-books-v46';
+export const BUILD_TAG = '2026-10-31-books-v47';
 
 /** ملخّص اللي بهذي النسخة — يظهر بـ /version حتى نتأكد إن الميزة موجودة. */
 export const BUILD_FEATURES: string[] = [
@@ -19,7 +19,7 @@ export const BUILD_FEATURES: string[] = [
 ];
 
 /** بصمة قسم الكتب — تتغير مع كل تعديل بمنطق الكتب. */
-export const BOOKS_BUILD = 'books-2026-10-31-smart-channel';
+export const BOOKS_BUILD = 'books-2026-10-31-search-reliability';
 
 /** مفتاح التخزين اللي نربط بيه وقت أول تشغيل لهذي النسخة. */
 export const BUILD_STORAGE_KEY = 'build:seen';
