@@ -2489,19 +2489,9 @@ export class TelegramBotManager {
     // حزمة فهرس واحدة فقط، من مالك البوت؛ لا تحتوي ملفات الكتب.
     if (message.chat.type === 'private' && sender && this.isOwner(sender.id) &&
         String(message.document?.file_name || '') === 'lovekotob-import.json') {
-      const doc = message.document;
-      if (!Number.isSafeInteger(doc.file_size) || doc.file_size <= 0 || doc.file_size > 18 * 1024 * 1024) {
-        await this.sendMessage(chatId, 'حجم ملف الفهرس غير صالح.');
-        return;
-      }
-      try {
-        const download = await this.downloadTelegramFileBytes(String(doc.file_id || ''));
-        if (!download || download.bytes.length !== doc.file_size) throw new Error('invalid size');
-        const state = await this.channelImportQueue.stage(JSON.parse(new TextDecoder().decode(download.bytes)), chatId);
-        await this.sendMessage(chatId, `بديت أفهرس ${state.expected.toLocaleString('en-US')} رسالة PDF على دفعات. أدزلك رسالة من أخلص. للتقدّم اكتب /channelindex`);
-      } catch (error: any) {
-        await this.sendMessage(chatId, error?.message === 'busy' ? 'الفهرسة شغالة هسه، انتظر تكمل قبل إرسال ملف ثاني.' : 'ما كدرت أقرأ ملف الفهرس. تأكد من الملف وجرّب مرة ثانية.');
-      }
+      // Bulk indexing is paused while the account's write usage is investigated.
+      // Do not stage another package over a job whose progress must be preserved.
+      await this.sendMessage(chatId, 'فهرسة القناة متوقفة مؤقتاً لحماية حصة التخزين. البيانات والتقدّم المحفوظ باقين.');
       return;
     }
 
@@ -2509,7 +2499,7 @@ export class TelegramBotManager {
       if (!sender || !this.isOwner(sender.id) || message.chat.type !== 'private') return;
       const state = await this.channelImportQueue.state();
       if (!state) { await this.sendMessage(chatId, 'ماكو فهرس قناة مستورد بعد.'); return; }
-      const status = state.status === 'processing' ? 'تشتغل' : state.status === 'done' ? 'مكتملة' : 'توقفت بسبب خطأ';
+      const status = state.status === 'processing' ? 'متوقفة مؤقتاً لحماية حصة التخزين' : state.status === 'done' ? 'مكتملة' : 'توقفت بسبب خطأ';
       await this.sendMessage(chatId, `الفهرسة ${status}.\nانفهرس ${state.indexed.toLocaleString('en-US')} من ${state.expected.toLocaleString('en-US')} رسالة.`);
       return;
     }
@@ -2517,20 +2507,7 @@ export class TelegramBotManager {
     // فهرسة دفعات أسماء PDF من تصدير القناة؛ المالك فقط وبملف محدود الحجم.
     if (message.chat.type === 'private' && sender && this.isOwner(sender.id) &&
         /^lovekotob-index-\d+\.json$/i.test(String(message.document?.file_name || ''))) {
-      const doc = message.document;
-      if (!Number.isSafeInteger(doc.file_size) || doc.file_size <= 0 || doc.file_size > 2 * 1024 * 1024) {
-        await this.sendMessage(chatId, 'ملف الفهرس كبير أو مو صالح. استخدم الدفعات الناتجة من أداة التصدير.');
-        return;
-      }
-      try {
-        const download = await this.downloadTelegramFileBytes(String(doc.file_id || ''));
-        if (!download || download.bytes.length !== doc.file_size) throw new Error('invalid size');
-        const batch = JSON.parse(new TextDecoder().decode(download.bytes));
-        const count = await this.channelBookIndex.importBatch(batch);
-        await this.sendMessage(chatId, `انضافت ${count} رسالة PDF للفهرس. توفر الملف وحقوقه يحتاجان تحقق منفصل.`);
-      } catch {
-        await this.sendMessage(chatId, 'ما كدرت أقرأ دفعة الفهرس. تأكد من الملف وجرّب مرة ثانية.');
-      }
+      await this.sendMessage(chatId, 'فهرسة القناة متوقفة مؤقتاً لحماية حصة التخزين. البيانات والتقدّم المحفوظ باقين.');
       return;
     }
 
@@ -13154,13 +13131,7 @@ export class TelegramBotManager {
   }
 
   public async processChannelImport(): Promise<void> {
-    if (!(await this.channelImportPending())) return;
-    const state = await this.channelImportQueue.processOne();
-    if (state?.status === 'done') {
-      await this.sendMessage(state.chatId, `اكتملت الفهرسة: انضاف ${state.indexed.toLocaleString('en-US')} من ${state.expected.toLocaleString('en-US')} رسالة. نتائج PDF تبقى خاضعة للتحقق من الإتاحة والحقوق.`);
-    } else if (state?.status === 'error') {
-      await this.sendMessage(state.chatId, `توقفت الفهرسة بعد ${state.indexed.toLocaleString('en-US')} رسالة بسبب خطأ. تكدر ترسل ملف الفهرس مرة ثانية.`);
-    }
+    // Paused without touching staged batches or the cursor. Existing indexes stay searchable.
   }
 
   public async bookCatalogStats(): Promise<{ total: number; languages: number; done: boolean }> {

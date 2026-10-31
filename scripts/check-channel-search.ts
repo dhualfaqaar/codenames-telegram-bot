@@ -160,7 +160,7 @@ try {
   const bytes = new TextEncoder().encode(JSON.stringify(batch));
   bot.downloadTelegramFileBytes = async () => ({ bytes, filePath: 'documents/index.json' });
   await bot.handleMessage({ message_id: 9, date: 1, from: { id: 42, first_name: 'Owner' }, chat: { id: 42, type: 'private' }, document: { file_id: 'test', file_size: bytes.length, file_name: 'lovekotob-index-000001.json' } });
-  assert.ok(messages.some(message => message.text.includes('انضافت 1')));
+  assert.ok(messages.some(message => message.text.includes('متوقفة مؤقتاً')));
   const bulkBytes = new TextEncoder().encode(JSON.stringify(payload));
   let downloads = 0;
   bot.downloadTelegramFileBytes = async () => { downloads++; return { bytes: bulkBytes }; };
@@ -170,12 +170,15 @@ try {
   await bot.handleMessage({ ...upload, from: { id: 42, first_name: 'Owner' }, chat: { id: -42, type: 'group' } });
   assert.equal(downloads, 0);
   await bot.handleMessage({ ...upload, from: { id: 42, first_name: 'Owner' }, chat: { id: 42, type: 'private' } });
-  assert.equal(downloads, 1);
+  assert.equal(downloads, 0); // no staging while paused
+  // A previously staged job survives unchanged and is not processed by alarms.
+  await bot.channelImportQueue.stage(payload, '42');
+  const saved = JSON.stringify(await bot.channelImportQueue.state());
+  await bot.processChannelImport();
+  assert.equal(JSON.stringify(await bot.channelImportQueue.state()), saved);
   assert.equal(await bot.channelImportPending(), true);
-  await bot.processChannelImport();
-  await bot.processChannelImport();
-  assert.equal(await bot.channelImportPending(), false);
-  assert.ok(messages.some(message => message.text.includes('اكتملت الفهرسة')));
+  await bot.handleMessage({ message_id: 11, date: 1, text: '/channelindex', from: { id: 42, first_name: 'Owner' }, chat: { id: 42, type: 'private' } });
+  assert.ok(messages.some(message => message.text.includes('متوقفة مؤقتاً')));
   await bot.handleBookSearchQuery('42', 'احمد الملك');
   assert.ok(messages.some(message => JSON.stringify(message.keyboard || []).includes('svc:books:chpdf:72')));
   const cb = { id: 'cb', from: { id: 42, first_name: 'Owner' }, message: { message_id: 1, chat: { id: 42, type: 'private' } } };
