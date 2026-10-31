@@ -41,6 +41,7 @@ const fakeBot = {
 };
 const worker: any = new BotState({ storage: db }, {} as any);
 worker.bot = fakeBot;
+worker.stateStore = { save: async (state: any) => db.put('state', state) };
 await worker.syncAlarm(fakeBot);
 assert.equal(alarmWrites, 1);
 await worker.syncAlarm(fakeBot);
@@ -62,6 +63,7 @@ assert.equal(stateWrites, 1); // changed game state still persists
 // Cooldown is durable across DO restarts.
 const restarted: any = new BotState({ storage: db }, {} as any);
 restarted.bot = fakeBot;
+restarted.stateStore = { save: async (state: any) => db.put('state', state) };
 scheduled = null;
 await restarted.alarm();
 assert.equal(seeds, 1);
@@ -108,6 +110,7 @@ const bot2 = {
 };
 const worker2: any = new BotState({ storage: storage2 }, {} as any);
 worker2.bot = bot2;
+worker2.stateStore = { save: async (state: any) => storage2.put('state', state) };
 const update = (payload: any) => worker2.fetch(new Request('https://bot.internal/update', { method: 'POST', body: JSON.stringify(payload) }));
 const cron = () => worker2.fetch(new Request('https://bot.internal/football-alerts', { method: 'POST' }));
 for (let i = 0; i < 500; i++) await update({ update_id: i + 1, ignored: true });
@@ -146,6 +149,7 @@ const concurrentStorage: any = { put: async (_: string, snapshot: any) => {
   snapshots.push(value);
 } };
 const concurrentWorker: any = new BotState({ storage: concurrentStorage }, {} as any);
+concurrentWorker.stateStore = { save: async (state: any) => concurrentStorage.put('state', state) };
 const concurrentBot: any = { exportState: () => ({ value: concurrentValue }) };
 const firstWrite = concurrentWorker.saveBotState(concurrentBot);
 await entered;
