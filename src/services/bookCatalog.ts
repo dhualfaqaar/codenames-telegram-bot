@@ -57,6 +57,10 @@ export interface CatalogMeta {
   sortStage: number;
   /** كم مرة كملنا دورة اللغات كلها */
   wrapCount: number;
+  /** مؤشر تعويض الفلسفة */
+  phiIndex?: number;
+  /** صفحة تعويض الفلسفة */
+  phiPage?: number;
 }
 
 interface OpenLibraryDoc {
@@ -216,6 +220,27 @@ export const GENRE_SEED_SUBJECTS: Record<BookGenre, string> = {
   children: "Children's literature"
 };
 
+/** الفلسفة أكثر صنف مطلوب — نضمن له عدد أدنى بالمكتبة. */
+export const PHILOSOPHY_MIN = 1_000;
+/** سقف أعلى للمكتبة وقت تعويض الفلسفة (نتجاوز الهدف شوي بدل ما نضغط الأصناف). */
+export const CATALOG_MAX = 13_000;
+
+/** مواضيع الفلسفة اللي نبذر بيها لحد ما نوصل العدد الأدنى. */
+export const PHILOSOPHY_SUBJECTS = [
+  'Philosophy',
+  'Philosophy, Ancient',
+  'Ethics',
+  'Logic',
+  'Metaphysics',
+  'Existentialism',
+  'Stoicism',
+  'Political philosophy',
+  'Philosophy and religion',
+  'Islamic philosophy',
+  'Sufism',
+  'Philosophy, Arab',
+  'فلسفة'
+];
 export const CATALOG_TARGET = 10_000;
 /** مصادر البذر: لغة صرفة، أو لغة + تصنيف حتى كل صنف ياخذ حصته. */
 export interface SeedSource {
@@ -261,6 +286,25 @@ export function buildSeedSources(): SeedSource[] {
 
 export const SEED_SOURCES = buildSeedSources();
 
+/** مصادر الفلسفة وحدها (بكل لغة كبيرة + العربية) لتعويض الصنف الأشهر. */
+export function buildPhilosophySources(): SeedSource[] {
+  const sources: SeedSource[] = [];
+  const languages = ['ara', 'eng', 'fre', 'ger', 'rus', 'spa', 'ita', 'ron', 'tur', 'per'];
+  for (const code of languages) {
+    for (const subject of PHILOSOPHY_SUBJECTS) {
+      if (subject === 'فلسفة') {
+        sources.push({ q: `language:${code} AND subject:"فلسفة"`, lang: code, genre: 'philosophy' });
+        continue;
+      }
+      sources.push({ q: `language:${code} AND subject:"${subject}"`, lang: code, genre: 'philosophy' });
+    }
+  }
+  return sources;
+}
+
+export const PHILOSOPHY_SOURCES = buildPhilosophySources();
+
+
 /**
  * خريطة «موضوع Open Library ← تصنيفنا». المفاتيح إنجليزية لأن Open Library
  * توسم أغلب الكتب بمواضيع إنجليزية حتى لو الكتاب عربي، وأضفنا كلمات عربية
@@ -297,7 +341,9 @@ const EMPTY_META: CatalogMeta = {
   rejected: 0,
   streak: 0,
   sortStage: 0,
-  wrapCount: 0
+  wrapCount: 0,
+  phiIndex: 0,
+  phiPage: 1
 };
 
 /** تخزين بالذاكرة — للتشغيل المحلي والفحوص لما ماكو Durable Object. */
@@ -380,6 +426,8 @@ export class BookCatalog {
   private meta: CatalogMeta = { ...EMPTY_META };
   private loaded: Promise<void> | null = null;
   private seeding: Promise<{ added: number; total: number; done: boolean }> | null = null;
+  /** كاش عدد كتب الفلسفة (يصفّر مع كل إضافة جديدة) */
+  private philosophyCache: number | null = null;
 
   constructor(storage?: BookStorageAdapter, fetchImpl?: typeof fetch) {
     this.storage = storage || memoryBookStorage();
@@ -408,10 +456,11 @@ export class BookCatalog {
         }
         // العدد الحقيقي من الملفات أدق من الـmeta لو صار انقطاع.
         this.meta.total = this.books.length;
+        this.philosophyCache = null;
         // 🔴 إصلاح مهم: النسخ القديمة كانت تعلّم «خلصت» وهي ناقصة (توقفت على
         // ٣٠٠٠). لو العدد أقل من الهدف نرفع العلم ونرجّع المؤشر للبداية حتى
         // يكمّل البذر بدل ما يظل واقف للأبد.
-        if (this.meta.done && this.books.length < CATALOG_TARGET) {
+        if (this.meta.done && !this.isComplete()) {
           console.warn(`Book catalog marked done at ${this.books.length}/${CATALOG_TARGET} — resuming seeding.`);
           this.meta.done = false;
           this.meta.wrapCount = 0;
@@ -495,24 +544,32 @@ export class BookCatalog {
   async pickByGenre(
     genre: string,
     decade: number | 'all' = 'all',
-    excludeId?: string
+    excludeId?: string,
+    excludeIds: string[] = []
   ): Promise<{ book: CatalogBook; widened: boolean } | undefined> {
+    const excluded = this.exclusionSet(excludeId, excludeIds);
     const narrow = await this.booksByGenre(genre, decade);
-    if (narrow.length) {
-      const book = this.pickFrom(narrow, excludeId);
-      if (book) return { book, widened: false };
-    }
+    const fromNarrow = this.pickFrom(narrow, excluded);
+    if (fromNarrow) return { book: fromNarrow, widened: false };
     if (decade !== 'all') {
       const wide = await this.booksByGenre(genre);
-      const book = this.pickFrom(wide, excludeId);
-      if (book) return { book, widened: true };
+      const fromWide = this.pickFrom(wide, excluded);
+      if (fromWide) return { book: fromWide, widened: true };
     }
     return undefined;
   }
 
-  private pickFrom(pool: CatalogBook[], excludeId?: string): CatalogBook | undefined {
+  /** مجموعة الاستبعاد: الكتاب السابق + آخر ما شاهده المستخدم. */
+  private exclusionSet(excludeId?: string, excludeIds: string[] = []): Set<string> {
+    const set = new Set<string>(excludeIds.filter(Boolean));
+    if (excludeId) set.add(excludeId);
+    return set;
+  }
+
+  private pickFrom(pool: CatalogBook[], excluded: Set<string>): CatalogBook | undefined {
     if (!pool.length) return undefined;
-    const candidates = excludeId ? pool.filter(book => book.id !== excludeId) : pool;
+    const candidates = excluded.size ? pool.filter(book => !excluded.has(book.id)) : pool;
+    // لو اللي شافه المستخدم يغطي الصنف كله (صنف صغير)، نسمح بالتكرار بدل الفراغ.
     const source = candidates.length ? candidates : pool;
     return source[Math.floor(Math.random() * source.length)];
   }
@@ -550,17 +607,17 @@ export class BookCatalog {
   }
 
   /** اقتراح عشوائي من المكتبة الكبيرة، مع استبعاد كتاب شفته قبل شوي. */
-  async pickRandom(options: { excludeId?: string; lang?: string } = {}): Promise<CatalogBook | undefined> {
+  async pickRandom(
+    options: { excludeId?: string; excludeIds?: string[]; lang?: string } = {}
+  ): Promise<CatalogBook | undefined> {
     await this.load();
     if (!this.books.length) return undefined;
     const pool = options.lang ? this.books.filter(book => book.lang === options.lang) : this.books;
-    const source = pool.length ? pool : this.books;
+    const base = pool.length ? pool : this.books;
+    const excluded = this.exclusionSet(options.excludeId, options.excludeIds);
+    const source = excluded.size ? (base.filter(book => !excluded.has(book.id)).length ? base.filter(book => !excluded.has(book.id)) : base) : base;
     if (source.length === 1) return source[0];
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const picked = source[Math.floor(Math.random() * source.length)];
-      if (picked && picked.id !== options.excludeId) return picked;
-    }
-    return source.find(book => book.id !== options.excludeId) || source[0];
+    return source[Math.floor(Math.random() * source.length)];
   }
 
   /** بحث محلي سريع بالعنوان أو المؤلف (يتحمّل الهمزات وترتيب الكلمات). */
@@ -687,7 +744,7 @@ export class BookCatalog {
   async seed(queries = 3): Promise<{ added: number; total: number; done: boolean }> {
     await this.load();
     if (this.seeding) return this.seeding;
-    if (this.books.length >= CATALOG_TARGET) {
+    if (this.isComplete()) {
       this.meta.done = true;
       return { added: 0, total: this.books.length, done: true };
     }
@@ -698,11 +755,18 @@ export class BookCatalog {
       for (let i = 0; i < queries; i += 1) {
         // ملاحظة: الكتب المضافة تنضاف لـthis.books فوراً، فالعدّ منها ومن added
         // سوية يسبّب توقّف مبكر — نعتمد على this.books.length وحدها.
-        if (this.books.length >= CATALOG_TARGET) {
+        if (this.isComplete()) {
           this.meta.done = true;
           break;
         }
-        const source = SEED_SOURCES[this.meta.sourceIndex || 0];
+        // 🥇 الفلسفة أولوية: طول ما هي أقل من الحد الأدنى ناخذ من مصادرها هي،
+        // حتى لو المكتبة وصلت الهدف العام. (الفلسفة أكثر صنف مطلوب.)
+        const needPhilosophy = this.philosophyCount() < PHILOSOPHY_MIN && this.books.length < CATALOG_MAX;
+        const sources = needPhilosophy ? PHILOSOPHY_SOURCES : SEED_SOURCES;
+        const cursorLabel = needPhilosophy ? 'phi' : 'main';
+        const cursor = needPhilosophy ? (this.meta.phiIndex || 0) : (this.meta.sourceIndex || 0);
+        const page = needPhilosophy ? (this.meta.phiPage || 1) : this.meta.page;
+        const source = sources[cursor % sources.length];
         if (!source) {
           this.meta.done = true;
           break;
@@ -710,7 +774,7 @@ export class BookCatalog {
         const sort = SORT_STAGES[this.meta.sortStage] || '';
         const url =
           'https://openlibrary.org/search.json?q=' + encodeURIComponent(source.q) +
-          '&page=' + String(this.meta.page) +
+          '&page=' + String(page) +
           (sort ? `&sort=${sort}` : '') +
           '&limit=100&fields=' + encodeURIComponent(API_FIELDS);
 
@@ -756,28 +820,38 @@ export class BookCatalog {
           this.books.push(book);
           pending.push(book);
           added += 1;
+          this.philosophyCache = null;
         }
 
         // دور بين المصادر: كل طلب ياخذ مصدر، وبعد ما نكمل المصادر كلها ننتقل
         // للصفحة الجاية عند الجميع — توزيع متوازن على اللغات والأصناف.
-        this.meta.sourceIndex = (this.meta.sourceIndex || 0) + 1;
-        if (this.meta.sourceIndex >= SEED_SOURCES.length) {
-          this.meta.sourceIndex = 0;
-          this.meta.page += 1;
-          if (this.meta.page > MAX_PAGE_PER_QUERY) {
-            this.meta.page = 1;
-            this.meta.sortStage += 1;
-            if (this.meta.sortStage >= SORT_STAGES.length) {
-              this.meta.sortStage = 0;
-              this.meta.wrapCount += 1;
-            }
-            if (this.meta.wrapCount >= MAX_WRAP && this.books.length < CATALOG_TARGET) {
-              console.warn(
-                `Book catalog stalled at ${this.books.length}/${CATALOG_TARGET} after ${this.meta.requests} requests ` +
-                  `(failures ${this.meta.failures})`
-              );
-              this.meta.done = true;
-              break;
+        if (cursorLabel === 'phi') {
+          this.meta.phiIndex = (this.meta.phiIndex || 0) + 1;
+          if (this.meta.phiIndex >= PHILOSOPHY_SOURCES.length) {
+            this.meta.phiIndex = 0;
+            this.meta.phiPage = (this.meta.phiPage || 1) + 1;
+            if (this.meta.phiPage > MAX_PAGE_PER_QUERY) this.meta.phiPage = 1;
+          }
+        } else {
+          this.meta.sourceIndex = (this.meta.sourceIndex || 0) + 1;
+          if (this.meta.sourceIndex >= SEED_SOURCES.length) {
+            this.meta.sourceIndex = 0;
+            this.meta.page += 1;
+            if (this.meta.page > MAX_PAGE_PER_QUERY) {
+              this.meta.page = 1;
+              this.meta.sortStage += 1;
+              if (this.meta.sortStage >= SORT_STAGES.length) {
+                this.meta.sortStage = 0;
+                this.meta.wrapCount += 1;
+              }
+              if (this.meta.wrapCount >= MAX_WRAP && !this.isComplete()) {
+                console.warn(
+                  `Book catalog stalled at ${this.books.length}/${CATALOG_TARGET} (philosophy ${this.philosophyCount()}) ` +
+                    `after ${this.meta.requests} requests (failures ${this.meta.failures})`
+                );
+                this.meta.done = true;
+                break;
+              }
             }
           }
         }
@@ -793,7 +867,7 @@ export class BookCatalog {
       this.meta.chunkCount = chunkCount;
       this.meta.total = this.books.length;
       this.meta.updatedAt = Date.now();
-      if (this.books.length >= CATALOG_TARGET) this.meta.done = true;
+      if (this.isComplete()) this.meta.done = true;
       await this.storage.put(META_KEY, this.meta);
       return { added, total: this.books.length, done: this.meta.done };
     })();
@@ -804,9 +878,25 @@ export class BookCatalog {
     }
   }
 
+  /** عدد كتب الفلسفة بالمكتبة المحمّلة. */
+  philosophyCount(): number {
+    if (this.philosophyCache !== null) return this.philosophyCache;
+    let count = 0;
+    for (const book of this.books) {
+      if (this.genresOf(book).includes('philosophy')) count += 1;
+    }
+    this.philosophyCache = count;
+    return count;
+  }
+
+  /** خلصنا؟ لازم الهدف العام **و** الحد الأدنى للفلسفة. */
+  isComplete(): boolean {
+    return this.books.length >= CATALOG_TARGET && this.philosophyCount() >= PHILOSOPHY_MIN;
+  }
+
   /** هل يحتاج منبّه تالي للبذر؟ (العبرة بالعدد الحقيقي مو بعلم «خلصت») */
   needsMore(): boolean {
-    if (this.books.length >= CATALOG_TARGET) return false;
+    if (this.isComplete()) return false;
     if (this.meta.done) return false;
     return true;
   }
@@ -828,6 +918,7 @@ export class BookCatalog {
     this.books = [];
     this.index = new Map();
     this.meta = { ...EMPTY_META };
+    this.philosophyCache = null;
     this.loaded = Promise.resolve();
   }
 

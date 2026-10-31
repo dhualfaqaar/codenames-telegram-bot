@@ -257,11 +257,24 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   await catalog.seed(40);
   anyBot.bookCatalog = catalog;
 
+  // النص لازم يكون عراقي بحت وبلا كلمات خليجية/فصحى ثقيلة
+  {
+    calls = [];
+    await anyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
+    const bookScreen = lastScreen();
+    const FORBIDDEN = ['تريد', 'تريده', 'من جوا', 'اضغط', 'لغات مختلفة', 'فيها', 'اختر '];
+    const lower = bookScreen.text;
+    check('نص الخدمة بلا كلمات خليجية', FORBIDDEN.every(word => !lower.includes(word)));
+    check('نص الخدمة يستعمل «بيها» العراقية', lower.includes('بيها') || lower.includes('بعدها تتجهّز'));
+    check('نص الخدمة بلا «..» أو أرقام ناقصة', !/\.\.|\*\s*\*/.test(lower));
+    check('نص الخدمة بلا شرطات مكررة', !lower.includes('--'));
+  }
+
   // شاشة الصنف لازم تعرض عدد كتب المكتبة الكبيرة (مو ٤–٦ كتب)
   calls = [];
   await anyBot.handleExtraServicesCb(press('svc:books:genre:novel'), 'svc:books:genre:novel');
   const genreScreen = lastScreen();
-  check('شاشة الصنف تعرض عدد كتب المكتبة', /المكتبة فيها \*?[\d,]+\*? كتاب/.test(genreScreen.text));
+  check('شاشة الصنف تعرض عدد كتب المكتبة', /المكتبة بيها \*?[\d,]+\*? كتاب/.test(genreScreen.text));
   check('أزرار العقود تعرض عدد الكتب', /\d{4}–\d{4} · \d+/.test(genreScreen.keyboard));
   check('زر «أي عقد» يعرض الإجمالي', /أي عقد · \d+/.test(genreScreen.keyboard));
 
@@ -310,7 +323,7 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   const randScreen = lastScreen();
   const randCall = calls.find(call => ['sendPhoto', 'editMessageText', 'sendMessage'].includes(call.method));
   check('كل زر صنف يعرض عدد كتبه', (screen.keyboard.match(/· \d+/g) || []).length >= 12);
-  check('الشاشة تقول إن الكتب موزعة على أصناف', screen.text.includes('موزعة على'));
+  check('الشاشة تقول إن الكتب مقسّمة على أصناف', screen.text.includes('ومقسّمة على'));
   check('الكتاب العشوائي يعرض عنوان حقيقي', /\*اسم الكتاب:\* \S/.test(screenText(randCall)));
   check('الكتاب العشوائي يعرض سطر المؤلف', /\*المؤلف:\* \S/.test(screenText(randCall)));
   check('الكتاب العشوائي يذكر اللغة بالعربي', /\*اللغة:\* (العربية|الإنجليزية|الفرنسية|الألمانية|الروسية)/.test(screenText(randCall)));
@@ -362,6 +375,18 @@ await anyBot.handleExtraServicesCb(press('svc:books:pick:novel:all'), 'svc:books
   check('بطاقة الاقتراح تبدأ بسطر التصنيف', manual.text.split('\n')[0].includes('كل العقود'));
   check('بطاقة الاقتراح تعرض اسم الكتاب بسطر خاص', /^\*اسم الكتاب:\* \S/m.test(manual.text));
   check('بطاقة الاقتراح فيها سطر سنة وسطر صفحات', /\*السنة:\* \d{4}/.test(manual.text) && /\*الصفحات:\* \d+/.test(manual.text));
+}
+
+/* ───────────────── مكتبة فاضية: بلا أرقام ناقصة ───────────────── */
+{
+  const emptyBot: any = new TelegramBotManager('TEST:TOKEN');
+  calls = [];
+  await emptyBot.handleExtraServicesCb(press('svc:books'), 'svc:books');
+  const screen = lastScreen();
+  check('مكتبة فاضية تكتب «بعدها تتجهّز»', screen.text.includes('بعدها تتجهّز'));
+  check('مكتبة فاضية ما تطبع صفر', !screen.text.includes('*0*') && !screen.text.includes('0 كتاب'));
+  check('مكتبة فاضية بلا أرقام صنف', !/· 0/.test(screen.keyboard));
+  check('مكتبة فاضية بلا «..»', !screen.text.includes('..'));
 }
 
 /* ───────────────── ربط السورس ───────────────── */
