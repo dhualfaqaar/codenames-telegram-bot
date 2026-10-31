@@ -27,11 +27,11 @@ const METADATA_PATTERNS: RegExp[] = [
  * نرفض: النص الفاضي، القصير جداً، المكرر من البيانات المعروضة، أو اللي يشبه
  * اسم الكتاب/المؤلف حرفياً (كثير من سجلات Open Library وصفها = العنوان).
  */
-export function isUsableDescription(text: string, book?: Pick<CatalogBook, 'title' | 'author'>): boolean {
+export function isUsableDescription(text: string, book?: Pick<CatalogBook, 'title' | 'author'>, source = false): boolean {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   if (value.length < MIN_DESCRIPTION_LENGTH) return false;
   if (METADATA_PATTERNS.some(pattern => pattern.test(value))) return false;
-  if (/(?:\b\d{4}\b|[٠-٩]{4}|(?:عدد\s+)?الصفحات|\d+\s*صفحة|سنة\s+[\d٠-٩]|لغة الكتاب|تصنيف الكتاب)/i.test(value)) return false;
+  if (!source && /(?:\b\d{4}\b|[٠-٩]{4}|(?:عدد\s+)?الصفحات|\d+\s*صفحة|سنة\s+[\d٠-٩]|لغة الكتاب|تصنيف الكتاب)/i.test(value)) return false;
   if (book) {
     const title = String(book.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
     const author = String(book.author || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -59,7 +59,7 @@ export function isArabicText(value: string): boolean {
   const text = String(value || '');
   const letters = text.match(/\p{L}/gu) || [];
   const arabic = text.match(/[\u0621-\u063a\u0641-\u064a\u066e-\u06d3]/g) || [];
-  return arabic.length >= 4 && arabic.length / Math.max(letters.length, 1) >= 0.75;
+  return arabic.length >= 4 && arabic.length / Math.max(letters.length, 1) >= 0.9;
 }
 
 export function isArabicName(value: string): boolean {
@@ -124,7 +124,7 @@ export async function summarizeBookWithGemini(
   options: { fetchImpl?: typeof fetch; timeoutMs?: number; source?: string } = {}
 ): Promise<string> {
   const key = String(geminiApiKey || '').trim();
-  if (!key || !isUsableDescription(options.source || '', book)) return '';
+  if (!key || !isUsableDescription(options.source || '', book, true)) return '';
   const doFetch = options.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   if (!doFetch) return '';
   try {

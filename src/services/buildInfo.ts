@@ -7,7 +7,7 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-31-books-v44';
+export const BUILD_TAG = '2026-10-31-books-v45';
 
 /** ملخّص اللي بهذي النسخة — يظهر بـ /version حتى نتأكد إن الميزة موجودة. */
 export const BUILD_FEATURES: string[] = [
@@ -15,11 +15,11 @@ export const BUILD_FEATURES: string[] = [
   '29 صنف (علم نفس، آداب بلغات، سياسة، اقتصاد، علوم…)',
   'نبذة عربية من وصف حقيقي عند توفر الترجمة',
   'ملفات PDF موثوقة من إنترنت أرشيف والقناة',
-  'تعريب العنوان والمؤلف عند توفر مصدر أو ترجمة'
+  'بحث بفهرس القناة المستورد مع التحقق من PDF'
 ];
 
 /** بصمة قسم الكتب — تتغير مع كل تعديل بمنطق الكتب. */
-export const BOOKS_BUILD = 'books-2026-10-31-arabic-pdf-fix';
+export const BOOKS_BUILD = 'books-2026-10-31-channel-index';
 
 /** مفتاح التخزين اللي نربط بيه وقت أول تشغيل لهذي النسخة. */
 export const BUILD_STORAGE_KEY = 'build:seen';
