@@ -28,7 +28,8 @@
     "test:voice": "tsx scripts/check-voice-delivery.ts",
     "test:sfx": "tsx scripts/check-game-sfx.ts",
     "test:sfx:dom": "node scripts/check-game-sfx-dom.mjs",
-    "test:gq": "tsx scripts/check-group-games-host.ts"
+    "test:gq": "tsx scripts/check-group-games-host.ts",
+    "test:books": "tsx scripts/check-book-recommendations.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
