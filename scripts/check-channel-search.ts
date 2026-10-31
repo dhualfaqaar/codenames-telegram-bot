@@ -3,6 +3,8 @@ import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { gzipSync } from 'node:zlib';
+import { ChannelImportQueue } from '../src/services/channelImportQueue';
 import { ChannelBookIndex } from '../src/services/channelBookIndex';
 import { BookCatalog, memoryBookStorage } from '../src/services/bookCatalog';
 import { TelegramBotManager } from '../server/telegramBot';
@@ -15,6 +17,40 @@ try {
     { id: 72, type: 'message', mime_type: 'application/pdf', file: 'files/سأعود حين يفيض النهر - أحمد الملك.pdf', text: [{ type: 'bold', text: 'أحمد الملك' }] },
     { id: 73, type: 'message', file: 'files/picture.jpg', text: 'لا تفهرس' }
   ] }));
+  const bulkPath = join(dir, 'lovekotob-import.json');
+  execFileSync('node', [resolve('scripts/build-lovekotob-import.mjs'), filename, bulkPath]);
+  const bulk = JSON.parse(readFileSync(bulkPath, 'utf8'));
+  assert.equal(bulk.count, 1);
+  assert.equal(bulk.batches.length, 1);
+  const encodeBatch = (records: any[]) => gzipSync(Buffer.from(JSON.stringify({ format: 'lovekotob-index-v1', records }))).toString('base64');
+  const queueStorage = memoryBookStorage();
+  const queueIndex = new ChannelBookIndex(queueStorage);
+  let alarms = 0;
+  const queue = new ChannelImportQueue(queueStorage, queueIndex, async () => { alarms++; });
+  const payload = { format: 'lovekotob-bulk-v1', source: 'lovekotob', count: 2, batches: [
+    encodeBatch([{ id: 11, title: 'الغريب البير كامو', text: 'الغريب البير كامو' }]),
+    encodeBatch([{ id: 12, title: 'سأعود حين يفيض النهر', text: 'أحمد الملك' }])
+  ] };
+  await assert.rejects(() => queue.stage({ ...payload, source: 'wrong' }, '42'));
+  await assert.rejects(() => queue.stage({ ...payload, batches: ['a'.repeat(120001)] }, '42'));
+  await queue.stage(payload, '42');
+  assert.equal(alarms, 1);
+  await assert.rejects(() => queue.stage(payload, '42'), /busy/);
+  // Simulate a crash after writing a batch but before saving its cursor.
+  await queueIndex.importBatch({ format: 'lovekotob-index-v1', records: [{ id: 11, title: 'الغريب البير كامو', text: 'الغريب البير كامو' }] });
+  const resumed = new ChannelImportQueue(queueStorage, new ChannelBookIndex(queueStorage));
+  assert.deepEqual({ ...(await resumed.processOne()), id: undefined }, { id: undefined, status: 'processing', batches: 2, next: 1, indexed: 1, expected: 2, chatId: '42' });
+  assert.equal((await resumed.processOne())?.status, 'done');
+  assert.equal((await resumed.state())?.indexed, 2);
+  assert.equal((await queueIndex.search('غريب لكامو')).length, 1);
+  await resumed.stage({ ...payload, count: 1, batches: [Buffer.from('not a gzip archive').toString('base64')] }, '42');
+  assert.equal((await resumed.processOne())?.status, 'error');
+  const bomb = gzipSync(Buffer.alloc(3 * 1024 * 1024 + 1, 65)).toString('base64');
+  await resumed.stage({ ...payload, count: 1, batches: [bomb] }, '42');
+  assert.equal((await resumed.processOne())?.status, 'error');
+  await resumed.stage(payload, '42'); // a fresh upload can recover
+  assert.equal((await resumed.processOne())?.next, 1);
+  assert.equal((await resumed.processOne())?.status, 'done');
   const script = resolve('scripts/split-lovekotob-export.mjs');
   execFileSync('node', [script, filename, output]);
   const batch = JSON.parse(readFileSync(join(output, readdirSync(output)[0]), 'utf8'));
@@ -80,6 +116,21 @@ try {
   }
   assert.equal((await sqlIndex.search('مشترك مميز'))[0]?.id, 1500);
   assert.equal((await sqlIndex.get('1500'))?.title, 'كتاب مشترك');
+  await sqlIndex.importBatch({ format: 'lovekotob-index-v1', records: [
+    { id: 1600, title: 'الغريب البير كامو', text: 'الغريب البير كامو' },
+    { id: 1601, title: 'رواية الغريب لألبير كامو', text: 'رواية الغريب لألبير كامو' },
+    { id: 1602, title: 'الغريب مؤلف آخر', text: 'الغريب مؤلف آخر' },
+    { id: 1603, title: 'كش ملك أحمد خيري', text: 'كش ملك أحمد خيري' },
+    { id: 1604, title: 'ملكوت الواقع أحمد العمري', text: 'ملكوت الواقع أحمد العمري' },
+    { id: 1605, title: 'عنوان متشابه', text: 'الكاتب سليم' },
+    { id: 1606, title: 'عنوان متشابه', text: 'الكاتب علي' }
+  ] });
+  for (const query of ['الغريب لألبير كامو', 'الغريب', 'غريب لكامو', 'كامو غريب']) {
+    assert.ok((await sqlIndex.search(query, 10)).some(item => item.id === 1600 || item.id === 1601), query);
+  }
+  assert.equal((await sqlIndex.search('غريب لكامو')).length, 1); // same title and author, not two buttons
+  assert.ok(!(await sqlIndex.search('أحمد الملك')).some(item => item.id === 1604)); // not a prefix of ملكوت
+  assert.equal((await sqlIndex.search('عنوان متشابه')).length, 2); // different author evidence
   await sqlIndex.importBatch({ format: 'lovekotob-index-v1', records: [{ id: 1500, title: 'عنوان متغير', text: 'مؤلف جديد' }] });
   assert.equal((await sqlIndex.search('مشترك مميز')).length, 0);
   assert.equal((await sqlIndex.search('متغير جديد'))[0]?.id, 1500);
@@ -93,6 +144,7 @@ try {
   const mixedCard = bot.bookCardText({ title: 'عنوان عربي', author: 'كاتب عربي', description: 'قصة عربية قصيرة لكن the English description dominates this entire passage with many additional words.' });
   assert.ok(!mixedCard.includes('النبذة'));
 
+  bot.hasRequiredChannelMembership = async () => true;
   const messages: Array<{ text: string; keyboard: any }> = [];
   const documents: string[] = [];
   bot.sendMessage = async (_: string, text: string, keyboard: any) => { messages.push({ text, keyboard }); return { ok: true }; };
@@ -109,6 +161,21 @@ try {
   bot.downloadTelegramFileBytes = async () => ({ bytes, filePath: 'documents/index.json' });
   await bot.handleMessage({ message_id: 9, date: 1, from: { id: 42, first_name: 'Owner' }, chat: { id: 42, type: 'private' }, document: { file_id: 'test', file_size: bytes.length, file_name: 'lovekotob-index-000001.json' } });
   assert.ok(messages.some(message => message.text.includes('انضافت 1')));
+  const bulkBytes = new TextEncoder().encode(JSON.stringify(payload));
+  let downloads = 0;
+  bot.downloadTelegramFileBytes = async () => { downloads++; return { bytes: bulkBytes }; };
+  const upload = { message_id: 10, date: 1, from: { id: 43, first_name: 'Not owner' }, chat: { id: 43, type: 'private' }, document: { file_id: 'test', file_size: bulkBytes.length, file_name: 'lovekotob-import.json' } };
+  await bot.handleMessage(upload);
+  assert.equal(downloads, 0);
+  await bot.handleMessage({ ...upload, from: { id: 42, first_name: 'Owner' }, chat: { id: -42, type: 'group' } });
+  assert.equal(downloads, 0);
+  await bot.handleMessage({ ...upload, from: { id: 42, first_name: 'Owner' }, chat: { id: 42, type: 'private' } });
+  assert.equal(downloads, 1);
+  assert.equal(await bot.channelImportPending(), true);
+  await bot.processChannelImport();
+  await bot.processChannelImport();
+  assert.equal(await bot.channelImportPending(), false);
+  assert.ok(messages.some(message => message.text.includes('اكتملت الفهرسة')));
   await bot.handleBookSearchQuery('42', 'احمد الملك');
   assert.ok(messages.some(message => JSON.stringify(message.keyboard || []).includes('svc:books:chpdf:72')));
   const cb = { id: 'cb', from: { id: 42, first_name: 'Owner' }, message: { message_id: 1, chat: { id: 42, type: 'private' } } };
@@ -119,6 +186,20 @@ try {
   documents.length = 0;
   await bot.handleExtraServicesCb(cb, 'svc:books:chpdf:74');
   assert.deepEqual(documents, []);
+  // اسم ملف يضم العنوان والمؤلف يُطابق، أما اسم كتاب إضافي فلا يُطابق.
+  await index.importBatch({ format: 'lovekotob-index-v1', records: [
+    { id: 75, title: 'سأعود حين يفيض النهر أحمد الملك', text: 'سأعود حين يفيض النهر أحمد الملك' },
+    { id: 76, title: 'سأعود حين يفيض النهر وقصص أخرى أحمد الملك', text: 'سأعود حين يفيض النهر وقصص أخرى أحمد الملك' },
+    { id: 77, title: 'سأعود حين يفيض النهر أحمد ملك', text: 'سأعود حين يفيض النهر أحمد ملك' }
+  ] });
+  documents.length = 0;
+  await bot.handleExtraServicesCb(cb, 'svc:books:chpdf:75');
+  assert.equal(documents.length, 1);
+  documents.length = 0;
+  await bot.handleExtraServicesCb(cb, 'svc:books:chpdf:76');
+  assert.equal(documents.length, 0);
+  await bot.handleExtraServicesCb(cb, 'svc:books:chpdf:77');
+  assert.equal(documents.length, 0); // search normalization must not prove identity
   // مسار النتيجة لا يتجاوز فحص حقوق أرشيف.
   bot.bookCatalog.archivePdf = async () => null;
   await bot.handleExtraServicesCb(cb, 'svc:books:chpdf:72');
