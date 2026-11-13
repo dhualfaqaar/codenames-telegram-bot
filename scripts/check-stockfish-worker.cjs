@@ -79,6 +79,20 @@ async function main() {
       }
       send('ucinewgame');
     }
+    // Review mode compares the normal root search to the actually played move.
+    send('position fen 4r2k/8/8/8/4Q3/8/8/K7 b - - 0 1');
+    send('go depth 8 searchmoves h8g8');
+    let forcedScore = null;
+    const forcedDeadline = Date.now() + 10_000;
+    while (Date.now() < forcedDeadline) {
+      const line = await waitForOutput(output, line => line.includes('score ') || line.startsWith('bestmove '));
+      if (/\bscore (cp|mate) -?\d+/.test(line)) forcedScore = line;
+      if (line.startsWith('bestmove ')) {
+        if (!line.startsWith('bestmove h8g8') || !forcedScore) throw new Error('Review forced search did not return a score and the played move: ' + line);
+        break;
+      }
+    }
+    if (!forcedScore) throw new Error('Review forced search produced no score');
     console.log(`Stockfish 19 Lite browser-worker test passed: ${cases.length} tactical regressions.`);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

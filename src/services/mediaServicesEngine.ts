@@ -1835,6 +1835,9 @@ function tiktokProxyResolvers(url: string): Array<{ name: string; run: () => Pro
         html.match(/property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']/i)?.[1] ||
         html.match(/content=["']([^"']+)["']\s+property=["']og:video["']/i)?.[1];
       if (!vidUrl || !vidUrl.startsWith('http')) {
+        // A video mirror can expose only its cover as og:image. Accept those
+        // tags only for a URL explicitly identifying a photo post.
+        if (!/\/photo\//i.test(pathPart)) return null;
         const photos = ogImages
           .filter(photoUrl => photoUrl.startsWith('http'))
           .slice(0, 10)
@@ -2082,43 +2085,6 @@ async function downloadTikTok(url: string): Promise<SocialDownloadResult> {
   return { ok: false, items: [], error: '⚠️ تعذّر تحميل منشور تيك توك — تأكد أن المنشور عام وصحيح.' };
 }
 
-/** Merges Pinterest's HLS segments into one MP4 buffer (bounded, bail out on long playlists). */
-async function mergePinterestHls(hlsPin: string, ua: string): Promise<DownloadedMediaItem | null> {
-  const mRes = await boundedFetch(hlsPin, { headers: { 'User-Agent': ua } });
-  if (!mRes.ok) return null;
-  const mTxt = await mRes.text();
-  const subPlaylists = mTxt
-    .split(/\r?\n/)
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('#'))
-    .map(l => (l.startsWith('http') ? l : new URL(l, hlsPin).toString()));
-  const targetPl = subPlaylists.some(u => u.includes('.m3u8')) ? subPlaylists.filter(u => u.includes('.m3u8')).pop()! : hlsPin;
-  const segPlTxt =
-    targetPl === hlsPin ? mTxt : await (await boundedFetch(targetPl, { headers: { 'User-Agent': ua } })).text();
-  const segUrls = segPlTxt
-    .split(/\r?\n/)
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('#'))
-    .map(l => (l.startsWith('http') ? l : new URL(l, targetPl).toString()));
-  if (!segUrls.length || segUrls.length > 45) return null;
-
-  const chunks: Uint8Array[] = [];
-  for (let i = 0; i < segUrls.length; i += 10) {
-    const batch = segUrls.slice(i, i + 10);
-    const bufs = await Promise.all(
-      batch.map(async u => {
-        const sr = await boundedFetch(u, { headers: { 'User-Agent': ua } });
-        if (!sr.ok) throw new Error('pin_seg_err');
-        return new Uint8Array(await sr.arrayBuffer());
-      })
-    );
-    chunks.push(...bufs);
-  }
-  const merged = concatUint8Arrays(chunks);
-  if (merged.byteLength <= 10_000 || merged.byteLength > 48 * 1024 * 1024) return null;
-  return { kind: 'video', url: hlsPin, bytes: merged, headers: { 'User-Agent': ua } };
-}
-
 /** 📌 تحميل من بنترست (يستخرج وسائط المنشور الحقيقية حصراً عبر بصمة المنشور نفسه دون التقاط صور واجهة بنترست الخلفية أبداً!) */
 async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
   try {
@@ -2190,18 +2156,10 @@ async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
         }
       }
 
-      // 1-ب) فحص مقاطع الفيديو بنظام البث HLS (.m3u8) ودمج مقاطعها في الذاكرة لترسل كملف فيديو MP4 كامل!
-      const hlsPin = html.match(/https:\/\/v\d*\.pinimg\.com\/videos\/[^"'\s<>\\]+\.m3u8/i)?.[0];
-      if (hlsPin) {
-        try {
-          // Segment merging is many small requests: cap the whole job so a slow CDN
-          // cannot eat the entire download budget.
-          const hlsResult = await withTimeout(() => mergePinterestHls(hlsPin, BROWSER_UA), 14_000, 'pinterest:hls');
-          if (hlsResult) return { ok: true, items: [hlsResult] };
-        } catch {
-          // ننتقل لفحص صورة المنشور
-        }
-      }
+      // HLS segments are not necessarily MP4 and cannot be concatenated into one.
+      // Never substitute the preview when the page identifies a video pin.
+      const looksLikeVideo = mp4Matches.length > 0 || /(?:\.m3u8|"is_video"\s*:\s*true|"video_list"\s*:|property=["']og:video|"type"\s*:\s*"video")/i.test(html);
+      if (looksLikeVideo) return { ok: false, items: [], error: 'تعذّر تحميل الفيديو الأصلي من بنترست.' };
       // 2) استخراج صورة المنشور الحقيقية حصراً عبر وسم المنشور نفسه (og:image / twitter:image) ثم ترقية نفس البصمة فقط إلى originals!
       // ⚠️ ممنوع تماماً التقاط أول رابط originals عشوائي بالصفحة لأن بنترست يضع صورة خلفية متدرجة ملونة بأعلى الصفحة!
       const pinMetaImg =
@@ -2248,29 +2206,7 @@ async function downloadPinterest(url: string): Promise<SocialDownloadResult> {
     // ignore
   }
 
-  // Last resort: public oEmbed gives the pin's own cover image even when the
-  // HTML page is a soft-blocked shell.
-  try {
-    const oembed = await boundedFetch(`https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`, {
-      headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }
-    }, 6_000);
-    if (oembed.ok) {
-      const meta: any = await oembed.json();
-      const cover = String(meta?.thumbnail_url || '');
-      if (cover.startsWith('http')) {
-        const upgraded = cover.replace(/\/(?:236x|474x|564x|736x)\//, '/originals/');
-        for (const candidate of Array.from(new Set([upgraded, cover]))) {
-          const verified = await tryFetchMediaBytes(candidate, { 'User-Agent': BROWSER_UA }, 3_000);
-          if (verified) {
-            return { ok: true, items: [{ kind: 'photo', url: candidate, bytes: verified, headers: { 'User-Agent': BROWSER_UA } }] };
-          }
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-
+  // oEmbed thumbnails may be video covers, not the original media.
   return { ok: false, items: [], error: '⚠️ تعذّر استخراج المنشور من بنترست — تأكد من إرسال رابط المنشور الصحيح.' };
 }
 
@@ -2344,7 +2280,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
       const imgMatches = Array.from(
         unescaped.matchAll(/"display_url"\s*:\s*"(https:\/\/[^"]+)"/g)
       ).map(m => m[1]);
-      if (imgMatches.length > 0) {
+      if (imgMatches.length > 0 && !directVid && vidMatches.length === 0 && !/"is_video"\s*:\s*true|"__typename"\s*:\s*"GraphVideo"/i.test(unescaped) && !/\/(?:reel|tv)\//i.test(targetUrl)) {
         const verifiedPhotos: DownloadedMediaItem[] = [];
         for (const iu of Array.from(new Set(imgMatches)).slice(0, 5)) {
           const b = await tryFetchMediaBytes(iu, igHeaders, 3_000);
@@ -2386,7 +2322,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
       const imgMatch =
         rawHtml.match(/class="EmbeddedMediaImage"[^>]+src="([^"]+)"/i)?.[1] ||
         unescaped.match(/"display_src"\s*:\s*"(https:\/\/[^"]+)"/)?.[1];
-      if (imgMatch && !imgMatch.includes('static.cdninstagram.com')) {
+      if (imgMatch && !vMatch && !/\/(?:reel|tv)\//i.test(targetUrl) && !/"is_video"\s*:\s*true|GraphVideo/i.test(unescaped) && !imgMatch.includes('static.cdninstagram.com')) {
         const cleanImg = imgMatch.replace(/&amp;/g, '&');
         const b = await tryFetchMediaBytes(cleanImg, igHeaders, 3_000);
         if (b) return { ok: true, items: [{ kind: 'photo', url: cleanImg, bytes: b, headers: igHeaders }] };
@@ -2454,7 +2390,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         for (const e of edges.slice(0, 5)) {
           const n = e?.node;
           if (!n) continue;
-          const u = n.is_video && n.video_url ? String(n.video_url) : String(n.display_url || '');
+          const u = n.is_video ? String(n.video_url || '') : String(n.display_url || '');
           const kind: 'video' | 'photo' = n.is_video && n.video_url ? 'video' : 'photo';
           if (!u) continue;
           const b = await tryFetchMediaBytes(u, igHeaders, 3_000);
@@ -2467,7 +2403,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         const b = await tryFetchMediaBytes(String(media.video_url), igHeaders, 4_000);
         if (b) return { ok: true, items: [{ kind: 'video', url: String(media.video_url), bytes: b, headers: igHeaders }] };
       }
-      if (media.display_url) {
+      if (!media.is_video && media.display_url) {
         const b = await tryFetchMediaBytes(String(media.display_url), igHeaders, 3_000);
         if (b) return { ok: true, items: [{ kind: 'photo', url: String(media.display_url), bytes: b, headers: igHeaders }] };
       }
@@ -2505,7 +2441,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         }
         const displayUrl = html.match(/"display_url"\s*:\s*"([^"]+)"/)?.[1] || '';
         const cleanPhoto = displayUrl.replace(/\\u002F/gi, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
-        if (cleanPhoto.startsWith('http')) {
+        if (cleanPhoto.startsWith('http') && !cleanVideo && igPathKind !== 'reel' && !/"is_video"\s*:\s*true|GraphVideo/i.test(html)) {
           const verified = await tryFetchMediaBytes(cleanPhoto, { 'User-Agent': BROWSER_UA }, 3_000);
           if (verified) {
             return { kind: 'photo' as const, url: cleanPhoto, bytes: verified, headers: { 'User-Agent': BROWSER_UA } };
@@ -2539,7 +2475,7 @@ async function downloadInstagram(url: string): Promise<SocialDownloadResult> {
         const imgUrl =
           html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ||
           html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i)?.[1];
-        if (imgUrl && imgUrl.startsWith('http') && !imgUrl.includes('logo')) {
+        if (imgUrl && imgUrl.startsWith('http') && !vidUrl && igPathKind !== 'reel' && !/"is_video"\s*:\s*true|GraphVideo/i.test(html) && !imgUrl.includes('logo')) {
           const cleanImg = imgUrl.replace(/&amp;/g, '&');
           const verified = await tryFetchMediaBytes(cleanImg, { 'User-Agent': BROWSER_UA }, 3000);
           if (verified) return { kind: 'photo' as const, url: cleanImg, bytes: verified, headers: { 'User-Agent': BROWSER_UA } };
