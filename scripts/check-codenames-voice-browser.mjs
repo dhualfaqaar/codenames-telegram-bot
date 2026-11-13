@@ -31,6 +31,11 @@ try{
   for(const p of all){await p.locator('[data-voice-speaker]').click();await p.locator('[data-voice-mic]').click();await p.waitForFunction(()=>document.querySelector('[data-voice-mic]')?.getAttribute('aria-pressed')==='true')}
   for(const p of all)await p.waitForFunction(()=>[...document.querySelectorAll('audio')].filter(a=>a.srcObject?.getAudioTracks().length).length===3,null,{timeout:30000});
   for(const p of all)await p.waitForFunction(async()=>{let incoming=0;for(const pc of window.__pcs){if(pc.connectionState!=='connected')continue;const stats=await pc.getStats();for(const x of stats.values())if(x.type==='inbound-rtp'&&x.kind==='audio'&&x.bytesReceived>0){incoming++;break}}return incoming===3},null,{timeout:30000});
+  // Once all peers are connected, measure signalling requests rather than
+  // counting ICE/offer traffic during initial negotiation.
+  let syncs=0;const countSync=req=>{if(req.url().includes('/voice') && req.method()==='POST'){try{if(req.postDataJSON().action==='sync')syncs++}catch{}}};
+  a.on('request',countSync);await new Promise(resolve=>setTimeout(resolve,7000));a.off('request',countSync);
+  assert.ok(syncs>=1 && syncs<=3,`steady-state voice should use at most 3 syncs/7s, got ${syncs}`);
   assert.equal(await a.evaluate(()=>document.querySelector('audio').muted),false);
   await a.locator('[data-voice-speaker]').click();
   assert.equal(await a.evaluate(()=>document.querySelector('audio').muted),true,'speaker off must mute received media');
