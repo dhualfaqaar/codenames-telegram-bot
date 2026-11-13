@@ -25,6 +25,7 @@ try {
   const host=client('المنظم'); clients.push(host); const doc=host.window.document;
   await until(()=>doc.querySelector('#codeRoomsPanel'),'game home');
   assert.equal(doc.querySelectorAll('.code-home-actions button').length,2);
+  assert.equal(doc.querySelector('.game-card[data-game="codenames"] .game-art-image')?.getAttribute('src'),'/codenames-hero-v1.jpg');
   assert.equal((doc.querySelector('#codeRoomsSection') as HTMLElement).hidden,true);
   (doc.querySelector('#codeRoomsPanel') as HTMLElement).click();
   assert.equal((doc.querySelector('#codeRoomsSection') as HTMLElement).hidden,false);
@@ -36,6 +37,10 @@ try {
   const start=doc.querySelector('[data-action="start"]') as HTMLButtonElement; assert.ok(start); assert.equal(start.disabled,false); start.click();
   await until(()=>doc.querySelectorAll('.code-card').length===25,'host board');
   await until(()=>clients.every(c=>c.window.document.querySelectorAll('.code-card').length===25),'all boards');
+  assert.equal(doc.querySelectorAll('.code-match-layout .code-team').length,2);
+  assert.ok(doc.querySelector('.code-team.blue') && doc.querySelector('.code-team.red'));
+  assert.equal(doc.querySelectorAll('.code-card .code-card-word').length,25);
+  assert.ok(doc.querySelector('#codeTimer'));
   const spies=clients.filter(c=>c.window.document.querySelector('.code-card.key'));
   const ops=clients.filter(c=>!c.window.document.querySelector('.code-card.key'));
   assert.equal(spies.length,2);assert.equal(ops.length,2);
@@ -48,6 +53,10 @@ try {
   const activeOp=ops.find(c=>c.window.document.querySelector('.code-card:not(:disabled)'))!;
   const card=activeOp.window.document.querySelector('.code-card:not(:disabled)') as HTMLButtonElement;card.click();
   await until(()=>activeOp.window.document.querySelector('.code-card.revealed'),'revealed card');
+  for (const c of ops) {
+    const hiddenCards=[...c.window.document.querySelectorAll('.code-card:not(.revealed)')];
+    assert.ok(hiddenCards.every((el: any)=>!['blue','red','assassin','bystander','key'].some(k=>el.classList.contains(k))));
+  }
   assert.equal(failures.length,0,failures.join('\n'));
   console.log('Codenames DOM: lobby, room creation, 4 real clients, private keys, clue and card action passed.');
 } finally {clients.forEach(c=>c.window.close())}
