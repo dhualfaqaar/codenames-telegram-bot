@@ -1,8 +1,10 @@
 import { Chess } from 'chess.js';
 import { chooseChessBotMove } from './chessBot';
 import { getChessTrainer } from '../data/chessTrainers';
+import { CodenamesEngine } from './codenamesEngine';
+import type { CodenamesGame, Team, PlayerRole } from '../types/codenames';
 
-export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku';
+export type InteractiveGameId = 'chess' | 'uno' | 'gartic' | 'poker' | 'sudoku' | 'codenames';
 
 type RoomPlayer = { token: string; name: string; chips?: number; elo?: number; trainerId?: string; countryCode?: string; photoUrl?: string; isBotCreator?: boolean; bot?: boolean; joinedAt: number; lastSeenAt?: number };
 type MatchTicket = { id: string; secret: string; game: 'chess' | 'sudoku'; status: 'waiting' | 'matched' | 'cancelled'; roomId: string; roomToken: string; name: string; elo: number; countryCode?: string; photoUrl?: string; difficulty: 'easy' | 'medium' | 'hard'; clockMinutes: number; createdAt: number; opponentName?: string; opponentElo?: number; opponentPhotoUrl?: string; opponentCountryCode?: string; opponentIsBotCreator?: boolean; isBotCreator?: boolean };
@@ -47,7 +49,7 @@ const DRAW_MATCH_OVER_MS = 10_000;
 // A player who stops polling for this long is considered gone (app killed, lost network).
 const DRAW_PRESENCE_MS = 45_000;
 const DRAW_PRESENCE_TOUCH_MS = 15_000;
-const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو' };
+const GAME_NAMES: Record<InteractiveGameId, string> = { chess: 'شطرنج', uno: 'أونو', gartic: 'لعبة الرسم', poker: 'بوكر تكساس', sudoku: 'سودوكو', codenames: 'كود نيمز' };
 const DRAW_WORD_LIBRARIES: Record<string, string[]> = {
   ar: ['نخلة','قمر','دراجة','مفتاح','سمكة','بيت','شمس','كتاب','تفاحة','قطة','سفينة','ساعة','مطر','طائرة','كرسي','باب','فنجان','جسر','حذاء','مظلة','فيل','وردة','قطار','خبز','نظارة','مصباح','كرة','شجرة','هاتف','ثلاجة','سلحفاة','نهر','جبل','منطاد','مرآة','حقيبة','مروحة','جزيرة','عصفور','ساعة رملية'],
   en: ['palm tree','moon','bicycle','key','fish','house','sun','book','apple','cat','ship','clock','rain','airplane','chair','door','cup','bridge','shoe','umbrella','elephant','rose','train','bread','glasses','lamp','ball','tree','phone','fridge','turtle','river','mountain','balloon','mirror','bag','fan','island','bird','hourglass'],
@@ -194,7 +196,7 @@ export class InteractiveGameRooms {
       const game = String(body?.game || '') as InteractiveGameId;
       if (!Object.hasOwn(GAME_NAMES, game)) return Response.json({ error: 'اللعبة غير معروفة' }, { status: 400 });
       const elo = Math.max(100, Math.min(3000, Math.round(Number(body?.elo) || 200)));
-      const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' ? 4 : game === 'gartic' ? 16 : 6;
+      const defaultCapacity = game === 'chess' || game === 'sudoku' ? 2 : game === 'uno' || game === 'codenames' ? 4 : game === 'gartic' ? 16 : 6;
       const capacity = Math.max(2, Math.min(defaultCapacity, Math.round(Number(body?.capacity) || defaultCapacity)));
       const startingChips = game === 'poker' ? [500, 1000, 2000].includes(Number(body?.startingChips)) ? Number(body.startingChips) : 1000 : 0;
       const roundDurationMs = game === 'gartic' ? Math.max(30, Math.min(300, Number(body?.roundSeconds) || 75)) * 1000 : 0;
@@ -207,6 +209,11 @@ export class InteractiveGameRooms {
         id: randomString(12), game, status: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), host: player.token,
         players, capacity, gameState: this.initialState(game)
       };
+      if (game === 'codenames') {
+        room.capacity = 4;
+        const gameState = CodenamesEngine.createLobby(room.id, 'كود نيمز', body?.wordPack === 'arabic_iraqi' ? 'arabic_iraqi' : 'arabic_standard');
+        room.gameState.codeGame = CodenamesEngine.joinGame(gameState, { id: player.token, name: player.name, team: 'blue', role: 'operative' }).game;
+      }
       if (game === 'sudoku') { room.gameState.difficulty = this.cleanDifficulty(body?.difficulty); if (body?.mode === 'friend') room.gameState.mode = 'friend'; }
       if (game === 'chess') {
         const clockMinutes = Math.max(1, Math.min(30, Math.round(Number(body?.clockMinutes) || 5)));
@@ -264,6 +271,7 @@ export class InteractiveGameRooms {
       }
       if (this.pruneDrawPresence(room, now)) changed = true;
       if (this.tickDraw(room, now)) changed = true;
+      if (this.tickCodenames(room, now)) changed = true;
       const touched = now - room.updatedAt > ROOM_TOUCH_MS;
       if (changed || started || touched || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
       return this.jsonFor(room, token);
@@ -295,6 +303,13 @@ export class InteractiveGameRooms {
       if (room.players.length >= max) return Response.json({ error: 'الغرفة مكتملة — جرّب غرفة جديدة أو انتظر يطلع أحد', code: 'room-full' }, { status: 409 });
       const player: RoomPlayer = { token: randomString(30), name: cleanName(body.name), photoUrl: cleanPhotoUrl(body.photoUrl), countryCode: cleanCountryCode(body.countryCode), joinedAt: Date.now(), ...(body.isBotCreator === true ? { isBotCreator: true } : {}), ...(room.game === 'poker' ? { chips: Number(room.gameState.startingChips) || 1000 } : {}), ...(room.game === 'chess' ? { elo: Math.max(100, Math.min(3000, Math.round(Number(body.elo) || 200))) } : {}) };
       room.players.push(player);
+      if (room.game === 'codenames') {
+        const codeGame: CodenamesGame = room.gameState.codeGame;
+        const slots: Array<[Team, PlayerRole]> = [['blue','operative'], ['red','operative'], ['blue','spymaster'], ['red','spymaster']];
+        const slot = slots.find(([team, role]) => !codeGame.players.some(p => p.team === team && p.role === role));
+        if (!slot) return Response.json({ error: 'الغرفة مكتملة', code: 'room-full' }, { status: 409 });
+        room.gameState.codeGame = CodenamesEngine.joinGame(codeGame, { id: player.token, name: player.name, team: slot[0], role: slot[1] }).game;
+      }
       if (!room.players.some(item => item.token === room.host)) room.host = room.players[0].token;
       // A room that ended (or was drained) must not trap the code: reopen the lobby,
       // while a match that is still running just takes the player on board.
@@ -313,6 +328,7 @@ export class InteractiveGameRooms {
     this.startChessClockAfterIntro(room);
     if (this.expireChessClock(room)) { room.updatedAt = Date.now(); await this.save(room); return this.jsonFor(room, player.token); }
     this.tickDraw(room);
+    if (this.tickCodenames(room)) { room.updatedAt = Date.now(); await this.save(room); }
     const wasStatus = room.status, wasPlayers = room.players.length;
     const result = this.act(room, player, action, body || {});
     if (result) return Response.json({ error: result }, { status: 400 });
@@ -324,6 +340,7 @@ export class InteractiveGameRooms {
 
   private initialState(game: InteractiveGameId): any {
     switch (game) {
+      case 'codenames': return { codeGame: null };
       case 'chess': return { fen: new Chess().fen(), moves: [], turn: 'w', lastMove: '', result: '', clockMinutes: 5, clockInitialMs: 300_000, clocks: { w: 300_000, b: 300_000 }, clockStartedAt: 0, chat: [] };
       case 'uno': return { deck: [], discard: [], currentColor: '', turn: 0, direction: 1, hands: {}, drawn: {}, pendingUno: '', saidUno: {}, result: '' };
       case 'gartic': return { round: 0, drawer: 0, phase: 'waiting', word: '', wordChoices: [], strokes: [], guesses: [], drawChat: [], logs: [], correctPlayers: [], scores: {}, targetScore: 500, language: 'ar', roundStartedAt: 0, deadline: 0, choiceDeadline: 0, autoNextAt: 0, revealed: 0, hintsUsed: 0, roundResult: '' };
@@ -364,6 +381,21 @@ export class InteractiveGameRooms {
     if (action === 'leave') {
       const index = room.players.findIndex(item => item.token === player.token);
       if (index < 0) return 'اللاعب مو موجود بالغرفة';
+      if (room.game === 'codenames') {
+        const game: CodenamesGame = room.gameState.codeGame;
+        if (room.status === 'playing') {
+          const leaving = game.players.find(p => String(p.id) === player.token);
+          room.gameState.codeGame = { ...game, status: 'game_over', winner: leaving?.team === 'blue' ? 'red' : 'blue', winReason: undefined, turnDeadline: undefined } satisfies CodenamesGame;
+          room.gameState.codeForfeit = true;
+          room.status = 'finished';
+        } else if (room.status === 'waiting') {
+          room.gameState.codeGame = CodenamesEngine.leaveGame(game, player.token).game;
+          room.players.splice(index, 1);
+          if (!room.players.length) room.status = 'finished';
+          else if (room.host === player.token) room.host = room.players[0].token;
+        }
+        return null;
+      }
       if (room.game === 'chess') {
         if (room.status === 'playing') {
           room.gameState.clocks = this.chessClockValues(room);
@@ -391,6 +423,14 @@ export class InteractiveGameRooms {
     }
     if (action === 'start') {
       if (room.status !== 'waiting') return 'اللعبة بدأت بالفعل';
+      if (room.game === 'codenames') {
+        if (player.token !== room.host) return 'صاحب الغرفة وحده يكدر يبدأ';
+        const game: CodenamesGame = room.gameState.codeGame;
+        if (room.players.length !== 4 || game.players.length !== 4) return 'نحتاج 4 لاعبين حتى تبدي المباراة';
+        const result = CodenamesEngine.startGame(game);
+        if (!result.success) return result.message;
+        room.gameState.codeGame = result.game; room.status = 'playing'; return null;
+      }
       if (room.players.length < 2) return 'نحتاج لاعبين على الأقل';
       if (room.game === 'gartic') this.startDrawRound(room, 0);
       else if (room.game === 'poker') this.startPokerHand(room, false);
@@ -414,12 +454,60 @@ export class InteractiveGameRooms {
       return null;
     }
     if (room.status === 'finished') return 'انتهت اللعبة';
+    if (room.game === 'codenames') return this.codenamesAction(room, player, action, body);
     if (room.game === 'chess') return this.chessAction(room, player, action, body);
     if (room.game === 'uno') return this.unoAction(room, player, action, body);
     if (room.game === 'gartic') return this.drawAction(room, player, action, body);
     if (room.game === 'poker') return this.pokerAction(room, player, action, Number(body.amount) || 0);
     if (room.game === 'sudoku') return this.sudokuAction(room, player, action, body);
     return 'إجراء غير مدعوم';
+  }
+
+  private tickCodenames(room: Room, now = Date.now()): boolean {
+    if (room.game !== 'codenames' || room.status !== 'playing') return false;
+    const result = CodenamesEngine.timeoutTurn(room.gameState.codeGame, now);
+    if (!result.success) return false;
+    result.game.logs = result.game.logs.slice(-80);
+    room.gameState.codeGame = result.game; return true;
+  }
+
+  private codenamesAction(room: Room, player: RoomPlayer, action: string, body: any): string | null {
+    const game: CodenamesGame = room.gameState.codeGame;
+    const actor = game.players.find(p => String(p.id) === player.token);
+    if (!actor) return 'انضم للغرفة أولاً';
+    if (action === 'code-seat') {
+      if (room.status !== 'waiting') return 'ما تكدر تغيّر مكانك بعد بداية المباراة';
+      const team = body.team, role = body.role;
+      if (!['blue', 'red'].includes(team) || !['operative', 'spymaster'].includes(role)) return 'اختار مكان صحيح';
+      if (game.players.some(p => p.team === team && p.role === role && String(p.id) !== player.token)) return 'هذا المكان محجوز';
+      const result = CodenamesEngine.joinGame(game, { id: player.token, name: player.name, team, role });
+      if (!result.success) return 'تعذّر تغيير المكان';
+      room.gameState.codeGame = result.game; return null;
+    }
+    if (room.status !== 'playing') return 'ننتظر بداية المباراة';
+    if (actor.team !== game.currentTurn) return 'مو دور فريقك هسه';
+    let result;
+    if (action === 'code-clue') {
+      if (actor.role !== 'spymaster' || game.status !== 'spymaster_turn') return 'التلميح يكتبه جاسوس الفريق بالدور المخصص';
+      const clue = String(body.word || '').trim();
+      const count = Number(body.count);
+      if (!clue || clue.length > 40 || /\s/.test(clue) || !Number.isInteger(count) || count < 1 || count > 9) return 'اكتب كلمة واحدة واختار عدد من 1 إلى 9';
+      result = CodenamesEngine.giveClue(game, clue, count, player.name);
+    } else if (action === 'code-guess') {
+      if (actor.role !== 'operative' || game.status !== 'operative_turn') return 'التخمين للعميل بوقت دوره';
+      const id = Number(body.id); if (!Number.isInteger(id) || id < 0 || id > 24) return 'اختار بطاقة صحيحة';
+      result = CodenamesEngine.guessCard(game, id, player.name, actor.team);
+    } else if (action === 'code-pass') {
+      if (actor.role !== 'operative' || game.status !== 'operative_turn') return 'إنهاء الدور للعميل بوقت التخمين';
+      if (!game.currentClue || game.currentClue.remainingGuesses >= game.currentClue.count + 1) return 'اختار كلمة واحدة على الأقل قبل إنهاء الدور';
+      result = CodenamesEngine.passTurn(game, player.name);
+    } else return 'إجراء غير مدعوم';
+    if (!result.success) return action === 'code-clue' ? 'التلميح موجود باللوحة أو غير صالح' : 'البطاقة أو الإجراء غير متاح هسه';
+    result.game.logs = result.game.logs.slice(-80);
+    result.game.clueHistory = result.game.clueHistory.slice(-80);
+    room.gameState.codeGame = result.game;
+    if (result.game.status === 'game_over') room.status = 'finished';
+    return null;
   }
 
   private chessClockValues(room: Room, now = Date.now()): { w: number; b: number } {
@@ -1100,7 +1188,18 @@ export class InteractiveGameRooms {
     delete state.host; delete state.drawn; delete state.saidUno; delete state.pendingUno; delete state.pending; delete state.turnToken;
     delete state.bets; delete state.folded; delete state.solution; delete state.boards; delete state.eloChanges; delete state.eloUpdated;
     delete state.wordChoices; delete state.choiceDeadline; delete state.autoNextAt; delete state.hintsUsed; delete state.revealed;
-    if (room.game === 'chess') {
+    if (room.game === 'codenames') {
+      const game: CodenamesGame = s.codeGame;
+      const actor = own && game.players.find(p => String(p.id) === token);
+      const canSeeKey = Boolean(actor && actor.role === 'spymaster' && room.status === 'playing');
+      const scores = CodenamesEngine.getScores(game);
+      for (const key of Object.keys(state)) delete state[key];
+      Object.assign(state, { wordPack: game.wordPack, phase: game.status, currentTurn: game.currentTurn, winner: game.winner || '', winReason: s.codeForfeit ? 'opponent_left' : game.winReason || '',
+        clue: game.currentClue ? { word: game.currentClue.word, count: game.currentClue.count, remainingGuesses: game.currentClue.remainingGuesses } : null,
+        deadline: game.turnDeadline || 0, scores, myTeam: actor?.team || '', myRole: actor?.role || '',
+        players: game.players.map(p => ({ name: p.name, team: p.team, role: p.role, seat: room.players.findIndex(rp => rp.token === String(p.id)) })),
+        cards: game.cards.map(c => ({ id: c.id, word: c.word, revealed: c.revealed, ...(c.revealed || canSeeKey ? { type: c.type } : {}) })) });
+    } else if (room.game === 'chess') {
       if (room.status !== 'finished' || !own) delete state.moves;
       state.turnName = room.players[s.turn === 'w' ? 0 : 1]?.name || '';
       state.seat = seat; state.side = seat === 0 ? 'w' : seat === 1 ? 'b' : '';

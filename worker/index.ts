@@ -484,7 +484,7 @@ export default {
       headers.set('X-Content-Type-Options', 'nosniff');
       return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
     }
-    if (request.method === 'GET' && ['/chess','/uno','/gartic','/poker'].includes(requestUrl.pathname.replace(/\/$/, ''))) {
+    if (request.method === 'GET' && ['/chess','/uno','/gartic','/poker','/codenames'].includes(requestUrl.pathname.replace(/\/$/, ''))) {
       return new Response(interactiveGamesMiniAppHtml(requestUrl.pathname.replaceAll('/', '')), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',

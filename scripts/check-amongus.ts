@@ -82,7 +82,7 @@ check(
   'بطاقة اللعبة موجودة بمكتبة الألعاب',
   librariesHtml.includes('data-game="amongus"') &&
     librariesHtml.includes('href="/amongus"') &&
-    librariesHtml.includes("'amongus'].includes(game)")
+    /function launchGame\(game\)\{if\(\[[^\]]*'amongus'[^\]]*\]\.includes\(game\)/.test(librariesHtml)
 );
 
 /* ------------------------------------------------------------------ html */
