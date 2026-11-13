@@ -43,7 +43,8 @@
     "test:subscription": "tsx scripts/check-subscription.ts",
     "test:media:delivery": "tsx scripts/check-media-delivery.ts",
     "test:chess:review": "tsx scripts/check-chess-review.ts",
-    "test:codenames:interactive": "tsx scripts/check-codenames-interactive.ts && tsx scripts/check-codenames-dom.ts && tsx scripts/check-game-assets.ts"
+    "test:codenames:interactive": "tsx scripts/check-codenames-interactive.ts && tsx scripts/check-codenames-dom.ts && tsx scripts/check-game-assets.ts",
+    "test:codenames:browser": "node scripts/check-codenames-browser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
