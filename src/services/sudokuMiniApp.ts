@@ -1,4 +1,3 @@
-import { GAME_SFX_SCRIPT } from './gameSfx';
 
 export const SUDOKU_MINI_APP_HTML = String.raw`<!doctype html>
 <html lang="ar" dir="rtl">
@@ -8,7 +7,6 @@ export const SUDOKU_MINI_APP_HTML = String.raw`<!doctype html>
   <meta name="theme-color" content="#071d50">
   <title>سودوكو | ألعاب البوت</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script>${GAME_SFX_SCRIPT}</script>
   <style>
     :root{color-scheme:dark;--bg:#06143b;--panel:#0c2455;--panel2:#112f68;--ink:#f4f8ff;--muted:#a9bfdf;--cyan:#92efff;--blue:#39a9f4;--line:#193466;--gold:#ffd05b;--bad:#ff697d;--good:#54e1bd}
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html{min-height:100%;background:var(--bg)}body{margin:0;min-height:100dvh;background:var(--bg);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;color:var(--ink);user-select:none;padding:env(safe-area-inset-top) 14px calc(18px + env(safe-area-inset-bottom));touch-action:manipulation}
@@ -130,14 +128,8 @@ body,body.lobby-mode{padding-top:max(env(safe-area-inset-top),var(--tg-content-t
 <script>
   (function(){
     'use strict';
-    var sfx=function(name){try{if(window.GameSfx)window.GameSfx.play(name)}catch(e){}};
-    try{
-      if(window.GameSfx){
-        window.GameSfx.buttonSounds('tap');
-        var sfxTopActions=document.querySelector('.top-actions');
-        window.GameSfx.mountToggle(sfxTopActions?{container:'.top-actions',inline:true,size:38}:{bottom:'calc(84px + env(safe-area-inset-bottom))',right:'12px'});
-      }
-    }catch(e){}
+    // Standalone Sudoku is silent.
+    var sfx=function(){};
     var tg=window.Telegram&&window.Telegram.WebApp;
     var tgUser=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user;
     var isBotCreator=false,creatorProfileReady=Promise.resolve();
