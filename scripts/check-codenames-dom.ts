@@ -14,6 +14,8 @@ function client(name: string, query='') {
   const dom = new JSDOM(html, { url:'https://test.local/codenames'+query, runScripts:'dangerously', pretendToBeVisual:true, virtualConsole,
     beforeParse(win: any) {
       win.scrollTo=()=>{}; win.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+      win.__intervals=[]; const setIntervalOriginal=win.setInterval.bind(win);
+      win.setInterval=(fn: any, ms: number, ...args: any[])=>{win.__intervals.push({name:fn.name,ms});return setIntervalOriginal(fn,ms,...args)};
       win.Telegram={WebApp:{initData:'',initDataUnsafe:{user:{id:name.length*100+name.charCodeAt(0),first_name:name}},ready(){},expand(){},onEvent(){},setHeaderColor(){},setBackgroundColor(){},isVersionAtLeast(){return false},BackButton:{show(){},hide(){},onClick(){}}}};
       win.fetch=(input: any, init: any = {})=>{const url=new URL(String(input),'https://test.local'); if(url.pathname==='/api/interactive/config')return Promise.resolve(new Response(JSON.stringify({botUsername:'testbot'}),{headers:{'Content-Type':'application/json'}}));if(url.pathname.startsWith('/api/interactive/'))return rooms.handle(new Request(url,init));return Promise.resolve(new Response('{}',{status:404}));};
       win.addEventListener('error',(event: any)=>failures.push(String(event.error?.stack||event.message)));
@@ -31,6 +33,7 @@ try {
   assert.equal(doc.querySelector('#codeJoinPanel'),null);
   (doc.querySelector('[data-code-start-team="red"][data-code-start-role="spymaster"]') as HTMLElement).click();
   await until(()=>doc.querySelector('.code-room'),'created room');
+  await until(()=>host.window.__intervals.some((x: any)=>x.name==='pollRoom' && x.ms===2000),'reduced room polling interval');
   assert.equal(doc.querySelectorAll('.code-room .code-placeholder').length,25);
   assert.equal(doc.querySelectorAll('.code-room .code-card').length,0);
   assert.ok(doc.querySelector('[data-action="code-invite"]'));

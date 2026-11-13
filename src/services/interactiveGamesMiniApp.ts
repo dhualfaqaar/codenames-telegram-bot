@@ -1168,7 +1168,8 @@ async function joinRoom(id){roomId=id.toUpperCase();setupGame='';activeRoomGame=
 var pollFailures=0,pollToastAt=0,rejoinTried=false;
 async function pollRoom(){if(!roomId||!roomToken)return;try{var data=await api('/api/interactive/rooms/'+encodeURIComponent(roomId));pollFailures=0;rejoinTried=false;applyRoom(data);if(polling&&pollDelay()!==pollingMs)startPolling()}catch(e){pollFailures++;if(Date.now()-pollToastAt>9000){pollToastAt=Date.now();toast(e.message)}if(e.status===403&&!rejoinTried){rejoinTried=true;joinRoom(roomId);return}if(pollFailures>=10&&(e.code==='room-missing'||e.code==='room-expired')){clearInterval(polling);polling=0}}}
 document.addEventListener('visibilitychange',function(){if(!document.hidden&&roomId&&roomToken&&!polling)startPolling()});
-function pollDelay(){return activeRoomGame==='gartic'&&roomData&&roomData.room&&roomData.room.status==='playing'?300:800}
+// Codenames is turn-based; other games keep their existing update rates.
+function pollDelay(){return activeRoomGame==='codenames'?2000:activeRoomGame==='gartic'&&roomData&&roomData.room&&roomData.room.status==='playing'?300:800}
 function startPolling(){clearInterval(polling);pollingMs=pollDelay();polling=setInterval(pollRoom,pollingMs)}
 async function act(action,extra={}){if(!roomData)return;try{var data=await api('/api/interactive/rooms/'+encodeURIComponent(roomId),'POST',{action,token:roomToken,...extra});applyRoom(data)}catch(e){if(action==='move'||action==='place')sfx('illegal');toast(e.message)}}
 function applyRoom(data){

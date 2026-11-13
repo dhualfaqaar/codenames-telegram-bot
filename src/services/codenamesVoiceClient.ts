@@ -57,7 +57,9 @@ async function codeVoiceSync(){
     for(var m of data.messages||[])if(others.some(function(p){return p.session===m.from}))await codeVoiceMessage(m);
     codeVoiceRender();
   }catch(e){if(codeVoice.active)toast('تعذر تحديث اتصال الصوت؛ جرّب مرة ثانية')}
-  finally{codeVoice.busy=false;if(codeVoice.active){clearTimeout(codeVoice.timer);codeVoice.timer=setTimeout(codeVoiceSync,session===codeVoice.session?1500:0)}}
+  // Audio is peer-to-peer; this timer only checks for signalling/presence.
+  // Three seconds halves steady-state polling and stays well inside the 20s server expiry.
+  finally{codeVoice.busy=false;if(codeVoice.active){clearTimeout(codeVoice.timer);codeVoice.timer=setTimeout(codeVoiceSync,session===codeVoice.session?3000:0)}}
 }
 function codeVoiceStart(){
   if(codeVoice.active)return true;
