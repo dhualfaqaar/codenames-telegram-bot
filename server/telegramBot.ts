@@ -11,6 +11,7 @@ import * as MF from '../src/services/mafiaEngine';
 import * as AU from '../src/services/amongUsEngine';
 import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
+import { classifyTelegramMedia } from '../src/services/mediaKind';
 import * as ARX from '../src/services/arenaGamesEngine';
 import * as TRN from '../src/services/tournamentEngine';
 import * as STORY from '../src/services/truthLieEngine';
@@ -10461,7 +10462,7 @@ export class TelegramBotManager {
     }
   }
 
-  /** معالجة رابط التحميل المرسل بالخاص من يوتيوب / بنترست / تيك توك / إنستغرام (يدعم > 50MB + زر HD + منع التكرار 100%) */
+  /** تحميل الميديا وإرسالها مباشرة إلى صاحب الطلب. */
   private async handleSocialDownloadInput(userId: string, rawUrl: string, incomingMsgId?: number) {
     const platform = this.pendingSocialDl.get(userId);
     if (!platform) return;
@@ -10500,8 +10501,7 @@ export class TelegramBotManager {
         }
         // Instead of making the user paste the link again, offer an explicit retry.
         const failKb: any[][] = [
-          [{ text: '🔁 جرّب مرة ثانية', callback_data: 'dlretry' }],
-          [{ text: '🔙 اختيار منصة أخرى', callback_data: 'svc:dl' }]
+          [{ text: '🔁 جرّب مرة ثانية', callback_data: 'dlretry' }]
         ];
         if (statusMsgId) {
           await this.editMessageText(userId, statusMsgId, errText, failKb);
@@ -10512,68 +10512,19 @@ export class TelegramBotManager {
       }
 
       let deliveredInline = 0;
-      const oversizedButtons: Array<{ text: string; url: string }> = [];
-
+      let failed = Math.max(0, result.items.length - 5);
       for (const item of result.items.slice(0, 5)) {
-        if (item.oversized) {
-          item.bytes = undefined;
-          const sizeTag = item.sizeMB ? ` (${item.sizeMB} MB)` : '';
-          oversizedButtons.push({
-            text: `📥 تنزيل الفيديو الكامل مباشرة${sizeTag}`,
-            url: item.url
-          });
-          continue;
-        }
-
+        if (item.oversized) { item.bytes = undefined; failed++; continue; }
         const sentId = await this.sendMediaBinaryOrUrl(userId, item.kind, item.url, item.headers, item.bytes);
-        // تحرير البايتات من الذاكرة فوراً بعد الإرسال لمنع أي ضغط على البوت عند تعدد المستخدمين
         item.bytes = undefined;
-
-        if (sentId) {
-          deliveredInline += 1;
-        } else if (item.url && item.url.startsWith('http')) {
-          oversizedButtons.push({
-            text: '📥 تنزيل الفيديو الكامل مباشرة',
-            url: item.url
-          });
-        }
+        if (sentId) deliveredInline++; else failed++;
       }
-
-      if (deliveredInline > 0 || oversizedButtons.length > 0) {
-        this.pendingSocialDl.delete(userId);
-        if (statusMsgId) {
-          await this.deleteMessage(userId, statusMsgId);
-        }
-
-        const kb: any[][] = [];
-        for (const btn of oversizedButtons) {
-          kb.push([btn]);
-        }
-        if (platform === 'yt' && result.videoId) {
-          kb.push([{ text: '🎬 تحميل بدقة عالية HD', callback_data: `ytq:hd:${result.videoId}` }]);
-        }
-        kb.push([
-          { text: '📥 تحميل منشور آخر', callback_data: 'svc:dl' },
-          { text: '🔙 خدمات أخرى', callback_data: 'svc:main' }
-        ]);
-
-        const doneText =
-          deliveredInline > 0
-            ? `✅ *تم تحميل وإرسال المنشور بنجاح!*`
-            : `✅ *تم تجهيز الفيديو الكامل بنجاح (حجم أكبر من 50MB)!*\n` +
-              `بما أن حجم الفيديو يتجاوز حد الرفع المباشر في تيليجرام (50MB)، اضغط الزر أدناه لتنزيله كاملاً مباشرة وبأقصى سرعة:`;
-
-        const doneMsg = await this.sendMessage(userId, doneText, kb);
-      } else if (statusMsgId) {
-        await this.editMessageText(
-          userId,
-          statusMsgId,
-          '⚠️ خدمة الملف نفسها ما استجابت هالوقت — جرّب مرة ثانية بعد لحظات.',
-          [
-            [{ text: '🔁 جرّب مرة ثانية', callback_data: 'dlretry' }],
-            [{ text: '🔙 رجوع', callback_data: 'svc:dl' }]
-          ]
-        );
+      if (deliveredInline > 0) this.pendingSocialDl.delete(userId);
+      if (statusMsgId) await this.deleteMessage(userId, statusMsgId);
+      if (failed) {
+        await this.sendMessage(userId, deliveredInline
+          ? 'انرسلت الملفات المتاحة، وبعض الملفات ما كدرت أرسلها بصيغتها الصحيحة أو حجمها كبير.'
+          : 'ما كدرت أرسل الملف بصيغته الصحيحة أو حجمه أكبر من حد الإرسال. جرّب رابط ثاني أو أعد المحاولة.');
       }
     } finally {
       this.releaseDownloadSlot();
@@ -10717,87 +10668,44 @@ export class TelegramBotManager {
 
   /** إرسال فيديو أو صورة (مع حماية كاملة للذاكرة) */
   private async sendMediaBinaryOrUrl(
-    chatId: string,
-    kind: 'video' | 'photo',
-    mediaUrl: string,
-    customHeaders?: Record<string, string>,
-    preloadedBytes?: Uint8Array
+    chatId: string, kind: 'video' | 'photo', mediaUrl: string,
+    customHeaders?: Record<string, string>, preloadedBytes?: Uint8Array
   ): Promise<number | null> {
     if (!this.token) return null;
-    const method = kind === 'video' ? 'sendVideo' : 'sendPhoto';
-    const field = kind === 'video' ? 'video' : 'photo';
-
-    if (preloadedBytes && preloadedBytes.byteLength > 500 && preloadedBytes.byteLength <= 49 * 1024 * 1024) {
+    const maxBytes = 49 * 1024 * 1024;
+    let bytes = preloadedBytes;
+    if (!bytes) {
       try {
-        const mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
-        const ext = kind === 'video' ? 'mp4' : 'jpg';
-        const form = new FormData();
-        form.append('chat_id', chatId);
-        form.append(field, new Blob([preloadedBytes as unknown as ArrayBuffer], { type: mime }), `media.${ext}`);
-        if (kind === 'video') form.append('supports_streaming', 'true');
-
-        const up = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-          method: 'POST',
-          body: form
-        });
-        const upJson: any = await up.json();
-        if (upJson?.ok) return Number(upJson?.result?.message_id) || 1;
-      } catch {
-        // continue
-      }
-    }
-
-    try {
-      const reqHeaders: Record<string, string> = {
-        'User-Agent':
+        const response = await fetch(mediaUrl, { headers: { 'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-        ...(customHeaders || {})
-      };
-      const r = await fetch(mediaUrl, {
-        headers: reqHeaders,
-        redirect: 'follow'
-      });
-      if (r.ok) {
-        const declaredLen = parseInt(r.headers.get('content-length') || '0', 10);
-        if (declaredLen > 49 * 1024 * 1024) {
-          await r.body?.cancel().catch(() => undefined);
-        } else {
-          const buf = await r.arrayBuffer();
-          if (buf.byteLength > 500 && buf.byteLength <= 49 * 1024 * 1024) {
-            const mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
-            const ext = kind === 'video' ? 'mp4' : 'jpg';
-            const form = new FormData();
-            form.append('chat_id', chatId);
-            form.append(field, new Blob([buf], { type: mime }), `media.${ext}`);
-            if (kind === 'video') form.append('supports_streaming', 'true');
-
-            const up = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-              method: 'POST',
-              body: form
-            });
-            const upJson: any = await up.json();
-            if (upJson?.ok) return Number(upJson?.result?.message_id) || 1;
-          }
+          ...(customHeaders || {}) }, redirect: 'follow', signal: AbortSignal.timeout(30_000) });
+        if (!response.ok || Number(response.headers.get('content-length') || 0) > maxBytes || !response.body) {
+          await response.body?.cancel().catch(() => undefined); return null;
         }
-      }
-    } catch {
-      // ننتقل للمحاولة الثانية عبر الرابط المباشر
+        const reader = response.body.getReader(), chunks: Uint8Array[] = [];
+        let length = 0;
+        for (;;) {
+          const part = await reader.read(); if (part.done) break;
+          length += part.value.byteLength;
+          if (length > maxBytes) { await reader.cancel().catch(() => undefined); return null; }
+          chunks.push(part.value);
+        }
+        bytes = new Uint8Array(length); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+      } catch { return null; }
     }
-
+    if (bytes.length <= 500 || bytes.length > maxBytes) return null;
+    const media = classifyTelegramMedia(bytes, kind);
+    if (!media) return null;
     try {
-      const payload: any = { chat_id: chatId, [field]: mediaUrl };
-      if (kind === 'video') payload.supports_streaming = true;
-      const direct = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const dj: any = await direct.json();
-      if (dj?.ok) return Number(dj?.result?.message_id) || 1;
-      return null;
-    } catch {
-      return null;
-    }
+      const form = new FormData();
+      form.append('chat_id', chatId);
+      form.append(media.field, new Blob([bytes as unknown as ArrayBuffer], { type: media.mime }), `media.${media.extension}`);
+      if (media.method === 'sendVideo') form.append('supports_streaming', 'true');
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/${media.method}`, { method: 'POST', body: form });
+      const result: any = await response.json();
+      return result?.ok ? Number(result?.result?.message_id) || 1 : null;
+    } catch { return null; }
   }
 
   // ---------------------------------------------------------------------

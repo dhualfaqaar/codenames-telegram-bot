@@ -40,6 +40,7 @@ const context = createContext({
   standaloneChess: false, standaloneGame: '',
   roomId: '', setupGame: '', chessHomeActive: false, roomData: { room: {} }, polling: 7,
   $: (id: string) => ({ classList: { contains: (name: string) => id === 'modeOverlay' ? overlay && name === 'show' : accountHidden && name === 'hide' } }),
+  stopChessReview: () => {},
   abandonMatchForReplacement: () => calls.push('cancel-match'),
   closeMode: () => calls.push('close-overlay'),
   notifyChessForfeit: () => calls.push('forfeit'),

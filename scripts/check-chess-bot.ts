@@ -26,7 +26,7 @@ const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
 const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
 assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
 const interactivePageResponse = await cloudflareWorker.fetch(new Request(`https://game.test/interactive?app_build=${INTERACTIVE_APP_BUILD}`), {} as any, {} as any);
-assert(INTERACTIVE_APP_BUILD === '2026-11-11-game-sounds-v49' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
+assert(INTERACTIVE_APP_BUILD === '2026-10-20-chess-review-v50' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
 for (const art of ['/chess-hero-v2.jpg', '/drawing-hero.jpg', '/sudoku-hero.jpg']) {
   const artResponse = await cloudflareWorker.fetch(new Request('https://game.test' + art), {} as any, {} as any);
   assert(artResponse.status === 200 && artResponse.headers.get('Content-Type') === 'image/jpeg' && (await artResponse.arrayBuffer()).byteLength > 5_000, 'game card art ' + art + ' should be served by the worker');
@@ -194,12 +194,14 @@ for (const scenario of [
   const moved = await post(`/api/interactive/rooms/${created.room.id}`, {
     action: 'move', token: created.token, from: 'e2', to: 'e4',
   });
+  assert(moved.state.moves === undefined, 'move history must not be exposed during play');
   assert(moved.state.turn === 'b' && moved.state.lastMove === 'e4', 'human move should hand the turn to the bot');
   const botReply = await post(`/api/interactive/rooms/${created.room.id}`, {
     action: 'bot-move', token: created.token, from: 'e7', to: 'e5',
   });
   assert(botReply.state.turn === 'w' && botReply.state.lastMove === 'e5', 'server did not accept the legal engine reply');
   const ended = await post(`/api/interactive/rooms/${created.room.id}`, { action: 'resign', token: created.token });
+  assert(ended.state.moves.length === 2 && ended.state.moves[0].uci === 'e2e4' && ended.state.moves[1].uci === 'e7e5' && ended.state.moves[0].fen === new Chess().fen(), 'finished game should include the true position and moves for analysis');
   assert(ended.room.players[0].elo === 200 && !ended.state.eloUpdated, 'a game against a bot must not change ELO');
 }
 
@@ -255,10 +257,19 @@ assert(sudokuCorrectMove?.state.canUndo, 'a correct Sudoku entry should enable u
 const sudokuUndo = await post(`/api/interactive/rooms/${sudokuFriendRoom.room.id}`, { action: 'undo', token: sudokuFriendJoin.token });
 assert(sudokuUndo.state.values[editableCell] === 0 && !sudokuUndo.state.canUndo, 'Sudoku undo should restore the previous empty cell');
 
+const legacyRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'bot', name: 'قديم' });
+const legacyStored: any = await roomStorage.get(`interactive-room:${legacyRoom.room.id}`);
+delete legacyStored.gameState.moves; // an already-running game from the old version
+await post(`/api/interactive/rooms/${legacyRoom.room.id}`, { action: 'move', token: legacyRoom.token, from: 'e2', to: 'e4' });
+const legacyEnded = await post(`/api/interactive/rooms/${legacyRoom.room.id}`, { action: 'resign', token: legacyRoom.token });
+assert(legacyEnded.state.moves === undefined, 'legacy games must not fabricate an incomplete history');
+
 const fallbackRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'bot', name: 'اختبار الاحتياط', trainerId: 'salem', botElo: 200, clockMinutes: 5 });
 const fallbackHumanMove = await post(`/api/interactive/rooms/${fallbackRoom.room.id}`, { action: 'move', token: fallbackRoom.token, from: 'e2', to: 'e4' });
 const fallbackGame = new Chess(fallbackHumanMove.state.fen);
 const fallbackBotMove = await post(`/api/interactive/rooms/${fallbackRoom.room.id}`, { action: 'bot-fallback', token: fallbackRoom.token });
+const fallbackEnded = await post(`/api/interactive/rooms/${fallbackRoom.room.id}`, { action: 'resign', token: fallbackRoom.token });
+assert(fallbackEnded.state.moves.length === 2 && fallbackEnded.state.moves[1].side === 'b', 'fallback bot move must be recorded');
 assert(fallbackBotMove.state.turn === 'w' && fallbackGame.moves({ verbose: true }).some(move => move.from === fallbackBotMove.state.lastMoveSquares?.[0] && move.to === fallbackBotMove.state.lastMoveSquares?.[1]), 'fallback bot should still produce a legal response');
 
 console.log(`Chess checks passed: ${CHESS_TRAINERS.length} trainers, Stockfish ASSETS route, ${CHESS_LESSONS.length} legal lesson drills, ${CHESS_PUZZLES.length} puzzles, tactical move, legal replies, human-only ELO updates.`);
