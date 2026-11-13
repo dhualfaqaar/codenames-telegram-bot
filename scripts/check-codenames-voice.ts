@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { InteractiveGameRooms, MemoryRoomStorage } from '../src/services/interactiveGameRooms';
+class CountingStorage extends MemoryRoomStorage { writes=0; override async put(key:string,value:unknown){this.writes++;return super.put(key,value)} }
+const store=new CountingStorage(), rooms=new InteractiveGameRooms(store), root='/api/interactive/rooms';
+async function post(path:string,body:any,token='',status=200){const r=await rooms.handle(new Request('https://test.local'+path,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)}));const result:any=await r.json();assert.equal(r.status,status,JSON.stringify(result));return result}
+const a=await post(root,{game:'codenames',name:'أول'},'',201), path=root+'/'+a.room.id;
+const b=await post(path,{action:'join',name:'ثاني'}), c=await post(path,{action:'join',name:'ثالث'}), before=store.writes;
+const voice=path+'/voice', sa='a'.repeat(32),sb='b'.repeat(32),sc='c'.repeat(32);
+await post(voice,{action:'sync',session:sa},'',403);
+await post(voice,{action:'sync',session:'invalid'},a.token,400);
+await post(voice,{action:'sync',session:sa,mic:true,speaker:false},a.token);
+await post(voice,{action:'sync',session:sb,mic:false,speaker:true},b.token);
+const third=await post(voice,{action:'sync',session:sc,mic:false,speaker:true},c.token);
+assert.equal(third.participants.length,3);assert.ok(!JSON.stringify(third).includes(a.token));
+await post(voice,{action:'sync',session:sa},b.token,403);
+await post(voice,{action:'signal',session:sa,to:sb,kind:'offer',value:{type:'offer',sdp:'private-sdp'}},a.token);
+const notRecipient=await post(voice,{action:'sync',session:sc},c.token);assert.equal(notRecipient.messages.length,0);
+const received=await post(voice,{action:'sync',session:sb},b.token);assert.equal(received.messages[0].value.sdp,'private-sdp');assert.equal(received.messages[0].from,sa);
+assert.equal((await post(voice,{action:'sync',session:sb},b.token)).messages.length,0);
+await post(voice,{action:'signal',session:sa,to:sb,kind:'bad',value:{}},a.token,400);
+await post(voice,{action:'signal',session:sa,to:sb,kind:'candidate',value:{candidate:'x'.repeat(25000)}},a.token,413);
+await post(voice,{action:'leave',session:sb},b.token);
+assert.equal((await post(voice,{action:'sync',session:sa},a.token)).participants.length,2);
+assert.equal(store.writes,before,'voice signals and polling must not write DO storage');
+await post(path,{action:'leave',token:b.token});
+await post(voice,{action:'sync',session:sb},b.token,403);
+assert.ok(!(await post(voice,{action:'sync',session:sa},a.token)).participants.some((p:any)=>p.session===sb));
+console.log('Codenames voice: authenticated private signalling, bounded messages, leave and no storage writes passed.');

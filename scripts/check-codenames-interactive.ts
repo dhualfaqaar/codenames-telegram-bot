@@ -110,7 +110,7 @@ assert.equal(final.room.status,'finished'); assert.equal(final.state.winner,team
 for (let i=0;i<10;i++){const g=CodenamesEngine.startGame(CodenamesEngine.createLobby('x')).game; assert.equal(new Set(g.cards.map(c=>c.word)).size,25)}
 const html=interactiveGamesMiniAppHtml('codenames');
 for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new Script(m[1]);
-assert.ok(html.includes('data-game="codenames"') && html.includes('function renderCodeRoom') && html.includes('id="codeCreate"'));
+assert.ok(html.includes('data-game="codenames"') && html.includes('function renderCodeRoom') && html.includes('data-code-start-team') && !html.includes('id="codeRoomsPanel"'));
 assert.ok(readFileSync('server/telegramBot.ts','utf8').includes('poker|sudoku|codenames'));
 const worker = (await (new Function('url','return import(url)'))(new URL('../worker/index.ts',import.meta.url).href)).default;
 const page = await worker.fetch(new Request('https://test.local/codenames'), {} as any, {} as any);

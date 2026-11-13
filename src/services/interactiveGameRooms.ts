@@ -176,7 +176,12 @@ function generateSudoku(level: 'easy' | 'medium' | 'hard'): { puzzle: number[]; 
   return { puzzle, solution };
 }
 
+type VoicePeer = { session: string; token: string; touched: number; mic: boolean; speaker: boolean; messages: Array<{from: string; kind: string; value: unknown}> };
 export class InteractiveGameRooms {
+  // Signalling is transient: never store audio, SDP, ICE candidates, or heartbeats in Durable Object storage.
+  private readonly voiceEpoch = randomString(16);
+  private readonly voiceRooms = new Map<string, Map<string, VoicePeer>>();
+
   private tail: Promise<void> = Promise.resolve();
   constructor(private readonly storage: RoomStorage) {}
 
@@ -189,6 +194,8 @@ export class InteractiveGameRooms {
   private async handleSerial(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/interactive/matchmaking')) return this.handleMatchmaking(request, url);
+    const voicePath = url.pathname.match(/^\/api\/interactive\/rooms\/([A-Z0-9]+)\/voice\/?$/i);
+    if (voicePath) return this.handleVoice(request, voicePath[1].toUpperCase());
     const match = url.pathname.match(/^\/api\/interactive\/rooms(?:\/([A-Z0-9]+))?\/?$/i);
     if (!match) return Response.json({ error: 'المسار غير موجود' }, { status: 404 });
     if (request.method === 'POST' && !match[1]) {
@@ -383,6 +390,7 @@ export class InteractiveGameRooms {
       if (index < 0) return 'اللاعب مو موجود بالغرفة';
       if (room.game === 'codenames') {
         const game: CodenamesGame = room.gameState.codeGame;
+        room.gameState.codeVoiceLeft = [...new Set([...(room.gameState.codeVoiceLeft || []), player.token])];
         if (room.status === 'playing') {
           const leaving = game.players.find(p => String(p.id) === player.token);
           room.gameState.codeGame = { ...game, status: 'game_over', winner: leaving?.team === 'blue' ? 'red' : 'blue', winReason: undefined, turnDeadline: undefined } satisfies CodenamesGame;
@@ -1177,6 +1185,64 @@ export class InteractiveGameRooms {
     }
     rooms.sort((a, b) => b.players - a.players || b.createdAt - a.createdAt);
     return Response.json({ rooms, total: rooms.length }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
+  private async handleVoice(request: Request, id: string): Promise<Response> {
+    const reply = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
+    if (request.method !== 'POST') return reply({ error: 'طريقة غير مدعومة' }, 405);
+    const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    const room = await this.load(id);
+    if (!room || room.game !== 'codenames' || Date.now() - room.updatedAt > ROOM_IDLE_TTL_MS) return reply({ error: 'الغرفة غير موجودة' }, 404);
+    const seat = room.players.findIndex(p => p.token === token && !p.bot);
+    if (seat < 0 || (Array.isArray(room.gameState.codeVoiceLeft) && room.gameState.codeVoiceLeft.includes(token))) return reply({ error: 'انضم للغرفة أولاً' }, 403);
+    // Prevent uncontrolled message allocation, and validate before using untrusted data.
+    const text = await request.text();
+    if (text.length > 12000) return reply({ error: 'رسالة الصوت كبيرة' }, 413);
+    let body: any; try { body = JSON.parse(text); } catch { return reply({ error: 'طلب غير صالح' }, 400); }
+    const session = String(body?.session || '');
+    if (!/^[a-f0-9]{32}$/.test(session)) return reply({ error: 'جلسة الصوت غير صالحة' }, 400);
+    const now = Date.now();
+    for (const [key, group] of this.voiceRooms) {
+      for (const [peerId, peer] of group) if (now - peer.touched > 20000) group.delete(peerId);
+      if (!group.size) this.voiceRooms.delete(key);
+    }
+    let group = this.voiceRooms.get(id);
+    if (group) {
+      const revoked = new Set<string>();
+      for (const [peerId, peer] of group) {
+        if (!room.players.some(p => p.token === peer.token) || (room.gameState.codeVoiceLeft || []).includes(peer.token)) { group.delete(peerId); revoked.add(peerId); }
+      }
+      if (revoked.size) for (const peer of group.values()) peer.messages = peer.messages.filter(message => !revoked.has(message.from));
+    }
+    if (body.action === 'leave') {
+      const peer = group?.get(session); if (peer?.token === token) group?.delete(session);
+      if (!group?.size) this.voiceRooms.delete(id);
+      return reply({ ok: true });
+    }
+    if (body.action === 'sync') {
+      if (!group) { if (this.voiceRooms.size >= 512) return reply({ error: 'الصوت مشغول، جرّب بعدين' }, 503); group = new Map(); this.voiceRooms.set(id, group); }
+      const existing = group.get(session);
+      if (existing && existing.token !== token) return reply({ error: 'جلسة محجوزة' }, 403);
+      for (const [other, peer] of group) if (peer.token === token && other !== session) group.delete(other);
+      const peer = existing || { session, token, touched: now, mic: false, speaker: false, messages: [] };
+      peer.touched = now; peer.mic = body.mic === true; peer.speaker = body.speaker === true; group.set(session, peer);
+      const participants = [...group.values()].filter(p => room.players.some(rp => rp.token === p.token)).map(p => ({ session: p.session, seat: room.players.findIndex(rp => rp.token === p.token), mic: p.mic, speaker: p.speaker }));
+      const messages = peer.messages.splice(0, 64);
+      return reply({ epoch: this.voiceEpoch, participants, messages });
+    }
+    const sender = group?.get(session);
+    if (!sender || sender.token !== token) return reply({ error: 'جلسة الصوت غير متصلة' }, 403);
+    if (body.action === 'signal') {
+      const target = group?.get(String(body.to || ''));
+      if (!target || target === sender || !room.players.some(p => p.token === target.token)) return reply({ error: 'اللاعب مو متصل بالصوت' }, 404);
+      if (!['offer','answer','candidate'].includes(body.kind) || !body.value || typeof body.value !== 'object') return reply({ error: 'إشارة غير صالحة' }, 400);
+      let queued = 0; for (const peers of this.voiceRooms.values()) for (const p of peers.values()) queued += p.messages.length;
+      if (target.messages.length >= 24 || queued >= 512) return reply({ error: 'إشارات الصوت ممتلئة' }, 429);
+      target.messages.push({from: session, kind: body.kind, value: body.value});
+      sender.touched = now;
+      return reply({ ok: true });
+    }
+    return reply({ error: 'إجراء غير مدعوم' }, 400);
   }
 
   private async load(id: string): Promise<Room | undefined> { return await this.storage.get<Room>(ROOM_KEY(id)); }
