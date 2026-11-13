@@ -210,7 +210,10 @@ export class CodenamesEngine {
       wordPool = getWordPackList('arabic_standard');
     }
 
-    const shuffledWords = this.shuffle(wordPool).slice(0, 25);
+    // Duplicate words make the clue and selection ambiguous on the board.
+    const uniqueWords = Array.from(new Set(wordPool.map(word => word.trim()).filter(Boolean)));
+    if (uniqueWords.length < 25) return { success: false, message: 'ماكو كلمات كافية للوحة.', game };
+    const shuffledWords = this.shuffle(uniqueWords).slice(0, 25);
     const startingTeam: Team = Math.random() < 0.5 ? 'blue' : 'red';
     const secondTeam: Team = startingTeam === 'blue' ? 'red' : 'blue';
 

@@ -131,7 +131,7 @@ app.get('/amongus', (_req, res) => {
 app.get('/interactive', (req, res) => {
   res.type('html').set('Cache-Control', 'no-cache').send(interactiveGamesMiniAppHtml(String(req.query.game || '')));
 });
-app.get(['/chess','/uno','/gartic','/poker'], (req, res) => {
+app.get(['/chess','/uno','/gartic','/poker','/codenames'], (req, res) => {
   res.type('html').set('Cache-Control', 'no-cache').send(interactiveGamesMiniAppHtml(req.path.replaceAll('/', '')));
 });
 app.get('/sudoku', (_req, res) => {

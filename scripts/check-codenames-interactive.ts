@@ -1,0 +1,128 @@
+import assert from 'node:assert/strict';
+import { Script } from 'node:vm';
+import { InteractiveGameRooms, MemoryRoomStorage } from '../src/services/interactiveGameRooms';
+import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
+import { TelegramBotManager } from '../server/telegramBot';
+import { CodenamesEngine } from '../src/services/codenamesEngine';
+import { readFileSync } from 'node:fs';
+const storage = new MemoryRoomStorage(), rooms = new InteractiveGameRooms(storage);
+async function post(path: string, body: any, status = 200): Promise<any> {
+  const r = await rooms.handle(new Request('https://test.local' + path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }));
+  const data: any = await r.json(); assert.equal(r.status, status, JSON.stringify(data)); return data;
+}
+async function get(path: string, token = '', status = 200): Promise<any> {
+  const r = await rooms.handle(new Request('https://test.local' + path, { headers: token ? { Authorization:'Bearer ' + token } : {} }));
+  const data: any = await r.json(); assert.equal(r.status, status, JSON.stringify(data)); return data;
+}
+const root = '/api/interactive/rooms';
+const host = await post(root, { game:'codenames', name:'منظّم', wordPack:'arabic_iraqi', capacity:2 }, 201);
+const path = root + '/' + host.room.id;
+assert.equal(host.room.capacity, 4);
+assert.equal(host.state.myRole, 'operative');
+assert.equal(host.state.wordPack, 'arabic_iraqi');
+await post(path, {action:'start',token:host.token}, 400);
+const players = [host];
+for (const name of ['ثاني','ثالث','رابع']) players.push(await post(path, {action:'join',name}));
+assert.equal(players[3].state.players.length, 4);
+assert.equal(new Set(players[3].state.players.map((p:any) => p.team + p.role)).size, 4);
+await post(path, {action:'join',name:'خامس'}, 409);
+await post(path, {action:'start',token:players[1].token}, 400);
+await post(path, {action:'code-seat',token:players[0].token,team:'red',role:'operative'}, 400);
+const started = await post(path, {action:'start',token:host.token});
+assert.equal(started.room.status, 'playing');
+assert.equal(started.state.cards.length, 25);
+assert.equal(new Set(started.state.cards.map((c:any)=>c.word)).size, 25);
+assert.ok(started.state.cards.every((c:any)=>!('type' in c)));
+assert.equal('codeGame' in started.state, false);
+const observer = await get(path);
+assert.ok(observer.state.cards.every((c:any)=>!('type' in c)));
+assert.equal(observer.state.myRole, '');
+assert.ok(!JSON.stringify(observer).includes(host.token), 'never leak player tokens');
+await get(path, 'INVALID', 403);
+const views = await Promise.all(players.map(p => get(path, p.token)));
+const team = started.state.currentTurn;
+const spy = views.find(v => v.state.myTeam === team && v.state.myRole === 'spymaster');
+const op = views.find(v => v.state.myTeam === team && v.state.myRole === 'operative');
+const enemyOp = views.find(v => v.state.myTeam !== team && v.state.myRole === 'operative');
+assert.equal(spy.state.cards.filter((c:any)=>c.type === team).length, 9);
+assert.equal(spy.state.cards.filter((c:any)=>c.type === 'assassin').length, 1);
+assert.ok(op.state.cards.every((c:any)=>!('type' in c)));
+await post(path, {action:'code-clue',token:op.token,word:'بحر',count:2}, 400);
+await post(path, {action:'code-guess',token:spy.token,id:0}, 400);
+await post(path, {action:'code-clue',token:spy.token,word:'كلمتين معاً',count:2}, 400);
+await post(path, {action:'code-clue',token:spy.token,word:spy.state.cards[0].word,count:2}, 400);
+const clue = await post(path, {action:'code-clue',token:spy.token,word:'اختبارمميز',count:2});
+assert.equal(clue.state.clue.count, 2); assert.equal(clue.state.clue.remainingGuesses, 3);
+await post(path, {action:'code-pass',token:op.token}, 400);
+await post(path, {action:'code-guess',token:enemyOp.token,id:0}, 400);
+const correctCard = spy.state.cards.find((c:any)=>c.type===team);
+const correct = await post(path, {action:'code-guess',token:op.token,id:correctCard.id});
+assert.equal(correct.state.cards[correctCard.id].type, team);
+assert.equal(correct.state.clue.remainingGuesses, 2);
+assert.ok(correct.state.cards.filter((c:any)=>!c.revealed).every((c:any)=>!('type' in c)));
+await post(path, {action:'code-guess',token:op.token,id:correctCard.id}, 400);
+const passed = await post(path, {action:'code-pass',token:op.token});
+assert.notEqual(passed.state.currentTurn, team); assert.equal(passed.state.phase, 'spymaster_turn');
+// Timer expiration is persisted once, even for spectator polls.
+const raw: any = await storage.get('interactive-room:' + host.room.id);
+raw.gameState.codeGame.turnDeadline = Date.now() - 1000;
+const timed = await get(path, host.token);
+assert.equal(timed.state.currentTurn, team);
+assert.ok(timed.state.deadline > Date.now());
+assert.equal((await get(path, host.token)).state.currentTurn, team);
+// Assassin ends the match for the opposite team without exposing other unrevealed cards.
+const spyView = await get(path, spy.token);
+await post(path, {action:'code-clue',token:spy.token,word:'تلميحمختلف',count:1});
+const assassin = spyView.state.cards.find((c:any)=>c.type==='assassin');
+const ended = await post(path, {action:'code-guess',token:op.token,id:assassin.id});
+assert.equal(ended.room.status, 'finished'); assert.notEqual(ended.state.winner, team);
+assert.equal(ended.state.cards[assassin.id].type, 'assassin');
+assert.ok(ended.state.cards.filter((c:any)=>!c.revealed).every((c:any)=>!('type' in c)));
+await post(path, {action:'code-guess',token:op.token,id:0}, 400);
+// Leaving before start frees the seat and transfers hosting. Leaving during play forfeits.
+const newHost = await post(root, {game:'codenames',name:'أول'}, 201); const path2=root+'/'+newHost.room.id;
+const second = await post(path2, {action:'join',name:'ثاني'});
+await post(path2, {action:'leave',token:newHost.token});
+assert.equal((await get(path2, second.token)).room.isHost, true);
+await post(path2, {action:'code-seat',token:second.token,team:'blue',role:'operative'});
+for (const name of ['3','4','5']) await post(path2, {action:'join',name});
+await post(path2, {action:'start',token:second.token});
+const left = await post(path2, {action:'leave',token:second.token});
+assert.equal(left.room.status,'finished'); assert.equal(left.state.winner,'red'); assert.equal(left.state.winReason,'opponent_left');
+// A neutral guess passes the turn; the last remaining team word wins.
+const h3 = await post(root, {game:'codenames',name:'فريق'}, 201); const path3=root+'/'+h3.room.id;
+const p3 = [h3]; for(const name of ['اثنان','ثلاثة','أربعة']) p3.push(await post(path3,{action:'join',name}));
+const game3 = await post(path3,{action:'start',token:h3.token});
+const views3 = await Promise.all(p3.map(p=>get(path3,p.token)));
+const team3=game3.state.currentTurn, spy3=views3.find(v=>v.state.myTeam===team3&&v.state.myRole==='spymaster'), op3=views3.find(v=>v.state.myTeam===team3&&v.state.myRole==='operative');
+await post(path3,{action:'code-clue',token:spy3.token,word:'تلميحجديد',count:1});
+const neutral=spy3.state.cards.find((c:any)=>c.type==='bystander');
+const missed=await post(path3,{action:'code-guess',token:op3.token,id:neutral.id});
+assert.notEqual(missed.state.currentTurn,team3); assert.equal(missed.state.phase,'spymaster_turn');
+const raw3:any = await storage.get('interactive-room:'+h3.room.id);
+raw3.gameState.codeGame.currentTurn=team3; raw3.gameState.codeGame.status='spymaster_turn';
+let finalCard=-1;
+for(const card of raw3.gameState.codeGame.cards) if(card.type===team3){if(finalCard<0)finalCard=card.id;else card.revealed=true}
+await post(path3,{action:'code-clue',token:spy3.token,word:'تلميحاخير',count:1});
+const final=await post(path3,{action:'code-guess',token:op3.token,id:finalCard});
+assert.equal(final.room.status,'finished'); assert.equal(final.state.winner,team3); assert.equal(final.state.winReason,'all_cards_found');
+// Duplicate words must never be used in a board.
+for (let i=0;i<10;i++){const g=CodenamesEngine.startGame(CodenamesEngine.createLobby('x')).game; assert.equal(new Set(g.cards.map(c=>c.word)).size,25)}
+const html=interactiveGamesMiniAppHtml('codenames');
+for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new Script(m[1]);
+assert.ok(html.includes('data-game="codenames"') && html.includes('function renderCodeRoom') && html.includes('id="codeCreate"'));
+assert.ok(readFileSync('server/telegramBot.ts','utf8').includes('poker|sudoku|codenames'));
+const worker = (await (new Function('url','return import(url)'))(new URL('../worker/index.ts',import.meta.url).href)).default;
+const page = await worker.fetch(new Request('https://test.local/codenames'), {} as any, {} as any);
+assert.equal(page.status,200); assert.ok((await page.text()).includes('كود نيمز'));
+const sent: any[] = [];
+const bot: any = new TelegramBotManager('TEST:TOKEN','42',true);
+bot.hasRequiredChannelMembership = async () => true;
+bot.notifyOwner = async () => {};
+bot.sendMessage = async (id: any, text: any, keyboard: any) => {sent.push({id,text,keyboard});return {ok:true}};
+await bot.handleMessage({ message_id:1,date:1,from:{id:12345,first_name:'لاعب'},chat:{id:12345,type:'private'},text:'/start room_'+host.room.id+'_codenames' });
+const invite = sent.find(x => x.keyboard?.[0]?.[0]?.web_app?.url);
+assert.ok(invite, 'Telegram start payload must open an interactive room invitation');
+const inviteUrl = new URL(invite.keyboard[0][0].web_app.url);
+assert.equal(inviteUrl.searchParams.get('room'),host.room.id); assert.equal(inviteUrl.searchParams.get('game'),'codenames');
+console.log('Codenames interactive: real 4-player rooms, roles, secrecy, host start, turns, timer, assassin, leave, routes and browser JS passed.');

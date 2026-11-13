@@ -3018,7 +3018,7 @@ export class TelegramBotManager {
           await this.handleMafiaPrivateReady(chatId, sender, rawPayload.slice(3));
           return;
         }
-        const roomInvite = rawPayload.match(/^room_([A-Z0-9]{12})_(chess|uno|gartic|poker|sudoku)$/i);
+        const roomInvite = rawPayload.match(/^room_([A-Z0-9]{12})_(chess|uno|gartic|poker|sudoku|codenames)$/i);
         if (roomInvite) {
           const roomId = roomInvite[1].toUpperCase();
           const game = roomInvite[2].toLowerCase();
