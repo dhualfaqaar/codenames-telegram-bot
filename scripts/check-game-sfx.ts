@@ -4,7 +4,7 @@
  * The engine is plain browser JS inlined into the mini apps, so the check runs
  * it inside a fake DOM/AudioContext and asserts that every voice actually
  * schedules audio nodes, that the mute switch sticks, that the background music
- * schedules bars, and that the three games are wired to real events.
+ * schedules bars, and that audio is restricted to Among Us game events.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -293,30 +293,26 @@ check('زر الأصوات يسكت الصوت', env.gameSfx.enabled() === false
 button.click();
 check('زر الأصوات يرجع الصوت', env.gameSfx.enabled() === true);
 
-/* ---------- games wiring ---------- */
+/* ---------- game isolation ---------- */
 const chessHtml = INTERACTIVE_GAMES_MINI_APP_HTML;
-check('الشطرنج يستورد محرك الأصوات', chessHtml.includes('window.GameSfx') && chessHtml.includes("window.GameSfx.play(name)"));
-check('الشطرنج: صوت تحريك الرقعة', chessHtml.includes("sfx('move')") && chessHtml.includes("sfx('capture')"));
-check('الشطرنج: صوت الأكل والتبييت والكش والترقية', ["'capture'", "'castle'", "'check'", "'promote'", "'illegal'"].every(name => chessHtml.includes(`sfx(${name})`)));
-check('الشطرنج: زر كتم الصوت', chessHtml.includes('cg-sfx-btn') && chessHtml.includes('mountToggle'));
-
+check('الألعاب التفاعلية بلا محرك أصوات أو زر كتم', !chessHtml.includes('window.GameSfx') && !chessHtml.includes('mountSfxToggle') && !chessHtml.includes('cg-sfx-btn'));
+check('أصوات التفاعلية معطّلة حتى إذا محرك آخر موجود', chessHtml.includes('var sfx=function(){}'));
 const sudokuHtml = SUDOKU_MINI_APP_HTML;
-check('سودوكو: صوت الرقم الصحيح', sudokuHtml.includes("sfx('good')"));
-check('سودوكو: صوت الرقم الغلط', sudokuHtml.includes("sfx('bad')"));
-check('سودوكو: صوت الحل والتلميح', sudokuHtml.includes("sfx(won?'solved':'lose')") && sudokuHtml.includes("sfx('hint')"));
-check('سودوكو: زر كتم الصوت', sudokuHtml.includes('mountToggle'));
+check('سودوكو بلا محرك أصوات أو زر كتم', !sudokuHtml.includes('window.GameSfx') && !sudokuHtml.includes('mountToggle') && !sudokuHtml.includes('cg-sfx-btn'));
+check('سودوكو صامتة حتى إذا محرك آخر موجود', sudokuHtml.includes('var sfx=function(){}'));
 
 const amongHtml = amongUsMiniAppHtml();
 check('امونق اس: أصوات اللعبة', ["'kill'", "'sabotage'", "'vent'", "'task'", "'eject'", "'death'"].every(name => amongHtml.includes(`sfx(${name})`)));
 check('امونق اس: صوت خطوات المشي', amongHtml.includes("sfx('step')"));
 check('امونق اس: صوت التبليغ والاجتماع الطارئ', amongHtml.includes("sfx(room.meeting.reason === 'report' ? 'report' : 'alarm')"));
-check('امونق اس: صوت الأزرار', amongHtml.includes('buttonSounds'));
+check('ماكو صوت تلقائي لأزرار امونق اس', !amongHtml.includes("window.GameSfx.buttonSounds('click')") && !amongHtml.includes("function beep(){ sfx('click'); }") );
+check('ماكو زر صوت عائم داخل واجهة امونق اس', !amongHtml.includes("window.GameSfx.mountToggle({ container: '#auHudTop'"));
 check('امونق اس: موسيقى خلفية خفيفة', amongHtml.includes('GameSfx.music.start()') && amongHtml.includes('GameSfx.music.stop()'));
-check('امونق اس: مفتاح للموسيقى', amongHtml.includes('auMusicToggle'));
+check('امونق اس: مفاتيح الصوت والموسيقى بالإعدادات', amongHtml.includes('auMusicToggle') && amongHtml.includes('auSoundToggle'));
 
 /* ---------- no copyrighted audio shipped ---------- */
 const repo = resolve(import.meta.dirname, '..');
 const serverSource = readFileSync(resolve(repo, 'server/telegramBot.ts'), 'utf8');
 check('ماكو تنزيل أصوات من السيرفر', !/amongus.*\.mp3|chess.*\.ogg/i.test(serverSource));
 
-console.log(`Game sound checks passed: ${passed} assertions (voices, music loop, mute store, three games wired).`);
+console.log(`Game sound checks passed: ${passed} assertions (engine and Among Us sounds, silent menus and other games).`);

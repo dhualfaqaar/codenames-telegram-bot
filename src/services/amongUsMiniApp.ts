@@ -1091,7 +1091,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function sfx(name){
     try { if (window.GameSfx && profile.sound) window.GameSfx.play(name); } catch (e) {}
   }
-  function beep(){ sfx('click'); }
   function setColor(colorId){
     if (!isUnlocked(colorId)) { toast('هذا اللون بعده مقفول — افتحه من المتجر'); return; }
     profile.color = colorId;
@@ -1312,7 +1311,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       profile.sound = el('auSoundToggle').checked;
       storageSet('au-sound', profile.sound ? '1' : '0');
       try { window.GameSfx && window.GameSfx.setEnabled(profile.sound); } catch (e) {}
-      if (profile.sound) beep();
     });
     var musicSwitch = el('auMusicToggle');
     if (musicSwitch) {
@@ -1443,9 +1441,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   try {
     if (window.GameSfx) {
       window.GameSfx.setEnabled(profile.sound);
-      window.GameSfx.buttonSounds('click');
-      var hudTop = el('auHudTop');
-      if (hudTop) window.GameSfx.mountToggle({ container: '#auHudTop', inline: true, size: 34 });
       window.GameSfx.music.start();
     }
   } catch (e) {}
