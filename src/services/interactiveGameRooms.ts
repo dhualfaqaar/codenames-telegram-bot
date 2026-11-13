@@ -34,11 +34,7 @@ const LOBBY_KEY = (game: string) => `interactive-lobby:${game}`;
 const LOBBY_MAX = 40;
 const TICKET_KEY = (id: string) => `interactive-match:${id}`;
 const QUEUE_KEY = (game: string) => `interactive-queue:${game}`;
-// Persist presence at most once per player every 5 seconds, rather than on
-// every poll. Allow one extra interval before forfeiting so a fresh player is
-// never considered disconnected just because their last heartbeat was batched.
-const CHESS_HEARTBEAT_TOUCH_MS = 5_000;
-const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000 + CHESS_HEARTBEAT_TOUCH_MS;
+const CHESS_HEARTBEAT_TIMEOUT_MS = 30_000;
 // Rooms stay reachable for a week of inactivity; every visit refreshes this window
 // so an invite link keeps working for friends who open it later.
 const ROOM_IDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -263,7 +259,7 @@ export class InteractiveGameRooms {
       if (token && room.game === 'chess' && room.status === 'playing') {
         const player = room.players.find(item => item.token === token);
         const opponent = room.players.find(item => item.token !== token && !item.bot);
-        if (player && opponent && now - (Number(player.lastSeenAt) || 0) >= CHESS_HEARTBEAT_TOUCH_MS) { player.lastSeenAt = now; changed = true; }
+        if (player) { player.lastSeenAt = now; changed = true; }
         if (player && opponent && opponent.lastSeenAt && now - opponent.lastSeenAt > CHESS_HEARTBEAT_TIMEOUT_MS) {
           room.gameState.clocks = this.chessClockValues(room);
           room.gameState.clockStartedAt = 0;
@@ -284,10 +280,7 @@ export class InteractiveGameRooms {
       if (this.tickDraw(room, now)) changed = true;
       if (this.tickCodenames(room, now)) changed = true;
       const touched = now - room.updatedAt > ROOM_TOUCH_MS;
-      // Evaluate even if presence changed; otherwise short-circuiting hides a
-      // clock expiry whenever a heartbeat also requires persistence.
-      const expired = this.expireChessClock(room, now);
-      if (changed || started || touched || expired) { room.updatedAt = now; await this.save(room); }
+      if (changed || started || touched || this.expireChessClock(room, now)) { room.updatedAt = now; await this.save(room); }
       return this.jsonFor(room, token);
     }
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });

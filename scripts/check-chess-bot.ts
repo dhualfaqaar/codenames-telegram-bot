@@ -26,7 +26,7 @@ const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
 const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
 assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
 const interactivePageResponse = await cloudflareWorker.fetch(new Request(`https://game.test/interactive?app_build=${INTERACTIVE_APP_BUILD}`), {} as any, {} as any);
-assert(INTERACTIVE_APP_BUILD === '2026-10-20-usage-v61' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
+assert(INTERACTIVE_APP_BUILD === '2026-10-20-game-restore-v62' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
 for (const art of ['/chess-hero-v2.jpg', '/drawing-hero.jpg', '/sudoku-hero.jpg']) {
   const artResponse = await cloudflareWorker.fetch(new Request('https://game.test' + art), {} as any, {} as any);
   assert(artResponse.status === 200 && artResponse.headers.get('Content-Type') === 'image/jpeg' && (await artResponse.arrayBuffer()).byteLength > 5_000, 'game card art ' + art + ' should be served by the worker');
@@ -226,7 +226,7 @@ assert(leftGame.room.status === 'finished' && leftGame.state.winnerSeat === 1 &&
 const disconnectRoom = await post('/api/interactive/rooms', { game: 'chess', mode: 'friend', name: 'انقطاع', elo: 200, clockMinutes: 5 });
 const disconnectOpponent = await post(`/api/interactive/rooms/${disconnectRoom.room.id}`, { action: 'join', name: 'متصل', elo: 200 });
 const staleRoom = await roomStorage.get<any>(`interactive-room:${disconnectRoom.room.id}`);
-staleRoom.players[1].lastSeenAt = Date.now() - 36_000;
+staleRoom.players[1].lastSeenAt = Date.now() - 31_000;
 await roomStorage.put(`interactive-room:${disconnectRoom.room.id}`, staleRoom);
 const disconnectResponse = await rooms.handle(new Request(`https://game.test/api/interactive/rooms/${disconnectRoom.room.id}`, { headers: { Authorization: `Bearer ${disconnectRoom.token}` } }));
 const disconnectResult = await disconnectResponse.json() as any;

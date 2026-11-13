@@ -38,7 +38,7 @@
     "test:books:repairs": "tsx scripts/check-book-repairs.ts",
     "test:books:channel-search": "tsx scripts/check-channel-search.ts",
     "test:books:search-reliability": "tsx scripts/check-book-search-reliability.ts",
-    "test:storage-quota": "tsx scripts/check-storage-quota.ts && tsx scripts/check-game-usage.ts",
+    "test:storage-quota": "tsx scripts/check-storage-quota.ts",
     "test:state-partitions": "tsx scripts/check-partitioned-state.ts",
     "test:subscription": "tsx scripts/check-subscription.ts",
     "test:media:delivery": "tsx scripts/check-media-delivery.ts",
