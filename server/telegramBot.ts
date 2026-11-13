@@ -1085,6 +1085,7 @@ export class TelegramBotManager {
   private chats: Map<string, BotChatRecord> = new Map();
   /** Cached subscription checks to avoid asking Telegram for every button tap. */
   private channelSubscriptionCache: Map<string, { isMember: boolean; checkedAt: number }> = new Map();
+  private channelSubscriptionChecks = new Map<string, object>();
   /** Telegram id of the bot owner (who gets the dashboard + alerts) */
   private ownerId: string | null = null;
   /** Should the owner receive alerts (new users, blocks, ...)? */
@@ -2037,6 +2038,10 @@ export class TelegramBotManager {
       }
       return;
     }
+    if (this.token !== trimmed) {
+      this.channelSubscriptionCache.clear();
+      this.channelSubscriptionChecks.clear();
+    }
     this.token = trimmed;
     this.botInfo = null;
     this.lastError = undefined;
@@ -2605,7 +2610,12 @@ export class TelegramBotManager {
     }
 
     if (sender && !this.isOwner(sender.id) && message.chat.type === 'private') {
-      if (!(await this.hasRequiredChannelMembership(String(sender.id), isStartCommand))) {
+      const member = await this.hasRequiredChannelMembership(String(sender.id), isStartCommand);
+      if (member === null) {
+        await this.sendSubscriptionCheckUnavailable(chatId);
+        return;
+      }
+      if (!member) {
         await this.sendSubscriptionPrompt(chatId);
         return;
       }
@@ -3134,11 +3144,18 @@ export class TelegramBotManager {
       return;
     }
     // الاشتراك الإجباري يخص استخدام البوت بالخاص فقط؛ لا يمنع ضغط أزرار الألعاب بالكروبات أو القنوات.
-    if (cb.message?.chat.type === 'private' && !this.isOwner(userId) &&
-        !(await this.hasRequiredChannelMembership(String(userId)))) {
-      await this.answerCallbackQuery(cb.id, 'اشترك بقناة @pleasegodimtired حتى تستخدم البوت.', true);
-      await this.sendSubscriptionPrompt(String(userId));
-      return;
+    if (cb.message?.chat.type === 'private' && !this.isOwner(userId)) {
+      const member = await this.hasRequiredChannelMembership(String(userId));
+      if (member === null) {
+        await this.answerCallbackQuery(cb.id, 'ما گدرت أتحقق من اشتراكك هسه. جرّب مرة ثانية بعد شوي.', true);
+        await this.sendSubscriptionCheckUnavailable(String(userId));
+        return;
+      }
+      if (!member) {
+        await this.answerCallbackQuery(cb.id, 'اشترك بقناة @pleasegodimtired حتى تستخدم البوت.', true);
+        await this.sendSubscriptionPrompt(String(userId));
+        return;
+      }
     }
 
     // ---- owner dashboard buttons (only the owner may use them) ----
@@ -12479,35 +12496,57 @@ export class TelegramBotManager {
     }
   }
 
-  private async hasRequiredChannelMembership(userId: string, forceRefresh = false): Promise<boolean> {
+  /** true/false are confirmed Telegram results; null means verification failed. */
+  private async hasRequiredChannelMembership(userId: string, forceRefresh = false): Promise<boolean | null> {
     const cached = this.channelSubscriptionCache.get(userId);
     const cacheTtl = cached?.isMember ? 15_000 : 5_000;
     if (!forceRefresh && cached && Date.now() - cached.checkedAt < cacheTtl) return cached.isMember;
-    if (!this.token) return false;
     const numericUserId = Number(userId);
-    if (!Number.isSafeInteger(numericUserId) || numericUserId <= 0) return false;
+    if (!this.token || !Number.isSafeInteger(numericUserId) || numericUserId <= 0) return null;
 
+    // A slower earlier request must never overwrite a newer forced check.
+    const attempt = {};
+    this.channelSubscriptionChecks.set(userId, attempt);
+    const isLatest = () => this.channelSubscriptionChecks.get(userId) === attempt;
     try {
       const response = await fetch(`https://api.telegram.org/bot${this.token}/getChatMember`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: REQUIRED_SUBSCRIPTION_CHANNEL, user_id: numericUserId })
+        body: JSON.stringify({ chat_id: REQUIRED_SUBSCRIPTION_CHANNEL, user_id: numericUserId }),
+        signal: AbortSignal.timeout(8_000)
       });
       const data: any = await response.json();
-      if (!data?.ok) {
-        console.warn('Required-channel membership check failed:', data?.description || 'Telegram API error');
-        this.channelSubscriptionCache.set(userId, { isMember: false, checkedAt: Date.now() });
-        return false;
+      if (!response.ok || data?.ok !== true) {
+        if (isLatest()) this.channelSubscriptionCache.delete(userId);
+        // Log only numeric codes, never a token-bearing URL or untrusted description.
+        console.warn('REQUIRED_CHANNEL_CHECK_FAILED', JSON.stringify({ http: response.status, telegramCode: Number.isInteger(data?.error_code) ? data.error_code : null }));
+        return null;
       }
-      const member = ['creator', 'administrator', 'member'].includes(data.result?.status) ||
-        (data.result?.status === 'restricted' && Boolean(data.result?.is_member));
-      this.channelSubscriptionCache.set(userId, { isMember: member, checkedAt: Date.now() });
+      const status = data.result?.status;
+      let member: boolean;
+      if (['creator', 'administrator', 'member'].includes(status)) member = true;
+      else if (['left', 'kicked'].includes(status)) member = false;
+      else if (status === 'restricted' && typeof data.result?.is_member === 'boolean') member = data.result.is_member;
+      else {
+        if (isLatest()) this.channelSubscriptionCache.delete(userId);
+        console.warn('REQUIRED_CHANNEL_CHECK_INVALID_RESPONSE');
+        return null;
+      }
+      if (isLatest()) this.channelSubscriptionCache.set(userId, { isMember: member, checkedAt: Date.now() });
       return member;
-    } catch (error) {
-      console.warn('Required-channel membership check failed:', error);
-      this.channelSubscriptionCache.set(userId, { isMember: false, checkedAt: Date.now() });
-      return false;
+    } catch {
+      if (isLatest()) this.channelSubscriptionCache.delete(userId);
+      console.warn('REQUIRED_CHANNEL_CHECK_UNAVAILABLE');
+      return null;
+    } finally {
+      if (isLatest()) this.channelSubscriptionChecks.delete(userId);
     }
+  }
+
+  private async sendSubscriptionCheckUnavailable(chatId: string) {
+    await this.sendMessage(chatId, 'ما گدرت أتحقق من اشتراكك هسه. جرّب مرة ثانية بعد شوي.', [
+      [{ text: 'تحقّق وابدأ', callback_data: 'sub:check' }]
+    ]);
   }
 
   private async sendSubscriptionPrompt(chatId: string) {
@@ -12523,9 +12562,16 @@ export class TelegramBotManager {
 
   private async handleSubscriptionCheck(cb: TelegramCallbackQuery) {
     const userId = String(cb.from.id);
-    if (!this.isOwner(cb.from.id) && !(await this.hasRequiredChannelMembership(userId, true))) {
-      await this.answerCallbackQuery(cb.id, 'ما ظهرلي اشتراكك بعد؛ اشترك بالقناة وبعدين أعد التحقق.', true);
-      return;
+    if (!this.isOwner(cb.from.id)) {
+      const member = await this.hasRequiredChannelMembership(userId, true);
+      if (member === null) {
+        await this.answerCallbackQuery(cb.id, 'ما گدرت أتحقق من اشتراكك هسه. جرّب مرة ثانية بعد شوي.', true);
+        return;
+      }
+      if (!member) {
+        await this.answerCallbackQuery(cb.id, 'ما ظهرلي اشتراكك بعد؛ اشترك بالقناة وبعدين أعد التحقق.', true);
+        return;
+      }
     }
 
     await this.answerCallbackQuery(cb.id, '✅ تم التحقق من اشتراكك.');
