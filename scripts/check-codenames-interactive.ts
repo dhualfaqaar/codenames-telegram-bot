@@ -53,6 +53,9 @@ await post(path, {action:'code-clue',token:spy.token,word:'كلمتين معاً
 await post(path, {action:'code-clue',token:spy.token,word:spy.state.cards[0].word,count:2}, 400);
 const clue = await post(path, {action:'code-clue',token:spy.token,word:'اختبارمميز',count:2});
 assert.equal(clue.state.clue.count, 2); assert.equal(clue.state.clue.remainingGuesses, 3);
+assert.deepEqual(clue.state.clueHistory.map((c:any)=>[c.word,c.count,c.team]), [['اختبارمميز',2,team]]);
+assert.deepEqual((await get(path, enemyOp.token)).state.clueHistory, clue.state.clueHistory, 'both teams see published clues');
+assert.deepEqual((await get(path)).state.clueHistory, [], 'anonymous spectators do not receive clue history');
 await post(path, {action:'code-pass',token:op.token}, 400);
 await post(path, {action:'code-guess',token:enemyOp.token,id:0}, 400);
 const correctCard = spy.state.cards.find((c:any)=>c.type===team);
@@ -63,6 +66,9 @@ assert.ok(correct.state.cards.filter((c:any)=>!c.revealed).every((c:any)=>!('typ
 await post(path, {action:'code-guess',token:op.token,id:correctCard.id}, 400);
 const passed = await post(path, {action:'code-pass',token:op.token});
 assert.notEqual(passed.state.currentTurn, team); assert.equal(passed.state.phase, 'spymaster_turn');
+assert.equal((await get(path, op.token)).state.clueHistory[0].word, 'اختبارمميز', 'clue remains after the turn');
+const restartedView:any = await (await new InteractiveGameRooms(storage).handle(new Request('https://test.local'+path,{headers:{Authorization:'Bearer '+op.token}}))).json();
+assert.equal(restartedView.state.clueHistory[0].word,'اختبارمميز','clue history survives a handler restart');
 // Timer expiration is persisted once, even for spectator polls.
 const raw: any = await storage.get('interactive-room:' + host.room.id);
 raw.gameState.codeGame.turnDeadline = Date.now() - 1000;
@@ -77,6 +83,7 @@ const assassin = spyView.state.cards.find((c:any)=>c.type==='assassin');
 const ended = await post(path, {action:'code-guess',token:op.token,id:assassin.id});
 assert.equal(ended.room.status, 'finished'); assert.notEqual(ended.state.winner, team);
 assert.equal(ended.state.cards[assassin.id].type, 'assassin');
+assert.deepEqual(ended.state.clueHistory.map((c:any)=>c.word), ['اختبارمميز','تلميحمختلف']);
 assert.ok(ended.state.cards.filter((c:any)=>!c.revealed).every((c:any)=>!('type' in c)));
 await post(path, {action:'code-guess',token:op.token,id:0}, 400);
 // Leaving before start frees the seat and transfers hosting. Leaving during play forfeits.

@@ -512,7 +512,8 @@ export class InteractiveGameRooms {
     } else return 'إجراء غير مدعوم';
     if (!result.success) return action === 'code-clue' ? 'التلميح موجود باللوحة أو غير صالح' : 'البطاقة أو الإجراء غير متاح هسه';
     result.game.logs = result.game.logs.slice(-80);
-    result.game.clueHistory = result.game.clueHistory.slice(-80);
+    // Keep a useful match-long history while bounding the size of a room record.
+    result.game.clueHistory = result.game.clueHistory.slice(-2000);
     room.gameState.codeGame = result.game;
     if (result.game.status === 'game_over') room.status = 'finished';
     return null;
@@ -1262,6 +1263,11 @@ export class InteractiveGameRooms {
       for (const key of Object.keys(state)) delete state[key];
       Object.assign(state, { wordPack: game.wordPack, phase: game.status, currentTurn: game.currentTurn, winner: game.winner || '', winReason: s.codeForfeit ? 'opponent_left' : game.winReason || '',
         clue: game.currentClue ? { word: game.currentClue.word, count: game.currentClue.count, remainingGuesses: game.currentClue.remainingGuesses } : null,
+        clueHistory: actor ? (game.clueHistory || []).map(clue => ({ word: clue.word, count: clue.count, team: clue.team, givenBy: clue.givenBy })) : [],
+        // Presence is transient and carries no session IDs, tokens or audio.
+        voiceStatus: actor ? [...(this.voiceRooms.get(room.id)?.values() || [])]
+          .filter(peer => Date.now() - peer.touched <= 20_000 && room.players.some(player => player.token === peer.token) && !(s.codeVoiceLeft || []).includes(peer.token))
+          .map(peer => ({ seat: room.players.findIndex(player => player.token === peer.token), mic: peer.mic, speaker: peer.speaker })) : [],
         deadline: game.turnDeadline || 0, scores, myTeam: actor?.team || '', myRole: actor?.role || '',
         players: game.players.map(p => ({ name: p.name, team: p.team, role: p.role, seat: room.players.findIndex(rp => rp.token === String(p.id)) })),
         cards: game.cards.map(c => ({ id: c.id, word: c.word, revealed: c.revealed, ...(c.revealed || canSeeKey ? { type: c.type } : {}) })) });

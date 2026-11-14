@@ -19,7 +19,10 @@ async function checkBoard(selector,width,height,stage){
   assert.ok(v.scroll<=width+1,`${stage} horizontal overflow`);
   assert.ok(v.scrollHeight<=height+1,`${stage} vertical overflow: ${JSON.stringify(v)}`);
   assert.ok(!v.background.includes('games-library-v1.jpg'),'library wallpaper must not appear inside Codenames');
-  if(process.env.GAMES_SCREENSHOT_DIR && [390,1366].includes(width)) await page.screenshot({path:`${process.env.GAMES_SCREENSHOT_DIR}/codenames-${stage}-${width}.png`});
+  const teams=await page.evaluate(selector=>Object.fromEntries(['blue','red'].map(t=>{const layout=document.querySelector(selector).closest('.code-match-layout');const r=layout.querySelector('.code-team.'+t).getBoundingClientRect();return [t,{top:r.top,bottom:r.bottom,left:r.left,right:r.right}]})),selector);
+  for(const t of Object.values(teams))assert.ok(t.top>=0 && t.bottom<=height+1 && t.left>=-1 && t.right<=width+1,`${stage} team clipped ${width}x${height}: ${JSON.stringify(teams)}`);
+  if(width<=720 && height>width)assert.ok(teams.blue.bottom<=v.top+1 && teams.red.top>=v.bottom-1,`${stage} expected blue above board and red below at ${width}x${height}: ${JSON.stringify({teams,v})}`);
+  if(process.env.GAMES_SCREENSHOT_DIR && [360,390,1366].includes(width)) await page.screenshot({path:`${process.env.GAMES_SCREENSHOT_DIR}/codenames-${stage}-${width}.png`});
 }
 try{
   await page.goto(`${base}/interactive`);

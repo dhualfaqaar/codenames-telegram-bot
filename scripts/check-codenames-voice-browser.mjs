@@ -28,6 +28,17 @@ try{
   await c.goto(base.replace('127.0.0.1','127.0.0.2')+'/codenames?room='+id+'&game=codenames');await c.waitForSelector('[data-voice-speaker]');
   await d.goto(base.replace('127.0.0.1','127.0.0.3')+'/codenames?room='+id+'&game=codenames');await d.waitForSelector('[data-voice-speaker]');
   await a.waitForFunction(()=>document.querySelectorAll('.code-room .code-player').length===4);
+  for(const p of all){assert.equal(await p.locator('[data-voice-mic]').getAttribute('aria-pressed'),'false');assert.equal(await p.locator('[data-voice-speaker]').getAttribute('aria-pressed'),'false')}
+  const seat=await a.locator('[data-voice-remote]').count();assert.equal(seat,3);
+  // Even a player who has never enabled voice must see others' mic/speaker states.
+  await a.locator('[data-voice-speaker]').click();await a.locator('[data-voice-mic]').click();
+  await b.waitForFunction(()=>document.querySelector('[data-voice-remote="0"] [data-peer-mic].on') && document.querySelector('[data-voice-remote="0"] [data-peer-speaker].on'));
+  await a.locator('[data-voice-speaker]').click();
+  await b.waitForFunction(()=>document.querySelector('[data-voice-remote="0"] [data-peer-mic].on') && !document.querySelector('[data-voice-remote="0"] [data-peer-speaker].on'));
+  // Starting a match closes an already-open mic; it never auto-opens devices.
+  await a.locator('[data-action="start"]').click();
+  for(const p of all){await p.waitForSelector('.code-card');assert.equal(await p.locator('[data-voice-mic]').getAttribute('aria-pressed'),'false');assert.equal(await p.locator('[data-voice-speaker]').getAttribute('aria-pressed'),'false')}
+  await b.waitForFunction(()=>!document.querySelector('[data-voice-remote="0"] [data-peer-mic].on'));
   for(const p of all){await p.locator('[data-voice-speaker]').click();await p.locator('[data-voice-mic]').click();await p.waitForFunction(()=>document.querySelector('[data-voice-mic]')?.getAttribute('aria-pressed')==='true')}
   for(const p of all)await p.waitForFunction(()=>[...document.querySelectorAll('audio')].filter(a=>a.srcObject?.getAudioTracks().length).length===3,null,{timeout:30000});
   for(const p of all)await p.waitForFunction(async()=>{let incoming=0;for(const pc of window.__pcs){if(pc.connectionState!=='connected')continue;const stats=await pc.getStats();for(const x of stats.values())if(x.type==='inbound-rtp'&&x.kind==='audio'&&x.bytesReceived>0){incoming++;break}}return incoming===3},null,{timeout:30000});
@@ -37,6 +48,9 @@ try{
   await a.locator('[data-voice-mic]').click();
   assert.equal(await a.evaluate(()=>window.__micTracks.every(t=>t.readyState==='ended')),true,'mic off must stop capture');
   assert.equal(await a.locator('[data-voice-mic]').getAttribute('aria-pressed'),'false');
+  await b.waitForFunction(()=>!document.querySelector('[data-voice-remote="0"] [data-peer-mic].on') && !document.querySelector('[data-voice-remote="0"] [data-peer-speaker].on'));
+  assert.equal(await b.locator('[data-voice-remote="0"] [data-peer-mic] .code-muted-slash').evaluate(el=>getComputedStyle(el).display!=='none'),true,'muted microphone has a visible slash');
+  assert.equal(await b.locator('[data-voice-remote="0"] [data-peer-speaker] .code-muted-slash').evaluate(el=>getComputedStyle(el).display!=='none'),true,'muted speaker has a visible slash');
   assert.deepEqual(errors,[]);
   console.log('Codenames voice browser: four real WebRTC peers with fake microphones, media reception and independent mic/speaker mute passed.');
 } finally {for(const c of contexts)await c.close().catch(()=>{});await browser.close().catch(()=>{})}
