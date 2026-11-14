@@ -5,7 +5,10 @@ function codeVoiceId(){var a=new Uint8Array(16);crypto.getRandomValues(a);return
 function codeVoiceRender(){
   document.querySelectorAll('[data-voice-mic]').forEach(function(b){b.setAttribute('aria-pressed',String(codeVoice.mic));b.title=codeVoice.mic?'كتم المايك':'فتح المايك';b.setAttribute('aria-label',b.title);b.classList.toggle('on',codeVoice.mic)});
   document.querySelectorAll('[data-voice-speaker]').forEach(function(b){b.setAttribute('aria-pressed',String(codeVoice.speaker));b.title=codeVoice.speaker?'كتم السماعة':'فتح السماعة';b.setAttribute('aria-label',b.title);b.classList.toggle('on',codeVoice.speaker)});
-  document.querySelectorAll('[data-voice-remote]').forEach(function(el){var p=codeVoice.participants.find(function(v){return v.seat===Number(el.dataset.voiceRemote)});var m=el.querySelector('[data-peer-mic]'),h=el.querySelector('[data-peer-speaker]');if(m){m.classList.toggle('on',!!(p&&p.mic));m.title=p&&p.mic?'المايك مفتوح':'المايك مكتوم'}if(h){h.classList.toggle('on',!!(p&&p.speaker));h.title=p&&p.speaker?'السماعة مفتوحة':'السماعة مكتومة'}el.setAttribute('aria-label',p?(p.mic?'المايك مفتوح':'المايك مكتوم')+' · '+(p.speaker?'السماعة مفتوحة':'السماعة مكتومة'):'الصوت مو متصل')});
+  // Room polling also supplies public on/off states to players who keep both
+  // devices off; those players do not join the voice signalling session.
+  var states=roomData&&roomData.state&&roomData.state.voiceStatus||[];
+  document.querySelectorAll('[data-voice-remote]').forEach(function(el){var p=states.find(function(v){return v.seat===Number(el.dataset.voiceRemote)});var m=el.querySelector('[data-peer-mic]'),h=el.querySelector('[data-peer-speaker]');if(m){m.classList.toggle('on',!!(p&&p.mic));m.title=p&&p.mic?'المايك مفتوح':'المايك مكتوم'}if(h){h.classList.toggle('on',!!(p&&p.speaker));h.title=p&&p.speaker?'السماعة مفتوحة':'السماعة مكتومة'}el.setAttribute('aria-label',(p&&p.mic?'المايك مفتوح':'المايك مكتوم')+' · '+(p&&p.speaker?'السماعة مفتوحة':'السماعة مكتومة'))});
   Object.values(codeVoice.peers).forEach(function(p){if(p.audio){p.audio.muted=!codeVoice.speaker;if(codeVoice.speaker)p.audio.play().catch(function(){})}});
 }
 async function codeVoiceCall(body){

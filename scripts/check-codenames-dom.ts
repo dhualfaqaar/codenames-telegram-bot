@@ -29,6 +29,7 @@ try {
   assert.equal(doc.querySelector('.game-card[data-game="codenames"] .game-art-image')?.getAttribute('src'),'/codenames-hero-v1.jpg');
   assert.equal(doc.querySelector('#codeRoomsPanel'),null);
   assert.equal(doc.querySelector('#codeJoinPanel'),null);
+  assert.equal(doc.querySelector('#codeWordPack'),null,'no language selector in the game');
   (doc.querySelector('[data-code-start-team="red"][data-code-start-role="spymaster"]') as HTMLElement).click();
   await until(()=>doc.querySelector('.code-room'),'created room');
   assert.equal(doc.querySelectorAll('.code-room .code-placeholder').length,25);
@@ -68,6 +69,12 @@ try {
   (spyDoc.querySelector('#codeClueForm') as HTMLFormElement).dispatchEvent(new activeSpy.window.Event('submit',{bubbles:true,cancelable:true}));
   await until(()=>ops.some(c=>c.window.document.querySelector('.code-card:not(:disabled)')),'operative turn');
   const activeOp=ops.find(c=>c.window.document.querySelector('.code-card:not(:disabled)'))!;
+  const opDoc=activeOp.window.document;
+  (opDoc.querySelector('[data-action="code-history"]') as HTMLButtonElement).click();
+  assert.equal((opDoc.querySelector('.code-history-overlay') as HTMLElement).hidden,false);
+  assert.ok(opDoc.querySelector('.code-history-list')?.textContent?.includes('تلميحمميز'),'published hint in history');
+  (opDoc.querySelector('[data-action="code-history-close"]') as HTMLButtonElement).click();
+  assert.equal((opDoc.querySelector('.code-history-overlay') as HTMLElement).hidden,true);
   const card=activeOp.window.document.querySelector('.code-card:not(:disabled)') as HTMLButtonElement;card.click();
   await until(()=>activeOp.window.document.querySelector('.code-card.revealed'),'revealed card');
   for (const c of ops) {
