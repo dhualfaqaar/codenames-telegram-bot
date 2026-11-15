@@ -4,7 +4,7 @@ export const CHESS_RESPONSIVE_SCRIPT = String.raw`
 function calculateChessLayout(width,height,top,bottom){
   var padding=Math.max(6,Math.min(24,width*.012)),gap=Math.max(8,Math.min(24,width*.012));
   var availableWidth=Math.max(1,width-padding*2),availableHeight=Math.max(1,height-top-bottom-padding*2);
-  var wide=availableWidth>=720&&availableWidth/availableHeight>=1.12;
+  var wide=width>height&&availableWidth>=500&&availableWidth/availableHeight>=1.12;
   gap=Math.min(gap,availableHeight*.04);
   var seat=Math.min(availableHeight*.24,Math.max(44,Math.min(76,availableHeight*.075)));
   var chat=wide?Math.max(210,Math.min(420,availableWidth*.29)):availableWidth;

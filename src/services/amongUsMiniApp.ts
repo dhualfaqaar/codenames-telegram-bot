@@ -456,6 +456,26 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   .act{width:64px;height:64px}.acts{grid-template-columns:repeat(2,64px);gap:10px}
   .pad{width:120px;height:120px}.pad i{width:54px;height:54px;left:30px;top:30px}
 }
+/* Compact landscape launch screen; retain the desktop menu and play window. */
+@media(orientation:landscape) and (min-width:560px) and (max-height:560px){
+ #auMenu{padding-top:max(env(safe-area-inset-top),var(--au-safe-top,0px));padding-bottom:max(env(safe-area-inset-bottom),var(--au-safe-bottom,0px))}
+ #auMenu .menu-shell{min-height:0;gap:5px}
+ #auMenu .au-top{min-height:36px}
+ #auMenu .au-player{padding:2px 8px}.au-player .ava{width:27px;height:27px}
+ #auMenu .au-friends{min-height:36px;padding:0 10px;font-size:12px}.au-friends svg{width:30px;height:22px}
+ #auMenu .au-body{grid-template-columns:minmax(180px,30%) minmax(0,1fr);grid-template-rows:auto;gap:10px}
+ #auMenu .au-left{gap:0;padding:0}
+ #auMenu .wordmark{width:90px;margin:0}
+ #auMenu .menu-panel,#auMenu .menu-panel+.menu-panel{display:block;padding:2px 7px}
+ #auMenu .menu-btn,#auMenu .menu-btn.small{min-height:33px;margin:1px 0;padding:0 6px;gap:5px}
+ #auMenu .menu-btn .ico,#auMenu .menu-btn.small .ico{width:27px;height:27px}
+ #auMenu .menu-btn .ico svg,#auMenu .menu-btn.small .ico svg{width:25px;height:25px}
+ #auMenu .menu-btn .lbl,#auMenu .menu-btn.small .lbl{font-size:12px;letter-spacing:.5px}
+ #auMenu .au-version{font-size:8px;line-height:1;margin:0}
+ #auMenu .space-box{order:0;min-height:0;height:auto;max-height:none}
+ #auMenu .space-play{padding:6px;gap:5px}
+ #auMenu .sp-view{gap:5px}.sp-back{width:34px;height:34px}.sp-bar{padding:5px;font-size:10px;letter-spacing:.5px}
+}
 </style>
 </head>
 <body>
@@ -1001,6 +1021,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   }
 
   var el = function(id){ return document.getElementById(id); };
+  function syncMenuSafeArea(){var web=window.Telegram&&window.Telegram.WebApp;var a=web&&web.safeAreaInset||{},b=web&&web.contentSafeAreaInset||{};document.documentElement.style.setProperty('--au-safe-top',Math.max(Number(a.top)||0,Number(b.top)||0)+'px');document.documentElement.style.setProperty('--au-safe-bottom',Math.max(Number(a.bottom)||0,Number(b.bottom)||0)+'px')}
+  syncMenuSafeArea();if(window.Telegram&&Telegram.WebApp&&typeof Telegram.WebApp.onEvent==='function'){Telegram.WebApp.onEvent('safeAreaChanged',syncMenuSafeArea);Telegram.WebApp.onEvent('contentSafeAreaChanged',syncMenuSafeArea)}
+
   var toastTimer = 0;
   function toast(text){
     var box = el('auToast');

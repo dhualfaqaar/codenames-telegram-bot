@@ -18,6 +18,7 @@
     "test:navigation": "tsx scripts/check-mini-app-navigation.ts",
     "test:responsive": "tsx scripts/check-responsive-layout.ts",
     "test:responsive:browser": "node scripts/check-responsive-browser.mjs",
+    "test:landscape:browser": "node scripts/check-landscape-browser.mjs",
     "test:drawing:browser": "node scripts/check-drawing-room-browser.mjs",
     "test:drawing": "tsx scripts/check-drawing-scoring.ts",
     "test:drawing:dom": "node scripts/check-drawing-room-dom.mjs",

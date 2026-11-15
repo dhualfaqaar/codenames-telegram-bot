@@ -219,4 +219,27 @@ body:has(#gameApp[data-page="room"][data-game="gartic"]){display:flex!important;
   #roomPage[data-game="gartic"] .draw-canvas{position:absolute;inset:0}
   #roomPage[data-game="gartic"] .draw-room-feed{max-height:130px}
 }
+/* Phone landscape keeps the canvas, players and answers side by side.  The
+   tool strip scrolls independently when there are more tools than fit. */
+@media (orientation:landscape) and (min-width:560px) and (max-height:560px){
+  body:has(#gameApp[data-page="room"][data-game="gartic"]){height:100dvh!important;overflow:hidden!important;display:flex!important;padding-top:max(6px,env(safe-area-inset-top),var(--tg-content-top,0px))!important;padding-bottom:max(6px,env(safe-area-inset-bottom),var(--tg-content-bottom,0px))!important;padding-left:max(6px,env(safe-area-inset-left))!important;padding-right:max(6px,env(safe-area-inset-right))!important}
+  #gameApp[data-page="room"][data-game="gartic"],#roomPage[data-game="gartic"],#roomPage[data-game="gartic"] #roomContent{height:auto;min-height:0;overflow:hidden}
+  #roomPage[data-game="gartic"]>.room-header{padding-bottom:4px}
+  #roomPage[data-game="gartic"] .draw-room{height:auto;overflow:hidden;grid-template-columns:minmax(105px,18%) minmax(0,1fr) minmax(150px,26%);grid-template-areas:"players board bottom" "players tools bottom";grid-template-rows:minmax(0,1fr) auto;gap:5px;align-items:stretch}
+  #roomPage[data-game="gartic"] .draw-room-bottom{display:flex;flex-direction:column;gap:5px;overflow:hidden}
+  #roomPage[data-game="gartic"] .draw-feed-card,#roomPage[data-game="gartic"] .draw-logs-card{flex:1 1 0;min-height:0;padding:0 6px 5px}
+  #roomPage[data-game="gartic"] .draw-feed-title{margin:0 -6px 3px;padding:4px 0}
+  #roomPage[data-game="gartic"] .draw-room-feed{min-height:0;max-height:none}
+  #roomPage[data-game="gartic"] .draw-player-list{max-height:none}
+  #roomPage[data-game="gartic"] .draw-player-row{min-height:42px;padding:4px;gap:4px}
+  #roomPage[data-game="gartic"] .draw-account-avatar{width:30px;height:30px}
+  #roomPage[data-game="gartic"] .draw-canvas-wrap{min-height:0}
+  #roomPage[data-game="gartic"] .draw-room-tools{flex-direction:row;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px;gap:6px}
+  #roomPage[data-game="gartic"] .draw-room-tools>*{flex:none}
+  #roomPage[data-game="gartic"] .draw-tool{width:38px;height:38px}
+  #roomPage[data-game="gartic"] .draw-history{padding:0;border:0}
+  #roomPage[data-game="gartic"] .draw-color-wheel{width:38px;height:38px}
+  #roomPage[data-game="gartic"] .draw-word-bar{padding:4px}
+  #roomPage[data-game="gartic"] .draw-room-timer{padding:0}
+}
 `;
