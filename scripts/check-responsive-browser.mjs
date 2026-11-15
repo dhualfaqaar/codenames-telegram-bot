@@ -34,7 +34,7 @@ try {
   } }));
   await page.goto(`${base}/chess?room=TEST01`);
   await page.waitForSelector('#gameApp[data-chess-layout]');
-  for (const [width, height] of [[390,844],[360,640],[844,390],[768,1024],[1024,768],[1366,768],[1568,882],[1920,1080],[3840,2160],[280,640],[1280,360]]) {
+  for (const [width, height] of [[390,844],[360,640],[640,360],[740,360],[844,390],[768,1024],[1024,768],[1366,768],[1568,882],[1920,1080],[3840,2160],[280,640],[1280,360]]) {
     // Resize a live match without reloading, including rotation and split-screen.
     await page.setViewportSize({ width, height });
     await page.waitForFunction(w => parseFloat(document.querySelector('#gameApp').style.getPropertyValue('--fit-width')) === w, width);
@@ -78,8 +78,8 @@ try {
     await page.setViewportSize({ width, height });
     const layout = await page.evaluate(() => {
       const panel = document.querySelector('#gameOptions');
-      const create = document.querySelector('#drawCreateTitle').getBoundingClientRect();
-      const join = document.querySelector('#drawJoinTitle').getBoundingClientRect();
+      const create = document.querySelector('.draw-lobby-play').getBoundingClientRect();
+      const join = document.querySelector('#drawJoinTitle').closest('section').getBoundingClientRect();
       return { scrollWidth: document.documentElement.scrollWidth, background: getComputedStyle(panel).backgroundColor,
         columns: getComputedStyle(document.querySelector('.draw-lobby-grid')).gridTemplateColumns.split(' ').length,
         createTop: create.top, joinTop: join.top, marginTop: panel.getBoundingClientRect().top };
@@ -103,6 +103,8 @@ try {
     payload = route.request().postDataJSON();
     await route.fulfill({ status: 503, json: { error: 'اختبار تعذر الاتصال' } });
   });
+  await page.locator('#drawOpenRooms').click();
+  await page.locator('#drawCreateRoom').click();
   await page.locator('#capacityTrigger').click();
   await page.locator('#capacityMenu .draw-select-option[data-value="4"]').click();
   await page.locator('#roundSecondsTrigger').click();
@@ -120,6 +122,8 @@ try {
     joinPayload = route.request().postDataJSON();
     await route.fulfill({ status: 404, json: { error: 'غرفة اختبار' } });
   });
+  await page.locator('#drawCreateBack').click();
+  await page.locator('#drawRoomsBack').click();
   await page.locator('#drawRoomCode').fill('abc234def567');
   await page.locator('#drawJoinButton').click();
   await page.waitForSelector('#roomPage.active');

@@ -672,7 +672,7 @@ body:has(#revealTelegramControls:not([hidden])) #gameApp[data-game="codenames"] 
 .code-room-bar{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;min-height:36px;margin:0 44px 5px;color:#fff;text-align:center;font-size:12px}
 .code-room-bar>span{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap}
 #gameApp[data-game="codenames"] .code-room-bar .button{min-height:30px;padding:4px 9px;font-size:11px}
-#gameApp[data-game="codenames"] .code-board{max-width:min(100%,calc((100dvh - max(var(--tg-header-reserve,0px),var(--tg-content-top,0px)) - 125px) * 1.52));margin:0 auto}
+#gameApp[data-game="codenames"] .code-board{max-width:min(100%,calc((100dvh - max(var(--tg-header-reserve,0px),var(--tg-content-top,0px)) - max(env(safe-area-inset-bottom),var(--tg-content-bottom,0px)) - 125px) * 1.52));margin:0 auto}
 #gameApp[data-game="codenames"] .code-role-box{width:100%;font:inherit;min-height:clamp(80px,11vw,150px)}
 #gameApp[data-game="codenames"] .code-role-empty{cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;color:#fff}
 .code-role-empty span{margin:auto 0;font-size:11px;color:#e5f2fb}.code-role-empty:focus-visible,.code-voice-controls button:focus-visible{outline:3px solid #fff;outline-offset:2px}
@@ -687,7 +687,7 @@ body:has(#revealTelegramControls:not([hidden])) #gameApp[data-game="codenames"] 
  .code-room-bar{margin:0 38px 4px;gap:4px;font-size:10px}
 }
 @media(orientation:landscape) and (max-height:600px){
- #gameApp[data-game="codenames"] .code-board{max-width:min(100%,calc((100dvh - max(var(--tg-header-reserve,0px),var(--tg-content-top,0px)) - 125px) * 1.7))}
+ #gameApp[data-game="codenames"] .code-board{max-width:min(100%,calc((100dvh - max(var(--tg-header-reserve,0px),var(--tg-content-top,0px)) - max(env(safe-area-inset-bottom),var(--tg-content-bottom,0px)) - 125px) * 1.7))}
  #gameApp[data-game="codenames"] .code-role-box{min-height:50px;margin-bottom:3px;padding:2px}.code-role-box .code-player{margin-top:2px}.code-voice-controls{margin-top:2px}.code-voice-controls button,.code-voice-remote span{width:22px;height:22px}.code-player-avatar{width:23px;height:23px}.code-stage-title{min-height:24px}.code-room-bar{min-height:28px}
 }
 /* Codenames audio and clue history: muted devices have a visible strike. */
@@ -701,6 +701,50 @@ body:has(#revealTelegramControls:not([hidden])) #gameApp[data-game="codenames"] 
  #gameApp[data-game="codenames"] .code-team-heading{grid-column:auto;display:flex;flex-direction:column;justify-content:center;margin:0}
  #gameApp[data-game="codenames"] .code-role-box{min-height:52px;margin:0}
  #gameApp[data-game="codenames"] .code-board{max-width:min(100%,calc((100dvh - max(var(--tg-header-reserve,0px),var(--tg-content-top,0px)) - 315px) * 1.18))}
+}
+/* Short landscape screens: keep card tables alongside the hand, with
+   independently scrollable card/player lists rather than clipped controls. */
+@media(orientation:landscape) and (min-width:560px) and (max-height:560px){
+ body:has(#roomPage[data-game="uno"] .uno-table),body:has(#roomPage[data-game="poker"] .poker-arena){padding: max(env(safe-area-inset-top),var(--tg-content-top,0px)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom),var(--tg-content-bottom,0px)) max(8px,env(safe-area-inset-left))}
+ #gameApp[data-game="uno"]:has(.uno-table)>.topbar,#gameApp[data-game="poker"]:has(.poker-arena)>.topbar,#roomPage:has(.uno-table) .game-hud,#roomPage:has(.poker-arena) .game-hud{display:none!important}
+ #roomPage[data-game="uno"]:has(.uno-table),#roomPage[data-game="poker"]:has(.poker-arena){padding:5px!important;margin:0!important}
+ #roomPage:has(.uno-table)>.room-header,#roomPage:has(.poker-arena)>.room-header{padding:0 4px 3px;min-height:0}
+ #roomPage:has(.uno-table)>.room-header h1,#roomPage:has(.poker-arena)>.room-header h1{font-size:14px}
+ #roomPage:has(.uno-table)>.room-header p,#roomPage:has(.poker-arena)>.room-header p{font-size:9px;margin:0}
+ #roomPage[data-game="uno"]:has(.uno-table),#roomPage[data-game="poker"]:has(.poker-arena){position:relative}
+ #roomPage:has(.uno-table) .room-players,#roomPage:has(.poker-arena) .room-players{position:absolute;top:3px;left:42px;width:calc(100% - 205px);height:35px;min-height:0;margin:0;padding:0;border:0;background:none;box-shadow:none;overflow:hidden}
+ #roomPage:has(.uno-table) .room-players h2,#roomPage:has(.poker-arena) .room-players h2{display:none}
+ #roomPage:has(.uno-table) .room-players .room-list,#roomPage:has(.poker-arena) .room-players .room-list{display:flex;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;gap:4px;height:35px}
+ #roomPage:has(.uno-table) .room-players .player-chip,#roomPage:has(.poker-arena) .room-players .player-chip{flex:none;margin:0;padding:2px 5px;white-space:nowrap}
+ #roomPage:has(.uno-table) .room-player-avatar-wrap,#roomPage:has(.poker-arena) .room-player-avatar-wrap{width:25px;height:25px}
+
+ #roomPage[data-game="uno"] #roomContent:has(.uno-table),#roomPage[data-game="poker"] #roomContent:has(.poker-arena){padding:0!important}
+ #roomPage[data-game="uno"] #roomContent:has(.uno-table){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 8px;align-items:start}
+ #roomPage[data-game="uno"] #roomContent>.turn-label{grid-column:1/-1;margin:0}
+ #roomPage[data-game="uno"] .uno-table,#roomPage[data-game="uno"] .uno-table+section{padding:7px;margin:0;min-width:0}
+ #roomPage[data-game="uno"] .uno-table+section h3{margin:0 0 3px}
+ #roomPage[data-game="uno"] .uno-pile{min-height:65px;margin:2px 0 5px}
+ #roomPage[data-game="uno"] .uno-card{width:44px;height:62px;min-width:44px;min-height:62px;font-size:15px}
+ #roomPage[data-game="uno"] .hand{justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;margin:2px 0;padding:10px 4px 4px}
+ #roomPage[data-game="uno"] .hand .uno-card{flex:none;width:42px;height:58px;min-width:42px;min-height:58px}
+ #roomPage[data-game="uno"] .color-picker{margin:4px}
+ #roomPage[data-game="uno"] .uno-controls{margin:4px 0}
+ #roomPage[data-game="uno"] .uno-table .player-chip{display:inline-flex;margin:2px}
+ #roomPage[data-game="poker"] .poker-arena{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 8px;padding:7px;margin:0;align-items:center}
+ #roomPage[data-game="poker"] .poker-arena>.room-toolbar,#roomPage[data-game="poker"] .poker-controls{grid-column:1/-1}
+ #roomPage[data-game="poker"] .poker-board{min-height:60px;border-width:3px}
+ #roomPage[data-game="poker"] .playing-cards{margin:3px 0}
+ #roomPage[data-game="poker"] .playing-card{width:40px;height:55px;font-size:15px}
+ #roomPage[data-game="poker"] .poker-players{margin:0;max-height:42px;overflow:auto}
+ #roomPage[data-game="poker"] .poker-player{padding:3px 6px;font-size:10px}
+ #roomPage[data-game="poker"] .poker-arena>.poker-board{grid-column:1;grid-row:2/4}
+ #roomPage[data-game="poker"] .poker-arena>.playing-cards{grid-column:2;grid-row:2}
+ #roomPage[data-game="poker"] .poker-arena>p.subtle{margin:0;grid-column:2;grid-row:3}
+ #roomPage[data-game="poker"] .poker-players{grid-column:1;grid-row:4}
+ #roomPage[data-game="poker"] .poker-controls{grid-column:2;grid-row:4}
+ #roomPage[data-game="poker"] .poker-arena>.poker-controls~p.subtle{grid-column:1/-1;grid-row:5}
+ #roomPage[data-game="poker"] .poker-controls{margin:0}
+ #roomPage[data-game="poker"] .poker-controls .button{min-width:0;min-height:36px;padding:5px 7px;font-size:10px}
 }
 </style>
 </head>
@@ -820,7 +864,7 @@ function returnToGamesLobby(){stopChessReview();abandonMatchForReplacement();clo
 function revealTelegramControls(){nativeControlsRestored=true;syncTelegramNavigation();try{if(tg&&!tg.isFullscreen&&telegramFullscreenSupported())tg.requestFullscreen()}catch(e){}setTimeout(function(){syncTelegramFullscreen();syncTelegramNavigation()},180)}
 function handleTelegramBack(){var screen=typeof $==='function'?($('drawRoomsScreen')||$('drawCreateScreen')):null;if(typeof drawOpenPanel==='function'&&screen&&!screen.hidden){drawOpenPanel('');return}if(isGamesLobby()){if(tg)tg.close();return}returnToGamesLobby()}
 function requestInitialFullscreen(){if(!telegramFullscreenSupported()||tg.isFullscreen)return;try{tg.requestFullscreen()}catch(e){syncTelegramFullscreen()}}
-function syncTelegramFullscreen(){var active=!!(tg&&tg.isFullscreen),portrait=!!(window.matchMedia&&window.matchMedia('(orientation: portrait)').matches),safeTop=Number(tg&&tg.safeAreaInset&&tg.safeAreaInset.top)||0,contentTop=Number(tg&&tg.contentSafeAreaInset&&tg.contentSafeAreaInset.top)||0,headerReserve=tg?(active?Math.max(0,contentTop-safeTop):Math.max(portrait?132:72,contentTop-safeTop)):0;document.documentElement.style.setProperty('--tg-header-reserve',Math.ceil(headerReserve)+'px');document.body.classList.toggle('telegram-fullscreen',active);document.documentElement.style.setProperty('--tg-content-top',Math.max(safeTop,contentTop)+'px');syncTelegramNavigation();scheduleChessLayout()}
+function syncTelegramFullscreen(){var active=!!(tg&&tg.isFullscreen),portrait=!!(window.matchMedia&&window.matchMedia('(orientation: portrait)').matches),safeTop=Number(tg&&tg.safeAreaInset&&tg.safeAreaInset.top)||0,contentTop=Number(tg&&tg.contentSafeAreaInset&&tg.contentSafeAreaInset.top)||0,headerReserve=tg?(active?Math.max(0,contentTop-safeTop):Math.max(portrait?132:72,contentTop-safeTop)):0;document.documentElement.style.setProperty('--tg-header-reserve',Math.ceil(headerReserve)+'px');document.body.classList.toggle('telegram-fullscreen',active);document.documentElement.style.setProperty('--tg-content-top',Math.max(safeTop,contentTop)+'px');document.documentElement.style.setProperty('--tg-content-bottom',Math.max(Number(tg&&tg.safeAreaInset&&tg.safeAreaInset.bottom)||0,Number(tg&&tg.contentSafeAreaInset&&tg.contentSafeAreaInset.bottom)||0)+'px');syncTelegramNavigation();scheduleChessLayout()}
 function setPage(room){var showRoom=!!room;var showChess=!showRoom&&chessHomeActive;var showSetup=!showRoom&&!showChess&&!!setupGame;$('homePage').classList.toggle('active',!showRoom&&!showChess&&!showSetup);$('gameSetupPage').classList.toggle('active',showSetup);$('roomPage').classList.toggle('active',showRoom);$('chessHomePage').classList.toggle('active',showChess&&chessLandingTab==='home');$('chessPuzzlesPage').classList.toggle('active',showChess&&chessLandingTab==='puzzles');$('chessDailyPuzzlePage').classList.toggle('active',showChess&&chessLandingTab==='daily');$('chessVisionPage').classList.toggle('active',showChess&&chessLandingTab==='vision');$('chessLearnPage').classList.toggle('active',showChess&&chessLandingTab==='learn');$('chessMorePage').classList.toggle('active',showChess&&chessLandingTab==='more');$('chessBottomNav').hidden=!showChess;$('chessBottomNav').querySelectorAll('[data-chess-tab]').forEach(function(button){button.classList.toggle('active',button.dataset.chessTab===(chessLandingTab==='vision'?'home':chessLandingTab==='daily'?'puzzles':chessLandingTab))});document.body.classList.toggle('chess-hub-open',showChess);document.body.classList.toggle('chess-match-open',showRoom&&(roomData?.room?.game||activeRoomGame)==='chess'&&roomData?.room?.status==='playing');$('inviteButton').hidden=showRoom;$('gameApp').dataset.page=showRoom?'room':showChess?'chess':showSetup?'setup':'home';var game=showRoom?(roomData?.room?.game||activeRoomGame||'chess'):showChess?'chess':showSetup?setupGame:'lobby';$('gameApp').dataset.game=game;$('ambientBackdrop').dataset.game=game;syncGameChrome(game);syncTelegramNavigation();scheduleChessLayout();window.scrollTo(0,0)}
 $('revealTelegramControls').onclick=revealTelegramControls;
 if(tg){tg.ready();tg.expand();try{tg.setHeaderColor('#f5f4f0');tg.setBackgroundColor('#f5f4f0');if(tg.BackButton)tg.BackButton.onClick(handleTelegramBack);requestInitialFullscreen();if(typeof tg.onEvent==='function'){tg.onEvent('fullscreenChanged',syncTelegramFullscreen);tg.onEvent('safeAreaChanged',syncTelegramFullscreen);tg.onEvent('contentSafeAreaChanged',syncTelegramFullscreen);tg.onEvent('viewportChanged',syncTelegramFullscreen);tg.onEvent('fullscreenFailed',function(){syncTelegramFullscreen();toast('تيليجرام ما سمح بوضع ملء الشاشة بهالجهاز')})}}catch(e){}}syncTelegramFullscreen();new MutationObserver(syncTelegramNavigation).observe($('modeOverlay'),{attributes:true,attributeFilter:['class']});;

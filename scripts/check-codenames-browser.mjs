@@ -15,12 +15,12 @@ const base=process.env.GAMES_TEST_URL || 'http://localhost:3000';
 async function checkBoard(selector,width,height,stage){
   await page.setViewportSize({width,height});
   const v=await page.evaluate(selector=>{const board=document.querySelector(selector).getBoundingClientRect();return {left:board.left,right:board.right,top:board.top,bottom:board.bottom,scroll:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,background:getComputedStyle(document.querySelector('#ambientBackdrop')).backgroundImage}},selector);
-  assert.ok(v.left>=-1 && v.right<=width+1 && v.top>=0 && v.bottom<=height+1,`${stage} board outside ${width}x${height}: ${JSON.stringify(v)}`);
+  assert.ok(v.left>=-1 && v.right<=width+1 && v.top>=0 && v.bottom<=height-(width>height?19:-1),`${stage} board outside ${width}x${height}: ${JSON.stringify(v)}`);
   assert.ok(v.scroll<=width+1,`${stage} horizontal overflow`);
   assert.ok(v.scrollHeight<=height+1,`${stage} vertical overflow: ${JSON.stringify(v)}`);
   assert.ok(!v.background.includes('games-library-v1.jpg'),'library wallpaper must not appear inside Codenames');
   const teams=await page.evaluate(selector=>Object.fromEntries(['blue','red'].map(t=>{const layout=document.querySelector(selector).closest('.code-match-layout');const r=layout.querySelector('.code-team.'+t).getBoundingClientRect();return [t,{top:r.top,bottom:r.bottom,left:r.left,right:r.right}]})),selector);
-  for(const t of Object.values(teams))assert.ok(t.top>=0 && t.bottom<=height+1 && t.left>=-1 && t.right<=width+1,`${stage} team clipped ${width}x${height}: ${JSON.stringify(teams)}`);
+  for(const t of Object.values(teams))assert.ok(t.top>=0 && t.bottom<=height-(width>height?19:-1) && t.left>=-1 && t.right<=width+1,`${stage} team clipped ${width}x${height}: ${JSON.stringify(teams)}`);
   if(width<=720 && height>width)assert.ok(teams.blue.bottom<=v.top+1 && teams.red.top>=v.bottom-1,`${stage} expected blue above board and red below at ${width}x${height}: ${JSON.stringify({teams,v})}`);
   if(process.env.GAMES_SCREENSHOT_DIR && [360,390,1366].includes(width)) await page.screenshot({path:`${process.env.GAMES_SCREENSHOT_DIR}/codenames-${stage}-${width}.png`});
 }
@@ -33,7 +33,7 @@ try{
   assert.equal(await page.locator('.code-home .code-placeholder').count(),25);
   assert.equal(await page.locator('.code-home .code-card').count(),0);
   assert.equal(await page.locator('#gameSetupPage > .room-header').isVisible(),false);
-  for(const [w,h] of [[1366,768],[390,844],[360,640],[280,640],[844,390]]) await checkBoard('.code-home .code-board',w,h,'home');
+  for(const [w,h] of [[1366,768],[390,844],[360,640],[280,640],[640,360],[740,360],[844,390]]) await checkBoard('.code-home .code-board',w,h,'home');
   assert.equal(await page.locator('#codeRoomsPanel').count(),0);
   assert.equal(await page.locator('#codeJoinPanel').count(),0);
   await page.locator('[data-code-start-team="blue"][data-code-start-role="operative"]').click();
@@ -41,10 +41,10 @@ try{
   assert.equal(await page.locator('.code-room .code-card').count(),25);
   assert.equal(await page.locator('.code-room .code-role-box').count(),4);
   assert.equal(await page.locator('#roomPage > .room-header').isVisible(),false);
-  for(const [w,h] of [[1366,768],[390,844],[360,640],[280,640],[844,390]]) await checkBoard('.code-room .code-board',w,h,'match');
+  for(const [w,h] of [[1366,768],[390,844],[360,640],[280,640],[640,360],[740,360],[844,390]]) await checkBoard('.code-room .code-board',w,h,'match');
   payload.state.myRole='operative';payload.state.phase='operative_turn';payload.state.clue={word:'تلميحمميز',count:2,remainingGuesses:2};
   await page.waitForSelector('[data-action="code-pass"]');
-  for(const [w,h] of [[1366,768],[390,844],[360,640],[280,640],[844,390]]) await checkBoard('.code-room .code-board',w,h,'clue');
+  for(const [w,h] of [[1366,768],[390,844],[360,640],[280,640],[640,360],[740,360],[844,390]]) await checkBoard('.code-room .code-board',w,h,'clue');
   assert.deepEqual(failures,[]);
   console.log('Codenames browser: separate board, library-only wallpaper, room controls and viewport bounds passed.');
 } finally{await browser.close()}

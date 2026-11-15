@@ -21,6 +21,7 @@ for (const width of [280,320,360,390,640,740,768,820,844,1024,1280,1366,1568,192
   }
 }
 assert.equal(context.calculateChessLayout(390,844,48,20).wide, false);
+assert.equal(context.calculateChessLayout(640,360,64,20).wide, true);
 assert.equal(context.calculateChessLayout(1024,768,48,20).wide, true);
 assert.equal(context.calculateChessLayout(1568,882,48,20).wide, true);
 for (const [path, name] of [['uno','أونو'], ['gartic','لعبة الرسم'], ['poker','بوكر تكساس']]) {
