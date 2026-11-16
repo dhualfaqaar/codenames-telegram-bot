@@ -48,7 +48,10 @@
     "test:codenames:interactive": "tsx scripts/check-codenames-interactive.ts && tsx scripts/check-codenames-dom.ts && tsx scripts/check-game-assets.ts && tsx scripts/check-codenames-voice.ts",
     "test:codenames:browser": "node scripts/check-codenames-browser.mjs",
     "test:codenames:voice-browser": "node scripts/check-codenames-voice-browser.mjs",
-    "test:amongus:practice-browser": "node scripts/check-amongus-practice-browser.mjs"
+    "test:amongus:practice-browser": "node scripts/check-amongus-practice-browser.mjs",
+    "test:amongus:bot-round": "tsx scripts/check-amongus-bot-round.ts",
+    "test:amongus:gameplay-browser": "node scripts/check-amongus-gameplay-browser.mjs",
+    "test:amongus:meeting-browser": "node scripts/check-amongus-meeting-browser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

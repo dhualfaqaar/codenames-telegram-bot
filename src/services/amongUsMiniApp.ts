@@ -358,6 +358,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .tasks small{font-size:9px;color:#9fb0cf;letter-spacing:.5px}
 .bar{height:11px;border-radius:99px;background:#0a1220;border:2px solid #33456b;overflow:hidden;box-shadow:0 2px 0 #05070f}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3fc46b,#8ef0b0);transition:width .35s}
+.task-list{position:absolute;top:48px;right:10px;width:min(220px,48vw);max-height:50vh;overflow:auto;background:#132d3beb;border:2px solid #82b5ba;border-radius:12px;padding:8px;color:#efffff;font-size:11px}.task-list[hidden]{display:none}.task-list div{padding:3px 2px}.task-list .done{text-decoration:line-through;opacity:.55}
 #auAlarm{
   position:absolute;top:calc(56px + env(safe-area-inset-top));left:10px;right:10px;display:none;
   padding:9px 12px;border-radius:12px;background:#5c0d16f0;border:2px solid #ff5f70;
@@ -417,8 +418,19 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .vote b{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vote .btn{min-height:38px;padding:0 14px;font-size:12px;margin-inline-start:auto;border-width:3px;border-radius:11px}
 .vote .tag{margin-inline-start:6px;font-size:9px;padding:2px 6px;border-radius:99px;background:#2a3c60;color:#c3d6ee}
+#auMeetingDialog .dialog{width:min(94vw,720px);max-height:94dvh;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto minmax(50px,1fr) auto auto auto;gap:5px 12px;padding:12px;overflow:hidden}
+#auMeetingTitle{grid-column:1/-1;margin:0}#auMeetingSub{grid-column:1/-1;margin:0}
+#auVoteList{grid-column:1;grid-row:3/7;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;overflow:auto;margin:0;gap:5px}
+#auMeetingDialog .vote{padding:4px;gap:4px;border-radius:8px;min-width:0}#auMeetingDialog .vote svg{width:19px;height:25px}#auMeetingDialog .vote b{font-size:11px}#auMeetingDialog .vote .btn{min-height:30px;padding:0 5px;font-size:10px}#auMeetingDialog .vote .tag{font-size:8px;margin:0}
+#auMeetingChat{grid-column:2;grid-row:3}#auMeetingForm{grid-column:2;grid-row:4;margin:0}#auSkipVote{grid-column:2;grid-row:5;min-height:36px;font-size:12px}#auMeetingDialog .hint{grid-column:2;grid-row:6;margin:0}
+@media(max-width:550px){#auMeetingDialog .dialog{display:flex;flex-direction:column;overflow:auto}#auVoteList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-height:32vh;overflow:auto;flex:none}#auMeetingChat{min-height:60px;flex:none}}
+.meeting-chat{height:100%;min-height:50px;overflow:auto;background:#0b1529;border:2px solid #405675;border-radius:10px;padding:6px;font-size:12px;direction:rtl}
+.meeting-chat p{margin:0 0 3px;color:#e5eff8}.meeting-entry{display:flex;gap:5px;margin-top:6px}.meeting-entry input{min-width:0;flex:1;border:2px solid #405675;border-radius:8px;background:#0b1529;color:white;padding:7px;font:inherit}.meeting-entry button{background:#3e8f81;border-radius:8px;padding:5px 12px}
 .timer{font-variant-numeric:tabular-nums;font-weight:900;color:var(--gold)}
 /* task minigames */
+.wire-board{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:55%;padding:8px;background:#263d45;border:5px solid #0d202a;border-radius:14px;direction:ltr}
+.wire-lines{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);pointer-events:none}.wire-board .wire{position:relative;width:100%;touch-action:none}.wire-col{position:relative}
+.card-reader{position:relative;direction:ltr;height:105px;background:#687c79;border:6px solid #21353d;border-radius:12px;margin:12px 0;overflow:hidden;touch-action:none}.card-track{position:absolute;left:5%;right:5%;top:48%;height:12px;background:#192f38;border-radius:10px}.access-card{position:absolute;top:16%;left:3%;height:68%;width:62px;border-radius:7px;border:3px solid #203d48;background:#dce5db;touch-action:none;cursor:grab}.access-card svg{height:100%;width:45px}
 .wires{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .wire-col{display:grid;gap:10px}
 .wire{height:38px;border-radius:10px;border:3px solid #0a1220;cursor:pointer;box-shadow:inset 0 2px 0 #ffffff33}
@@ -729,10 +741,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <small>المهام</small>
         <div class="bar"><i id="auProgress"></i></div>
       </div>
-      <span class="badge" id="auTaskChip">0/0</span>
+      <button type="button" class="badge" id="auTaskChip" aria-label="عرض المهام" aria-expanded="false">0/0</button>
       <button type="button" class="badge" id="auMapToggle" aria-pressed="false">الخريطة</button>
       <button type="button" class="badge" id="auPracticeExit" hidden>إنهاء التجربة</button>
     </div>
+    <div id="auTaskList" class="task-list" hidden></div>
     <div id="auAlarm"></div>
     <div class="pad" id="auPad"><i id="auStick"></i></div>
     <div class="acts">
@@ -767,6 +780,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     <h2 id="auMeetingTitle">اجتماع طارئ</h2>
     <p id="auMeetingSub">صوّت لطرد المزوّر — أو تخطَّ التصويت.</p>
     <div class="list" id="auVoteList"></div>
+    <div class="meeting-chat" id="auMeetingChat" aria-live="polite"></div>
+    <form class="meeting-entry" id="auMeetingForm"><input id="auMeetingInput" maxlength="160" placeholder="اكتب بالاجتماع" autocomplete="off"><button type="submit">إرسال</button></form>
     <button class="btn block" id="auSkipVote"><span>تخطي التصويت</span></button>
     <p class="hint">الوقت المتبقي: <span class="timer" id="auMeetingTimer">0</span></p>
   </div>
@@ -844,6 +859,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
   /* ---------- the space window: drifting stars + floating crewmates ---------- */
   var space = { canvas:null, ctx:null, w:0, h:0, stars:[], beans:[], t:0 };
+  var deckArt = new Image(); deckArt.src = '/amongus-deck-v2.jpg';
   var cafeteriaArt = new Image(); cafeteriaArt.src = '/amongus-cafeteria-art-v1.jpg';
   function spaceResize(){
     if (!space.canvas) return;
@@ -893,7 +909,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       ctx.save();ctx.translate(px,py);ctx.rotate(angle||0);
       if(opts.shadow!==false){ctx.beginPath();ctx.ellipse(0,size*.62,size*.37,size*.07,0,0,Math.PI*2);ctx.fillStyle='rgba(8,12,20,.45)';ctx.fill()}
       var h=size*1.12,w=h*sprite.width/sprite.height;
-      ctx.drawImage(sprite,-w/2,-size*.48,w,h);ctx.restore();return;
+      var bob=phase ? Math.abs(Math.sin(phase)) * size*.045 : 0;
+      if(opts.flip) ctx.scale(-1,1);
+      ctx.drawImage(sprite,-w/2,-size*.48-bob,w,h);ctx.restore();return;
     }
     var s = size / 84;
     var dark = shade(hex, -0.34);
@@ -1264,7 +1282,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function createRoom(){
     api('/rooms', { action: 'create', name: readName(), color: profile.color, settings: roomDraft, initData: tgInitData() }).then(function(res){
       if (!res.ok) return toast(res.error || 'تعذّر إنشاء الغرفة');
-      AU.code = res.code; AU.token = res.token;
+      AU.code = res.code; AU.token = res.token; world.moveSeq=0; world.ready=false;
       history.replaceState(null, '', '?code=' + res.code);
       applyRoom(res.room);
     });
@@ -1274,7 +1292,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!code || code.length < 4) return toast('اكتب كود الغرفة');
     api('/rooms/' + code, { action: 'join', name: readName(), code: code, color: profile.color, initData: tgInitData() }).then(function(res){
       if (!res.ok) return toast(res.error || 'ما گدرنا ندخل');
-      AU.code = res.code; AU.token = res.token;
+      AU.code = res.code; AU.token = res.token; world.moveSeq=0; world.ready=false;
       history.replaceState(null, '', '?code=' + res.code);
       applyRoom(res.room);
     });
@@ -1348,7 +1366,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     el('auPractice').addEventListener('click', function(){
       api('/rooms', {action:'practice', name:readName(), color:profile.color, initData:tgInitData()}).then(function(res){
         if (!res.ok) return toast(res.error || 'تعذّر بدء التجربة');
-        AU.code=res.code; AU.token=res.token; world.ready=false; closePlay(); applyRoom(res.room);
+        AU.code=res.code; AU.token=res.token; world.ready=false; world.moveSeq=0; closePlay(); applyRoom(res.room);
       });
     });
     el('auCreate').addEventListener('click', function(){ showView('auViewSettings'); renderRuleRows(); });
@@ -1494,15 +1512,20 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (room.phase === 'ended') countMatch(room.code);
     var previousPhase=AU.room&&AU.room.phase;
     AU.room = room;
+    if (previousPhase === 'meeting' && room.phase === 'playing' && room.lastMeeting) {
+      var result=room.lastMeeting;
+      toast(result.ejectedName ? result.ejectedName + (result.ejectedRole === 'impostor' ? ' كان مزوّراً' : ' ما كان مزوّراً') : 'ما انطرد أحد');
+    }
     if (room.phase === 'lobby') {
       setScreen('auLobby');
       renderLobby(room);
       return;
     }
     setScreen('auStage');
+    if (room.phase !== 'playing' && activeTask) { stopHold(); closeTask(); }
     if (room.phase === 'playing') {
       var me = room.players.filter(function(p){ return p.you; })[0];
-      if (me && (!world.ready || previousPhase !== 'playing')) { world.x = me.x; world.y = me.y; world.ready = true; }
+      if (me && (!world.ready || previousPhase !== 'playing')) { world.x = me.x; world.y = me.y; world.ready = true; remotePositions=Object.create(null); }
     }
     renderHud(room);
     renderMeeting(room);
@@ -1562,11 +1585,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   }
 
   /* ---------- canvas world ---------- */
-  var world = { x: 50, y: 17, ready:false, vx:0, vy:0, lastSent:0 };
+  var world = { x: 50, y: 17, ready:false, vx:0, vy:0, lastSent:0, moveSeq:0 };
+  var remotePositions=Object.create(null);
   var canvas = el('auCanvas');
   var ctx = canvas.getContext('2d');
   var size = { w:0, h:0, scale:1, ox:0, oy:0 };
   var mapOverview = false;
+  el('auTaskChip').addEventListener('click',function(){var list=el('auTaskList');list.hidden=!list.hidden;this.setAttribute('aria-expanded',String(!list.hidden));});
   el('auMapToggle').addEventListener('click',function(){mapOverview=!mapOverview;this.setAttribute('aria-pressed',String(mapOverview));this.textContent=mapOverview?'رجوع للعب':'الخريطة'});
   function resize(){
     var dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -1602,7 +1627,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function drawBean(px, py, unit, hex, dead, name, isYou){
     ctx.save();
     ctx.globalAlpha = dead ? 0.42 : 1;
-    drawCrew(ctx, px, py, unit, hex, 0, 0, { shadow: !dead });
+    var walking=isYou && (Math.abs(world.vx)+Math.abs(world.vy)>0 || keyState['arrowleft'] || keyState['arrowright'] || keyState['arrowup'] || keyState['arrowdown'] || keyState['w'] || keyState['a'] || keyState['s'] || keyState['d']);
+    drawCrew(ctx, px, py, unit, hex, 0, walking ? Date.now()/90 : 0, { shadow: !dead, flip:isYou && world.facingLeft });
     ctx.restore();
     if (name) {
       ctx.save();
@@ -1625,65 +1651,72 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var room = AU.room;
     // Follow the player's actual coordinates at a readable size. The map
     // toggle keeps the complete server-aligned ship available for navigation.
-    size.scale=mapOverview?Math.min(size.w/100,Math.max(120,size.h-55)/100):Math.min(size.w,size.h)/46;
+    size.scale=mapOverview?Math.min(size.w/100,Math.max(120,size.h-55)/100):Math.min(size.w,size.h)/38;
     size.ox=mapOverview?(size.w-100*size.scale)/2:size.w/2-world.x*size.scale;
     size.oy=mapOverview?45+(size.h-45-100*size.scale)/2:size.h/2-world.y*size.scale;
     ctx.clearRect(0, 0, size.w, size.h);
     // hull / void
-    ctx.fillStyle = '#05070f';
+    ctx.fillStyle = '#111b2d';
     ctx.fillRect(0, 0, size.w, size.h);
+    // Sparse, stable stars keep the space background legible without darkness.
+    for(var star=0;star<70;star++){var sx=(star*149+31)%997/997*size.w,sy=(star*283 + 17)%991/991*size.h;ctx.fillStyle=star%3?'#607588':'#a8c5cf';ctx.fillRect(sx,sy,star%8===0?2:1,star%8===0?2:1)}
 
-    // The playable floor follows the server's rectangles exactly; an
-    // illustration must never invent walls, paths or usable stations.
+    // The same server rectangles drive both floor and collision. The tile is
+    // clipped to each rectangle, so artwork never invents a walkable doorway.
     var floors=CFG.map.corridors.concat(CFG.map.rooms);
+    var tile=null;
+    if(deckArt.complete && deckArt.naturalWidth){
+      tile=ctx.createPattern(deckArt,'repeat');
+      if(tile && tile.setTransform && typeof DOMMatrix !== 'undefined') tile.setTransform(new DOMMatrix([size.scale*12/deckArt.naturalWidth,0,0,size.scale*12/deckArt.naturalHeight,size.ox,size.oy]));
+    }
     floors.forEach(function(rect){
       var p=toScreen(rect.x,rect.y),w=rect.w*size.scale,h=rect.h*size.scale;
-      ctx.fillStyle='#101a2a';roundRect(p.x-2,p.y-2,w+4,h+4,size.scale*.75);ctx.fill();
+      ctx.fillStyle='#263b4a';roundRect(p.x-size.scale*.45,p.y-size.scale*.45,w+size.scale*.9,h+size.scale*.9,size.scale*.8);ctx.fill();
     });
-    var roomTints={cafeteria:'#8e9ba5',weapons:'#8e918c',navigation:'#5e8c99',o2:'#7e9b8e',admin:'#aaa08b',medbay:'#8dabb6',electrical:'#9b8e7c',storage:'#9b978b',reactor:'#927f88','upper-engine':'#9a8582','lower-engine':'#9a8582',security:'#899e9b',shields:'#87999e',comms:'#8b899b'};
-    CFG.map.rooms.forEach(function(def){
-      var p=toScreen(def.x,def.y),w=def.w*size.scale,h=def.h*size.scale;
-      ctx.fillStyle=roomTints[def.id]||'#8e9ba5';roundRect(p.x,p.y,w,h,size.scale*.5);ctx.fill();
-      ctx.save();roundRect(p.x,p.y,w,h,size.scale*.5);ctx.clip();
-      ctx.strokeStyle='rgba(30,45,61,.18)';ctx.lineWidth=1;
-      var step=Math.max(7,size.scale*3);
-      for(var x=p.x+step;x<p.x+w;x+=step){ctx.beginPath();ctx.moveTo(x,p.y);ctx.lineTo(x,p.y+h);ctx.stroke()}
-      for(var y=p.y+step;y<p.y+h;y+=step){ctx.beginPath();ctx.moveTo(p.x,y);ctx.lineTo(p.x+w,y);ctx.stroke()}
-      ctx.restore();
+    floors.forEach(function(rect){
+      var p=toScreen(rect.x,rect.y),w=rect.w*size.scale,h=rect.h*size.scale;
+      ctx.fillStyle=tile||'#aabcc2';roundRect(p.x,p.y,w,h,size.scale*.12);ctx.fill();
+      ctx.fillStyle='rgba(221,238,235,.18)';ctx.fillRect(p.x,p.y,w,h);
     });
-    // Corridors are laid over the room edges so the visual openings agree
-    // with the union of rectangles used by the movement engine.
-    CFG.map.corridors.forEach(function(hall){
-      var p=toScreen(hall.x,hall.y);ctx.fillStyle='#758593';roundRect(p.x,p.y,hall.w*size.scale,hall.h*size.scale,size.scale*.35);ctx.fill();
-    });
-    // Low-profile room details are decorative, not new collision obstacles.
-    // They are positioned from the same server room geometry as the floor.
+    // Room-specific equipment is decorative; it never blocks movement.
     CFG.map.rooms.forEach(function(def){
       if(def.id==='cafeteria')return;
       var p=toScreen(def.x,def.y),w=def.w*size.scale,h=def.h*size.scale;
-      var bx=p.x+w*.15,by=p.y+h*.17,bw=w*.32,bh=h*.22;
-      ctx.lineWidth=Math.max(1,size.scale*.22);ctx.strokeStyle='#243846';ctx.fillStyle='#60737d';
-      roundRect(bx,by,bw,bh,size.scale*.5);ctx.fill();ctx.stroke();
-      ctx.fillStyle=def.id==='reactor'?'#e87864':def.id==='electrical'?'#e4c56a':def.id==='medbay'?'#a1e1dc':'#80c8d1';
-      roundRect(bx+bw*.15,by+bh*.18,bw*.7,bh*.45,size.scale*.2);ctx.fill();
+      ctx.save();ctx.lineWidth=Math.max(1,size.scale*.20);ctx.strokeStyle='#263e49';
+      function panel(x,y,pw,ph,color){ctx.fillStyle=color;roundRect(p.x+x*w,p.y+y*h,pw*w,ph*h,size.scale*.35);ctx.fill();ctx.stroke()}
+      panel(.08,.08,.34,.20,'#537982');panel(.12,.11,.25,.11,'#92d2d1');
       if(def.id==='storage'){
-        for(var j=0;j<2;j++){var cx=p.x+w*(.60+j*.16),cy=p.y+h*.22,cs=Math.min(w,h)*.13;ctx.fillStyle='#a78159';ctx.fillRect(cx,cy,cs,cs);ctx.strokeRect(cx,cy,cs,cs)}
-      }else if(def.id.indexOf('engine')>=0||def.id==='reactor'){
-        ctx.beginPath();ctx.ellipse(p.x+w*.72,p.y+h*.33,w*.13,h*.16,0,0,Math.PI*2);ctx.fillStyle=def.id.indexOf('engine')>=0?'#d48465':'#96d9c6';ctx.fill();ctx.stroke();
+        [[.58,.22],[.72,.34],[.55,.48],[.75,.53]].forEach(function(c){panel(c[0],c[1],.17,.16,'#a78d62');panel(c[0]+.035,c[1]+.035,.10,.08,'#c4ad7f')});
+      }else if(def.id.indexOf('engine')>=0){
+        panel(.36,.19,.46,.58,'#aa6654');panel(.46,.23,.19,.50,'#d88c69');
+        ctx.strokeStyle='#9de4e4';ctx.lineWidth=Math.max(1,size.scale*.3);for(var i=0;i<3;i++){ctx.beginPath();ctx.moveTo(p.x+w*.45,p.y+h*(.31+i*.14));ctx.lineTo(p.x+w*.67,p.y+h*(.31+i*.14));ctx.stroke()}
+      }else if(def.id==='reactor'){
+        ctx.beginPath();ctx.ellipse(p.x+w*.56,p.y+h*.55,w*.25,h*.28,0,0,Math.PI*2);ctx.fillStyle='#61cbd6';ctx.fill();ctx.stroke();ctx.beginPath();ctx.ellipse(p.x+w*.56,p.y+h*.55,w*.12,h*.18,0,0,Math.PI*2);ctx.fillStyle='#cbf9ee';ctx.fill();
       }else if(def.id==='medbay'){
-        ctx.fillStyle='#dcebea';roundRect(p.x+w*.62,p.y+h*.18,w*.20,h*.34,size.scale*.2);ctx.fill();ctx.stroke();
+        panel(.55,.16,.28,.35,'#e3f1ec');panel(.58,.18,.22,.12,'#a8d9d6');ctx.beginPath();ctx.ellipse(p.x+w*.42,p.y+h*.70,w*.26,h*.15,0,0,Math.PI*2);ctx.fillStyle='#82dcc5';ctx.fill();ctx.stroke();
+      }else if(def.id==='electrical'){
+        for(var e=0;e<3;e++)panel(.16+e*.23,.47,.18,.28,['#eac65b','#df7865','#81c5d6'][e]);
+      }else if(def.id==='admin'||def.id==='security'||def.id==='comms'||def.id==='navigation'){
+        panel(.45,.44,.39,.26,'#3c7078');panel(.50,.48,.29,.15,'#8be2d1');
+      }else if(def.id==='shields'){
+        ctx.beginPath();ctx.arc(p.x+w*.55,p.y+h*.54,Math.min(w,h)*.26,0,Math.PI*2);ctx.fillStyle='#80c9df';ctx.fill();ctx.stroke();
+      }else if(def.id==='weapons'){
+        ctx.beginPath();ctx.arc(p.x+w*.55,p.y+h*.54,Math.min(w,h)*.23,0,Math.PI*2);ctx.fillStyle='#68858e';ctx.fill();ctx.stroke();panel(.48,.34,.15,.28,'#b3d4d6');
       }
+      ctx.restore();
     });
-    // Decorative cafeteria tables do not add collision geometry.
+    // Five blue cafeteria tables, with the emergency console in the centre.
     [{x:43,y:9},{x:57,y:9},{x:50,y:12},{x:43,y:19},{x:57,y:19}].forEach(function(t,index){
-      var p=toScreen(t.x,t.y),r=Math.max(3,size.scale*1.7);
-      ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle='#506875';ctx.fill();ctx.lineWidth=Math.max(1,size.scale*.3);ctx.strokeStyle='#243441';ctx.stroke();
-      if(index===2){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,size.scale*.7),0,Math.PI*2);ctx.fillStyle='#e23835';ctx.fill();ctx.stroke()}
+      var p=toScreen(t.x,t.y),r=Math.max(3,size.scale*2);
+      ctx.beginPath();ctx.ellipse(p.x,p.y+size.scale*.35,r*1.12,r*.84,0,0,Math.PI*2);ctx.fillStyle='#254a60';ctx.fill();
+      ctx.beginPath();ctx.ellipse(p.x,p.y,r,r*.78,0,0,Math.PI*2);ctx.fillStyle='#3985a9';ctx.fill();ctx.lineWidth=Math.max(1,size.scale*.22);ctx.strokeStyle='#1c4055';ctx.stroke();
+      ctx.beginPath();ctx.ellipse(p.x,p.y,r*.75,r*.54,0,0,Math.PI*2);ctx.strokeStyle='#80c5d7';ctx.stroke();
+      if(index===2){roundRect(p.x-r*.4,p.y-r*.3,r*.8,r*.55,size.scale*.2);ctx.fillStyle='#e8d273';ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,r*.18,0,Math.PI*2);ctx.fillStyle='#e33c3b';ctx.fill()}
     });
     CFG.map.vents.forEach(function(vent){
       var p=toScreen(vent.x,vent.y),r=Math.max(2,size.scale*.8);ctx.beginPath();ctx.ellipse(p.x,p.y,r,r*.7,0,0,Math.PI*2);ctx.fillStyle='#384652';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='#16232f';ctx.stroke();ctx.beginPath();ctx.moveTo(p.x-r*.6,p.y);ctx.lineTo(p.x+r*.6,p.y);ctx.stroke();
     });
-    CFG.map.rooms.forEach(function(def){
+    if(mapOverview)CFG.map.rooms.forEach(function(def){
       var p=toScreen(def.x,def.y),w=def.w*size.scale;
       ctx.fillStyle='#e5eef1';ctx.font='900 '+Math.max(8,size.scale*1.35)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.shadowColor='#182531';ctx.shadowBlur=3;ctx.fillText(def.name,p.x+w/2,p.y+size.scale*.5);ctx.shadowBlur=0;
     });
@@ -1691,7 +1724,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var me = room.players.filter(function(p){ return p.you; })[0];
 
     // own unfinished tasks
-    if (me && me.role === 'crew' && me.alive) {
+    if (me && me.role === 'crew') {
       me.tasks.forEach(function(task){
         if (task.done) return;
         var station = null;
@@ -1715,9 +1748,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
     // sabotage points stay visible so the crew knows where to run
     if (room.sabotage) {
-      var sabPoint = room.sabotage.kind === 'reactor' ? { x: 13, y: 68 }
-        : room.sabotage.kind === 'oxygen' ? { x: 85, y: 42 }
-        : room.sabotage.kind === 'lights' ? { x: 24, y: 49.5 } : { x: 88, y: 68 };
+      var sabPoint = room.sabotage.kind === 'reactor' ? { x: 9, y: 50 }
+        : room.sabotage.kind === 'oxygen' ? { x: 74, y: 38 }
+        : room.sabotage.kind === 'lights' ? { x: 34, y: 70 } : { x: 68, y: 85 };
       var ssp = toScreen(sabPoint.x, sabPoint.y);
       ctx.beginPath();
       ctx.arc(ssp.x, ssp.y, size.scale * 2.4, 0, Math.PI * 2);
@@ -1749,8 +1782,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
     // other players
     if(!mapOverview)room.players.forEach(function(player){
-      if (player.token === 'you') return;
-      var pos = toScreen(player.x, player.y);
+      if (player.token === 'you' || (!player.alive && me && me.alive)) return;
+      var remote=remotePositions[player.token];
+      if(!remote || Math.hypot(remote.x-player.x,remote.y-player.y)>20) remote=remotePositions[player.token]={x:player.x,y:player.y};
+      else {remote.x+=(player.x-remote.x)*.12;remote.y+=(player.y-remote.y)*.12}
+      var pos = toScreen(remote.x, remote.y);
       drawBean(pos.x, pos.y, size.scale * 3.6, colorHex(player.color), !player.alive, player.name, false);
     });
 
@@ -1768,7 +1804,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       var radius = size.scale * (me.alive ? (lightsOut ? 13 : (me.role === 'impostor' ? 34 : 27)) : 34);
       var grd = ctx.createRadialGradient(vp.x, vp.y, radius * 0.5, vp.x, vp.y, radius);
       grd.addColorStop(0, 'rgba(3,5,12,0)');
-      grd.addColorStop(1, 'rgba(3,5,12,0.94)');
+      grd.addColorStop(1, lightsOut ? 'rgba(3,5,12,0.9)' : 'rgba(10,20,35,0.38)');
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, size.w, size.h);
     }
@@ -1805,6 +1841,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     world.vy = sy / limit;
   }
   function padEnd(){
+    if(dragging) flushPosition();
     dragging = false;
     stick.style.transform = 'translate(0,0)';
     world.vx = 0; world.vy = 0;
@@ -1818,16 +1855,22 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
   var keyState = {};
   window.addEventListener('keydown', function(e){ keyState[e.key.toLowerCase()] = true; });
-  window.addEventListener('keyup', function(e){ keyState[e.key.toLowerCase()] = false; });
+  window.addEventListener('keyup', function(e){ var key=e.key.toLowerCase();keyState[key] = false;if(['arrowleft','arrowright','arrowup','arrowdown','a','d','w','s'].indexOf(key)>=0)flushPosition(); });
+  function flushPosition(){
+    if(!AU.room || AU.room.phase!=='playing' || !world.ready)return;
+    world.lastSent=Date.now();world.moveSeq += 1;act('move',{x:world.x,y:world.y,seq:world.moveSeq});
+  }
 
   function clientWalkable(x,y){
     return CFG.map.rooms.concat(CFG.map.corridors).some(function(rect){return x>=rect.x&&x<=rect.x+rect.w&&y>=rect.y&&y<=rect.y+rect.h});
   }
-  function step(){
+  var lastFrame=0;
+  function step(frame){
     requestAnimationFrame(step);
+    var delta=lastFrame ? Math.min(.05,(frame-lastFrame)/1000) : 0; lastFrame=frame;
     if (!AU.room || AU.room.phase !== 'playing') return;
     var me = AU.room.players.filter(function(p){ return p.you; })[0];
-    if (!me || !me.alive) return;
+    if (!me || document.querySelector('.overlay.on')) return;
     var vx = world.vx, vy = world.vy;
     if (keyState['arrowleft'] || keyState['a']) vx -= 1;
     if (keyState['arrowright'] || keyState['d']) vx += 1;
@@ -1835,9 +1878,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (keyState['arrowdown'] || keyState['s']) vy += 1;
     if (!vx && !vy) return;
     var length = Math.hypot(vx, vy) || 1;
-    var speed = 22;
-    var nextX=Math.max(1,Math.min(99,world.x+(vx/length)*speed/60));
-    var nextY=Math.max(1,Math.min(99,world.y+(vy/length)*speed/60));
+    var speed = 17 * Math.min(1,length);
+    if(Math.abs(vx)>.05) world.facingLeft=vx<0;
+    var nextX=Math.max(1,Math.min(99,world.x+(vx/length)*speed*delta));
+    var nextY=Math.max(1,Math.min(99,world.y+(vy/length)*speed*delta));
     if(clientWalkable(nextX,nextY)){world.x=nextX;world.y=nextY}
     else if(clientWalkable(nextX,world.y))world.x=nextX;
     else if(clientWalkable(world.x,nextY))world.y=nextY;
@@ -1847,8 +1891,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       sfx('step');
     }
     if (now - world.lastSent > 220) {
-      world.lastSent = now;
-      act('move', { x: world.x, y: world.y });
+      flushPosition();
     }
   }
   requestAnimationFrame(step);
@@ -1894,7 +1937,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var me = room.players.filter(function(p){ return p.you; })[0];
     if (!me) return;
     el('auPracticeExit').hidden = !room.practice;
-    el('auEmergency').hidden = !!room.practice;
+    el('auEmergency').hidden = !!room.practice || !me.alive;
     el('auRoleText').textContent = room.practice ? 'تجربة فردية' : room.phase === 'ended'
       ? (room.winner === 'crew' ? 'الطاقم فاز' : 'المزوّرون فازوا')
       : (me.role === 'impostor' ? 'مزوّر' : 'طاقم');
@@ -1902,14 +1945,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var progress = room.progress.total ? Math.round((room.progress.done / room.progress.total) * 100) : 0;
     el('auProgress').style.width = progress + '%';
     el('auTaskChip').textContent = room.progress.done + '/' + room.progress.total;
+    el('auTaskList').innerHTML = (me.tasks || []).map(function(t){return '<div class="'+(t.done?'done':'')+'">'+esc(t.label)+'</div>'}).join('') || 'ما عندك مهام';
 
-    el('auKill').hidden = me.role !== 'impostor';
-    el('auVent').hidden = me.role !== 'impostor';
-    el('auSabotage').hidden = me.role !== 'impostor';
-    el('auReport').hidden = !!room.practice;
+    el('auKill').hidden = me.role !== 'impostor' || !me.alive;
+    el('auVent').hidden = me.role !== 'impostor' || !me.alive;
+    el('auSabotage').hidden = me.role !== 'impostor' || !me.alive;
+    el('auReport').hidden = !!room.practice || !me.alive;
 
     var station = nearestStation(me);
-    el('auUse').classList.toggle('ready', !!station && room.phase === 'playing' && me.alive);
+    el('auUse').classList.toggle('ready', !!station && room.phase === 'playing');
     var target = nearestTarget();
     el('auKill').classList.toggle('ready', me.role === 'impostor' && !!target && room.killCooldownLeftMs === 0 && room.phase === 'playing');
 
@@ -1970,6 +2014,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   var activeTask = null;
   var taskState = {};
   function openTask(task){
+    world.vx=0;world.vy=0;
     activeTask = task;
     taskState = {};
     el('auTaskDialog').classList.add('on');
@@ -1988,6 +2033,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function renderTask(){
     var body = el('auTaskBody');
     if (!activeTask) return;
+    if (activeTask.station === 'st-seq-admin') return renderCard(body);
     if (activeTask.kind === 'wires') return renderWires(body);
     if (activeTask.kind === 'sequence') return renderSequence(body);
     if (activeTask.kind === 'hold') return renderHold(body);
@@ -1997,39 +2043,40 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function renderWires(body){
     if (!taskState.order) {
       taskState.order = [0, 1, 2, 3].sort(function(){ return Math.random() - 0.5; });
-      taskState.linked = [];
-      taskState.pick = null;
+      taskState.linked = []; taskState.pick = null;
     }
-    var html = '<h2>' + esc(activeTask.label) + '</h2><p>وصّل كل سلك بلونه.</p><div class="wires" style="margin-top:12px"><div class="wire-col">';
-    for (var i = 0; i < 4; i += 1) {
-      html += '<div class="wire' + (taskState.linked.indexOf(i) >= 0 ? ' done' : '') + (taskState.pick === i ? ' pick' : '') + '" data-left="' + i + '" style="background:' + WIRE_COLORS[i] + '"></div>';
+    var html='<h2>'+esc(activeTask.label)+'</h2><p>اسحب السلك إلى نفس اللون، أو اضغط الطرفين.</p><div class="wire-board"><svg class="wire-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">';
+    taskState.linked.forEach(function(i){var j=taskState.order.indexOf(i);html+='<line x1="12" y1="'+(12.5+i*25)+'" x2="88" y2="'+(12.5+j*25)+'" stroke="'+WIRE_COLORS[i]+'" stroke-width="3"/>'});
+    html+='</svg><div class="wire-col">';
+    for(var i=0;i<4;i++) html+='<button type="button" class="wire wire-left '+(taskState.linked.indexOf(i)>=0?'done':'')+(taskState.pick===i?' pick':'')+'" data-left="'+i+'" style="background:'+WIRE_COLORS[i]+'" aria-label="سلك '+(i + 1)+'"></button>';
+    html+='</div><div class="wire-col">';
+    for(var j=0;j<4;j++){var k=taskState.order[j];html+='<button type="button" class="wire wire-right '+(taskState.linked.indexOf(k)>=0?'done':'')+'" data-right="'+k+'" style="background:'+WIRE_COLORS[k]+'" aria-label="طرف '+(k + 1)+'"></button>'}
+    html+='</div></div><button class="btn block" id="auTaskCancel" style="margin-top:10px"><span>إلغاء</span></button>';
+    body.innerHTML=html;el('auTaskCancel').addEventListener('click',closeTask);
+    function connect(index){
+      if(taskState.pick==null||taskState.linked.indexOf(index)>=0)return;
+      if(taskState.pick!==index){taskState.pick=null;toast('السلك غلط');return renderTask()}
+      taskState.linked.push(index);taskState.pick=null;
+      if(taskState.linked.length===4)return completeTask();renderTask();
     }
-    html += '</div><div class="wire-col">';
-    for (var j = 0; j < 4; j += 1) {
-      var colorIndex = taskState.order[j];
-      html += '<div class="wire' + (taskState.linked.indexOf(colorIndex) >= 0 ? ' done' : '') + '" data-right="' + colorIndex + '" style="background:' + WIRE_COLORS[colorIndex] + '"></div>';
-    }
-    html += '</div></div><button class="btn block" id="auTaskCancel" style="margin-top:14px"><span>إلغاء</span></button>';
-    body.innerHTML = html;
-    el('auTaskCancel').addEventListener('click', closeTask);
-    Array.prototype.forEach.call(body.querySelectorAll('[data-left]'), function(node){
-      node.addEventListener('click', function(){
-        var index = Number(node.getAttribute('data-left'));
-        if (taskState.linked.indexOf(index) >= 0) return;
-        taskState.pick = index;
-        renderTask();
+    Array.prototype.forEach.call(body.querySelectorAll('[data-left]'),function(node){
+      node.addEventListener('pointerdown',function(e){taskState.pick=Number(node.getAttribute('data-left'));node.setPointerCapture(e.pointerId)});
+      node.addEventListener('pointerup',function(e){
+        var target=document.elementFromPoint(e.clientX,e.clientY), right=target&&target.closest('[data-right]');
+        if(right){connect(Number(right.getAttribute('data-right')));return} renderTask();
       });
     });
-    Array.prototype.forEach.call(body.querySelectorAll('[data-right]'), function(node){
-      node.addEventListener('click', function(){
-        var index = Number(node.getAttribute('data-right'));
-        if (taskState.pick == null || taskState.linked.indexOf(index) >= 0) return;
-        if (taskState.pick !== index) { toast('السلك غلط'); taskState.pick = null; return renderTask(); }
-        taskState.linked.push(index);
-        taskState.pick = null;
-        if (taskState.linked.length === 4) return completeTask();
-        renderTask();
-      });
+    Array.prototype.forEach.call(body.querySelectorAll('[data-right]'),function(node){node.addEventListener('click',function(){connect(Number(node.getAttribute('data-right')))})});
+  }
+  function renderCard(body){
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>اسحب البطاقة من اليسار لليمين على القارئ.</p><div class="card-reader" id="auCardReader"><div class="card-track"></div><div class="access-card" id="auAccessCard">'+crewSvg('cyan')+'</div></div><p class="hint" id="auCardHint">اسحب البطاقة</p><button class="btn block" id="auTaskCancel"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',closeTask);
+    var card=el('auAccessCard'),reader=el('auCardReader'),start=0,down=0;
+    card.addEventListener('pointerdown',function(e){e.preventDefault();start=e.clientX;down=Date.now();card.setPointerCapture(e.pointerId)});
+    card.addEventListener('pointermove',function(e){if(!down)return;var distance=Math.max(0,Math.min(reader.clientWidth-card.clientWidth,e.clientX-start));card.style.transform='translateX('+distance+'px)'});
+    card.addEventListener('pointerup',function(e){if(!down)return;var distance=e.clientX-start,elapsed=Date.now()-down;down=0;
+      if(distance>reader.clientWidth*.55 && elapsed>=250 && elapsed<=3000){var task=activeTask;el('auCardHint').textContent='تم قبول البطاقة';setTimeout(function(){if(activeTask===task)completeTask()},350)}
+      else{card.style.transform='';el('auCardHint').textContent='حاول مرة ثانية بسرعة مناسبة'}
     });
   }
   function renderSequence(body){
@@ -2105,21 +2152,26 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     window.auStopHold = stopHold;
   }
   function renderUpload(body){
-    if (taskState.count == null) taskState.count = 0;
-    body.innerHTML = '<h2>' + esc(activeTask.label) + '</h2><p>اضغط ثلاث مرات لرفع البيانات.</p>' +
-      '<div class="up-count" style="margin-top:12px">' + taskState.count + '/3</div>' +
-      '<button class="btn block green" id="auUpload" style="margin-top:14px"><span>ارفع</span></button>' +
+    body.innerHTML = '<h2>' + esc(activeTask.label) + '</h2><p>ابدأ نقل البيانات وانتظر لين يكتمل.</p>' +
+      '<div class="hold-fill"><i id="auUploadFill"></i></div><p class="hint" id="auUploadStatus">جاهز للنقل</p>' +
+      '<button class="btn block green" id="auUpload" style="margin-top:10px"><span>ابدأ النقل</span></button>' +
       '<button class="btn block" id="auTaskCancel" style="margin-top:10px"><span>إلغاء</span></button>';
-    el('auTaskCancel').addEventListener('click', closeTask);
+    el('auTaskCancel').addEventListener('click', function(){stopHold();closeTask()});
     el('auUpload').addEventListener('click', function(){
-      taskState.count += 1;
-      if (taskState.count >= 3) return completeTask();
-      renderTask();
+      this.disabled=true; var started=Date.now(), task=activeTask;
+      var timer=setInterval(function(){
+        if(activeTask!==task){clearInterval(timer);return}
+        var progress=Math.min(1,(Date.now()-started)/4000);
+        el('auUploadFill').style.width=(progress*100)+'%';el('auUploadStatus').textContent=Math.floor(progress*100)+'%';
+        if(progress>=1){clearInterval(timer);completeTask()}
+      },100);
+      window.auStopHold=function(){clearInterval(timer)};
     });
   }
   function stopHold(){ if (window.auStopHold) window.auStopHold(); }
 
   /* ---------- meeting ---------- */
+  el('auMeetingForm').addEventListener('submit',function(event){event.preventDefault();var input=el('auMeetingInput'),text=input.value.trim();if(!text)return;input.value='';act('meetingChat',{text:text});});
   function renderMeeting(room){
     var dialog = el('auMeetingDialog');
     if (room.phase !== 'meeting' || !room.meeting) { dialog.classList.remove('on'); return; }
@@ -2138,15 +2190,20 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     }).join('');
     Array.prototype.forEach.call(list.querySelectorAll('[data-vote]'), function(button){
       button.addEventListener('click', function(){
-        act('vote', { target: button.getAttribute('data-vote') }).then(function(){ dialog.classList.remove('on'); });
+        act('vote', { target: button.getAttribute('data-vote') });
       });
     });
     el('auSkipVote').onclick = function(){
-      act('vote', { target: 'skip' }).then(function(){ dialog.classList.remove('on'); });
+      act('vote', { target: 'skip' });
     };
+    var chat = el('auMeetingChat'), entries = room.meeting.chat || [];
+    var chatHtml=entries.map(function(m){return '<p><b>'+esc(m.name)+':</b> '+esc(m.text)+'</p>'}).join('');
+    if(chat.innerHTML!==chatHtml){chat.innerHTML=chatHtml;chat.scrollTop=chat.scrollHeight}
+    el('auMeetingInput').disabled=!(me && me.alive);
+    Array.prototype.forEach.call(list.querySelectorAll('[data-vote]'),function(button){button.disabled=!(me && me.alive) || !!me.votedFor});
     var seconds = Math.max(0, Math.ceil((room.meeting.endsAt - room.now) / 1000));
     el('auMeetingTimer').textContent = seconds + ' ثانية';
-    el('auSkipVote').disabled = !!(me && me.votedFor);
+    el('auSkipVote').disabled = !(me && me.alive) || !!me.votedFor;
   }
 
   /* ---------- end: the ejection screen from the original ---------- */
