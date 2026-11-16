@@ -211,17 +211,20 @@ export const AU_MAP: {
   corridors: [
     { x: 22, y: 18, w: 17, h: 5 }, // weapons -> cafeteria
     { x: 61, y: 18, w: 17, h: 5 }, // cafeteria -> navigation
-    { x: 46, y: 19, w: 6, h: 10 }, // cafeteria -> medbay/admin
+    { x: 46, y: 19, w: 6, h: 14 }, // cafeteria -> medbay/admin
     { x: 38, y: 31, w: 18, h: 5 }, // medbay <-> admin
-    { x: 66, y: 31, w: 13, h: 5 }, // admin -> o2
-    { x: 47, y: 38, w: 5, h: 19 }, // medbay -> storage
-    { x: 29, y: 46, w: 12, h: 5 }, // electrical -> storage
+    { x: 66, y: 31, w: 16, h: 6 }, // admin -> o2 (overlaps both rooms)
+    { x: 47, y: 35, w: 5, h: 22 }, // medbay -> storage
+    { x: 29, y: 46, w: 20, h: 5 }, // electrical -> central corridor
     { x: 21, y: 54, w: 5, h: 9 }, // electrical -> reactor
+    { x: 19, y: 60, w: 4, h: 5 }, // bridge into reactor
     { x: 13, y: 76, w: 5, h: 8 }, // reactor -> engines
     { x: 25, y: 86, w: 16, h: 5 }, // engines -> storage
+    { x: 40, y: 70, w: 6, h: 19 }, // connect engine hall to storage
     { x: 56, y: 62, w: 9, h: 5 }, // storage -> shields
     { x: 77, y: 63, w: 6, h: 5 }, // shields -> comms
-    { x: 70, y: 47, w: 5, h: 12 } // o2 -> shields
+    { x: 70, y: 47, w: 5, h: 12 }, // o2 -> shields
+    { x: 70, y: 44, w: 12, h: 5 } // connect oxygen to shield hall
   ],
   vents: [
     { id: 'v1', x: 20, y: 49, link: 'v2' },

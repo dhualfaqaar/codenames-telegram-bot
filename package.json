@@ -25,6 +25,7 @@
     "test:media": "tsx scripts/check-media-downloads.ts",
     "test:amongus": "tsx scripts/check-amongus.ts",
     "test:amongus:dom": "node scripts/check-amongus-dom.mjs",
+    "test:amongus:art-browser": "node scripts/check-amongus-art-browser.mjs",
     "test:audio": "tsx scripts/check-audio-formats.ts",
     "test:voice": "tsx scripts/check-voice-delivery.ts",
     "test:sfx": "tsx scripts/check-game-sfx.ts",
