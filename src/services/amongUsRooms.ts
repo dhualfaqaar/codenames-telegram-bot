@@ -413,8 +413,8 @@ function pickColor(room: AuRoomState, wanted?: string): string {
 
 function makePlayer(name: string, bot: boolean, room: AuRoomState, color?: string): AuPlayer {
   const spawn = {
-    x: CAFETERIA_SPAWN.x + (Math.random() * 6 - 3),
-    y: CAFETERIA_SPAWN.y + (Math.random() * 2 - 1)
+    x: 36 + (room.players.length % 5) * 7,
+    y: 56 + Math.floor(room.players.length / 5) * 12
   };
   return {
     token: bot ? `bot_${Math.random().toString(36).slice(2, 9)}` : token(),
@@ -1154,8 +1154,9 @@ export class AmongUsRooms {
             player.role = null;
             player.tasks = [];
             player.emergencyUsed = false;
-            player.x = CAFETERIA_SPAWN.x;
-            player.y = CAFETERIA_SPAWN.y;
+            player.x = 36 + (room.players.indexOf(player) % 5) * 7;
+            player.y = 56 + Math.floor(room.players.indexOf(player) / 5) * 12;
+            player.moveSeq = 0;
           });
           break;
         }
@@ -1164,6 +1165,16 @@ export class AmongUsRooms {
           if (room.phase !== 'lobby') return fail('المباراة بدت أصلاً');
           if (room.players.length < AU_MIN_START) return fail(`تحتاج ${AU_MIN_START} لاعبين على الأقل`);
           startMatch(room);
+          break;
+        }
+        case 'lobbyMove': {
+          if (room.phase !== 'lobby') break;
+          if (Number.isSafeInteger(body.seq)) {
+            if (body.seq <= (me.moveSeq || 0)) break;
+            me.moveSeq = body.seq;
+          }
+          const x=Number(body.x), y=Number(body.y);
+          if (Number.isFinite(x) && Number.isFinite(y)) { me.x=Math.max(12,Math.min(88,x)); me.y=Math.max(33,Math.min(84,y)); }
           break;
         }
         case 'move': {
@@ -1214,6 +1225,7 @@ export class AmongUsRooms {
         case 'emergency': {
           if (room.practice) return fail('ماكو اجتماع بالتجربة الفردية');
           if (room.phase !== 'playing' || !me.alive || me.ventId) break;
+          if (room.sabotage) return fail('أصلح التخريب قبل الاجتماع');
           if (me.emergencyUsed) return fail('استخدمت الاجتماع الطارئ من قبل');
           if (distance(EMERGENCY_POINT, me) > 9) return fail('زر الطوارئ بالكافتيريا');
           me.emergencyUsed = true;

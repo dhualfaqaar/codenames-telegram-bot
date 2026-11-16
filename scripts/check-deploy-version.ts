@@ -77,6 +77,20 @@ try {
   check('تفاصيل الخطأ لا تظهر بالرد العام', !payload.includes(fakeSecret) && !payload.includes('secret-test-value'));
 } finally { console.error = oldError; }
 
+// The actual Worker route forwards room requests without a stale content-length
+// and fails as JSON when the Durable Object is unreachable.
+let forwarded: any = null;
+const roomEnv: any = { BOT_STATE: {idFromName:()=> 'main',get:()=>({fetch:async (url:string, init:any)=>{forwarded={url,init};return Response.json({ok:true})}})} };
+const practiceBody=JSON.stringify({action:'practice',name:'لاعب'});
+const practiceRequest=new Request('https://worker.test/api/amongus/rooms',{method:'POST',headers:{'Content-Type':'application/json','Content-Length':String(Buffer.byteLength(practiceBody))},body:practiceBody});
+check('تمرير طلب تجربة امونق اس للغرفة', (await workerModule.default.fetch(practiceRequest,roomEnv,{})).status === 200 && forwarded.url === 'https://bot.internal/api/amongus/rooms');
+check('تمرير الطلب بلا ترويسة حجم قديمة', !forwarded.init.headers.has('content-length') && forwarded.init.body === practiceBody);
+const oldRoomError=console.error;console.error=()=>{};
+try {
+ const failed=await workerModule.default.fetch(new Request('https://worker.test/api/amongus/rooms',{method:'POST',body:'{}'}),badEnv,{});
+ check('عطل خدمة الغرفة يرجع خطأ واضح',failed.status===503 && (await failed.json()).ok===false);
+} finally {console.error=oldRoomError;}
+
 const writtenKeys: string[] = [];
 const brokenStateStorage: any = {
   get: async (key: string) => { if (key === 'state') throw new Error('temporary storage fault'); return undefined; },
