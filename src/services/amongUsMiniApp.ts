@@ -206,6 +206,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .sp-back svg{width:18px;height:18px}
 .sp-back:active{transform:translateY(3px);box-shadow:0 1px 0 #052a28}
 /* left = enter code, middle = create room, right = online — one size, equal gaps */
+.sp-practice{border:2px solid #8ad3de;border-radius:9px;background:#214a55;color:#fff;padding:5px 12px;font-size:13px;margin:3px auto;display:block}
 .sp-cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;direction:ltr;align-items:stretch;padding:2px}
 /* Each card carries its own colour so the row reads as three different places. */
 .sp-card{
@@ -315,7 +316,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   border:3px solid #33456b;box-shadow:0 10px 0 #060b16,inset 0 2px 0 #ffffff10;
   overflow:hidden;
 }
-.room:before{content:"";position:absolute;inset:0;background:linear-gradient(#0b152bd9,#091426ec),url("/amongus-ship-art-v1.jpg") center / cover no-repeat;opacity:1;pointer-events:none}
+.room:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%,#25475a,#091426 72%);opacity:1;pointer-events:none}
 .room:after{content:"";position:absolute;left:50%;top:8px;transform:translateX(-50%);
   width:70%;height:3px;border-radius:9px;background:#2c3f63}
 .code-row{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;gap:10px;margin:2px 0 12px}
@@ -350,6 +351,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   background:#0a1220e0;border:2px solid #33456b;font-size:11px;font-weight:900;color:#dfeaff;
   box-shadow:0 3px 0 #05070f
 }
+.badge[hidden]{display:none}
 .badge svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .badge.imp{background:#3a0d0d;border-color:#e03a3a;color:#ffd9d9}
 .tasks{flex:1;display:flex;flex-direction:column;gap:3px}
@@ -612,6 +614,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
                 <span class="sp-bar">ONLINE</span>
               </button>
             </div>
+            <button type="button" class="sp-practice" id="auPractice">تجربة فردية</button>
             <div class="sp-join" id="auJoinBox">
               <input id="auCode" maxlength="6" placeholder="ABC123" aria-label="كود الغرفة">
               <button id="auJoin">دخول</button>
@@ -728,6 +731,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       </div>
       <span class="badge" id="auTaskChip">0/0</span>
       <button type="button" class="badge" id="auMapToggle" aria-pressed="false">الخريطة</button>
+      <button type="button" class="badge" id="auPracticeExit" hidden>إنهاء التجربة</button>
     </div>
     <div id="auAlarm"></div>
     <div class="pad" id="auPad"><i id="auStick"></i></div>
@@ -1098,6 +1102,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!AU.code || !AU.token) return Promise.resolve({ ok:false });
     var body = Object.assign({ action: action, token: AU.token, code: AU.code }, extra || {});
     return api('/rooms/' + AU.code, body).then(function(res){
+      if (AU.code !== body.code || AU.token !== body.token) return res;
       if (!res.ok) { if (res.error) toast(res.error); return res; }
       if(action==='vent' && res.room){var teleported=res.room.players.filter(function(p){return p.you})[0];if(teleported){world.x=teleported.x;world.y=teleported.y;world.ready=true}}
       applyRoom(res.room);
@@ -1340,6 +1345,12 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     };
     el('auPlayBtn').addEventListener('click', openPlay);
     el('auPlayBack').addEventListener('click', closePlay);
+    el('auPractice').addEventListener('click', function(){
+      api('/rooms', {action:'practice', name:readName(), color:profile.color, initData:tgInitData()}).then(function(res){
+        if (!res.ok) return toast(res.error || 'تعذّر بدء التجربة');
+        AU.code=res.code; AU.token=res.token; world.ready=false; closePlay(); applyRoom(res.room);
+      });
+    });
     el('auCreate').addEventListener('click', function(){ showView('auViewSettings'); renderRuleRows(); });
     el('auSettingsBack').addEventListener('click', function(){ showView('auViewPick'); });
     el('auCreateRoom').addEventListener('click', createRoom);
@@ -1466,6 +1477,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   el('auStart').addEventListener('click', function(){
     act('start').then(function(res){ if (res && res.ok) setScreen('auStage'); });
   });
+  el('auPracticeExit').addEventListener('click', function(){
+    var code=AU.code, token=AU.token; AU.code=''; AU.token=''; AU.room=null; world.ready=false;
+    api('/rooms/' + code, {action:'leave', code:code, token:token});
+    history.replaceState(null, '', location.pathname); setScreen('auMenu');
+  });
   el('auBackLobby').addEventListener('click', function(){
     el('auEndDialog').classList.remove('on');
     act('lobby');
@@ -1494,9 +1510,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   }
   function poll(){
     if (!AU.code || !AU.token) return;
-    fetch('/api/amongus/rooms/' + AU.code + '?token=' + encodeURIComponent(AU.token))
+    var code = AU.code, token = AU.token;
+    fetch('/api/amongus/rooms/' + code + '?token=' + encodeURIComponent(token))
       .then(function(r){ return r.json(); })
-      .then(function(res){ if (res && res.ok) applyRoom(res.room); })
+      .then(function(res){ if (res && res.ok && AU.code === code && AU.token === token) applyRoom(res.room); })
       .catch(function(){});
   }
   setInterval(poll, 850);
@@ -1608,9 +1625,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var room = AU.room;
     // Follow the player's actual coordinates at a readable size. The map
     // toggle keeps the complete server-aligned ship available for navigation.
-    size.scale=Math.min(size.w,size.h)/(mapOverview?100:46);
+    size.scale=mapOverview?Math.min(size.w/100,Math.max(120,size.h-55)/100):Math.min(size.w,size.h)/46;
     size.ox=mapOverview?(size.w-100*size.scale)/2:size.w/2-world.x*size.scale;
-    size.oy=mapOverview?(size.h-100*size.scale)/2:size.h/2-world.y*size.scale;
+    size.oy=mapOverview?45+(size.h-45-100*size.scale)/2:size.h/2-world.y*size.scale;
     ctx.clearRect(0, 0, size.w, size.h);
     // hull / void
     ctx.fillStyle = '#05070f';
@@ -1623,7 +1640,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       var p=toScreen(rect.x,rect.y),w=rect.w*size.scale,h=rect.h*size.scale;
       ctx.fillStyle='#101a2a';roundRect(p.x-2,p.y-2,w+4,h+4,size.scale*.75);ctx.fill();
     });
-    var roomTints={cafeteria:'#8e9ba5',weapons:'#8e918c',navigation:'#5e8c99',o2:'#7e9b8e',admin:'#aaa08b',medbay:'#8dabb6',electrical:'#9b8e7c',storage:'#9b978b',reactor:'#927f88',engines:'#9a8582',shields:'#87999e',comms:'#8b899b'};
+    var roomTints={cafeteria:'#8e9ba5',weapons:'#8e918c',navigation:'#5e8c99',o2:'#7e9b8e',admin:'#aaa08b',medbay:'#8dabb6',electrical:'#9b8e7c',storage:'#9b978b',reactor:'#927f88','upper-engine':'#9a8582','lower-engine':'#9a8582',security:'#899e9b',shields:'#87999e',comms:'#8b899b'};
     CFG.map.rooms.forEach(function(def){
       var p=toScreen(def.x,def.y),w=def.w*size.scale,h=def.h*size.scale;
       ctx.fillStyle=roomTints[def.id]||'#8e9ba5';roundRect(p.x,p.y,w,h,size.scale*.5);ctx.fill();
@@ -1651,17 +1668,17 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       roundRect(bx+bw*.15,by+bh*.18,bw*.7,bh*.45,size.scale*.2);ctx.fill();
       if(def.id==='storage'){
         for(var j=0;j<2;j++){var cx=p.x+w*(.60+j*.16),cy=p.y+h*.22,cs=Math.min(w,h)*.13;ctx.fillStyle='#a78159';ctx.fillRect(cx,cy,cs,cs);ctx.strokeRect(cx,cy,cs,cs)}
-      }else if(def.id==='engines'||def.id==='reactor'){
-        ctx.beginPath();ctx.ellipse(p.x+w*.72,p.y+h*.33,w*.13,h*.16,0,0,Math.PI*2);ctx.fillStyle=def.id==='engines'?'#d48465':'#96d9c6';ctx.fill();ctx.stroke();
+      }else if(def.id.indexOf('engine')>=0||def.id==='reactor'){
+        ctx.beginPath();ctx.ellipse(p.x+w*.72,p.y+h*.33,w*.13,h*.16,0,0,Math.PI*2);ctx.fillStyle=def.id.indexOf('engine')>=0?'#d48465':'#96d9c6';ctx.fill();ctx.stroke();
       }else if(def.id==='medbay'){
         ctx.fillStyle='#dcebea';roundRect(p.x+w*.62,p.y+h*.18,w*.20,h*.34,size.scale*.2);ctx.fill();ctx.stroke();
       }
     });
     // Decorative cafeteria tables do not add collision geometry.
-    [{x:44,y:10},{x:50,y:12},{x:56,y:10}].forEach(function(t,index){
+    [{x:43,y:9},{x:57,y:9},{x:50,y:12},{x:43,y:19},{x:57,y:19}].forEach(function(t,index){
       var p=toScreen(t.x,t.y),r=Math.max(3,size.scale*1.7);
       ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle='#506875';ctx.fill();ctx.lineWidth=Math.max(1,size.scale*.3);ctx.strokeStyle='#243441';ctx.stroke();
-      if(index===1){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,size.scale*.7),0,Math.PI*2);ctx.fillStyle='#e23835';ctx.fill();ctx.stroke()}
+      if(index===2){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,size.scale*.7),0,Math.PI*2);ctx.fillStyle='#e23835';ctx.fill();ctx.stroke()}
     });
     CFG.map.vents.forEach(function(vent){
       var p=toScreen(vent.x,vent.y),r=Math.max(2,size.scale*.8);ctx.beginPath();ctx.ellipse(p.x,p.y,r,r*.7,0,0,Math.PI*2);ctx.fillStyle='#384652';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='#16232f';ctx.stroke();ctx.beginPath();ctx.moveTo(p.x-r*.6,p.y);ctx.lineTo(p.x+r*.6,p.y);ctx.stroke();
@@ -1876,7 +1893,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function renderHud(room){
     var me = room.players.filter(function(p){ return p.you; })[0];
     if (!me) return;
-    el('auRoleText').textContent = room.phase === 'ended'
+    el('auPracticeExit').hidden = !room.practice;
+    el('auEmergency').hidden = !!room.practice;
+    el('auRoleText').textContent = room.practice ? 'تجربة فردية' : room.phase === 'ended'
       ? (room.winner === 'crew' ? 'الطاقم فاز' : 'المزوّرون فازوا')
       : (me.role === 'impostor' ? 'مزوّر' : 'طاقم');
     el('auRoleChip').classList.toggle('imp', me.role === 'impostor');
@@ -1887,7 +1906,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     el('auKill').hidden = me.role !== 'impostor';
     el('auVent').hidden = me.role !== 'impostor';
     el('auSabotage').hidden = me.role !== 'impostor';
-    el('auReport').hidden = false;
+    el('auReport').hidden = !!room.practice;
 
     var station = nearestStation(me);
     el('auUse').classList.toggle('ready', !!station && room.phase === 'playing' && me.alive);
@@ -1921,9 +1940,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var me = AU.room.players.filter(function(p){ return p.you; })[0];
     if (!me) return;
     if (AU.room.sabotage) {
-      var point = AU.room.sabotage.kind === 'reactor' ? { x: 13, y: 68 }
-        : AU.room.sabotage.kind === 'oxygen' ? { x: 85, y: 42 }
-        : AU.room.sabotage.kind === 'lights' ? { x: 24, y: 49.5 } : { x: 88, y: 68 };
+      var point = AU.room.sabotage.kind === 'reactor' ? { x: 9, y: 50 }
+        : AU.room.sabotage.kind === 'oxygen' ? { x: 74, y: 38 }
+        : AU.room.sabotage.kind === 'lights' ? { x: 34, y: 70 } : { x: 68, y: 85 };
       if (Math.hypot(point.x - world.x, point.y - world.y) < 8) return act('fix');
     }
     var near = nearestStation(me);

@@ -80,6 +80,7 @@ export interface AuSettings {
 export interface AuRoomState {
   code: string;
   hostToken: string;
+  practice?: boolean;
   settings?: AuSettings;
   phase: AuPhase;
   createdAt: number;
@@ -194,57 +195,67 @@ export const AU_MAP: {
   vents: Array<{ id: string; x: number; y: number; link: string }>;
   stations: Array<{ id: string; label: string; kind: AuTaskKind; x: number; y: number; room: string }>;
 } = {
+  // Relative positions and connections based on The Skeld's in-game map.
+  // Rectangles are both the rendered floor and the authoritative collision geometry.
   rooms: [
-    { id: 'cafeteria', name: 'الكافتيريا', x: 38, y: 4, w: 24, h: 16 },
-    { id: 'weapons', name: 'الأسلحة', x: 8, y: 14, w: 15, h: 13 },
-    { id: 'navigation', name: 'الملاحة', x: 77, y: 14, w: 15, h: 13 },
-    { id: 'o2', name: 'الأوكسجين', x: 78, y: 36, w: 14, h: 11 },
-    { id: 'admin', name: 'الإدارة', x: 55, y: 28, w: 12, h: 10 },
-    { id: 'medbay', name: 'العيادة', x: 34, y: 28, w: 12, h: 11 },
-    { id: 'electrical', name: 'الكهرباء', x: 18, y: 44, w: 12, h: 11 },
-    { id: 'storage', name: 'المخزن', x: 40, y: 56, w: 18, h: 15 },
-    { id: 'reactor', name: 'المفاعل', x: 6, y: 60, w: 14, h: 17 },
-    { id: 'engines', name: 'المحركات', x: 8, y: 82, w: 18, h: 11 },
-    { id: 'shields', name: 'الدروع', x: 64, y: 58, w: 14, h: 12 },
-    { id: 'comms', name: 'الاتصالات', x: 82, y: 62, w: 12, h: 11 }
+    { id: 'cafeteria', name: 'الكافتيريا', x: 38, y: 4, w: 24, h: 20 },
+    { id: 'weapons', name: 'الأسلحة', x: 70, y: 8, w: 12, h: 15 },
+    { id: 'navigation', name: 'الملاحة', x: 88, y: 35, w: 10, h: 15 },
+    { id: 'o2', name: 'الأوكسجين', x: 69, y: 33, w: 11, h: 11 },
+    { id: 'admin', name: 'الإدارة', x: 57, y: 45, w: 12, h: 13 },
+    { id: 'medbay', name: 'العيادة', x: 27, y: 29, w: 10, h: 13 },
+    { id: 'electrical', name: 'الكهرباء', x: 28, y: 64, w: 13, h: 14 },
+    { id: 'storage', name: 'المخزن', x: 43, y: 69, w: 18, h: 20 },
+    { id: 'reactor', name: 'المفاعل', x: 3, y: 41, w: 12, h: 18 },
+    { id: 'upper-engine', name: 'المحرك العلوي', x: 13, y: 10, w: 13, h: 16 },
+    { id: 'lower-engine', name: 'المحرك السفلي', x: 13, y: 70, w: 13, h: 16 },
+    { id: 'security', name: 'الأمن', x: 18, y: 44, w: 11, h: 12 },
+    { id: 'shields', name: 'الدروع', x: 76, y: 67, w: 12, h: 15 },
+    { id: 'comms', name: 'الاتصالات', x: 63, y: 79, w: 11, h: 12 }
   ],
   corridors: [
-    { x: 22, y: 18, w: 17, h: 5 }, // weapons -> cafeteria
-    { x: 61, y: 18, w: 17, h: 5 }, // cafeteria -> navigation
-    { x: 46, y: 19, w: 6, h: 14 }, // cafeteria -> medbay/admin
-    { x: 38, y: 31, w: 18, h: 5 }, // medbay <-> admin
-    { x: 66, y: 31, w: 16, h: 6 }, // admin -> o2 (overlaps both rooms)
-    { x: 47, y: 35, w: 5, h: 22 }, // medbay -> storage
-    { x: 29, y: 46, w: 20, h: 5 }, // electrical -> central corridor
-    { x: 21, y: 54, w: 5, h: 9 }, // electrical -> reactor
-    { x: 19, y: 60, w: 4, h: 5 }, // bridge into reactor
-    { x: 13, y: 76, w: 5, h: 8 }, // reactor -> engines
-    { x: 25, y: 86, w: 16, h: 5 }, // engines -> storage
-    { x: 40, y: 70, w: 6, h: 19 }, // connect engine hall to storage
-    { x: 56, y: 62, w: 9, h: 5 }, // storage -> shields
-    { x: 77, y: 63, w: 6, h: 5 }, // shields -> comms
-    { x: 70, y: 47, w: 5, h: 12 }, // o2 -> shields
-    { x: 70, y: 44, w: 12, h: 5 } // connect oxygen to shield hall
+    { x: 25, y: 16, w: 14, h: 6 }, // upper engine to cafeteria
+    { x: 31, y: 20, w: 5, h: 11 }, // medbay entrance
+    { x: 61, y: 14, w: 10, h: 6 }, // cafeteria to weapons
+    { x: 48, y: 23, w: 6, h: 48 }, // cafeteria down to storage
+    { x: 53, y: 48, w: 5, h: 6 }, // admin entrance
+    { x: 18, y: 25, w: 5, h: 46 }, // engines and reactor/security junction
+    { x: 14, y: 48, w: 5, h: 6 },
+    { x: 22, y: 76, w: 22, h: 6 }, // lower engine to storage
+    { x: 34, y: 77, w: 5, h: 4 }, // electrical opens into lower hall
+    { x: 75, y: 22, w: 5, h: 12 }, // weapons to O2 junction
+    { x: 79, y: 38, w: 10, h: 6 }, // navigation corridor
+    { x: 81, y: 42, w: 5, h: 30 }, // right side down to shields
+    { x: 60, y: 74, w: 17, h: 6 }, // storage to shields
+    { x: 66, y: 78, w: 5, h: 3 } // communications entrance
   ],
+  // Each network cycles within the original connected vent group.
   vents: [
-    { id: 'v1', x: 20, y: 49, link: 'v2' },
-    { id: 'v2', x: 47, y: 62, link: 'v1' },
-    { id: 'v3', x: 88, y: 66, link: 'v4' },
-    { id: 'v4', x: 70, y: 63, link: 'v3' }
+    { id:'cafe', x:57, y:9, link:'admin' }, { id:'admin', x:64, y:53, link:'hall' },
+    { id:'hall', x:51, y:34, link:'cafe' },
+    { id:'weapons', x:77, y:13, link:'nav-upper' }, { id:'nav-upper', x:92, y:39, link:'weapons' },
+    { id:'nav-lower', x:92, y:46, link:'shields' }, { id:'shields', x:83, y:76, link:'nav-lower' },
+    { id:'elec', x:32, y:68, link:'security' }, { id:'security', x:24, y:50, link:'med' },
+    { id:'med', x:31, y:36, link:'elec' },
+    { id:'upper', x:20, y:16, link:'reactor-upper' }, { id:'reactor-upper', x:9, y:45, link:'upper' },
+    { id:'lower', x:20, y:78, link:'reactor-lower' }, { id:'reactor-lower', x:9, y:55, link:'lower' }
   ],
   stations: [
-    { id: 'st-wires-elec', label: 'أسلاك الكهرباء', kind: 'wires', x: 24, y: 49.5, room: 'electrical' },
-    { id: 'st-wires-shield', label: 'أسلاك الدروع', kind: 'wires', x: 71, y: 64, room: 'shields' },
-    { id: 'st-wires-weapons', label: 'أسلاك الأسلحة', kind: 'wires', x: 15, y: 20, room: 'weapons' },
-    { id: 'st-hold-reactor', label: 'تبريد المفاعل', kind: 'hold', x: 13, y: 68, room: 'reactor' },
-    { id: 'st-hold-nav', label: 'معايرة الملاحة', kind: 'hold', x: 84, y: 20, room: 'navigation' },
-    { id: 'st-hold-med', label: 'فحص العيادة', kind: 'hold', x: 40, y: 33, room: 'medbay' },
-    { id: 'st-seq-weapons', label: 'شحن الأسلحة', kind: 'sequence', x: 17, y: 24, room: 'weapons' },
-    { id: 'st-seq-admin', label: 'بطاقة الإدارة', kind: 'sequence', x: 61, y: 33, room: 'admin' },
-    { id: 'st-seq-o2', label: 'فلتر الأوكسجين', kind: 'sequence', x: 85, y: 42, room: 'o2' },
-    { id: 'st-up-storage', label: 'تحميل البيانات', kind: 'upload', x: 49, y: 63, room: 'storage' },
-    { id: 'st-up-comms', label: 'رفع البيانات', kind: 'upload', x: 88, y: 68, room: 'comms' },
-    { id: 'st-up-cafe', label: 'سجل الكافتيريا', kind: 'upload', x: 50, y: 12, room: 'cafeteria' }
+    { id:'st-wires-elec', label:'أسلاك الكهرباء', kind:'wires', x:34, y:70, room:'electrical' },
+    { id:'st-wires-shield', label:'أسلاك الدروع', kind:'wires', x:82, y:73, room:'shields' },
+    { id:'st-wires-weapons', label:'أسلاك الأسلحة', kind:'wires', x:75, y:16, room:'weapons' },
+    { id:'st-hold-reactor', label:'تبريد المفاعل', kind:'hold', x:9, y:50, room:'reactor' },
+    { id:'st-hold-nav', label:'معايرة الملاحة', kind:'hold', x:94, y:42, room:'navigation' },
+    { id:'st-hold-med', label:'فحص العيادة', kind:'hold', x:32, y:34, room:'medbay' },
+    { id:'st-seq-weapons', label:'شحن الأسلحة', kind:'sequence', x:77, y:20, room:'weapons' },
+    { id:'st-seq-admin', label:'بطاقة الإدارة', kind:'sequence', x:63, y:51, room:'admin' },
+    { id:'st-seq-o2', label:'فلتر الأوكسجين', kind:'sequence', x:74, y:38, room:'o2' },
+    { id:'st-up-storage', label:'تحميل البيانات', kind:'upload', x:52, y:80, room:'storage' },
+    { id:'st-up-comms', label:'رفع البيانات', kind:'upload', x:68, y:85, room:'comms' },
+    { id:'st-up-cafe', label:'سجل الكافتيريا', kind:'upload', x:50, y:12, room:'cafeteria' },
+    { id:'st-upper', label:'معايرة المحرك العلوي', kind:'hold', x:19, y:20, room:'upper-engine' },
+    { id:'st-lower', label:'معايرة المحرك السفلي', kind:'hold', x:19, y:79, room:'lower-engine' },
+    { id:'st-security', label:'شاشة الأمن', kind:'upload', x:24, y:51, room:'security' }
   ]
 };
 
@@ -379,6 +390,7 @@ function endGame(room: AuRoomState, winner: 'crew' | 'impostors', reason: string
 
 function checkWin(room: AuRoomState): boolean {
   if (room.phase === 'ended') return true;
+  if (room.practice) return false;
   const alive = room.players.filter(player => player.alive);
   const impostors = alive.filter(player => player.role === 'impostor');
   const crewAlive = alive.filter(player => player.role === 'crew');
@@ -417,7 +429,7 @@ function startMatch(room: AuRoomState): void {
   room.round = 1;
   room.log = [];
   const wantedImpostors = settings.impostors > 0 ? settings.impostors : impostorCount(players.length);
-  const impostors = Math.max(
+  const impostors = room.practice ? 0 : Math.max(
     1,
     Math.min(wantedImpostors, Math.max(1, Math.floor((players.length - 1) / 2)))
   );
@@ -426,7 +438,7 @@ function startMatch(room: AuRoomState): void {
   players.forEach((player, index) => {
     player.role = impostorIndexes.has(index) ? 'impostor' : 'crew';
     player.alive = true;
-    player.tasks = player.role === 'crew' ? dealTasks(settings.tasks) : [];
+    player.tasks = player.role === 'crew' ? dealTasks(room.practice ? AU_MAP.stations.length : settings.tasks) : [];
     player.x = CAFETERIA_SPAWN.x + (Math.random() * 10 - 5);
     player.y = CAFETERIA_SPAWN.y + (Math.random() * 6 - 3);
     player.emergencyUsed = false;
@@ -519,6 +531,36 @@ function nearestAliveCrew(room: AuRoomState, from: AuPlayer, range: number): AuP
   return best;
 }
 
+// Route bots through overlapping walkable rectangles instead of steering into walls.
+function nextBotWaypoint(from: { x: number; y: number }, target: { x: number; y: number }): { x: number; y: number } {
+  const rects = [...AU_MAP.rooms, ...AU_MAP.corridors];
+  const starts = rects.map((rect, i) => insideRect(from, rect) ? i : -1).filter(i => i >= 0);
+  const ends = new Set(rects.map((rect, i) => insideRect(target, rect) ? i : -1).filter(i => i >= 0));
+  const prev = new Map<number, number>();
+  const queue = [...starts];
+  for (const i of starts) prev.set(i, -1);
+  let end = -1;
+  for (let n = 0; n < queue.length; n += 1) {
+    const current = queue[n];
+    if (ends.has(current)) { end = current; break; }
+    const a = rects[current];
+    for (let i = 0; i < rects.length; i += 1) {
+      if (prev.has(i)) continue;
+      const b = rects[i];
+      if (Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) &&
+          Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y)) {
+        prev.set(i, current); queue.push(i);
+      }
+    }
+  }
+  if (end < 0 || starts.includes(end)) return target;
+  let step = end;
+  while (!starts.includes(prev.get(step)!)) step = prev.get(step)!;
+  const a = rects[prev.get(step)!], b = rects[step];
+  return { x: (Math.max(a.x, b.x) + Math.min(a.x + a.w, b.x + b.w)) / 2,
+    y: (Math.max(a.y, b.y) + Math.min(a.y + a.h, b.y + b.h)) / 2 };
+}
+
 function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
   if (room.phase !== 'playing' || !bot.alive) return;
   if (room.meeting) return;
@@ -569,10 +611,11 @@ function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
   }
 
   if (bot.target) {
-    const dx = bot.target.x - bot.x;
-    const dy = bot.target.y - bot.y;
+    const waypoint = nextBotWaypoint(bot, bot.target);
+    const dx = waypoint.x - bot.x;
+    const dy = waypoint.y - bot.y;
     const length = Math.hypot(dx, dy) || 1;
-    const step = 2.2;
+    const step = Math.min(2.2, length);
     const next = clampToShip(bot.x + (dx / length) * step, bot.y + (dy / length) * step, bot);
     bot.x = next.x;
     bot.y = next.y;
@@ -586,10 +629,10 @@ function applySabotage(room: AuRoomState, kind: AuSabotage): void {
 }
 
 function sabotageStation(kind: AuSabotage): { x: number; y: number } | null {
-  if (kind === 'reactor') return { x: 13, y: 68 };
-  if (kind === 'oxygen') return { x: 85, y: 42 };
-  if (kind === 'lights') return { x: 24, y: 49.5 };
-  return { x: 88, y: 68 };
+  if (kind === 'reactor') return { x: 9, y: 50 };
+  if (kind === 'oxygen') return { x: 74, y: 38 };
+  if (kind === 'lights') return { x: 34, y: 70 };
+  return { x: 68, y: 85 };
 }
 
 /** Runs timers, bot AI and win checks. Cheap enough to run on every poll. */
@@ -661,6 +704,7 @@ export interface AuPublicRoom {
   progress: { done: number; total: number };
   killCooldownLeftMs: number;
   canStart: boolean;
+  practice: boolean;
   minPlayers: number;
   maxPlayers: number;
   settings: AuSettings;
@@ -682,6 +726,7 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
     : [];
   return {
     code: room.code,
+    practice: !!room.practice,
     phase: room.phase,
     players: room.players.map(player => {
       // Your own role, your fellow impostors, and everyone whose body was found
@@ -859,10 +904,11 @@ export class AmongUsRooms {
       const body: any = await request.json().catch(() => ({}));
       const action = String(body.action || '');
 
-      if (action === 'create') {
+      if (action === 'create' || action === 'practice') {
         const code = randomCode();
         const room: AuRoomState = {
           code,
+          practice: action === 'practice',
           settings: sanitizeSettings(body.settings),
           hostToken: '',
           phase: 'lobby',
@@ -882,9 +928,10 @@ export class AmongUsRooms {
         const host = makePlayer(await this.playerName(body) || 'المضيف', false, room, String(body.color || ''));
         room.players.push(host);
         room.hostToken = host.token;
-        log(room, 'انفتحت غرفة جديدة');
+        if (room.practice) startMatch(room);
+        else log(room, 'انفتحت غرفة جديدة');
         await this.save(room);
-        await this.addToIndex(code);
+        if (!room.practice) await this.addToIndex(code);
         return json({ ok: true, code, token: host.token, room: publicRoom(room, host.token) });
       }
 
@@ -893,6 +940,7 @@ export class AmongUsRooms {
       if (!room) return fail('الغرفة غير موجودة أو انتهت', 404);
 
       if (action === 'join') {
+        if (room.practice) return fail('التجربة الفردية خاصة');
         if (room.phase !== 'lobby') return fail('المباراة بدت — انتظر الجولة الجاية');
         const limit = roomSettings(room).maxPlayers;
         if (room.players.length >= limit) return fail(`الغرفة فلّت (${limit} لاعبين)`);
@@ -993,6 +1041,7 @@ export class AmongUsRooms {
           break;
         }
         case 'emergency': {
+          if (room.practice) return fail('ماكو اجتماع بالتجربة الفردية');
           if (room.phase !== 'playing' || !me.alive) break;
           if (me.emergencyUsed) return fail('استخدمت الاجتماع الطارئ من قبل');
           if (distance(EMERGENCY_POINT, me) > 9) return fail('زر الطوارئ بالكافتيريا');
