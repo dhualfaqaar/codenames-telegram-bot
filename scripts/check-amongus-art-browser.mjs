@@ -17,7 +17,8 @@ try{
  await page.goto(base+'/amongus');await page.waitForFunction(()=>window.__artDraws.scene>0);
  if(process.env.GAMES_SCREENSHOT_DIR)await page.screenshot({path:process.env.GAMES_SCREENSHOT_DIR+'/among-menu.png'});
  await page.locator('#auPlayBtn').click();await page.locator('#auCreate').click();await page.locator('#auCreateRoom').click();await page.locator('#auLobby.on').waitFor();
- assert.match(await page.locator('#auLobby .room').evaluate(el=>getComputedStyle(el,'::before').backgroundImage),/amongus-ship-art-v1/);
+ assert.doesNotMatch(await page.locator('#auLobby .room').evaluate(el=>getComputedStyle(el,'::before').backgroundImage),/amongus-ship-art-v1/);
+ assert.equal(await page.locator('#auPracticeExit').isVisible(),false);
  for(let n=0;n<5;n++){await page.locator('#auAddBot').click();await page.waitForFunction(n=>Number(document.querySelector('#auCount').textContent)>=n+2,n)}
  assert.equal(await page.locator('#auStart').isDisabled(),false);
  if(process.env.GAMES_SCREENSHOT_DIR)await page.screenshot({path:process.env.GAMES_SCREENSHOT_DIR+'/among-lobby.png',fullPage:true});
@@ -30,6 +31,8 @@ try{
  await page.keyboard.down('ArrowUp');await page.waitForTimeout(850);await page.keyboard.up('ArrowUp');
  const moves=requests.filter(r=>r && r.action==='move');assert.ok(moves.length>0,'movement intent sent');
  assert.ok(moves.every(r=>r.x>=38 && r.x<=62 && r.y>=4 && r.y<=20),'predicted movement remains within the server cafeteria geometry');
+ // Return to the button after the movement check, independent of random spawn.
+ await page.evaluate(async()=>{const s=window.__auState;await fetch('/api/amongus/rooms/'+s.code,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'move',code:s.code,token:s.token,x:50,y:12})})});
  await page.locator('#auEmergency').click();await page.locator('#auMeetingDialog.on').waitFor({timeout:10000});
  assert.match(await page.locator('#auMeetingDialog').evaluate(el=>getComputedStyle(el).backgroundImage),/amongus-cafeteria-art-v1/);
  if(process.env.GAMES_SCREENSHOT_DIR)await page.screenshot({path:process.env.GAMES_SCREENSHOT_DIR+'/among-meeting.png'});

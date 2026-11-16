@@ -335,6 +335,39 @@ while (changed) {
 check('كل غرف السفينة مترابطة بممرات قابلة للمشي', AU_MAP.rooms.every((_, i) => reachable.has(i)));
 
 
+
+// The practice session is private, has every task and never invokes normal win rules.
+const practice = await post('/api/amongus/rooms', { action: 'practice', name: 'تجربة' });
+check('التجربة تبدأ وحدك كطاقم', practice.ok && practice.room.practice && practice.room.phase === 'playing' && practice.room.players.length === 1 && practice.room.role === 'crew');
+check('كل محطات المهام متاحة بالتجربة', practice.room.players[0].tasks.length === AU_MAP.stations.length);
+check('لا ينضم أحد للتجربة', !(await post(`/api/amongus/rooms/${practice.code}`, {action:'join', code:practice.code})).ok);
+check('لا اجتماع فردي', !(await post(`/api/amongus/rooms/${practice.code}`, {action:'emergency', code:practice.code, token:practice.token})).ok);
+const listPractice = await engine.handle(new Request('https://game.test/api/amongus/rooms')).then(r => r.json()) as any;
+check('التجربة لا تظهر بقائمة الغرف', !(listPractice.rooms || []).some((r: any) => r.code === practice.code));
+await patch(practice.code, state => state.players[0].tasks.forEach(task => { task.done = true; }));
+check('إكمال المهام لا ينهي التجربة', (await get(practice.code, practice.token)).room.phase === 'playing');
+check('كل محطة وفتحة على أرض قابلة للمشي', [...AU_MAP.stations, ...AU_MAP.vents].every(p => isWalkable(p.x,p.y)));
+check('كل محطة ضمن غرفتها', AU_MAP.stations.every(st => { const r = AU_MAP.rooms.find(r => r.id === st.room)!; return r && st.x >= r.x && st.x <= r.x+r.w && st.y >= r.y && st.y <= r.y+r.h; }));
+check('الغرف الأصلية منفصلة', AU_MAP.rooms.length === 14 && ['security','upper-engine','lower-engine'].every(id => AU_MAP.rooms.some(r => r.id === id)));
+// Flood-fill small steps: traversability must be real, not just rectangles touching.
+const gridQueue: Array<[number,number]> = [[50,17]];
+const cells = new Set(['50,17']);
+for (let i=0; i<gridQueue.length; i++) {
+  const [x,y] = gridQueue[i];
+  for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const nx=x+dx, ny=y+dy, key=`${nx},${ny}`;
+    if (!cells.has(key) && isWalkable(nx,ny)) { cells.add(key); gridQueue.push([nx,ny]); }
+  }
+}
+check('كل المحطات والتهويات يمكن الوصول إلها بخطوات مشي', [...AU_MAP.stations,...AU_MAP.vents].every(p => cells.has(`${Math.round(p.x)},${Math.round(p.y)}`)));
+check('الممرات والغرف تتبع توزيع The Skeld', (() => {
+  const r = (id: string) => AU_MAP.rooms.find(room => room.id === id)!;
+  return r('upper-engine').x < r('cafeteria').x && r('weapons').x > r('cafeteria').x &&
+    r('navigation').x > r('weapons').x && r('reactor').x < r('security').x &&
+    r('medbay').y < r('electrical').y && r('admin').y < r('storage').y &&
+    r('lower-engine').y > r('upper-engine').y && r('comms').y > r('shields').y;
+})());
+
 /* ------------------------------------------------------------ movement */
 
 const walk = await post(`/api/amongus/rooms/${code}`, { action: 'move', token: guests[0], code, x: 50, y: 12 });
@@ -467,12 +500,12 @@ const impostor4 = state4.players.find(p => p.role === 'impostor')!;
 const crew4 = state4.players.find(p => p.role === 'crew')!;
 await patch(code4, state => {
   const killer = state.players.find(p => p.token === impostor4.token)!;
-  killer.x = 20;
-  killer.y = 49;
+  killer.x = 32;
+  killer.y = 68;
 });
 const vented = await post(`/api/amongus/rooms/${code4}`, { action: 'vent', token: impostor4.token, code: code4 });
 const ventedPlayer = (await room(code4)).players.find(p => p.token === impostor4.token)!;
-check('المزوّر يستخدم التهوية', vented.ok && Math.abs(ventedPlayer.x - 47) < 2 && Math.abs(ventedPlayer.y - 62) < 2);
+check('المزوّر يستخدم التهوية', vented.ok && Math.abs(ventedPlayer.x - 24) < 2 && Math.abs(ventedPlayer.y - 50) < 2);
 const crewVent = await post(`/api/amongus/rooms/${code4}`, { action: 'vent', token: crew4.token, code: code4 });
 check('الطاقم ما يستخدم التهوية', crewVent.ok === false);
 
