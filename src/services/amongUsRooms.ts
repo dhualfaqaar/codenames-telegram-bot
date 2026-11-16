@@ -41,6 +41,9 @@ export interface AuPlayer {
   votesGiven: boolean;
   target?: { x: number; y: number } | null;
   nextThinkAt?: number;
+  suspectToken?: string | null;
+  taskReadyAt?: number;
+  moveSeq?: number;
 }
 
 export interface AuBody {
@@ -59,6 +62,7 @@ export interface AuMeeting {
   startedAt: number;
   endsAt: number;
   votes: Record<string, string | 'skip'>;
+  chat?: Array<{ name: string; text: string }>;
   result?: { ejected: string | null; role: AuRole | null; tied: boolean; skipped: number };
 }
 
@@ -403,7 +407,7 @@ function checkWin(room: AuRoomState): boolean {
     return true;
   }
   const crewMembers = room.players.filter(player => player.role === 'crew');
-  const aliveCrewTasks = alive.filter(player => player.role === 'crew').flatMap(player => player.tasks);
+  const aliveCrewTasks = room.players.filter(player => player.role === 'crew').flatMap(player => player.tasks);
   if (aliveCrewTasks.length === 0) {
     endGame(room, 'crew', 'ما بقت مهام على الطاقم الحيّ');
     return true;
@@ -442,10 +446,13 @@ function startMatch(room: AuRoomState): void {
     player.x = CAFETERIA_SPAWN.x + (Math.random() * 10 - 5);
     player.y = CAFETERIA_SPAWN.y + (Math.random() * 6 - 3);
     player.emergencyUsed = false;
-    player.lastKillAt = Date.now() - settings.killCooldownMs;
+    player.lastKillAt = Date.now();
     player.votesGiven = false;
     player.target = null;
     player.nextThinkAt = 0;
+    player.suspectToken = null;
+    player.taskReadyAt = 0;
+    player.moveSeq = 0;
     player.lastSeen = Date.now();
   });
   log(room, `بدت المباراة بـ ${players.length} لاعبين و${impostors} مزوّر`);
@@ -459,7 +466,7 @@ function crewTaskProgress(room: AuRoomState): { done: number; total: number } {
 function startMeeting(room: AuRoomState, reason: 'report' | 'emergency', calledBy: string): void {
   const now = Date.now();
   room.phase = 'meeting';
-  room.meeting = { reason, calledBy, startedAt: now, endsAt: now + roomSettings(room).meetingMs, votes: {} };
+  room.meeting = { reason, calledBy, startedAt: now, endsAt: now + roomSettings(room).meetingMs, votes: {}, chat: [] };
   room.players.forEach(player => {
     player.votesGiven = false;
     if (player.alive) {
@@ -499,20 +506,20 @@ function resolveMeeting(room: AuRoomState): void {
   const ejected = ejectedToken ? room.players.find(player => player.token === ejectedToken) || null : null;
   if (ejected) {
     ejected.alive = false;
-    room.players.filter(player => player.role === 'impostor').forEach(player => {
-      if (player.alive) player.lastKillAt = Date.now();
-    });
     log(room, `انطرد ${ejected.name}${ejected.role === 'impostor' ? ' — كان مزوّراً' : ' — كان من الطاقم'}`);
   } else {
     log(room, 'ما انطرد أحد بهذا التصويت');
   }
   room.lastMeeting = { ejectedName: ejected ? ejected.name : null, ejectedRole: ejected ? ejected.role : null, tied, at: Date.now() };
   room.meeting = null;
+  room.players.filter(player => player.role === 'impostor' && player.alive).forEach(player => { player.lastKillAt = Date.now(); });
   room.round += 1;
   if (!checkWin(room)) {
     room.phase = 'playing';
     room.players.forEach(player => {
       player.votesGiven = false;
+      player.suspectToken = null;
+      player.taskReadyAt = 0;
     });
   }
 }
@@ -561,65 +568,84 @@ function nextBotWaypoint(from: { x: number; y: number }, target: { x: number; y:
     y: (Math.max(a.y, b.y) + Math.min(a.y + a.h, b.y + b.h)) / 2 };
 }
 
+/** Bots remember only nearby witnesses, not secret roles. */
+function recordWitnesses(room: AuRoomState, killer: AuPlayer, victim: AuPlayer): void {
+  for (const witness of room.players) {
+    if (witness.bot && witness.role === 'crew' && witness.alive && witness.token !== killer.token && witness.token !== victim.token && distance(witness, victim) < 8) {
+      witness.suspectToken = killer.token;
+    }
+  }
+}
+
 function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
-  if (room.phase !== 'playing' || !bot.alive) return;
-  if (room.meeting) return;
-  if ((bot.nextThinkAt || 0) > now) return;
-  bot.nextThinkAt = now + 1200 + Math.random() * 1600;
-
-  if (bot.role === 'impostor') {
-    const victim = nearestAliveCrew(room, bot, 6.5);
-    if (victim && now - bot.lastKillAt > roomSettings(room).killCooldownMs) {
-      victim.alive = false;
-      bot.lastKillAt = now;
-      room.bodies.push({ playerId: victim.token, name: victim.name, color: victim.color, x: victim.x, y: victim.y, room: roomAt(victim.x, victim.y), at: now });
-      log(room, 'صار قتل بالسفينة');
-      checkWin(room);
-      return;
-    }
-    if (!room.sabotage && Math.random() < 0.08) {
-      const kind: AuSabotage = (['reactor', 'oxygen', 'lights', 'comms'] as AuSabotage[])[Math.floor(Math.random() * 4)];
-      applySabotage(room, kind);
-      return;
-    }
-  }
-
-  // Bodies get reported by passing bots.
-  const body = room.bodies.find(entry => distance(entry, bot) < 7);
-  if (body && Math.random() < 0.5) {
-    startMeeting(room, 'report', bot.token);
-    return;
-  }
-
-  if (bot.role === 'crew') {
-    const nextTask = bot.tasks.find(task => !task.done);
-    if (nextTask) {
-      const station = stationById(nextTask.station);
-      if (station && distance(station, bot) < 3.5) {
-        nextTask.done = true;
-        checkWin(room);
-      } else if (station) {
-        bot.target = { x: station.x, y: station.y };
+  if (room.phase !== 'playing' || (!bot.alive && bot.role !== 'crew')) return;
+  const think = (bot.nextThinkAt || 0) <= now;
+  if (think) {
+    bot.nextThinkAt = now + 1300 + Math.random() * 800;
+    const body = bot.alive && room.bodies.find(entry => distance(entry, bot) < 5);
+    if (body) { startMeeting(room, 'report', bot.token); return; }
+    if (bot.role === 'impostor') {
+      const victim = nearestAliveCrew(room, bot, 4);
+      const witnesses = victim ? room.players.filter(p => p.alive && p.token !== bot.token && p.token !== victim.token && distance(p, victim) < 7).length : 0;
+      if (victim && witnesses === 0 && now - bot.lastKillAt >= roomSettings(room).killCooldownMs) {
+        recordWitnesses(room, bot, victim);
+        victim.alive = false; bot.lastKillAt = now;
+        room.bodies.push({ playerId: victim.token, name: victim.name, color: victim.color, x: victim.x, y: victim.y, room: roomAt(victim.x, victim.y), at: now });
+        log(room, 'صار قتل بالسفينة'); checkWin(room); return;
       }
-    } else if (!bot.target || distance(bot.target, bot) < 3) {
-      const room2 = AU_MAP.rooms[Math.floor(Math.random() * AU_MAP.rooms.length)];
-      bot.target = { x: room2.x + room2.w / 2, y: room2.y + room2.h / 2 };
+      // Pursue only a nearby crewmate in a clear walkable line, never a hidden target.
+      const nearby = nearestAliveCrew(room, bot, 14);
+      if (nearby && Array.from({length:8}, (_, i) => (i + 1) / 8).every(t => isWalkable(bot.x + (nearby.x - bot.x) * t, bot.y + (nearby.y - bot.y) * t))) {
+        bot.target = {x:nearby.x, y:nearby.y};
+      }
+      if (!room.sabotage && Math.random() < 0.025) {
+        const kind: AuSabotage = (['reactor', 'oxygen', 'lights', 'comms'] as AuSabotage[])[Math.floor(Math.random() * 4)];
+        applySabotage(room, kind);
+      }
     }
-  } else if (!bot.target || distance(bot.target, bot) < 3) {
-    const room2 = AU_MAP.rooms[Math.floor(Math.random() * AU_MAP.rooms.length)];
-    bot.target = { x: room2.x + room2.w / 2, y: room2.y + room2.h / 2 };
+    if (bot.role === 'crew' && bot.alive && room.sabotage) {
+      bot.taskReadyAt = 0;
+      const point = sabotageStation(room.sabotage.kind);
+      if (point && distance(point, bot) < 4) { room.sabotage = null; bot.target = null; }
+      else if (point) bot.target = point;
+    } else if (bot.role === 'crew') {
+      const nextTask = bot.tasks.find(task => !task.done);
+      const station = nextTask && stationById(nextTask.station);
+      if (nextTask && station) {
+        bot.target = { x: station.x, y: station.y };
+        if (distance(station, bot) < 2.5) {
+          if (!bot.taskReadyAt) bot.taskReadyAt = now + 3500;
+          if (now >= bot.taskReadyAt) { nextTask.done = true; bot.taskReadyAt = 0; bot.target = null; checkWin(room); }
+        } else bot.taskReadyAt = 0;
+      } else bot.target = null;
+    }
+    if (!bot.target || distance(bot.target, bot) < 1) {
+      const destination = AU_MAP.rooms[Math.floor(Math.random() * AU_MAP.rooms.length)];
+      if (!(bot.taskReadyAt && bot.role === 'crew')) bot.target = { x: destination.x + destination.w / 2, y: destination.y + destination.h / 2 };
+    }
   }
-
-  if (bot.target) {
+  if (bot.target && !bot.taskReadyAt) {
     const waypoint = nextBotWaypoint(bot, bot.target);
-    const dx = waypoint.x - bot.x;
-    const dy = waypoint.y - bot.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const step = Math.min(2.2, length);
-    const next = clampToShip(bot.x + (dx / length) * step, bot.y + (dy / length) * step, bot);
-    bot.x = next.x;
-    bot.y = next.y;
+    const dx = waypoint.x - bot.x, dy = waypoint.y - bot.y;
+    const length = Math.hypot(dx, dy) || 1, step = Math.min(3.2, length);
+    const next = clampToShip(bot.x + dx / length * step, bot.y + dy / length * step, bot);
+    bot.x = next.x; bot.y = next.y;
   }
+}
+
+function botVote(room: AuRoomState, now: number): boolean {
+  const meeting = room.meeting;
+  if (!meeting || now - meeting.startedAt < 5000) return false;
+  let changed = false;
+  for (const bot of room.players) {
+    if (!bot.bot || !bot.alive || meeting.votes[bot.token]) continue;
+    const suspect = room.players.find(p => p.alive && p.token === bot.suspectToken && p.token !== bot.token);
+    meeting.votes[bot.token] = suspect ? suspect.token : 'skip';
+    if (suspect) (meeting.chat ||= []).push({name:bot.name, text:`شفت ${suspect.name} قريب من الجريمة`});
+    changed = true;
+  }
+  if (room.players.filter(p => p.alive).every(p => meeting.votes[p.token])) resolveMeeting(room);
+  return changed;
 }
 
 function applySabotage(room: AuRoomState, kind: AuSabotage): void {
@@ -639,6 +665,8 @@ function sabotageStation(kind: AuSabotage): { x: number; y: number } | null {
 function tick(room: AuRoomState): boolean {
   const now = Date.now();
   let changed = false;
+
+  if (room.phase === 'meeting' && room.meeting && now < room.meeting.endsAt && botVote(room, now)) changed = true;
 
   if (room.phase === 'meeting' && room.meeting && now >= room.meeting.endsAt) {
     resolveMeeting(room);
@@ -697,6 +725,7 @@ export interface AuPublicRoom {
     calledBy: string;
     endsAt: number;
     votes: Array<{ voter: string; target: string | null }>;
+    chat: Array<{ name: string; text: string }>;
   } | null;
   lastMeeting: AuRoomState['lastMeeting'];
   winner: 'crew' | 'impostors' | null;
@@ -721,7 +750,7 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
   const votes = room.meeting
     ? Object.entries(room.meeting.votes).map(([voter, target]) => ({
         voter: room.players.find(player => player.token === voter)?.name || voter,
-        target: target === 'skip' ? 'skip' : room.players.find(player => player.token === target)?.name || null
+        target: voter === viewerToken ? (target === 'skip' ? 'skip' : room.players.find(player => player.token === target)?.name || null) : null
       }))
     : [];
   return {
@@ -749,7 +778,7 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
         isHost: player.token === room.hostToken,
         you: player.token === viewerToken,
         voteReady: Boolean(room.meeting?.votes[player.token]),
-        votedFor: room.meeting?.votes[player.token] || null,
+        votedFor: player.token === viewerToken ? (room.meeting?.votes[player.token] || null) : null,
         emergencyUsed: player.emergencyUsed
       };
     }),
@@ -762,7 +791,8 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
           reason: room.meeting.reason,
           calledBy: room.players.find(player => player.token === room.meeting?.calledBy)?.name || '',
           endsAt: room.meeting.endsAt,
-          votes
+          votes,
+          chat: room.meeting.chat || []
         }
       : null,
     lastMeeting: room.lastMeeting,
@@ -1002,7 +1032,11 @@ export class AmongUsRooms {
           break;
         }
         case 'move': {
-          if (room.phase !== 'playing' || !me.alive) break;
+          if (room.phase !== 'playing') break;
+          if (Number.isSafeInteger(body.seq)) {
+            if (body.seq <= (me.moveSeq || 0)) break;
+            me.moveSeq = body.seq;
+          }
           const next = clampToShip(Number(body.x), Number(body.y), me);
           me.x = next.x;
           me.y = next.y;
@@ -1010,7 +1044,7 @@ export class AmongUsRooms {
         }
         case 'task': {
           if (me.role !== 'crew') return fail('المهام للطاقم بس');
-          if (room.phase !== 'playing' || !me.alive) break;
+          if (room.phase !== 'playing') break;
           const taskId = String(body.taskId || '');
           const task = me.tasks.find(entry => entry.id === taskId);
           if (!task || task.done) break;
@@ -1027,6 +1061,7 @@ export class AmongUsRooms {
           const target = room.players.find(player => player.token === String(body.target || ''));
           if (!target || !target.alive || target.role === 'impostor') return fail('هدف غير صالح');
           if (distance(me, target) > 7) return fail('قريب من الهدف أول');
+          recordWitnesses(room, me, target);
           target.alive = false;
           me.lastKillAt = Date.now();
           room.bodies.push({ playerId: target.token, name: target.name, color: target.color, x: target.x, y: target.y, room: roomAt(target.x, target.y), at: Date.now() });
@@ -1075,6 +1110,15 @@ export class AmongUsRooms {
           const target = AU_MAP.vents.find(entry => entry.id === vent.link) || vent;
           me.x = target.x;
           me.y = target.y;
+          break;
+        }
+        case 'meetingChat': {
+          if (room.phase !== 'meeting' || !room.meeting || !me.alive) return fail('الدردشة للّاعبين الأحياء بالاجتماع');
+          const text = String(body.text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160);
+          if (!text) return fail('اكتب رسالة');
+          const chat = room.meeting.chat ||= [];
+          chat.push({name:me.name, text});
+          if (chat.length > 40) chat.splice(0, chat.length - 40);
           break;
         }
         case 'vote': {

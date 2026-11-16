@@ -13,7 +13,7 @@ try{
    window.__artDraws={scene:0,sprites:0};const old=CanvasRenderingContext2D.prototype.drawImage;
    CanvasRenderingContext2D.prototype.drawImage=function(image,...args){if(image instanceof HTMLImageElement && image.src.includes('amongus-cafeteria-art-v1')) window.__artDraws.scene++;if(image instanceof HTMLCanvasElement && image.width>100)window.__artDraws.sprites++;return old.call(this,image,...args)};
  });
- for(const path of ['/amongus-crew-v1.png','/amongus-cafeteria-art-v1.jpg','/amongus-ship-art-v1.jpg']){const res=await page.request.get(base+path);assert.equal(res.status(),200,`${path} served`);assert.match(res.headers()['content-type'],/^image\//)}
+ for(const path of ['/amongus-crew-v1.png','/amongus-cafeteria-art-v1.jpg','/amongus-ship-art-v1.jpg','/amongus-deck-v2.jpg']){const res=await page.request.get(base+path);assert.equal(res.status(),200,`${path} served`);assert.match(res.headers()['content-type'],/^image\//)}
  await page.goto(base+'/amongus');await page.waitForFunction(()=>window.__artDraws.scene>0);
  if(process.env.GAMES_SCREENSHOT_DIR)await page.screenshot({path:process.env.GAMES_SCREENSHOT_DIR+'/among-menu.png'});
  await page.locator('#auPlayBtn').click();await page.locator('#auCreate').click();await page.locator('#auCreateRoom').click();await page.locator('#auLobby.on').waitFor();
@@ -41,6 +41,7 @@ try{
  const fallback=await browser.newPage({viewport:{width:740,height:360}});fallback.on('pageerror',e=>errors.push(String(e)));
  await fallback.route('https://telegram.org/**',route=>route.fulfill({body:''}));
  await fallback.route('**/amongus-*-v1.*',route=>route.fulfill({status:404,body:''}));
+ await fallback.route('**/amongus-deck-v2.jpg',route=>route.fulfill({status:404,body:''}));
  await fallback.goto(base+'/amongus');await fallback.locator('#auPlayBtn').click();await fallback.locator('#auCreate').click();await fallback.locator('#auCreateRoom').click();await fallback.locator('#auLobby.on').waitFor();
  for(let n=0;n<5;n++){await fallback.locator('#auAddBot').click();await fallback.waitForFunction(n=>Number(document.querySelector('#auCount').textContent)>=n+2,n)}
  await fallback.locator('#auStart').click();await fallback.locator('#auStage.on').waitFor();assert.ok(await fallback.locator('#auCanvas').isVisible());

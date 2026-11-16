@@ -18,11 +18,11 @@ try {
  await page.locator('#auMapToggle').click();
  if(process.env.GAMES_SCREENSHOT_DIR)await page.screenshot({path:process.env.GAMES_SCREENSHOT_DIR+'/practice-map.png'});
  await page.locator('#auMapToggle').click();
- // Move towards the central cafeteria task; 3 taps complete its upload.
+ // Move towards the central cafeteria task and complete the timed upload.
  await page.keyboard.down('ArrowUp'); await page.waitForTimeout(350); await page.keyboard.up('ArrowUp');
  await page.waitForTimeout(300);await page.locator('#auUse').click();
  await page.locator('#auUpload').waitFor();
- for(let i=0;i<3;i++)await page.locator('#auUpload').click();
+ await page.locator('#auUpload').click();
  await page.waitForFunction(()=>document.querySelector('#auTaskChip').textContent==='1/15');
  assert.equal(await page.evaluate(()=>window.__auState.room.phase),'playing');
  await page.setViewportSize({width:390,height:844});
