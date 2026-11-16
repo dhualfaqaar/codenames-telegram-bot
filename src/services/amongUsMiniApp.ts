@@ -315,8 +315,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   border:3px solid #33456b;box-shadow:0 10px 0 #060b16,inset 0 2px 0 #ffffff10;
   overflow:hidden;
 }
-.room:before{content:"";position:absolute;inset:auto 0 0;height:58%;background:
-  repeating-linear-gradient(90deg,#0d1b30 0 26px,#102138 26px 52px);opacity:.55}
+.room:before{content:"";position:absolute;inset:0;background:linear-gradient(#0b152bd9,#091426ec),url("/amongus-ship-art-v1.jpg") center / cover no-repeat;opacity:1;pointer-events:none}
 .room:after{content:"";position:absolute;left:50%;top:8px;transform:translateX(-50%);
   width:70%;height:3px;border-radius:9px;background:#2c3f63}
 .code-row{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;gap:10px;margin:2px 0 12px}
@@ -402,6 +401,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   padding:16px;background:#04060ff2;
 }
 .overlay.on{display:flex}
+#auMeetingDialog{background:linear-gradient(#04060fc9,#04060fe0),url("/amongus-cafeteria-art-v1.jpg") center/cover no-repeat}
 .dialog{
   width:min(100%,470px);max-height:88dvh;overflow:auto;padding:18px;border-radius:22px;
   background:linear-gradient(180deg,#1b2745,#0f1729);border:3px solid #33456b;
@@ -727,6 +727,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <div class="bar"><i id="auProgress"></i></div>
       </div>
       <span class="badge" id="auTaskChip">0/0</span>
+      <button type="button" class="badge" id="auMapToggle" aria-pressed="false">الخريطة</button>
     </div>
     <div id="auAlarm"></div>
     <div class="pad" id="auPad"><i id="auStick"></i></div>
@@ -785,6 +786,29 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
   /* ---------- drawn crewmate (no emoji anywhere) ---------- */
   var CREW_OUTLINE = '#151a24';
+  // The same transparent illustrated astronaut is recoloured once per suit.
+  // Keep the visor and outline intact and fall back to vector art on load/error.
+  var crewArt = new Image();
+  var crewArtCache = Object.create(null);
+  crewArt.src = '/amongus-crew-v1.png';
+  function crewSprite(hex){
+    if (!crewArt.complete || !crewArt.naturalWidth) return null;
+    if (crewArtCache[hex]) return crewArtCache[hex];
+    try {
+      var out = document.createElement('canvas');out.width=crewArt.naturalWidth;out.height=crewArt.naturalHeight;
+      var c=out.getContext('2d');c.drawImage(crewArt,0,0);
+      var img=c.getImageData(0,0,out.width,out.height),data=img.data;
+      var n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+      for(var i=0;i<data.length;i+=4){
+        var red=data[i],green=data[i + 1],blue=data[i + 2];
+        if(data[i + 3] && red>85 && red>green*1.6 && red>blue*1.45){
+          var light=Math.min(1.25,red/220);data[i]=Math.min(255,r*light);data[i + 1]=Math.min(255,g*light);data[i + 2]=Math.min(255,b*light);
+        }
+      }
+      c.putImageData(img,0,0);crewArtCache[hex]=out;return out;
+    } catch(e){return null}
+  }
+
   /** The crewmate silhouette from the game: flat body, dark outline, huge visor. */
   function crewSvg(colorId, extra){
     var hex = '#8899aa';
@@ -816,6 +840,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
   /* ---------- the space window: drifting stars + floating crewmates ---------- */
   var space = { canvas:null, ctx:null, w:0, h:0, stars:[], beans:[], t:0 };
+  var cafeteriaArt = new Image(); cafeteriaArt.src = '/amongus-cafeteria-art-v1.jpg';
   function spaceResize(){
     if (!space.canvas) return;
     var box = space.canvas.parentElement;
@@ -859,6 +884,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
    */
   function drawCrew(ctx, px, py, size, hex, angle, phase, opts){
     opts = opts || {};
+    var sprite=crewSprite(hex);
+    if(sprite){
+      ctx.save();ctx.translate(px,py);ctx.rotate(angle||0);
+      if(opts.shadow!==false){ctx.beginPath();ctx.ellipse(0,size*.62,size*.37,size*.07,0,0,Math.PI*2);ctx.fillStyle='rgba(8,12,20,.45)';ctx.fill()}
+      var h=size*1.12,w=h*sprite.width/sprite.height;
+      ctx.drawImage(sprite,-w/2,-size*.48,w,h);ctx.restore();return;
+    }
     var s = size / 84;
     var dark = shade(hex, -0.34);
     var lighter = shade(hex, 0.16);
@@ -964,6 +996,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var h = space.h;
     space.t += 0.016;
     ctx.clearRect(0, 0, w, h);
+    // On the title screen the requested cafeteria illustration fills the window;
+    // the animated scene remains a fallback if the image cannot be loaded.
+    if(cafeteriaArt.complete && cafeteriaArt.naturalWidth){
+      var scale=Math.max(w/cafeteriaArt.naturalWidth,h/cafeteriaArt.naturalHeight);
+      var iw=cafeteriaArt.naturalWidth*scale,ih=cafeteriaArt.naturalHeight*scale;
+      ctx.drawImage(cafeteriaArt,(w-iw)/2,(h-ih)/2,iw,ih);return;
+    }
 
     // deep space + a faint nebula band, like the original window
     var bg = ctx.createLinearGradient(0, 0, w, h);
@@ -1060,6 +1099,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var body = Object.assign({ action: action, token: AU.token, code: AU.code }, extra || {});
     return api('/rooms/' + AU.code, body).then(function(res){
       if (!res.ok) { if (res.error) toast(res.error); return res; }
+      if(action==='vent' && res.room){var teleported=res.room.players.filter(function(p){return p.you})[0];if(teleported){world.x=teleported.x;world.y=teleported.y;world.ready=true}}
       applyRoom(res.room);
       return res;
     });
@@ -1436,6 +1476,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!room) return;
     try { roomSounds(room); } catch (e) {}
     if (room.phase === 'ended') countMatch(room.code);
+    var previousPhase=AU.room&&AU.room.phase;
     AU.room = room;
     if (room.phase === 'lobby') {
       setScreen('auLobby');
@@ -1445,7 +1486,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     setScreen('auStage');
     if (room.phase === 'playing') {
       var me = room.players.filter(function(p){ return p.you; })[0];
-      if (me && !world.ready) { world.x = me.x; world.y = me.y; world.ready = true; }
+      if (me && (!world.ready || previousPhase !== 'playing')) { world.x = me.x; world.y = me.y; world.ready = true; }
     }
     renderHud(room);
     renderMeeting(room);
@@ -1508,6 +1549,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   var canvas = el('auCanvas');
   var ctx = canvas.getContext('2d');
   var size = { w:0, h:0, scale:1, ox:0, oy:0 };
+  var mapOverview = false;
+  el('auMapToggle').addEventListener('click',function(){mapOverview=!mapOverview;this.setAttribute('aria-pressed',String(mapOverview));this.textContent=mapOverview?'رجوع للعب':'الخريطة'});
   function resize(){
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     size.w = canvas.clientWidth || window.innerWidth;
@@ -1563,44 +1606,69 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!AU.room || AU.room.phase === 'lobby') return;
     if (!size.w) resize();
     var room = AU.room;
+    // Follow the player's actual coordinates at a readable size. The map
+    // toggle keeps the complete server-aligned ship available for navigation.
+    size.scale=Math.min(size.w,size.h)/(mapOverview?100:46);
+    size.ox=mapOverview?(size.w-100*size.scale)/2:size.w/2-world.x*size.scale;
+    size.oy=mapOverview?(size.h-100*size.scale)/2:size.h/2-world.y*size.scale;
     ctx.clearRect(0, 0, size.w, size.h);
     // hull / void
     ctx.fillStyle = '#05070f';
     ctx.fillRect(0, 0, size.w, size.h);
 
-    // corridors first (the floor of the ship)
+    // The playable floor follows the server's rectangles exactly; an
+    // illustration must never invent walls, paths or usable stations.
+    var floors=CFG.map.corridors.concat(CFG.map.rooms);
+    floors.forEach(function(rect){
+      var p=toScreen(rect.x,rect.y),w=rect.w*size.scale,h=rect.h*size.scale;
+      ctx.fillStyle='#101a2a';roundRect(p.x-2,p.y-2,w+4,h+4,size.scale*.75);ctx.fill();
+    });
+    var roomTints={cafeteria:'#8e9ba5',weapons:'#8e918c',navigation:'#5e8c99',o2:'#7e9b8e',admin:'#aaa08b',medbay:'#8dabb6',electrical:'#9b8e7c',storage:'#9b978b',reactor:'#927f88',engines:'#9a8582',shields:'#87999e',comms:'#8b899b'};
+    CFG.map.rooms.forEach(function(def){
+      var p=toScreen(def.x,def.y),w=def.w*size.scale,h=def.h*size.scale;
+      ctx.fillStyle=roomTints[def.id]||'#8e9ba5';roundRect(p.x,p.y,w,h,size.scale*.5);ctx.fill();
+      ctx.save();roundRect(p.x,p.y,w,h,size.scale*.5);ctx.clip();
+      ctx.strokeStyle='rgba(30,45,61,.18)';ctx.lineWidth=1;
+      var step=Math.max(7,size.scale*3);
+      for(var x=p.x+step;x<p.x+w;x+=step){ctx.beginPath();ctx.moveTo(x,p.y);ctx.lineTo(x,p.y+h);ctx.stroke()}
+      for(var y=p.y+step;y<p.y+h;y+=step){ctx.beginPath();ctx.moveTo(p.x,y);ctx.lineTo(p.x+w,y);ctx.stroke()}
+      ctx.restore();
+    });
+    // Corridors are laid over the room edges so the visual openings agree
+    // with the union of rectangles used by the movement engine.
     CFG.map.corridors.forEach(function(hall){
-      var p = toScreen(hall.x, hall.y);
-      ctx.fillStyle = '#243352';
-      roundRect(p.x, p.y, hall.w * size.scale, hall.h * size.scale, size.scale * 0.8);
-      ctx.fill();
-      ctx.strokeStyle = '#111a2e';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      var p=toScreen(hall.x,hall.y);ctx.fillStyle='#758593';roundRect(p.x,p.y,hall.w*size.scale,hall.h*size.scale,size.scale*.35);ctx.fill();
+    });
+    // Low-profile room details are decorative, not new collision obstacles.
+    // They are positioned from the same server room geometry as the floor.
+    CFG.map.rooms.forEach(function(def){
+      if(def.id==='cafeteria')return;
+      var p=toScreen(def.x,def.y),w=def.w*size.scale,h=def.h*size.scale;
+      var bx=p.x+w*.15,by=p.y+h*.17,bw=w*.32,bh=h*.22;
+      ctx.lineWidth=Math.max(1,size.scale*.22);ctx.strokeStyle='#243846';ctx.fillStyle='#60737d';
+      roundRect(bx,by,bw,bh,size.scale*.5);ctx.fill();ctx.stroke();
+      ctx.fillStyle=def.id==='reactor'?'#e87864':def.id==='electrical'?'#e4c56a':def.id==='medbay'?'#a1e1dc':'#80c8d1';
+      roundRect(bx+bw*.15,by+bh*.18,bw*.7,bh*.45,size.scale*.2);ctx.fill();
+      if(def.id==='storage'){
+        for(var j=0;j<2;j++){var cx=p.x+w*(.60+j*.16),cy=p.y+h*.22,cs=Math.min(w,h)*.13;ctx.fillStyle='#a78159';ctx.fillRect(cx,cy,cs,cs);ctx.strokeRect(cx,cy,cs,cs)}
+      }else if(def.id==='engines'||def.id==='reactor'){
+        ctx.beginPath();ctx.ellipse(p.x+w*.72,p.y+h*.33,w*.13,h*.16,0,0,Math.PI*2);ctx.fillStyle=def.id==='engines'?'#d48465':'#96d9c6';ctx.fill();ctx.stroke();
+      }else if(def.id==='medbay'){
+        ctx.fillStyle='#dcebea';roundRect(p.x+w*.62,p.y+h*.18,w*.20,h*.34,size.scale*.2);ctx.fill();ctx.stroke();
+      }
+    });
+    // Decorative cafeteria tables do not add collision geometry.
+    [{x:44,y:10},{x:50,y:12},{x:56,y:10}].forEach(function(t,index){
+      var p=toScreen(t.x,t.y),r=Math.max(3,size.scale*1.7);
+      ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle='#506875';ctx.fill();ctx.lineWidth=Math.max(1,size.scale*.3);ctx.strokeStyle='#243441';ctx.stroke();
+      if(index===1){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,size.scale*.7),0,Math.PI*2);ctx.fillStyle='#e23835';ctx.fill();ctx.stroke()}
+    });
+    CFG.map.vents.forEach(function(vent){
+      var p=toScreen(vent.x,vent.y),r=Math.max(2,size.scale*.8);ctx.beginPath();ctx.ellipse(p.x,p.y,r,r*.7,0,0,Math.PI*2);ctx.fillStyle='#384652';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='#16232f';ctx.stroke();ctx.beginPath();ctx.moveTo(p.x-r*.6,p.y);ctx.lineTo(p.x+r*.6,p.y);ctx.stroke();
     });
     CFG.map.rooms.forEach(function(def){
-      var p = toScreen(def.x, def.y);
-      var w = def.w * size.scale;
-      var h = def.h * size.scale;
-      // floor
-      ctx.fillStyle = '#2c3d60';
-      roundRect(p.x, p.y, w, h, size.scale * 1.2);
-      ctx.fill();
-      // inner floor shade, like the game's tiled rooms
-      ctx.fillStyle = '#354970';
-      roundRect(p.x + 3, p.y + 3, w - 6, h - 6, size.scale * 1.1);
-      ctx.fill();
-      // thick wall
-      ctx.strokeStyle = '#0f1728';
-      ctx.lineWidth = Math.max(2, size.scale * 0.55);
-      roundRect(p.x, p.y, w, h, size.scale * 1.2);
-      ctx.stroke();
-      // label
-      ctx.fillStyle = '#a8bcd8';
-      ctx.font = '900 ' + Math.max(8, size.scale * 1.45) + 'px system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(def.name, p.x + w / 2, p.y + size.scale * 0.9);
+      var p=toScreen(def.x,def.y),w=def.w*size.scale;
+      ctx.fillStyle='#e5eef1';ctx.font='900 '+Math.max(8,size.scale*1.35)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.shadowColor='#182531';ctx.shadowBlur=3;ctx.fillText(def.name,p.x+w/2,p.y+size.scale*.5);ctx.shadowBlur=0;
     });
 
     var me = room.players.filter(function(p){ return p.you; })[0];
@@ -1642,7 +1710,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     }
 
     // bodies
-    (room.bodies || []).forEach(function(body){
+    if(!mapOverview)(room.bodies || []).forEach(function(body){
       var pos = toScreen(body.x, body.y);
       ctx.save();
       ctx.translate(pos.x, pos.y);
@@ -1663,7 +1731,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     });
 
     // other players
-    room.players.forEach(function(player){
+    if(!mapOverview)room.players.forEach(function(player){
       if (player.token === 'you') return;
       var pos = toScreen(player.x, player.y);
       drawBean(pos.x, pos.y, size.scale * 3.6, colorHex(player.color), !player.alive, player.name, false);
@@ -1675,8 +1743,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       drawBean(own.x, own.y, size.scale * 3.9, colorHex(me.color), !me.alive, me.name, true);
     }
 
-    // vision cone: the original's darkness around the player
-    if (me) {
+    // The static overview never shows other players or bodies through fog.
+    // Normal play retains the role- and sabotage-dependent vision cone.
+    if (me && !mapOverview) {
       var vp = toScreen(world.x, world.y);
       var lightsOut = room.sabotage && room.sabotage.kind === 'lights';
       var radius = size.scale * (me.alive ? (lightsOut ? 13 : (me.role === 'impostor' ? 34 : 27)) : 34);
@@ -1686,7 +1755,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, size.w, size.h);
     }
-    if (room.sabotage && room.sabotage.kind === 'lights') {
+    if (!mapOverview && room.sabotage && room.sabotage.kind === 'lights') {
       ctx.fillStyle = 'rgba(2,4,10,0.3)';
       ctx.fillRect(0, 0, size.w, size.h);
     }
@@ -1734,6 +1803,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   window.addEventListener('keydown', function(e){ keyState[e.key.toLowerCase()] = true; });
   window.addEventListener('keyup', function(e){ keyState[e.key.toLowerCase()] = false; });
 
+  function clientWalkable(x,y){
+    return CFG.map.rooms.concat(CFG.map.corridors).some(function(rect){return x>=rect.x&&x<=rect.x+rect.w&&y>=rect.y&&y<=rect.y+rect.h});
+  }
   function step(){
     requestAnimationFrame(step);
     if (!AU.room || AU.room.phase !== 'playing') return;
@@ -1747,8 +1819,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!vx && !vy) return;
     var length = Math.hypot(vx, vy) || 1;
     var speed = 22;
-    world.x = Math.max(1, Math.min(99, world.x + (vx / length) * speed / 60));
-    world.y = Math.max(1, Math.min(99, world.y + (vy / length) * speed / 60));
+    var nextX=Math.max(1,Math.min(99,world.x+(vx/length)*speed/60));
+    var nextY=Math.max(1,Math.min(99,world.y+(vy/length)*speed/60));
+    if(clientWalkable(nextX,nextY)){world.x=nextX;world.y=nextY}
+    else if(clientWalkable(nextX,world.y))world.x=nextX;
+    else if(clientWalkable(world.x,nextY))world.y=nextY;
     var now = Date.now();
     if (now - (world.lastStep || 0) > 380) {
       world.lastStep = now;

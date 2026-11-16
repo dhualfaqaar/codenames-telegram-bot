@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  AU_MAP,
   AU_KILL_COOLDOWN_MS,
   AU_MIN_START,
   AU_SABOTAGE_MS,
@@ -318,6 +319,21 @@ if (crewView.room.role === 'crew') {
 }
 
 check('الخريطة مسدودة خارج الغرف والممرات', !isWalkable(2, 2) && isWalkable(50, 12) && isWalkable(24, 49.5));
+// Every room must be reachable through overlapping walkable rectangles, not
+// merely look connected. Positive area overlap keeps the openings usable.
+const mapRects = [...AU_MAP.rooms, ...AU_MAP.corridors];
+const reachable = new Set<number>([0]);
+let changed = true;
+while (changed) {
+  changed = false;
+  for (const i of [...reachable]) for (let j = 0; j < mapRects.length; j++) {
+    const a = mapRects[i], b = mapRects[j];
+    const overlap = Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) && Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y);
+    if (overlap && !reachable.has(j)) { reachable.add(j); changed = true; }
+  }
+}
+check('كل غرف السفينة مترابطة بممرات قابلة للمشي', AU_MAP.rooms.every((_, i) => reachable.has(i)));
+
 
 /* ------------------------------------------------------------ movement */
 
