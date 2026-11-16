@@ -510,6 +510,32 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
  #auMenu .space-play{padding:6px;gap:5px}
  #auMenu .sp-view{gap:5px}.sp-back{width:34px;height:34px}.sp-bar{padding:5px;font-size:10px;letter-spacing:.5px}
 }
+
+/* Waiting room: a top-down cabin with a movable local player, shared positions
+   and the host controls kept separate from the play surface. */
+#auLobby{position:fixed;inset:0;background:#070b10;overflow:hidden;padding:0;direction:ltr}
+#auLobby .sheet{width:100%;max-width:none;height:100%;margin:0}
+#auLobby .logo{display:none}
+#auLobby .room{margin:0;padding:0;width:100%;height:100%;border:0;border-radius:0;background:#101820;box-shadow:none}
+#auLobby .room:before,#auLobby .room:after{display:none}
+.lobby-scene{position:absolute;left:0;right:0;top:50%;height:min(100%,calc(100vw * .5625));transform:translateY(-50%);overflow:hidden;background:#080d13}
+.lobby-scene svg.lobby-art{display:block;width:100%;height:100%}
+#auLobby .names{position:absolute;inset:0;z-index:2;display:block;margin:0;pointer-events:none}
+#auLobby .who{position:absolute;display:flex;flex-direction:column-reverse;gap:0;padding:0;background:none;border:0;transform:translate(-50%,-50%);overflow:visible}
+#auLobby .who svg{width:clamp(22px,4.5vw,45px);height:clamp(28px,6.1vw,57px);filter:drop-shadow(0 3px 1px #0008)}
+#auLobby .who b{font-size:clamp(9px,1.3vw,13px);color:white;text-shadow:1px 1px 2px #000,-1px -1px 2px #000;max-width:110px}
+#auLobby .who em{display:none}
+#auLobby .code-row{position:absolute;left:50%;bottom:calc(7px + env(safe-area-inset-bottom));transform:translateX(-50%);margin:0;white-space:nowrap;color:white;text-shadow:1px 2px 3px black}
+#auLobby .code{font-size:clamp(14px,2vw,22px);letter-spacing:3px;padding:2px 7px;background:#10161ac9;border:2px solid #687a7a;border-radius:5px}
+#auLobby .waiting{position:absolute;top:8px;right:12px;margin:0;color:white;text-shadow:1px 2px 3px black}
+#auLobby .row{position:absolute;right:8px;bottom:calc(64px + env(safe-area-inset-bottom));display:flex;flex-direction:column;width:120px;gap:5px!important;margin:0!important}
+#auLobby .row .btn{min-height:34px!important;font-size:11px!important;border-width:2px;border-radius:6px;box-shadow:0 3px #080c10;transform:none}
+#auLobby #auStart{position:absolute;right:8px;bottom:calc(10px + env(safe-area-inset-bottom));width:120px;min-height:40px;font-size:13px;border-width:2px;border-radius:6px;transform:none}
+#auLobby #auLobbyHint{position:absolute;top:8px;left:10px;margin:0;padding:4px 8px;border-radius:5px;background:#0009;color:white;font-size:11px;max-width:55%;text-shadow:0 1px black}
+.lobby-pad{position:absolute;left:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:3;width:104px;height:104px;border-radius:50%;background:#d1d5d280;border:2px solid #f5f5f599;touch-action:none}
+.lobby-pad i{position:absolute;width:49px;height:49px;left:26px;top:26px;border-radius:50%;background:#f5f5f5b3;border:2px solid #6f7772;pointer-events:none}
+@media(max-width:540px){#auLobby .row{width:90px;bottom:calc(58px + env(safe-area-inset-bottom))}#auLobby #auStart{width:90px}#auLobby .lobby-pad{width:88px;height:88px}.lobby-pad i{width:40px;height:40px;left:22px;top:22px}}
+
 </style>
 </head>
 <body>
@@ -736,8 +762,22 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <div class="sheet">
     <div class="logo" style="margin-top:8px"><h1 style="font-size:clamp(24px,7vw,34px)">غرفة الانتظار</h1></div>
     <div class="room">
+      <div class="lobby-scene" aria-label="غرفة الانتظار">
+        <svg class="lobby-art" viewBox="0 0 800 450" preserveAspectRatio="none" aria-hidden="true">
+          <defs><pattern id="lobbyGrid" width="74" height="56" patternUnits="userSpaceOnUse"><path d="M74 0H0V56" fill="none" stroke="#72787a" stroke-width="3" opacity=".45"/></pattern></defs>
+          <rect width="800" height="450" fill="#080e14"/>
+          <path d="M95 450V145L160 32H640L705 145V450" fill="#343e42" stroke="#121a1e" stroke-width="16"/>
+          <path d="M155 150V80L220 47H580L645 80V150" fill="#586163" stroke="#20282c" stroke-width="8"/>
+          <path d="M220 47V151M285 47V151M515 47V151M580 47V151" stroke="#313b3d" stroke-width="5"/>
+          <path d="M349 149V78Q349 68 360 68H440Q451 68 451 78V149Z" fill="#343d42" stroke="#151e22" stroke-width="8"/><path d="M400 75V147M362 96L384 112L362 128M438 96L416 112L438 128" fill="none" stroke="#626e70" stroke-width="5"/>
+          <path d="M104 168H696V450H104Z" fill="#434c4d" stroke="#20292c" stroke-width="6"/><path d="M104 168H696V450H104Z" fill="url(#lobbyGrid)"/>
+          <g fill="#263c4a" stroke="#111d24" stroke-width="6"><path d="M170 139q-10-35 8-37t18 37z"/><path d="M207 139q-10-35 8-37t18 37z"/><path d="M244 139q-10-35 8-37t18 37z"/><path d="M530 139q-10-35 8-37t18 37z"/><path d="M567 139q-10-35 8-37t18 37z"/><path d="M604 139q-10-35 8-37t18 37z"/></g>
+          <g fill="#365452" stroke="#152725" stroke-width="7"><path d="M198 340l38-17 39 17v58l-39 19-38-19z"/><path d="M554 274l38-17 39 17v58l-39 19-38-19z"/><path d="M272 215l28-12 28 12v42l-28 13-28-13z"/></g>
+          <path d="M275 209v-25h42v25z" fill="#96cfc0" stroke="#192e2e" stroke-width="5"/><path d="M281 204v-14h30v14z" fill="#b7f7c9"/>
+        </svg><div class="names" id="auNames"></div>
+      </div>
+      <div class="lobby-pad" id="auLobbyPad" aria-label="تحريك اللاعب"><i id="auLobbyStick"></i></div>
       <div class="code-row"><span>كود الغرفة</span><b class="code" id="auCodeLabel">------</b></div>
-      <div class="names" id="auNames"></div>
       <p class="waiting"><span id="auCount">0</span>/10 لاعبين <i id="auDots">…</i></p>
       <div class="row" style="display:flex;gap:10px;margin-bottom:10px">
         <button class="btn dark" id="auAddBot" style="flex:1;min-height:50px;font-size:14px"><span>أضف بوت</span></button>
@@ -1134,17 +1174,51 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       try { Telegram.WebApp.expand && Telegram.WebApp.expand(); } catch (e) {}
     }
   }
+  var localPractice=null;
   function api(path, payload){
-    return fetch('/api/amongus' + path, {
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null, timer;
+    var timeout = new Promise(function(resolve){timer=setTimeout(function(){if(controller)controller.abort();resolve({ok:false,error:'تعذّر الاتصال بالخادم'})},6000)});
+    var request = fetch('/api/amongus' + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || {})
-    }).then(function(r){ return r.json().catch(function(){ return { ok:false, error:'خطأ بالشبكة' }; }); });
+      body: JSON.stringify(payload || {}),
+      signal: controller ? controller.signal : undefined
+    }).then(function(r){ return r.json().catch(function(){ return { ok:false, error:'تعذّر الاتصال بالخادم' }; }); })
+      .catch(function(){return {ok:false, error:'تعذّر الاتصال بالخادم'};});
+    return Promise.race([request,timeout]).then(function(result){clearTimeout(timer);return result});
+  }
+  // A solo run has no peers to synchronise. If the room service is unavailable,
+  // keep practice usable locally rather than leaving the button unresponsive.
+  function startLocalPractice(){
+    var tasks=CFG.map.stations.map(function(st,i){return {id:st.id+'-'+i,station:st.id,label:st.label,kind:st.kind,done:false}});
+    var player={token:'you',name:readName(),color:profile.color,bot:false,alive:true,x:50,y:17,role:'crew',tasks:tasks,isHost:true,you:true,voteReady:false,votedFor:null,emergencyUsed:false};
+    localPractice={code:'LOCAL',phase:'playing',practice:true,players:[player],role:'crew',bodies:[],camerasActive:false,cameraFeeds:null,inVent:false,ventOptions:[],sabotage:null,meeting:null,lastMeeting:null,winner:null,endReason:'',progress:{done:0,total:tasks.length},killCooldownLeftMs:0,canStart:false,minPlayers:1,maxPlayers:1,settings:{},log:[],now:Date.now()};
+    AU.code='LOCAL';AU.token='local-practice';world.ready=false;world.moveSeq=0;closePlay();applyRoom(localPractice);
+    toast('التجربة الفردية تشتغل على جهازك');
+  }
+  function localPracticeAction(action,extra){
+    var room=localPractice, player=room.players[0];extra=extra || {};room.now=Date.now();
+    if(action==='move'){
+      var x=Number(extra.x),y=Number(extra.y);
+      if(Number.isFinite(x)&&Number.isFinite(y)&&clientWalkable(x,y)){player.x=x;player.y=y}
+      if(Math.hypot(player.x-CFG.security.x,player.y-CFG.security.y)>4){room.camerasActive=false;room.cameraFeeds=null}
+    }else if(action==='task'){
+      var task=player.tasks.filter(function(t){return t.id===extra.taskId})[0];
+      var station=task && CFG.map.stations.filter(function(st){return st.id===task.station})[0];
+      if(!task || !station || Math.hypot(station.x-player.x,station.y-player.y)>8)return {ok:false,error:'اقرب من المحطة أول'};
+      task.done=true;room.progress.done=player.tasks.filter(function(t){return t.done}).length;
+    }else if(action==='cameras'){
+      if(extra.enabled && Math.hypot(player.x-CFG.security.x,player.y-CFG.security.y)>4)return {ok:false,error:'روح لشاشة الأمن أول'};
+      room.camerasActive=!!extra.enabled;
+      room.cameraFeeds=extra.enabled ? CFG.cameras.map(function(view){var inside=player.x>=view.x&&player.x<=view.x+view.w&&player.y>=view.y&&player.y<=view.y+view.h;return Object.assign({},view,{players:inside?[{id:'you',name:player.name,color:player.color,x:player.x,y:player.y}]:[],bodies:[]})}) : null;
+    }
+    return {ok:true,room:room};
   }
   function act(action, extra){
     if (!AU.code || !AU.token) return Promise.resolve({ ok:false });
     var body = Object.assign({ action: action, token: AU.token, code: AU.code }, extra || {});
-    return api('/rooms/' + AU.code, body).then(function(res){
+    var request=localPractice ? Promise.resolve(localPracticeAction(action,extra)) : api('/rooms/' + AU.code, body);
+    return request.then(function(res){
       if (AU.code !== body.code || AU.token !== body.token) return res;
       if (!res.ok) { if (res.error) toast(res.error); return res; }
       if((action==='vent' || action==='ventTravel' || action==='ventExit') && res.room){var teleported=res.room.players.filter(function(p){return p.you})[0];if(teleported){world.x=teleported.x;world.y=teleported.y;world.ready=true}}
@@ -1389,9 +1463,12 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     el('auPlayBtn').addEventListener('click', openPlay);
     el('auPlayBack').addEventListener('click', closePlay);
     el('auPractice').addEventListener('click', function(){
+      var button=this;if(button.disabled)return;button.disabled=true;button.textContent='جاري البدء…';button.setAttribute('aria-busy','true');
       api('/rooms', {action:'practice', name:readName(), color:profile.color, initData:tgInitData()}).then(function(res){
-        if (!res.ok) return toast(res.error || 'تعذّر بدء التجربة');
-        AU.code=res.code; AU.token=res.token; world.ready=false; world.moveSeq=0; closePlay(); applyRoom(res.room);
+        button.disabled=false;button.textContent='تجربة فردية';button.removeAttribute('aria-busy');
+        if(!el('auMenu').classList.contains('on') || !el('auSpacePlay').classList.contains('on') || !el('auViewPick').classList.contains('on') || AU.code)return;
+        if (!res.ok || !res.room || !res.code || !res.token) return startLocalPractice();
+        localPractice=null;AU.code=res.code; AU.token=res.token; world.ready=false; world.moveSeq=0; closePlay(); applyRoom(res.room);
       });
     });
     el('auCreate').addEventListener('click', function(){ showView('auViewSettings'); renderRuleRows(); });
@@ -1480,14 +1557,40 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   wireMenu();
   startSpace();
 
+  var lobbyMove={x:50,y:56,vx:0,vy:0,seq:0,ready:false,lastSent:0,lastFrame:0};
+  var lobbyPad=el('auLobbyPad'),lobbyStick=el('auLobbyStick'),lobbyPointer=null;
+  function lobbyDrag(e){
+    if(lobbyPointer!==e.pointerId)return;
+    var r=lobbyPad.getBoundingClientRect(), dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2), limit=r.width*.33,len=Math.hypot(dx,dy)||1,scale=Math.min(1,limit/len);
+    lobbyMove.vx=dx*scale/limit;lobbyMove.vy=dy*scale/limit;lobbyStick.style.transform='translate('+(dx*scale)+'px,'+(dy*scale)+'px)';
+  }
+  lobbyPad.addEventListener('pointerdown',function(e){e.preventDefault();lobbyPointer=e.pointerId;lobbyPad.setPointerCapture(e.pointerId);lobbyDrag(e)});
+  lobbyPad.addEventListener('pointermove',lobbyDrag);
+  function lobbyStop(e){if(lobbyPointer!==e.pointerId)return;lobbyPointer=null;lobbyMove.vx=0;lobbyMove.vy=0;lobbyStick.style.transform='';sendLobbyPosition()}
+  lobbyPad.addEventListener('pointerup',lobbyStop);lobbyPad.addEventListener('pointercancel',lobbyStop);lobbyPad.addEventListener('lostpointercapture',lobbyStop);
+  function sendLobbyPosition(){if(!AU.room || AU.room.phase!=='lobby' || !lobbyMove.ready)return;lobbyMove.lastSent=Date.now();lobbyMove.seq += 1;act('lobbyMove',{x:lobbyMove.x,y:lobbyMove.y,seq:lobbyMove.seq})}
+  function lobbyFrame(now){
+    requestAnimationFrame(lobbyFrame);var dt=lobbyMove.lastFrame?Math.min(.05,(now-lobbyMove.lastFrame)/1000):0;lobbyMove.lastFrame=now;
+    if(!AU.room || AU.room.phase!=='lobby' || !lobbyMove.ready || document.querySelector('.overlay.on'))return;
+    var vx=lobbyMove.vx,vy=lobbyMove.vy;
+    if(keyState['arrowleft']||keyState['a'])vx-=1;if(keyState['arrowright']||keyState['d'])vx+=1;
+    if(keyState['arrowup']||keyState['w'])vy-=1;if(keyState['arrowdown']||keyState['s'])vy+=1;
+    var len=Math.hypot(vx,vy);if(!len)return;var speed=24*Math.min(1,len);
+    lobbyMove.x=Math.max(12,Math.min(88,lobbyMove.x+vx/len*speed*dt));lobbyMove.y=Math.max(33,Math.min(84,lobbyMove.y+vy/len*speed*dt));
+    var own=el('auNames').querySelector('.who.you');if(own){own.style.left=lobbyMove.x+'%';own.style.top=lobbyMove.y+'%'}
+    if(Date.now()-lobbyMove.lastSent>220)sendLobbyPosition();
+  }
+  requestAnimationFrame(lobbyFrame);
+
   /* ---------- lobby ---------- */
   function renderLobby(room){
     el('auCodeLabel').textContent = room.code;
     el('auCount').textContent = String(room.players.length);
     el('auNames').innerHTML = room.players.map(function(p){
       var tag = p.isHost ? 'مضيف' : (p.bot ? 'بوت' : '');
-      var klass = p.isHost ? ' host' : (p.bot ? ' bot' : '');
-      return '<div class="who' + klass + '">' + crewSvg(p.color) + '<b>' + esc(p.name) + '</b>' +
+      var klass = (p.isHost ? ' host' : (p.bot ? ' bot' : '')) + (p.you ? ' you' : '');
+      var px=p.you && lobbyMove.ready ? lobbyMove.x : p.x, py=p.you && lobbyMove.ready ? lobbyMove.y : p.y;
+      return '<div class="who' + klass + '" style="left:'+Math.max(12,Math.min(88,px))+'%;top:'+Math.max(33,Math.min(84,py))+'%">' + crewSvg(p.color) + '<b>' + esc(p.name) + '</b>' +
         (tag ? '<em>' + tag + '</em>' : '') + '</div>';
     }).join('');
     var you = room.players.filter(function(p){ return p.you; })[0];
@@ -1521,8 +1624,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     act('start').then(function(res){ if (res && res.ok) setScreen('auStage'); });
   });
   el('auPracticeExit').addEventListener('click', function(){
-    var code=AU.code, token=AU.token; AU.code=''; AU.token=''; AU.room=null; world.ready=false;
-    api('/rooms/' + code, {action:'leave', code:code, token:token});
+    var code=AU.code, token=AU.token, wasLocal=!!localPractice; localPractice=null; AU.code=''; AU.token=''; AU.room=null; world.ready=false;
+    if(!wasLocal)api('/rooms/' + code, {action:'leave', code:code, token:token});
     history.replaceState(null, '', location.pathname); setScreen('auMenu');
   });
   el('auBackLobby').addEventListener('click', function(){
@@ -1542,6 +1645,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       toast(result.ejectedName ? result.ejectedName + (result.ejectedRole === 'impostor' ? ' كان مزوّراً' : ' ما كان مزوّراً') : 'ما انطرد أحد');
     }
     if (room.phase === 'lobby') {
+      if(previousPhase !== 'lobby'){var lobbyMe=room.players.filter(function(p){return p.you})[0];if(lobbyMe){lobbyMove.x=lobbyMe.x;lobbyMove.y=lobbyMe.y;lobbyMove.seq=0;lobbyMove.ready=true}}
       setScreen('auLobby');
       renderLobby(room);
       return;
@@ -1562,7 +1666,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     renderEnd(room);
   }
   function poll(){
-    if (!AU.code || !AU.token) return;
+    if (!AU.code || !AU.token || localPractice) return;
     var code = AU.code, token = AU.token;
     fetch('/api/amongus/rooms/' + code + '?token=' + encodeURIComponent(token))
       .then(function(r){ return r.json(); })
@@ -1763,7 +1867,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var me = room.players.filter(function(p){ return p.you; })[0];
 
     // own unfinished tasks
-    if (me && me.role === 'crew') {
+    if (me && me.role === 'crew' && !(room.sabotage && room.sabotage.kind === 'comms')) {
       me.tasks.forEach(function(task){
         if (task.done) return;
         var station = null;
@@ -1986,9 +2090,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       : (me.role === 'impostor' ? 'مزوّر' : 'طاقم');
     el('auRoleChip').classList.toggle('imp', me.role === 'impostor');
     var progress = room.progress.total ? Math.round((room.progress.done / room.progress.total) * 100) : 0;
-    el('auProgress').style.width = progress + '%';
+    el('auProgress').style.width = (room.sabotage && room.sabotage.kind==='comms' ? 0 : progress) + '%';
     el('auTaskChip').textContent = room.progress.done + '/' + room.progress.total;
-    el('auTaskList').innerHTML = (me.tasks || []).map(function(t){return '<div class="'+(t.done?'done':'')+'">'+esc(t.label)+'</div>'}).join('') || 'ما عندك مهام';
+    el('auTaskList').innerHTML = room.sabotage && room.sabotage.kind==='comms' ? 'الاتصالات متعطلة' : (me.tasks || []).map(function(t){return '<div class="'+(t.done?'done':'')+'">'+esc(t.label)+'</div>'}).join('') || 'ما عندك مهام';
 
     el('auKill').hidden = me.role !== 'impostor' || !me.alive;
     el('auVent').hidden = me.role !== 'impostor' || !me.alive;
@@ -2008,7 +2112,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
     el('auReport').classList.toggle('ready', !!nearestBody());
     el('auVent').classList.toggle('ready', nearVent());
-    el('auEmergency').classList.toggle('ready', nearEmergency() && !me.emergencyUsed);
+    el('auEmergency').classList.toggle('ready', nearEmergency() && !me.emergencyUsed && !room.sabotage);
 
     var alarm = el('auAlarm');
     if (room.sabotage) {
@@ -2417,7 +2521,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     poll();
   }
   window.addEventListener('beforeunload', function(){
-    if (AU.code && AU.token && navigator.sendBeacon) {
+    if (AU.code && AU.token && !localPractice && navigator.sendBeacon) {
       navigator.sendBeacon('/api/amongus/rooms/' + AU.code, new Blob(
         [JSON.stringify({ action:'leave', token: AU.token, code: AU.code })],
         { type:'application/json' }

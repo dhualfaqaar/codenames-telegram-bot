@@ -18,7 +18,9 @@ assert.equal((await fix(1,'o2',{answer:'12345'})).ok,false,'cannot fix remotely'
 await position(1,74,38);assert.equal((await fix(1,'o2',{answer:'00000'})).ok,false);
 assert.deepEqual((await fix(1,'o2',{answer:'12345'})).room.sabotage.fixed,['o2']);
 await position(2,65,48);assert.equal((await fix(2,'admin',{answer:'56789'})).room.sabotage,null);
-await setup({kind:'lights',endsAt:0,switches:[false,true,false,true,false]});await position(1,34,70);
+await setup({kind:'lights',endsAt:0,switches:[false,true,false,true,false]});
+assert.equal((await post({action:'emergency',code,token:tokens[1]})).ok,false,'emergency blocked during sabotage');
+await position(1,34,70);
 for(const index of [0,2])assert.ok((await fix(1,'lights',{index})).room.sabotage);
 assert.equal((await fix(1,'lights',{index:4})).room.sabotage,null);
 await setup({kind:'comms',endsAt:0,frequency:64});await position(1,68,85);

@@ -560,9 +560,16 @@ export default {
     const stub = env.BOT_STATE.get(id);
     if (requestUrl.pathname === '/api/interactive/config' && request.method === 'GET') return stub.fetch('https://bot.internal/interactive-config');
     if (requestUrl.pathname.startsWith('/api/amongus')) {
-      const init: RequestInit = { method: request.method, headers: new Headers(request.headers) };
+      const headers = new Headers(request.headers);
+      headers.delete('content-length');
+      const init: RequestInit = { method: request.method, headers };
       if (request.method !== 'GET' && request.method !== 'HEAD') init.body = await request.text();
-      return stub.fetch(`https://bot.internal${requestUrl.pathname}${requestUrl.search}`, init);
+      try {
+        return await stub.fetch(`https://bot.internal${requestUrl.pathname}${requestUrl.search}`, init);
+      } catch (error) {
+        logRuntimeFailure('AMONGUS_ROOM_REQUEST_FAILED', error, env);
+        return Response.json({ok:false, error:'تعذّر الاتصال بالغرفة، حاول مرة ثانية'}, {status:503, headers:{'Cache-Control':'no-store'}});
+      }
     }
     if (requestUrl.pathname.startsWith('/api/interactive/rooms') || requestUrl.pathname.startsWith('/api/interactive/matchmaking')) {
       const headers = new Headers(request.headers);

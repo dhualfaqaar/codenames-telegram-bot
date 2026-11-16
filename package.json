@@ -58,7 +58,9 @@
     "test:amongus:sabotage": "tsx scripts/check-amongus-sabotage.ts",
     "test:amongus:sabotage-browser": "node scripts/check-amongus-sabotage-browser.mjs",
     "test:amongus:extra-tasks-browser": "node scripts/check-amongus-extra-tasks-browser.mjs",
-    "test:amongus:round-browser": "node --import tsx scripts/check-amongus-round-browser.mjs"
+    "test:amongus:round-browser": "node --import tsx scripts/check-amongus-round-browser.mjs",
+    "test:amongus:reliability-browser": "node scripts/check-amongus-reliability-browser.mjs",
+    "test:amongus:lobby-browser": "node scripts/check-amongus-lobby-browser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
