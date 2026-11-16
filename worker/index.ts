@@ -120,7 +120,9 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
     fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: payload ? 'POST' : 'GET',
       headers: payload ? { 'Content-Type': 'application/json' } : undefined,
-      body: payload ? JSON.stringify(payload) : undefined
+      body: payload ? JSON.stringify(payload) : undefined,
+      // بدون مهلة، لو تيليجرام تأخّر تعلق طلبات الـWorker والمؤقت معها.
+      signal: AbortSignal.timeout(6_000)
     }).then(r => r.json());
 
   // أنواع التحديثات اللي البوت يحتاجها — ضروري إن inline_query بيها حتى
@@ -129,6 +131,13 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
   const REQUIRED_UPDATES = ['message', 'channel_post', 'callback_query', 'my_chat_member', 'inline_query'];
 
   try {
+    // نفحص الوصلة أولاً — لو تيليجرام ما جاوب بسرعة نرجع فوراً بدل ما نعلّق
+    // الطلب خلف اثنتي عشرة نداءً كل واحد ممكن ينتظر طويلاً.
+    const info = await call('getWebhookInfo').catch(() => null);
+    if (!info?.ok) {
+      return { url: '', repaired: false, error: String(info?.description || 'getWebhookInfo failed') };
+    }
+
     // 🧹 تنظيف زر القائمة الزرقاء (Menu) وإبقاء أمر /start فقط بكل النطاقات واللغات
     const scopes = [
       { type: 'default' },
@@ -152,7 +161,6 @@ async function ensureWebhook(env: Env, notify = false): Promise<{ url: string; r
     }
     await call('setChatMenuButton', { menu_button: { type: 'commands' } }).catch(() => undefined);
 
-    const info = await call('getWebhookInfo');
     const current: string = info?.result?.url || '';
     // هل القائمة الحالية ناقصها شي؟ (القائمة الفاضية تعني "كل الأنواع" — إذن ما ناقص شي)
     const currentUpdates: string[] = info?.result?.allowed_updates || [];
@@ -352,6 +360,12 @@ export class BotState {
 
   async fetch(request: Request): Promise<Response> {
     const pathname = new URL(request.url).pathname;
+    // فحص/إصلاح وصلة تيليجرام من داخل الـDurable Object: مكان البوت الفعلي
+    // يوصل api.telegram.org، بينما بعض مواقع الـWorker الطرفية محجوبة عنها.
+    if (pathname === '/webhook-selfcheck') {
+      const result = await ensureWebhook(this.env, true);
+      return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (pathname.startsWith('/api/amongus')) return this.amongUsRooms.handle(request);
     if (pathname.startsWith('/api/interactive/rooms') || pathname.startsWith('/api/interactive/matchmaking')) return this.interactiveRooms.handle(request);
     const bot = await this.getBot();
@@ -384,6 +398,12 @@ export class BotState {
         },
         { headers: { 'Cache-Control': 'no-store' } }
       );
+    }
+
+    // من يفتح رابط الـWorker من متصفح (أو من داخل تليجرام بالغلط) لازم يشوف
+    // واجهة الألعاب، مو JSON. أبقِ JSON فقط لطلبات التشخيص/المراقبة.
+    if (request.method === 'GET' && pathname === '/' && (request.headers.get('accept') || '').includes('text/html')) {
+      return Response.redirect(new URL('/interactive', request.url).toString(), 302);
     }
 
     if (request.method !== 'POST') {
@@ -609,9 +629,20 @@ export default {
       return Response.json({ profile: profilePayload.profile, isBotCreator: String(authenticatedUser.id) === OWNER_ONLY_ID }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
+    // فتح رابط الـWorker من متصفح (أو من زر تطبيق داخل تليجرام) لازم يوصل
+    // لواجهة الألعاب التفاعلية، مو لـJSON التشخيصي.
+    if (request.method === 'GET' && requestUrl.pathname === '/' && (request.headers.get('accept') || '').includes('text/html')) {
+      return Response.redirect(new URL('/interactive', requestUrl).toString(), 302);
+    }
+
     if (request.method !== 'POST') {
-      // فحص + إصلاح ذاتي: لو الوصلة مسحت، ترجع تلقائياً بأول فحص
-      const webhook = await ensureWebhook(env, true);
+      // فحص + إصلاح ذاتي: لو الوصلة مسحت، ترجع تلقائياً بأول فحص.
+      // ننفّذه داخل الـDurable Object لأن بعض مواقع الـWorker الطرفية
+      // ما توصل api.telegram.org (حجب شبكي)، بينما مكان البوت يوصلها.
+      const webhook = await stub
+        .fetch('https://bot.internal/webhook-selfcheck')
+        .then(r => r.json())
+        .catch((e: any) => ({ url: '', repaired: false, error: String(e?.message || e) }));
       const status = await stub.fetch('https://bot.internal/status');
       const data: any = await status.clone().json().catch(() => ({}));
       return Response.json({
@@ -651,11 +682,17 @@ export default {
     if (env.PREVIEW_MODE === 'true') return;
     ctx.waitUntil(
       (async () => {
-        const r = await ensureWebhook(env, true);
-        if (r.error) console.log('cron webhook check failed:', r.error);
+        // الفحص يتم داخل الـDurable Object: هو اللي يوصل api.telegram.org
+        // من كل المواقع، بعكس الـWorker الطرفي اللي ممكن يكون محجوباً.
+        const id = env.BOT_STATE.idFromName('main');
+        const stub = env.BOT_STATE.get(id);
         try {
-          const id = env.BOT_STATE.idFromName('main');
-          const stub = env.BOT_STATE.get(id);
+          const r: any = await stub.fetch('https://bot.internal/webhook-selfcheck').then(x => x.json());
+          if (r?.error) console.log('cron webhook check failed:', r.error);
+        } catch (e: any) {
+          console.log('cron webhook check unreachable:', String(e?.message || e));
+        }
+        try {
           await stub.fetch('https://bot.internal/status');
           await stub.fetch('https://bot.internal/football-alerts', { method: 'POST' });
         } catch {

@@ -8,7 +8,7 @@ import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMin
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
 const cloudflareWorker = workerModule.default;
-const { INTERACTIVE_APP_BUILD } = await import('../src/services/buildInfo');
+const { INTERACTIVE_APP_BUILD, BUILD_TAG } = await import('../src/services/buildInfo');
 import { InteractiveGameRooms, MemoryRoomStorage } from '../src/services/interactiveGameRooms';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -26,7 +26,7 @@ const sudokuMiniAppHtml = SUDOKU_MINI_APP_HTML;
 const sudokuRouteResponse = await cloudflareWorker.fetch(new Request('https://game.test/sudoku'), {} as any, {} as any);
 assert(sudokuRouteResponse.status === 200 && (await sudokuRouteResponse.text()).includes('id=\"sudokuLobby\"'), 'the public Sudoku route should serve the standalone game');
 const interactivePageResponse = await cloudflareWorker.fetch(new Request(`https://game.test/interactive?app_build=${INTERACTIVE_APP_BUILD}`), {} as any, {} as any);
-assert(INTERACTIVE_APP_BUILD === '2026-10-20-amongus-systems-v68' && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
+assert(INTERACTIVE_APP_BUILD === BUILD_TAG && interactivePageResponse.status === 200 && interactivePageResponse.headers.get('Cache-Control')?.includes('no-store') && (await interactivePageResponse.text()).includes('id="chessAppearanceButton"'), 'the live Mini App route should bypass stale caches and return the current UI');
 for (const art of ['/chess-hero-v2.jpg', '/drawing-hero.jpg', '/sudoku-hero.jpg']) {
   const artResponse = await cloudflareWorker.fetch(new Request('https://game.test' + art), {} as any, {} as any);
   assert(artResponse.status === 200 && artResponse.headers.get('Content-Type') === 'image/jpeg' && (await artResponse.arrayBuffer()).byteLength > 5_000, 'game card art ' + art + ' should be served by the worker');
