@@ -318,7 +318,7 @@ if (crewView.room.role === 'crew') {
   check('المزوّر يشوف شريكه', mates.length >= 0);
 }
 
-check('الخريطة مسدودة خارج الغرف والممرات', !isWalkable(2, 2) && isWalkable(50, 12) && isWalkable(24, 49.5));
+check('الخريطة مسدودة خارج الغرف والممرات', !isWalkable(2, 2) && isWalkable(50, 15) && !isWalkable(50,12) && isWalkable(24, 49.5));
 // Every room must be reachable through overlapping walkable rectangles, not
 // merely look connected. Positive area overlap keeps the openings usable.
 const mapRects = [...AU_MAP.rooms, ...AU_MAP.corridors];
@@ -503,11 +503,15 @@ await patch(code4, state => {
   killer.x = 32;
   killer.y = 68;
 });
-const vented = await post(`/api/amongus/rooms/${code4}`, { action: 'vent', token: impostor4.token, code: code4 });
+const entered = await post(`/api/amongus/rooms/${code4}`, { action: 'vent', token: impostor4.token, code: code4 });
+check('المزوّر يدخل الفتحة', entered.ok && entered.room.inVent && entered.room.ventOptions.some((v: any) => v.id === 'security'));
+const vented = await post(`/api/amongus/rooms/${code4}`, { action: 'ventTravel', token: impostor4.token, code: code4, target:'security' });
 const ventedPlayer = (await room(code4)).players.find(p => p.token === impostor4.token)!;
 check('المزوّر يستخدم التهوية', vented.ok && Math.abs(ventedPlayer.x - 24) < 2 && Math.abs(ventedPlayer.y - 50) < 2);
 const crewVent = await post(`/api/amongus/rooms/${code4}`, { action: 'vent', token: crew4.token, code: code4 });
 check('الطاقم ما يستخدم التهوية', crewVent.ok === false);
+const exited = await post(`/api/amongus/rooms/${code4}`, { action:'ventExit', token:impostor4.token, code:code4 });
+check('المزوّر يطلع من الفتحة', exited.ok && !exited.room.inVent);
 
 /* -------------------------------------------------------- public view */
 

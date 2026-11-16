@@ -7,10 +7,10 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-20-amongus-gameplay-v67';
+export const BUILD_TAG = '2026-10-20-amongus-systems-v68';
 
 /** بصمة واجهة الألعاب، وليست نقطة دخول Worker مستقلة. */
-export const INTERACTIVE_APP_BUILD = '2026-10-20-amongus-gameplay-v67';
+export const INTERACTIVE_APP_BUILD = '2026-10-20-amongus-systems-v68';
 
 /** ملخّص اللي بهذي النسخة — يظهر بـ /version حتى نتأكد إن الميزة موجودة. */
 export const BUILD_FEATURES: string[] = [
