@@ -14,8 +14,17 @@ export type RoomStorage = {
 
 export type AuRole = 'crew' | 'impostor';
 export type AuPhase = 'lobby' | 'playing' | 'meeting' | 'ended';
-export type AuTaskKind = 'wires' | 'hold' | 'sequence' | 'upload';
+export type AuTaskKind = 'wires' | 'hold' | 'sequence' | 'upload' | 'shields' | 'asteroids' | 'filter' | 'steering' | 'scan' | 'alignment';
 export type AuSabotage = 'reactor' | 'oxygen' | 'lights' | 'comms';
+export interface AuSabotageState {
+  kind: AuSabotage; endsAt: number;
+  fixed?: string[]; codes?: Record<string,string>; switches?: boolean[]; frequency?: number;
+  holds?: Record<string,{token:string; at:number}>;
+}
+export interface AuPublicSabotage {
+  kind: AuSabotage; endsAt: number; fixed: string[]; codes: Record<string,string>;
+  switches: boolean[]; frequency: number; held: string[];
+}
 
 export interface AuTask {
   id: string;
@@ -27,6 +36,9 @@ export interface AuTask {
 
 export interface AuPlayer {
   token: string;
+  publicId?: string;
+  watchingCameras?: boolean;
+  ventId?: string | null;
   name: string;
   color: string;
   bot: boolean;
@@ -91,7 +103,7 @@ export interface AuRoomState {
   updatedAt: number;
   players: AuPlayer[];
   bodies: AuBody[];
-  sabotage: { kind: AuSabotage; endsAt: number } | null;
+  sabotage: AuSabotageState | null;
   meeting: AuMeeting | null;
   lastMeeting: { ejectedName: string | null; ejectedRole: AuRole | null; tied: boolean; at: number } | null;
   winner: 'crew' | 'impostors' | null;
@@ -196,6 +208,7 @@ export interface AuMapRoom extends Rect {
 export const AU_MAP: {
   rooms: AuMapRoom[];
   corridors: Rect[];
+  obstacles: Array<{x:number; y:number; rx:number; ry:number}>;
   vents: Array<{ id: string; x: number; y: number; link: string }>;
   stations: Array<{ id: string; label: string; kind: AuTaskKind; x: number; y: number; room: string }>;
 } = {
@@ -233,9 +246,14 @@ export const AU_MAP: {
     { x: 60, y: 74, w: 17, h: 6 }, // storage to shields
     { x: 66, y: 78, w: 5, h: 3 } // communications entrance
   ],
+  // The five cafeteria tables are physical, not painted-over floor.
+  obstacles: [
+    {x:43,y:9,rx:2,ry:1.65}, {x:57,y:9,rx:2,ry:1.65},
+    {x:50,y:12,rx:2,ry:1.65}, {x:43,y:19,rx:2,ry:1.65}, {x:57,y:19,rx:2,ry:1.65}
+  ],
   // Each network cycles within the original connected vent group.
   vents: [
-    { id:'cafe', x:57, y:9, link:'admin' }, { id:'admin', x:64, y:53, link:'hall' },
+    { id:'cafe', x:60, y:22, link:'admin' }, { id:'admin', x:64, y:53, link:'hall' },
     { id:'hall', x:51, y:34, link:'cafe' },
     { id:'weapons', x:77, y:13, link:'nav-upper' }, { id:'nav-upper', x:92, y:39, link:'weapons' },
     { id:'nav-lower', x:92, y:46, link:'shields' }, { id:'shields', x:83, y:76, link:'nav-lower' },
@@ -246,20 +264,20 @@ export const AU_MAP: {
   ],
   stations: [
     { id:'st-wires-elec', label:'أسلاك الكهرباء', kind:'wires', x:34, y:70, room:'electrical' },
-    { id:'st-wires-shield', label:'أسلاك الدروع', kind:'wires', x:82, y:73, room:'shields' },
-    { id:'st-wires-weapons', label:'أسلاك الأسلحة', kind:'wires', x:75, y:16, room:'weapons' },
-    { id:'st-hold-reactor', label:'تبريد المفاعل', kind:'hold', x:9, y:50, room:'reactor' },
-    { id:'st-hold-nav', label:'معايرة الملاحة', kind:'hold', x:94, y:42, room:'navigation' },
-    { id:'st-hold-med', label:'فحص العيادة', kind:'hold', x:32, y:34, room:'medbay' },
-    { id:'st-seq-weapons', label:'شحن الأسلحة', kind:'sequence', x:77, y:20, room:'weapons' },
+    { id:'st-wires-shield', label:'تفعيل الدروع', kind:'shields', x:82, y:73, room:'shields' },
+    { id:'st-wires-weapons', label:'تحميل بيانات الأسلحة', kind:'upload', x:75, y:16, room:'weapons' },
+    { id:'st-hold-reactor', label:'تشغيل المفاعل', kind:'sequence', x:9, y:50, room:'reactor' },
+    { id:'st-hold-nav', label:'تثبيت التوجيه', kind:'steering', x:94, y:42, room:'navigation' },
+    { id:'st-hold-med', label:'فحص العيادة', kind:'scan', x:32, y:34, room:'medbay' },
+    { id:'st-seq-weapons', label:'تدمير الكويكبات', kind:'asteroids', x:77, y:20, room:'weapons' },
     { id:'st-seq-admin', label:'بطاقة الإدارة', kind:'sequence', x:63, y:51, room:'admin' },
-    { id:'st-seq-o2', label:'فلتر الأوكسجين', kind:'sequence', x:74, y:38, room:'o2' },
+    { id:'st-seq-o2', label:'تنظيف فلتر الأوكسجين', kind:'filter', x:74, y:38, room:'o2' },
     { id:'st-up-storage', label:'تحميل البيانات', kind:'upload', x:52, y:80, room:'storage' },
     { id:'st-up-comms', label:'رفع البيانات', kind:'upload', x:68, y:85, room:'comms' },
-    { id:'st-up-cafe', label:'سجل الكافتيريا', kind:'upload', x:50, y:12, room:'cafeteria' },
-    { id:'st-upper', label:'معايرة المحرك العلوي', kind:'hold', x:19, y:20, room:'upper-engine' },
-    { id:'st-lower', label:'معايرة المحرك السفلي', kind:'hold', x:19, y:79, room:'lower-engine' },
-    { id:'st-security', label:'شاشة الأمن', kind:'upload', x:24, y:51, room:'security' }
+    { id:'st-up-cafe', label:'سجل الكافتيريا', kind:'upload', x:50, y:15, room:'cafeteria' },
+    { id:'st-upper', label:'محاذاة المحرك العلوي', kind:'alignment', x:19, y:20, room:'upper-engine' },
+    { id:'st-lower', label:'محاذاة المحرك السفلي', kind:'alignment', x:19, y:79, room:'lower-engine' },
+    { id:'st-security', label:'توزيع طاقة الأمن', kind:'upload', x:24, y:51, room:'security' }
   ]
 };
 
@@ -296,12 +314,46 @@ function insideRect(point: { x: number; y: number }, rect: Rect, pad = 0): boole
   );
 }
 
-/** The ship is a union of room and corridor rectangles: everything else is void. */
-export function isWalkable(x: number, y: number): boolean {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  if (x < 0 || y < 0 || x > 100 || y > 100) return false;
+/** Floor is shared by collision and line of sight; furnishings block movement. */
+function isFloor(x: number, y: number): boolean {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 100 || y > 100) return false;
   const point = { x, y };
   return AU_MAP.rooms.some(room => insideRect(point, room)) || AU_MAP.corridors.some(hall => insideRect(point, hall));
+}
+export function isWalkable(x: number, y: number): boolean {
+  return isFloor(x,y) && !AU_MAP.obstacles.some(o => ((x-o.x)/o.rx)**2 + ((y-o.y)/o.ry)**2 < 1);
+}
+
+// Security views are limited to four hallway regions, never the whole map.
+export const AU_SECURITY_CONSOLE = { x: 24, y: 49 };
+export const AU_CAMERA_VIEWS = [
+  { id:'navigation', name:'ممر الملاحة', x:77, y:35, w:11, h:12 },
+  { id:'admin', name:'ممر الإدارة', x:47, y:42, w:9, h:14 },
+  { id:'medbay', name:'ممر العيادة', x:28, y:15, w:11, h:12 },
+  { id:'security', name:'ممر الأمن', x:15, y:42, w:11, h:15 }
+] as const;
+export const AU_SABOTAGE_POINTS = {
+  oxygen: [{id:'o2',x:74,y:38},{id:'admin',x:65,y:48}],
+  reactor: [{id:'north',x:9,y:45},{id:'south',x:9,y:55}],
+  lights: [{id:'lights',x:34,y:70}],
+  comms: [{id:'comms',x:68,y:85}]
+} as const;
+const AU_CREW_VISION = 10;
+const AU_IMPOSTOR_VISION = 15;
+const AU_LIGHTS_VISION = 4;
+
+/** Sample the actual walkable floor so walls block seeing and interaction. */
+function clearSight(a: {x:number; y:number}, b: {x:number; y:number}): boolean {
+  const steps = Math.max(1, Math.ceil(distance(a,b) * 3));
+  for (let i=1; i<steps; i++) {
+    const t=i/steps;
+    if (!isFloor(a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t)) return false;
+  }
+  return true;
+}
+function canSee(room: AuRoomState, viewer: AuPlayer, target: {x:number; y:number}): boolean {
+  const radius = !viewer.alive ? 20 : viewer.role === 'impostor' ? AU_IMPOSTOR_VISION : room.sabotage?.kind === 'lights' ? AU_LIGHTS_VISION : AU_CREW_VISION;
+  return distance(viewer,target) <= radius && (!viewer.alive || clearSight(viewer,target));
 }
 
 function roomAt(x: number, y: number): string {
@@ -338,6 +390,16 @@ function dealTasks(count = AU_TASKS_PER_PLAYER): AuTask[] {
     .map((station, index) => taskForStation(station, index));
 }
 
+// The link pointers form separate cycles; every exit in the same cycle is selectable.
+function connectedVents(id: string): typeof AU_MAP.vents {
+  const found: typeof AU_MAP.vents = [];
+  let current = AU_MAP.vents.find(vent => vent.id === id);
+  while (current && !found.some(vent => vent.id === current!.id)) {
+    found.push(current); current = AU_MAP.vents.find(vent => vent.id === current!.link);
+  }
+  return found;
+}
+
 function stationById(id: string) {
   return AU_MAP.stations.find(station => station.id === id) || null;
 }
@@ -351,11 +413,14 @@ function pickColor(room: AuRoomState, wanted?: string): string {
 
 function makePlayer(name: string, bot: boolean, room: AuRoomState, color?: string): AuPlayer {
   const spawn = {
-    x: CAFETERIA_SPAWN.x + (Math.random() * 8 - 4),
-    y: CAFETERIA_SPAWN.y + (Math.random() * 6 - 3)
+    x: CAFETERIA_SPAWN.x + (Math.random() * 6 - 3),
+    y: CAFETERIA_SPAWN.y + (Math.random() * 2 - 1)
   };
   return {
     token: bot ? `bot_${Math.random().toString(36).slice(2, 9)}` : token(),
+    publicId: token(),
+    watchingCameras: false,
+    ventId: null,
     name: String(name || 'لاعب').slice(0, 18),
     color: pickColor(room, color),
     bot,
@@ -443,8 +508,8 @@ function startMatch(room: AuRoomState): void {
     player.role = impostorIndexes.has(index) ? 'impostor' : 'crew';
     player.alive = true;
     player.tasks = player.role === 'crew' ? dealTasks(room.practice ? AU_MAP.stations.length : settings.tasks) : [];
-    player.x = CAFETERIA_SPAWN.x + (Math.random() * 10 - 5);
-    player.y = CAFETERIA_SPAWN.y + (Math.random() * 6 - 3);
+    player.x = CAFETERIA_SPAWN.x + (Math.random() * 6 - 3);
+    player.y = CAFETERIA_SPAWN.y + (Math.random() * 2 - 1);
     player.emergencyUsed = false;
     player.lastKillAt = Date.now();
     player.votesGiven = false;
@@ -453,6 +518,8 @@ function startMatch(room: AuRoomState): void {
     player.suspectToken = null;
     player.taskReadyAt = 0;
     player.moveSeq = 0;
+    player.watchingCameras = false;
+    player.ventId = null;
     player.lastSeen = Date.now();
   });
   log(room, `بدت المباراة بـ ${players.length} لاعبين و${impostors} مزوّر`);
@@ -469,9 +536,11 @@ function startMeeting(room: AuRoomState, reason: 'report' | 'emergency', calledB
   room.meeting = { reason, calledBy, startedAt: now, endsAt: now + roomSettings(room).meetingMs, votes: {}, chat: [] };
   room.players.forEach(player => {
     player.votesGiven = false;
+    player.watchingCameras = false;
+    player.ventId = null;
     if (player.alive) {
-      player.x = CAFETERIA_SPAWN.x + (Math.random() * 10 - 5);
-      player.y = CAFETERIA_SPAWN.y + (Math.random() * 6 - 3);
+      player.x = CAFETERIA_SPAWN.x + (Math.random() * 6 - 3);
+      player.y = CAFETERIA_SPAWN.y + (Math.random() * 2 - 1);
     }
   });
   room.bodies = [];
@@ -571,7 +640,7 @@ function nextBotWaypoint(from: { x: number; y: number }, target: { x: number; y:
 /** Bots remember only nearby witnesses, not secret roles. */
 function recordWitnesses(room: AuRoomState, killer: AuPlayer, victim: AuPlayer): void {
   for (const witness of room.players) {
-    if (witness.bot && witness.role === 'crew' && witness.alive && witness.token !== killer.token && witness.token !== victim.token && distance(witness, victim) < 8) {
+    if (witness.bot && witness.role === 'crew' && witness.alive && witness.token !== killer.token && witness.token !== victim.token && canSee(room, witness, victim) && canSee(room, witness, killer)) {
       witness.suspectToken = killer.token;
     }
   }
@@ -582,12 +651,12 @@ function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
   const think = (bot.nextThinkAt || 0) <= now;
   if (think) {
     bot.nextThinkAt = now + 1300 + Math.random() * 800;
-    const body = bot.alive && room.bodies.find(entry => distance(entry, bot) < 5);
+    const body = bot.alive && room.bodies.find(entry => distance(entry, bot) < 4 && clearSight(bot,entry));
     if (body) { startMeeting(room, 'report', bot.token); return; }
     if (bot.role === 'impostor') {
       const victim = nearestAliveCrew(room, bot, 4);
-      const witnesses = victim ? room.players.filter(p => p.alive && p.token !== bot.token && p.token !== victim.token && distance(p, victim) < 7).length : 0;
-      if (victim && witnesses === 0 && now - bot.lastKillAt >= roomSettings(room).killCooldownMs) {
+      const witnesses = victim ? room.players.filter(p => p.alive && p.token !== bot.token && p.token !== victim.token && canSee(room,p,victim)).length : 0;
+      if (victim && witnesses === 0 && clearSight(bot,victim) && now - bot.lastKillAt >= roomSettings(room).killCooldownMs) {
         recordWitnesses(room, bot, victim);
         victim.alive = false; bot.lastKillAt = now;
         room.bodies.push({ playerId: victim.token, name: victim.name, color: victim.color, x: victim.x, y: victim.y, room: roomAt(victim.x, victim.y), at: now });
@@ -604,10 +673,20 @@ function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
       }
     }
     if (bot.role === 'crew' && bot.alive && room.sabotage) {
-      bot.taskReadyAt = 0;
-      const point = sabotageStation(room.sabotage.kind);
-      if (point && distance(point, bot) < 4) { room.sabotage = null; bot.target = null; }
-      else if (point) bot.target = point;
+      const sab=room.sabotage; initializeSabotage(sab);
+      const botIndex=room.players.filter(p => p.bot && p.role==='crew').findIndex(p => p.token===bot.token);
+      const part = sab.kind==='reactor' ? (botIndex%2 ? 'north' : 'south') : sab.kind==='oxygen' ? (!(sab.fixed || []).includes('o2') ? 'o2' : 'admin') : sab.kind;
+      const point = sabotagePoint(sab.kind,part);
+      bot.taskReadyAt=0;
+      if (point && distance(point, bot) < 3.5) {
+        if(sab.kind==='reactor') {
+          sab.holds![part]={token:bot.token,at:now}; bot.target=point;bot.taskReadyAt=now+3000;
+          if(reactorFixed(room,sab,now)) finishSabotage(room,bot.name);
+        } else if(sab.kind==='oxygen') {
+          if(!sab.fixed!.includes(part))sab.fixed!.push(part); bot.target=null;
+          if(sab.fixed!.includes('o2') && sab.fixed!.includes('admin'))finishSabotage(room,bot.name);
+        } else {finishSabotage(room,bot.name);bot.target=null;}
+      } else if (point) bot.target = point;
     } else if (bot.role === 'crew') {
       const nextTask = bot.tasks.find(task => !task.done);
       const station = nextTask && stationById(nextTask.station);
@@ -628,7 +707,15 @@ function botThink(room: AuRoomState, bot: AuPlayer, now: number): void {
     const waypoint = nextBotWaypoint(bot, bot.target);
     const dx = waypoint.x - bot.x, dy = waypoint.y - bot.y;
     const length = Math.hypot(dx, dy) || 1, step = Math.min(3.2, length);
-    const next = clampToShip(bot.x + dx / length * step, bot.y + dy / length * step, bot);
+    let next = clampToShip(bot.x + dx / length * step, bot.y + dy / length * step, bot);
+    if (distance(next, bot) < 0.05) {
+      const side = bot.token.charCodeAt(bot.token.length - 1) % 2 ? 1 : -1;
+      for (const degrees of [45,90,135,180]) {
+        const angle=side*degrees*Math.PI/180, vx=(dx*Math.cos(angle)-dy*Math.sin(angle))/length, vy=(dx*Math.sin(angle)+dy*Math.cos(angle))/length;
+        const candidate=clampToShip(bot.x+vx*step,bot.y+vy*step,bot);
+        if (distance(candidate,bot) > 0.05) {next=candidate;break;}
+      }
+    }
     bot.x = next.x; bot.y = next.y;
   }
 }
@@ -648,17 +735,33 @@ function botVote(room: AuRoomState, now: number): boolean {
   return changed;
 }
 
+function newCode(): string { return String(Math.floor(10000 + Math.random() * 90000)); }
+function initializeSabotage(sab: AuSabotageState): void {
+  sab.fixed ||= []; sab.codes ||= {o2:newCode(),admin:newCode()};
+  sab.switches ||= [false,true,false,true,false];
+  if (sab.frequency == null) sab.frequency=30+Math.floor(Math.random()*41);
+  sab.holds ||= {};
+}
 function applySabotage(room: AuRoomState, kind: AuSabotage): void {
   if (room.phase !== 'playing') return;
   room.sabotage = { kind, endsAt: kind === 'lights' || kind === 'comms' ? 0 : Date.now() + AU_SABOTAGE_MS };
+  initializeSabotage(room.sabotage);
   log(room, `تخريب: ${kind === 'reactor' ? 'المفاعل' : kind === 'oxygen' ? 'الأوكسجين' : kind === 'lights' ? 'الإنارة' : 'الاتصالات'}`);
 }
-
-function sabotageStation(kind: AuSabotage): { x: number; y: number } | null {
-  if (kind === 'reactor') return { x: 9, y: 50 };
-  if (kind === 'oxygen') return { x: 74, y: 38 };
-  if (kind === 'lights') return { x: 34, y: 70 };
-  return { x: 68, y: 85 };
+function sabotagePoint(kind: AuSabotage, id: string): {id:string; x:number; y:number} | undefined {
+  return AU_SABOTAGE_POINTS[kind].find(point => point.id === id);
+}
+function finishSabotage(room: AuRoomState, name: string): void {
+  log(room, `أصلح ${name} التخريب`); room.sabotage=null;
+}
+function reactorFixed(room: AuRoomState, sab: AuSabotageState, now: number): boolean {
+  const valid = (side: 'north' | 'south') => {
+    const hold=sab.holds?.[side], point=sabotagePoint('reactor',side);
+    const player=room.players.find(p => p.token === hold?.token);
+    return hold && point && player && player.alive && !player.ventId && now-hold.at < 3500 && distance(point,player) <= 5 && clearSight(player,point) ? hold : null;
+  };
+  const a=valid('north'), b=valid('south');
+  return Boolean(a && b && a.token !== b.token);
 }
 
 /** Runs timers, bot AI and win checks. Cheap enough to run on every poll. */
@@ -701,8 +804,8 @@ export interface AuPublicPlayer {
   color: string;
   bot: boolean;
   alive: boolean;
-  x: number;
-  y: number;
+  x: number | null;
+  y: number | null;
   role: AuRole | null;
   tasks: AuTask[];
   isHost: boolean;
@@ -719,7 +822,11 @@ export interface AuPublicRoom {
   you: AuPublicPlayer | null;
   role: AuRole | null;
   bodies: AuBody[];
-  sabotage: { kind: AuSabotage; endsAt: number } | null;
+  camerasActive: boolean;
+  cameraFeeds: Array<{ id: string; name: string; x:number; y:number; w:number; h:number; players: Array<{id:string; name:string; color:string; x:number; y:number}>; bodies: AuBody[] }> | null;
+  inVent: boolean;
+  ventOptions: Array<{id:string; name:string}>;
+  sabotage: AuPublicSabotage | null;
   meeting: {
     reason: 'report' | 'emergency';
     calledBy: string;
@@ -747,6 +854,17 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
   const viewerIsImpostor = viewer?.role === 'impostor';
   const now = Date.now();
   const progress = crewTaskProgress(room);
+  if (room.sabotage) initializeSabotage(room.sabotage);
+  const inGame = room.phase === 'playing';
+  const cameraAllowed = Boolean(inGame && viewer && viewer.watchingCameras && distance(viewer,AU_SECURITY_CONSOLE) <= 4 && room.sabotage?.kind !== 'comms');
+  const publicBody = (body: AuBody): AuBody => ({...body, playerId: room.players.find(p => p.token === body.playerId)?.publicId || ''});
+  const cameraFeeds = cameraAllowed ? AU_CAMERA_VIEWS.map(view => {
+    const center={x:view.x+view.w/2,y:view.y+view.h/2};
+    return { ...view,
+      players:room.players.filter(p => p.alive && !p.ventId && insideRect(p,view) && clearSight(center,p)).map(p => ({id:p.publicId || '',name:p.name,color:p.color,x:p.x,y:p.y})),
+      bodies:room.bodies.filter(body => insideRect(body,view) && clearSight(center,body)).map(publicBody)
+    };
+  }) : null;
   const votes = room.meeting
     ? Object.entries(room.meeting.votes).map(([voter, target]) => ({
         voter: room.players.find(player => player.token === voter)?.name || voter,
@@ -760,32 +878,43 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
     players: room.players.map(player => {
       // Your own role, your fellow impostors, and everyone whose body was found
       // or who was ejected (dead players) are public.
+      const visible = !inGame || (viewer && (player.token === viewer.token || (!player.ventId && (player.alive || !viewer.alive) && canSee(room, viewer, player))));
+      // An unreported murder cannot be inferred from the roster or roles.
+      const undiscovered = inGame && viewer?.alive && player.token !== viewer.token && !player.alive && room.bodies.some(b => b.playerId === player.token);
       const revealRole = (candidate: AuPlayer) =>
         candidate.token === viewerToken ||
         room.phase === 'ended' ||
-        !candidate.alive ||
+        (!candidate.alive && !undiscovered) ||
         (viewerIsImpostor && candidate.role === 'impostor');
       return {
-        token: player.token === viewerToken ? 'you' : player.token,
+        token: player.token === viewerToken ? 'you' : (player.publicId || ''),
         name: player.name,
         color: player.color,
         bot: player.bot,
-        alive: player.alive,
-        x: Math.round(player.x * 10) / 10,
-        y: Math.round(player.y * 10) / 10,
+        alive: undiscovered ? true : player.alive,
+        x: visible ? Math.round(player.x * 10) / 10 : null,
+        y: visible ? Math.round(player.y * 10) / 10 : null,
         role: revealRole(player) ? player.role : null,
         tasks: player.token === viewerToken ? player.tasks : [],
         isHost: player.token === room.hostToken,
         you: player.token === viewerToken,
         voteReady: Boolean(room.meeting?.votes[player.token]),
-        votedFor: player.token === viewerToken ? (room.meeting?.votes[player.token] || null) : null,
+        votedFor: player.token === viewerToken && room.meeting?.votes[player.token] ? (room.meeting.votes[player.token] === 'skip' ? 'skip' : (room.players.find(p => p.token === room.meeting?.votes[player.token])?.publicId || null)) : null,
         emergencyUsed: player.emergencyUsed
       };
     }),
     you: null,
     role: viewer ? viewer.role : null,
-    bodies: room.phase === 'playing' ? room.bodies.map(body => ({ ...body })) : [],
-    sabotage: room.sabotage,
+    bodies: inGame && viewer ? room.bodies.filter(body => canSee(room,viewer,body)).map(publicBody) : [],
+    camerasActive: inGame && room.sabotage?.kind !== 'comms' && room.players.some(p => p.alive && p.watchingCameras && distance(p, AU_SECURITY_CONSOLE) <= 4),
+    cameraFeeds,
+    inVent: Boolean(inGame && viewer?.ventId),
+    ventOptions: viewer?.ventId ? connectedVents(viewer.ventId).filter(vent => vent.id !== viewer.ventId).map(vent => ({id:vent.id, name:AU_MAP.rooms.find(room => insideRect(vent,room))?.name || 'الممر'})) : [],
+    sabotage: room.sabotage ? {
+      kind:room.sabotage.kind, endsAt:room.sabotage.endsAt, fixed:room.sabotage.fixed || [],
+      codes:room.sabotage.codes || {}, switches:room.sabotage.switches || [], frequency:room.sabotage.frequency ?? 50,
+      held:Object.entries(room.sabotage.holds || {}).filter(([,hold])=>now-hold.at<3500).map(([side])=>side)
+    } : null,
     meeting: room.meeting
       ? {
           reason: room.meeting.reason,
@@ -807,7 +936,7 @@ export function publicRoom(room: AuRoomState, viewerToken: string): AuPublicRoom
     minPlayers: AU_MIN_START,
     maxPlayers: roomSettings(room).maxPlayers,
     settings: roomSettings(room),
-    log: room.log.slice(-12),
+    log: inGame ? room.log.filter(entry => entry.text !== 'صار قتل بالسفينة').slice(-12) : room.log.slice(-12),
     now
   };
 }
@@ -845,6 +974,11 @@ export class AmongUsRooms {
     const key = String(code || '').toUpperCase().slice(0, 6);
     if (!/^[A-Z0-9]{4,6}$/.test(key)) return null;
     const room = await this.storage.get<AuRoomState>(ROOM_KEY(key));
+    if (room) {
+      let migrated=false;
+      for (const player of room.players) if (!player.publicId) { player.publicId=token(); migrated=true; }
+      if (migrated) await this.storage.put(ROOM_KEY(key),room);
+    }
     return room || null;
   }
 
@@ -927,6 +1061,7 @@ export class AmongUsRooms {
         const room = await this.load(code);
         if (!room) return fail('الغرفة غير موجودة أو انتهت', 404);
         const viewer = url.searchParams.get('token') || '';
+        if (!room.players.some(p => p.token === viewer)) return fail('مو موجود بهذي الغرفة',403);
         if (tick(room)) await this.save(room);
         return json({ ok: true, room: publicRoom(room, viewer) });
       }
@@ -1000,7 +1135,7 @@ export class AmongUsRooms {
           if (room.phase !== 'lobby') return fail('ما يصير تحذف بعد البداية');
           if (me.token !== room.hostToken) return fail('المضيف بس يحذف');
           const botId = String(body.botToken || '');
-          room.players = room.players.filter(player => player.token !== botId || !player.bot);
+          room.players = room.players.filter(player => (player.token !== botId && player.publicId !== botId) || !player.bot);
           break;
         }
         case 'lobby': {
@@ -1032,14 +1167,15 @@ export class AmongUsRooms {
           break;
         }
         case 'move': {
-          if (room.phase !== 'playing') break;
+          if (room.phase !== 'playing' || me.ventId) break;
           if (Number.isSafeInteger(body.seq)) {
             if (body.seq <= (me.moveSeq || 0)) break;
             me.moveSeq = body.seq;
           }
-          const next = clampToShip(Number(body.x), Number(body.y), me);
+          const next = me.alive ? clampToShip(Number(body.x), Number(body.y), me) : (Number.isFinite(Number(body.x)) && Number.isFinite(Number(body.y)) ? {x:Math.max(1,Math.min(99,Number(body.x))),y:Math.max(1,Math.min(99,Number(body.y)))} : {x:me.x,y:me.y});
           me.x = next.x;
           me.y = next.y;
+          if (distance(me,AU_SECURITY_CONSOLE) > 4) me.watchingCameras = false;
           break;
         }
         case 'task': {
@@ -1056,11 +1192,11 @@ export class AmongUsRooms {
         }
         case 'kill': {
           if (me.role !== 'impostor') return fail('المزوّر بس يقتل');
-          if (room.phase !== 'playing' || !me.alive) break;
+          if (room.phase !== 'playing' || !me.alive || me.ventId) break;
           if (Date.now() - me.lastKillAt < roomSettings(room).killCooldownMs) return fail('القتل بعده ما جاهز');
-          const target = room.players.find(player => player.token === String(body.target || ''));
-          if (!target || !target.alive || target.role === 'impostor') return fail('هدف غير صالح');
-          if (distance(me, target) > 7) return fail('قريب من الهدف أول');
+          const target = room.players.find(player => player.publicId === String(body.target || '') || player.token === String(body.target || ''));
+          if (!target || !target.alive || target.ventId || target.role === 'impostor') return fail('هدف غير صالح');
+          if (distance(me, target) > 4 || !clearSight(me,target)) return fail('قريب من الهدف أول');
           recordWitnesses(room, me, target);
           target.alive = false;
           me.lastKillAt = Date.now();
@@ -1069,15 +1205,15 @@ export class AmongUsRooms {
           break;
         }
         case 'report': {
-          if (room.phase !== 'playing' || !me.alive) break;
-          const body2 = room.bodies.find(entry => distance(entry, me) < 8);
+          if (room.phase !== 'playing' || !me.alive || me.ventId) break;
+          const body2 = room.bodies.find(entry => distance(entry, me) < 5 && clearSight(me,entry));
           if (!body2) return fail('ماكو جثة قريبة');
           startMeeting(room, 'report', me.token);
           break;
         }
         case 'emergency': {
           if (room.practice) return fail('ماكو اجتماع بالتجربة الفردية');
-          if (room.phase !== 'playing' || !me.alive) break;
+          if (room.phase !== 'playing' || !me.alive || me.ventId) break;
           if (me.emergencyUsed) return fail('استخدمت الاجتماع الطارئ من قبل');
           if (distance(EMERGENCY_POINT, me) > 9) return fail('زر الطوارئ بالكافتيريا');
           me.emergencyUsed = true;
@@ -1094,22 +1230,57 @@ export class AmongUsRooms {
           break;
         }
         case 'fix': {
-          if (room.phase !== 'playing' || !me.alive) break;
-          if (!room.sabotage) break;
-          const station = sabotageStation(room.sabotage.kind);
-          if (!station || distance(station, me) > 8) return fail('روح لمكان التخريب');
-          log(room, `أصلح ${me.name} التخريب`);
-          room.sabotage = null;
+          if (room.phase !== 'playing' || !me.alive || me.ventId) break;
+          const sab=room.sabotage;
+          if (!sab) break;
+          initializeSabotage(sab);
+          const part=String(body.part || ''), point=sabotagePoint(sab.kind,part);
+          if (!point || distance(point,me) > 5 || !clearSight(me,point)) return fail('روح لمكان التخريب');
+          if (sab.kind==='oxygen') {
+            if (String(body.answer || '') !== sab.codes![part]) return fail('الرمز غلط');
+            if (!sab.fixed!.includes(part)) sab.fixed!.push(part);
+            if (sab.fixed!.includes('o2') && sab.fixed!.includes('admin')) finishSabotage(room,me.name);
+          } else if (sab.kind==='reactor') {
+            if (body.holding) sab.holds![part]={token:me.token,at:Date.now()};
+            else if (sab.holds![part]?.token === me.token) delete sab.holds![part];
+            if (reactorFixed(room,sab,Date.now())) finishSabotage(room,me.name);
+          } else if (sab.kind==='lights') {
+            const index=Number(body.index);
+            if (!Number.isInteger(index) || index<0 || index>=5) return fail('مفتاح غير صالح');
+            sab.switches![index]=!sab.switches![index];
+            if (sab.switches!.every(Boolean)) finishSabotage(room,me.name);
+          } else {
+            const freq=Number(body.frequency);
+            if (!Number.isFinite(freq) || Math.abs(freq-sab.frequency!)>4) return fail('اضبط التردد أكثر');
+            finishSabotage(room,me.name);
+          }
           break;
         }
         case 'vent': {
           if (me.role !== 'impostor') return fail('المزوّر بس يستخدم التهوية');
-          if (room.phase !== 'playing' || !me.alive) break;
-          const vent = AU_MAP.vents.find(entry => distance(entry, me) < 6);
+          if (room.phase !== 'playing' || !me.alive || me.ventId) break;
+          const vent = AU_MAP.vents.find(entry => distance(entry, me) < 3 && clearSight(me,entry));
           if (!vent) return fail('ماكو فتحة تهوية قريبة');
-          const target = AU_MAP.vents.find(entry => entry.id === vent.link) || vent;
-          me.x = target.x;
-          me.y = target.y;
+          me.ventId = vent.id; me.x=vent.x; me.y=vent.y; me.watchingCameras=false;
+          break;
+        }
+        case 'ventTravel': {
+          if (room.phase !== 'playing' || !me.alive || me.role !== 'impostor' || !me.ventId) return fail('ما داخل التهوية');
+          const target = connectedVents(me.ventId).find(vent => vent.id === String(body.target || ''));
+          if (!target) return fail('هاي الفتحة مو متصلة');
+          me.ventId = target.id; me.x = target.x; me.y = target.y;
+          break;
+        }
+        case 'ventExit': {
+          if (room.phase !== 'playing' || me.role !== 'impostor' || !me.ventId) return fail('ما داخل التهوية');
+          me.ventId = null;
+          break;
+        }
+        case 'cameras': {
+          if (!body.enabled) { me.watchingCameras=false; break; }
+          if (room.phase !== 'playing' || me.ventId || distance(me,AU_SECURITY_CONSOLE) > 4) return fail('روح لشاشة الأمن أول');
+          if (room.sabotage?.kind === 'comms') return fail('الكاميرات متوقفة بسبب تخريب الاتصالات');
+          me.watchingCameras=true;
           break;
         }
         case 'meetingChat': {
@@ -1126,10 +1297,10 @@ export class AmongUsRooms {
           if (room.meeting.votes[me.token]) return fail('صوّتت من قبل');
           const choice = String(body.target || 'skip');
           if (choice !== 'skip') {
-            const targetPlayer = room.players.find(player => player.token === choice);
+            const targetPlayer = room.players.find(player => player.publicId === choice || player.token === choice);
             if (!targetPlayer || !targetPlayer.alive) return fail('هدف غير صالح');
-          }
-          room.meeting.votes[me.token] = choice === 'skip' ? 'skip' : choice;
+            room.meeting.votes[me.token] = targetPlayer.token;
+          } else room.meeting.votes[me.token] = 'skip';
           const aliveCount = room.players.filter(player => player.alive).length;
           const votedCount = Object.keys(room.meeting.votes).length;
           if (votedCount >= aliveCount) resolveMeeting(room);

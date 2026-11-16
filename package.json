@@ -51,7 +51,14 @@
     "test:amongus:practice-browser": "node scripts/check-amongus-practice-browser.mjs",
     "test:amongus:bot-round": "tsx scripts/check-amongus-bot-round.ts",
     "test:amongus:gameplay-browser": "node scripts/check-amongus-gameplay-browser.mjs",
-    "test:amongus:meeting-browser": "node scripts/check-amongus-meeting-browser.mjs"
+    "test:amongus:meeting-browser": "node scripts/check-amongus-meeting-browser.mjs",
+    "test:amongus:vision": "tsx scripts/check-amongus-vision.ts",
+    "test:amongus:systems-browser": "node scripts/check-amongus-systems-browser.mjs",
+    "test:amongus:vent-browser": "node scripts/check-amongus-vent-browser.mjs",
+    "test:amongus:sabotage": "tsx scripts/check-amongus-sabotage.ts",
+    "test:amongus:sabotage-browser": "node scripts/check-amongus-sabotage-browser.mjs",
+    "test:amongus:extra-tasks-browser": "node scripts/check-amongus-extra-tasks-browser.mjs",
+    "test:amongus:round-browser": "node --import tsx scripts/check-amongus-round-browser.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

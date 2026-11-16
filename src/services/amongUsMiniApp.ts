@@ -1,4 +1,4 @@
-import { AU_COLORS, AU_MAP } from './amongUsRooms';
+import { AU_COLORS, AU_MAP, AU_CAMERA_VIEWS, AU_SECURITY_CONSOLE, AU_SABOTAGE_POINTS } from './amongUsRooms';
 import { GAME_SFX_SCRIPT } from './gameSfx';
 
 /**
@@ -12,6 +12,9 @@ import { GAME_SFX_SCRIPT } from './gameSfx';
 export function amongUsMiniAppHtml(): string {
   const config = JSON.stringify({
     map: AU_MAP,
+    cameras: AU_CAMERA_VIEWS,
+    security: AU_SECURITY_CONSOLE,
+    sabotagePoints: AU_SABOTAGE_POINTS,
     colors: AU_COLORS,
     emergency: { x: 50, y: 12 }
   }).replace(/</g, '\\u003c');
@@ -426,6 +429,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @media(max-width:550px){#auMeetingDialog .dialog{display:flex;flex-direction:column;overflow:auto}#auVoteList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-height:32vh;overflow:auto;flex:none}#auMeetingChat{min-height:60px;flex:none}}
 .meeting-chat{height:100%;min-height:50px;overflow:auto;background:#0b1529;border:2px solid #405675;border-radius:10px;padding:6px;font-size:12px;direction:rtl}
 .meeting-chat p{margin:0 0 3px;color:#e5eff8}.meeting-entry{display:flex;gap:5px;margin-top:6px}.meeting-entry input{min-width:0;flex:1;border:2px solid #405675;border-radius:8px;background:#0b1529;color:white;padding:7px;font:inherit}.meeting-entry button{background:#3e8f81;border-radius:8px;padding:5px 12px}
+.cams-dialog{width:min(94vw,690px);max-height:94dvh;padding:10px;background:#394f50;border:6px solid #192b30;border-radius:14px;box-shadow:0 6px 0 #071217}
+.cams-head{display:flex;justify-content:space-between;align-items:center;color:#e4f4ee;gap:10px}.cams-head button{padding:6px 12px;background:#b6d1c9;color:#122a2b;border:2px solid #15282b;border-radius:7px}
+.cams-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;background:#162b2b;border:7px solid #1d3032;margin-top:6px}.cams-grid canvas{display:block;width:100%;height:min(32dvh,180px);background:#111b21}.cams-off{color:#f6d580;text-align:center;margin:4px;font-size:12px}
 .timer{font-variant-numeric:tabular-nums;font-weight:900;color:var(--gold)}
 /* task minigames */
 .wire-board{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:55%;padding:8px;background:#263d45;border:5px solid #0d202a;border-radius:14px;direction:ltr}
@@ -436,7 +442,16 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .wire{height:38px;border-radius:10px;border:3px solid #0a1220;cursor:pointer;box-shadow:inset 0 2px 0 #ffffff33}
 .wire.done{opacity:.28}
 .wire.pick{outline:3px solid #fff;outline-offset:2px}
-.seq{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.task-console{background:linear-gradient(#354c52,#1b3039);border:5px solid #0b1b24;border-radius:14px;padding:12px;margin:8px 0;touch-action:none}
+.task-console .status{color:#b3e5d5;text-align:center;margin:4px}
+.asteroid-field{position:relative;height:min(40dvh,220px);background:radial-gradient(ellipse at center,#16404b,#07111f 80%);border:5px solid #294e55;border-radius:12px;overflow:hidden;touch-action:manipulation}
+.rock{position:absolute;display:grid;place-items:center;width:35px;height:35px;padding:0;border-radius:38% 46% 40% 43%;background:#a68c6f;border:3px solid #554938;color:#ddc5a0;box-shadow:inset -5px -5px #816d59;touch-action:manipulation}
+.shield-board{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:260px;margin:auto}.shield-board button{height:58px;background:#924348;border:4px solid #391f29;border-radius:16px;color:#ffd1ca}.shield-board button.lit{background:#83e6de;border-color:#427f82;color:#123d3c}
+.filter-panel{position:relative;height:160px;border-radius:12px;background:#759286;border:5px solid #2b4e4b;overflow:hidden;touch-action:none}.filter-vent{position:absolute;left:3%;top:12%;width:25%;height:76%;border:4px solid #304743;border-radius:8px;background:repeating-linear-gradient(0deg,#344b43 0 5px,#82aa92 5px 10px)}.filter-leaf{position:absolute;width:37px;height:25px;background:#ba8751;border:3px solid #775234;border-radius:70% 5% 70% 5%;touch-action:none;cursor:grab}
+.steering-panel{position:relative;width:min(270px,76vw);height:min(270px,48dvh);margin:8px auto;background:radial-gradient(circle,#314d51,#142d37);border:5px solid #75918c;border-radius:50%;touch-action:none}.steering-cross{position:absolute;left:50%;top:50%;width:42px;height:42px;transform:translate(-50%,-50%);border:3px solid #a7e0d0;border-radius:50%;pointer-events:none}.steering-cross:before,.steering-cross:after{content:"";position:absolute;background:#a7e0d0}.steering-cross:before{width:2px;height:68px;left:17px;top:-16px}.steering-cross:after{height:2px;width:68px;top:17px;left:-16px}.steering-knob{position:absolute;left:76%;top:25%;width:38px;height:38px;border-radius:50%;background:#eecb79;border:4px solid #584532;transform:translate(-50%,-50%);touch-action:none;cursor:grab}
+.engine-control{position:relative;height:140px;background:#35525a;border:5px solid #182c35;border-radius:12px;margin:10px 0;display:flex;align-items:center;padding:15px;gap:14px}.engine-control input{width:100%;accent-color:#8cddbd;touch-action:pan-y}.engine-marker{color:#e1df8f}
+.scan-panel{text-align:center;background:#233d42;border:4px solid #102b30;border-radius:14px;padding:15px}.scan-icon{width:65px;height:65px;margin:auto;border:4px solid #76e5ca;border-radius:50%;display:grid;place-items:center;color:#a2f9dc;font-size:26px}
+.seq{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
 .seq button{
   height:66px;border-radius:16px;background:linear-gradient(180deg,#2b3c63,#1b2745);
   border:3px solid #0d1830;font-size:24px;font-weight:900;color:#dfeaff;box-shadow:0 5px 0 #05070f
@@ -466,6 +481,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   box-shadow:0 6px 0 #05070f
 }
 #auToast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(orientation:landscape) and (max-height:500px){
+ #auTaskBody .shield-board button{height:38px} #auTaskBody .task-console{padding:6px;margin:4px 0}
+ #auTaskBody .seq button{height:42px} #auTaskBody .seq{gap:4px}
+ #auTaskBody .scan-panel{padding:5px} #auTaskBody .scan-icon{width:42px;height:42px}
+}
 @media(max-height:640px){
   .act{width:64px;height:64px}.acts{grid-template-columns:repeat(2,64px);gap:10px}
   .pad{width:120px;height:120px}.pad i{width:54px;height:54px;left:30px;top:30px}
@@ -742,6 +762,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <div class="bar"><i id="auProgress"></i></div>
       </div>
       <button type="button" class="badge" id="auTaskChip" aria-label="عرض المهام" aria-expanded="false">0/0</button>
+      <button type="button" class="badge" id="auCameras" hidden>الكاميرات</button>
       <button type="button" class="badge" id="auMapToggle" aria-pressed="false">الخريطة</button>
       <button type="button" class="badge" id="auPracticeExit" hidden>إنهاء التجربة</button>
     </div>
@@ -759,6 +780,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   </div>
 </section>
 
+<div class="overlay" id="auVentDialog"><div class="dialog"><h2>التهوية</h2><p>اختار فتحة متصلة أو اطلع من مكانك.</p><div class="list" id="auVentChoices"></div><button class="btn block" id="auVentExit"><span>اخرج من الفتحة</span></button></div></div>
+<div class="overlay" id="auCamsDialog"><div class="cams-dialog"><div class="cams-head"><b>كاميرات الأمن</b><button type="button" id="auCamsClose">رجوع</button></div><div class="cams-grid"><canvas id="auCam0"></canvas><canvas id="auCam1"></canvas><canvas id="auCam2"></canvas><canvas id="auCam3"></canvas></div><p class="cams-off" id="auCamsStatus"></p></div></div>
+
+<div class="overlay" id="auFixDialog"><div class="dialog" id="auFixBody"></div></div>
 <div class="overlay" id="auTaskDialog"><div class="dialog" id="auTaskBody"></div></div>
 
 <div class="overlay" id="auSabDialog">
@@ -1122,7 +1147,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     return api('/rooms/' + AU.code, body).then(function(res){
       if (AU.code !== body.code || AU.token !== body.token) return res;
       if (!res.ok) { if (res.error) toast(res.error); return res; }
-      if(action==='vent' && res.room){var teleported=res.room.players.filter(function(p){return p.you})[0];if(teleported){world.x=teleported.x;world.y=teleported.y;world.ready=true}}
+      if((action==='vent' || action==='ventTravel' || action==='ventExit') && res.room){var teleported=res.room.players.filter(function(p){return p.you})[0];if(teleported){world.x=teleported.x;world.y=teleported.y;world.ready=true}}
       applyRoom(res.room);
       return res;
     });
@@ -1523,6 +1548,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     }
     setScreen('auStage');
     if (room.phase !== 'playing' && activeTask) { stopHold(); closeTask(); }
+    if (activeFix && (room.phase !== 'playing' || !room.sabotage || room.sabotage.kind !== activeFix.kind || !room.players.some(function(p){return p.you && p.alive}))) closeFix();
+    if (activeFix && room.sabotage && activeFix.kind === 'reactor') {var st=el('auReactorStatus');if(st)st.textContent='الماسكات الفعالة: '+room.sabotage.held.length+' / 2';}
+    if (room.phase !== 'playing') el('auCamsDialog').classList.remove('on');
+    renderVent(room);
+    if (el('auCamsDialog').classList.contains('on')) renderCameras(room);
     if (room.phase === 'playing') {
       var me = room.players.filter(function(p){ return p.you; })[0];
       if (me && (!world.ready || previousPhase !== 'playing')) { world.x = me.x; world.y = me.y; world.ready = true; remotePositions=Object.create(null); }
@@ -1644,23 +1674,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     }
   }
 
-  function draw(){
-    requestAnimationFrame(draw);
-    if (!AU.room || AU.room.phase === 'lobby') return;
-    if (!size.w) resize();
-    var room = AU.room;
-    // Follow the player's actual coordinates at a readable size. The map
-    // toggle keeps the complete server-aligned ship available for navigation.
-    size.scale=mapOverview?Math.min(size.w/100,Math.max(120,size.h-55)/100):Math.min(size.w,size.h)/38;
-    size.ox=mapOverview?(size.w-100*size.scale)/2:size.w/2-world.x*size.scale;
-    size.oy=mapOverview?45+(size.h-45-100*size.scale)/2:size.h/2-world.y*size.scale;
-    ctx.clearRect(0, 0, size.w, size.h);
-    // hull / void
-    ctx.fillStyle = '#111b2d';
-    ctx.fillRect(0, 0, size.w, size.h);
-    // Sparse, stable stars keep the space background legible without darkness.
-    for(var star=0;star<70;star++){var sx=(star*149+31)%997/997*size.w,sy=(star*283 + 17)%991/991*size.h;ctx.fillStyle=star%3?'#607588':'#a8c5cf';ctx.fillRect(sx,sy,star%8===0?2:1,star%8===0?2:1)}
-
+  function drawShipGeometry(room){
     // The same server rectangles drive both floor and collision. The tile is
     // clipped to each rectangle, so artwork never invents a walkable doorway.
     var floors=CFG.map.corridors.concat(CFG.map.rooms);
@@ -1713,9 +1727,34 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       ctx.beginPath();ctx.ellipse(p.x,p.y,r*.75,r*.54,0,0,Math.PI*2);ctx.strokeStyle='#80c5d7';ctx.stroke();
       if(index===2){roundRect(p.x-r*.4,p.y-r*.3,r*.8,r*.55,size.scale*.2);ctx.fillStyle='#e8d273';ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,r*.18,0,Math.PI*2);ctx.fillStyle='#e33c3b';ctx.fill()}
     });
+    CFG.cameras.forEach(function(cam){
+      var p=toScreen(cam.x+cam.w/2,cam.y+cam.h/2);ctx.fillStyle='#263b43';ctx.fillRect(p.x-size.scale*.45,p.y-size.scale*.3,size.scale*.9,size.scale*.6);
+      ctx.fillStyle=room.camerasActive && Math.floor(Date.now()/600)%2 ? '#ff5750' : '#96bac1';ctx.beginPath();ctx.arc(p.x,p.y,Math.max(1,size.scale*.16),0,Math.PI*2);ctx.fill();
+    });
     CFG.map.vents.forEach(function(vent){
       var p=toScreen(vent.x,vent.y),r=Math.max(2,size.scale*.8);ctx.beginPath();ctx.ellipse(p.x,p.y,r,r*.7,0,0,Math.PI*2);ctx.fillStyle='#384652';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='#16232f';ctx.stroke();ctx.beginPath();ctx.moveTo(p.x-r*.6,p.y);ctx.lineTo(p.x+r*.6,p.y);ctx.stroke();
     });
+  }
+
+  function draw(){
+    requestAnimationFrame(draw);
+    if (!AU.room || AU.room.phase === 'lobby') return;
+    if (!size.w) resize();
+    var room = AU.room;
+    // Follow the player's actual coordinates at a readable size. The map
+    // toggle keeps the complete server-aligned ship available for navigation.
+    size.scale=mapOverview?Math.min(size.w/100,Math.max(120,size.h-55)/100):Math.min(size.w,size.h)/38;
+    size.ox=mapOverview?(size.w-100*size.scale)/2:size.w/2-world.x*size.scale;
+    size.oy=mapOverview?45+(size.h-45-100*size.scale)/2:size.h/2-world.y*size.scale;
+    ctx.clearRect(0, 0, size.w, size.h);
+    // hull / void
+    ctx.fillStyle = '#111b2d';
+    ctx.fillRect(0, 0, size.w, size.h);
+    // Sparse, stable stars keep the space background legible without darkness.
+    for(var star=0;star<70;star++){var sx=(star*149+31)%997/997*size.w,sy=(star*283 + 17)%991/991*size.h;ctx.fillStyle=star%3?'#607588':'#a8c5cf';ctx.fillRect(sx,sy,star%8===0?2:1,star%8===0?2:1)}
+
+    drawShipGeometry(room);
+
     if(mapOverview)CFG.map.rooms.forEach(function(def){
       var p=toScreen(def.x,def.y),w=def.w*size.scale;
       ctx.fillStyle='#e5eef1';ctx.font='900 '+Math.max(8,size.scale*1.35)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.shadowColor='#182531';ctx.shadowBlur=3;ctx.fillText(def.name,p.x+w/2,p.y+size.scale*.5);ctx.shadowBlur=0;
@@ -1782,18 +1821,18 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
     // other players
     if(!mapOverview)room.players.forEach(function(player){
-      if (player.token === 'you' || (!player.alive && me && me.alive)) return;
+      if (player.token === 'you' || player.x == null || player.y == null || (!player.alive && me && me.alive)) {delete remotePositions[player.token];return;}
       var remote=remotePositions[player.token];
       if(!remote || Math.hypot(remote.x-player.x,remote.y-player.y)>20) remote=remotePositions[player.token]={x:player.x,y:player.y};
       else {remote.x+=(player.x-remote.x)*.12;remote.y+=(player.y-remote.y)*.12}
       var pos = toScreen(remote.x, remote.y);
-      drawBean(pos.x, pos.y, size.scale * 3.6, colorHex(player.color), !player.alive, player.name, false);
+      drawBean(pos.x, pos.y, size.scale * 2.1, colorHex(player.color), !player.alive, player.name, false);
     });
 
     // you last, on top
     if (me) {
       var own = toScreen(world.x, world.y);
-      drawBean(own.x, own.y, size.scale * 3.9, colorHex(me.color), !me.alive, me.name, true);
+      drawBean(own.x, own.y, size.scale * 2.2, colorHex(me.color), !me.alive, me.name, true);
     }
 
     // The static overview never shows other players or bodies through fog.
@@ -1801,14 +1840,14 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (me && !mapOverview) {
       var vp = toScreen(world.x, world.y);
       var lightsOut = room.sabotage && room.sabotage.kind === 'lights';
-      var radius = size.scale * (me.alive ? (lightsOut ? 13 : (me.role === 'impostor' ? 34 : 27)) : 34);
+      var radius = size.scale * (me.alive ? (me.role === 'impostor' ? 15 : (lightsOut ? 4 : 10)) : 20);
       var grd = ctx.createRadialGradient(vp.x, vp.y, radius * 0.5, vp.x, vp.y, radius);
       grd.addColorStop(0, 'rgba(3,5,12,0)');
-      grd.addColorStop(1, lightsOut ? 'rgba(3,5,12,0.9)' : 'rgba(10,20,35,0.38)');
+      grd.addColorStop(1, lightsOut && me.role !== 'impostor' && me.alive ? 'rgba(3,5,12,0.87)' : 'rgba(10,20,35,0.45)');
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, size.w, size.h);
     }
-    if (!mapOverview && room.sabotage && room.sabotage.kind === 'lights') {
+    if (!mapOverview && room.sabotage && room.sabotage.kind === 'lights' && me && me.alive && me.role !== 'impostor') {
       ctx.fillStyle = 'rgba(2,4,10,0.3)';
       ctx.fillRect(0, 0, size.w, size.h);
     }
@@ -1862,7 +1901,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   }
 
   function clientWalkable(x,y){
-    return CFG.map.rooms.concat(CFG.map.corridors).some(function(rect){return x>=rect.x&&x<=rect.x+rect.w&&y>=rect.y&&y<=rect.y+rect.h});
+    var me=AU.room && AU.room.players.filter(function(p){return p.you})[0];
+    if(me && !me.alive) return x>=1 && x<=99 && y>=1 && y<=99;
+    return CFG.map.rooms.concat(CFG.map.corridors).some(function(rect){return x>=rect.x&&x<=rect.x+rect.w&&y>=rect.y&&y<=rect.y+rect.h}) && !CFG.map.obstacles.some(function(o){return Math.pow((x-o.x)/o.rx,2)+Math.pow((y-o.y)/o.ry,2)<1});
   }
   var lastFrame=0;
   function step(frame){
@@ -1885,6 +1926,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if(clientWalkable(nextX,nextY)){world.x=nextX;world.y=nextY}
     else if(clientWalkable(nextX,world.y))world.x=nextX;
     else if(clientWalkable(world.x,nextY))world.y=nextY;
+    el('auCameras').hidden = Math.hypot(CFG.security.x-world.x,CFG.security.y-world.y)>4;
     var now = Date.now();
     if (now - (world.lastStep || 0) > 380) {
       world.lastStep = now;
@@ -1912,9 +1954,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   function nearestTarget(){
     var best = null;
     (AU.room.players || []).forEach(function(p){
-      if (p.token === 'you' || !p.alive) return;
+      if (p.token === 'you' || !p.alive || p.x == null || p.y == null) return;
       var d = Math.hypot(p.x - world.x, p.y - world.y);
-      if (d < 7 && (!best || d < best.d)) best = { player: p, d: d };
+      if (d < 4 && (!best || d < best.d)) best = { player: p, d: d };
     });
     return best;
   }
@@ -1922,12 +1964,12 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var best = null;
     (AU.room.bodies || []).forEach(function(body){
       var d = Math.hypot(body.x - world.x, body.y - world.y);
-      if (d < 8 && (!best || d < best.d)) best = { body: body, d: d };
+      if (d < 5 && (!best || d < best.d)) best = { body: body, d: d };
     });
     return best;
   }
   function nearVent(){
-    return CFG.map.vents.some(function(v){ return Math.hypot(v.x - world.x, v.y - world.y) < 6; });
+    return CFG.map.vents.some(function(v){ return Math.hypot(v.x - world.x, v.y - world.y) < 3; });
   }
   function nearEmergency(){
     return Math.hypot(CFG.emergency.x - world.x, CFG.emergency.y - world.y) < 9;
@@ -1938,6 +1980,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     if (!me) return;
     el('auPracticeExit').hidden = !room.practice;
     el('auEmergency').hidden = !!room.practice || !me.alive;
+    el('auCameras').hidden = room.phase !== 'playing' || Math.hypot(CFG.security.x-world.x,CFG.security.y-world.y)>4;
     el('auRoleText').textContent = room.practice ? 'تجربة فردية' : room.phase === 'ended'
       ? (room.winner === 'crew' ? 'الطاقم فاز' : 'المزوّرون فازوا')
       : (me.role === 'impostor' ? 'مزوّر' : 'طاقم');
@@ -1953,7 +1996,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     el('auReport').hidden = !!room.practice || !me.alive;
 
     var station = nearestStation(me);
-    el('auUse').classList.toggle('ready', !!station && room.phase === 'playing');
+    el('auUse').classList.toggle('ready', (!!station || !!nearestFix(room)) && room.phase === 'playing');
     var target = nearestTarget();
     el('auKill').classList.toggle('ready', me.role === 'impostor' && !!target && room.killCooldownLeftMs === 0 && room.phase === 'playing');
 
@@ -1980,15 +2023,41 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     }
   }
 
+  // The server supplies only the four authorised camera views while the viewer
+  // remains at Security. A normal room snapshot never contains remote positions.
+  el('auCameras').addEventListener('click',function(){
+    act('cameras',{enabled:true}).then(function(res){
+      if(!res.ok)return;
+      el('auCamsDialog').classList.add('on');renderCameras(res.room);
+    });
+  });
+  el('auCamsClose').addEventListener('click',function(){el('auCamsDialog').classList.remove('on');act('cameras',{enabled:false})});
+  function renderCameras(room){
+    var feeds=room.cameraFeeds;
+    el('auCamsStatus').textContent=feeds?'':(room.sabotage&&room.sabotage.kind==='comms'?'الاتصالات متعطلة — الكاميرات متوقفة':'الكاميرات متوقفة');
+    for(var i=0;i<4;i++){
+      var cv=el('auCam'+i), w=cv.clientWidth||260,h=cv.clientHeight||135,dpr=Math.min(2,window.devicePixelRatio||1);
+      if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+      var c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.fillStyle='#1d343a';c.fillRect(0,0,w,h);
+      if(!feeds || !feeds[i])continue;
+      var feed=feeds[i],scale=Math.min(w/feed.w,h/feed.h),ox=(w-feed.w*scale)/2-feed.x*scale,oy=(h-feed.h*scale)/2-feed.y*scale;
+      c.save();c.beginPath();c.rect(0,0,w,h);c.clip();
+      // Draw the same ship art and geometry used by the main view, but only
+      // the server-authorised entities in this camera's hallway.
+      var savedCtx=ctx, savedScale=size.scale, savedOx=size.ox, savedOy=size.oy;
+      try {ctx=c;size.scale=scale;size.ox=ox;size.oy=oy;drawShipGeometry(room)}
+      finally {ctx=savedCtx;size.scale=savedScale;size.ox=savedOx;size.oy=savedOy}
+      feed.bodies.forEach(function(body){c.fillStyle=colorHex(body.color);c.beginPath();c.ellipse(ox+body.x*scale,oy+body.y*scale,scale*.8,scale*.5,0,0,Math.PI*2);c.fill();c.fillStyle='#f5f4e6';c.fillRect(ox+body.x*scale-scale*.1,oy+body.y*scale-scale*.9,scale*.2,scale*.45)});
+      feed.players.forEach(function(player){drawCrew(c,ox+player.x*scale,oy+player.y*scale,scale*2.1,colorHex(player.color),0,0,{shadow:true})});
+      c.restore();c.fillStyle='#e6f4e7';c.font='bold 11px system-ui';c.textAlign='right';c.fillText(feed.name,w-6,14);
+    }
+  }
+
   el('auUse').addEventListener('click', function(){
     var me = AU.room.players.filter(function(p){ return p.you; })[0];
     if (!me) return;
-    if (AU.room.sabotage) {
-      var point = AU.room.sabotage.kind === 'reactor' ? { x: 9, y: 50 }
-        : AU.room.sabotage.kind === 'oxygen' ? { x: 74, y: 38 }
-        : AU.room.sabotage.kind === 'lights' ? { x: 34, y: 70 } : { x: 68, y: 85 };
-      if (Math.hypot(point.x - world.x, point.y - world.y) < 8) return act('fix');
-    }
+    var fix = nearestFix(AU.room);
+    if (fix && me.alive && !AU.room.inVent) return openFix(AU.room.sabotage,fix);
     var near = nearestStation(me);
     if (near) openTask(near.task);
     else toast('اقرب من محطة مهمة أول');
@@ -2000,6 +2069,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   });
   el('auReport').addEventListener('click', function(){ act('report'); });
   el('auVent').addEventListener('click', function(){ sfx('vent'); act('vent'); });
+  el('auVentExit').addEventListener('click',function(){act('ventExit')});
+  function renderVent(room){
+    var dialog=el('auVentDialog');
+    if(room.phase!=='playing' || !room.inVent){dialog.classList.remove('on');return}
+    dialog.classList.add('on');
+    var list=el('auVentChoices');
+    list.innerHTML=(room.ventOptions || []).map(function(v){return '<button class="btn block dark" data-vent="'+esc(v.id)+'"><span>'+esc(v.name)+'</span></button>'}).join('');
+    Array.prototype.forEach.call(list.querySelectorAll('[data-vent]'),function(button){button.addEventListener('click',function(){act('ventTravel',{target:button.getAttribute('data-vent')})})});
+  }
   el('auEmergency').addEventListener('click', function(){ act('emergency'); });
   el('auSabotage').addEventListener('click', function(){ el('auSabDialog').classList.add('on'); });
   el('auSabClose').addEventListener('click', function(){ el('auSabDialog').classList.remove('on'); });
@@ -2009,6 +2087,46 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       act('sabotage', { kind: button.getAttribute('data-sab') });
     });
   });
+
+  /* Sabotage consoles are local interactions, verified by the server. */
+  var activeFix=null, fixTimer=null, fixHolding=false;
+  function nearestFix(room){
+    if(!room || !room.sabotage)return null;
+    return (CFG.sabotagePoints[room.sabotage.kind] || []).filter(function(p){return Math.hypot(p.x-world.x,p.y-world.y)<4.5 && !(room.sabotage.kind==='oxygen' && room.sabotage.fixed.indexOf(p.id)>=0)})
+      .sort(function(a,b){return Math.hypot(a.x-world.x,a.y-world.y)-Math.hypot(b.x-world.x,b.y-world.y)})[0] || null;
+  }
+  function closeFix(){
+    if(fixTimer)clearInterval(fixTimer);fixTimer=null;
+    if(fixHolding && activeFix)act('fix',{part:activeFix.part,holding:false});
+    fixHolding=false;activeFix=null;el('auFixDialog').classList.remove('on');
+  }
+  function openFix(sab,point){
+    world.vx=0;world.vy=0;activeFix={kind:sab.kind,part:point.id};
+    var body=el('auFixBody'), html='';
+    if(sab.kind==='oxygen') html='<h2>إصلاح الأوكسجين</h2><p>أدخل الرمز الظاهر، وكرر الإصلاح بالجهاز الثاني.</p><p>الرمز: <b id="auOxygenCode">'+esc(sab.codes[point.id])+'</b></p><input id="auOxygenInput" inputmode="numeric" maxlength="5" autocomplete="off" aria-label="رمز الأوكسجين"><button class="btn green" id="auFixSubmit">تأكيد</button>';
+    else if(sab.kind==='reactor') html='<h2>إصلاح المفاعل</h2><p>اضغط مطولاً، ولاعب ثاني يمسك الجهاز الآخر بنفس الوقت.</p><p id="auReactorStatus">الماسكات الفعالة: '+sab.held.length+' / 2</p><button class="btn green" id="auReactorHold" style="touch-action:none">اضغط باستمرار</button>';
+    else if(sab.kind==='lights') html='<h2>إصلاح الإنارة</h2><p>فعّل المفاتيح الخمسة.</p><div id="auLightsButtons" style="display:flex;gap:6px;direction:ltr"></div>';
+    else html='<h2>إصلاح الاتصالات</h2><p>اضبط التردد قريب من الرقم المطلوب: <b>'+sab.frequency+'</b></p><input id="auFrequency" type="range" min="0" max="100" value="0" aria-label="التردد"><output id="auFrequencyValue">0</output><button class="btn green" id="auFixSubmit">تأكيد</button>';
+    body.innerHTML=html+'<button class="btn block" id="auFixCancel" style="margin-top:10px">رجوع</button>';
+    el('auFixDialog').classList.add('on');el('auFixCancel').addEventListener('click',closeFix);
+    if(sab.kind==='oxygen')el('auFixSubmit').addEventListener('click',function(){act('fix',{part:point.id,answer:el('auOxygenInput').value}).then(function(r){if(r.ok && activeFix)closeFix()})});
+    if(sab.kind==='comms'){
+      el('auFrequency').addEventListener('input',function(){el('auFrequencyValue').textContent=this.value});
+      el('auFixSubmit').addEventListener('click',function(){act('fix',{part:point.id,frequency:Number(el('auFrequency').value)})});
+    }
+    if(sab.kind==='lights'){
+      function showLights(values){
+        var panel=el('auLightsButtons');panel.innerHTML='';values.forEach(function(on,i){var button=document.createElement('button');button.className='btn';button.style.cssText='min-width:0;flex:1;padding:0;background:'+(on?'#4cb86a':'#9b4141');button.textContent=on?'ON':'OFF';button.setAttribute('aria-label','مفتاح '+(i + 1));button.addEventListener('click',function(){button.disabled=true;act('fix',{part:point.id,index:i}).then(function(r){if(activeFix && r.ok && r.room.sabotage)showLights(r.room.sabotage.switches);else button.disabled=false})});panel.appendChild(button)});
+      }
+      showLights(sab.switches);
+    }
+    if(sab.kind==='reactor'){
+      var hold=el('auReactorHold');
+      function release(){if(!fixHolding)return;fixHolding=false;if(fixTimer)clearInterval(fixTimer);fixTimer=null;act('fix',{part:point.id,holding:false})}
+      hold.addEventListener('pointerdown',function(e){e.preventDefault();if(fixHolding)return;fixHolding=true;hold.setPointerCapture(e.pointerId);act('fix',{part:point.id,holding:true});fixTimer=setInterval(function(){if(fixHolding)act('fix',{part:point.id,holding:true})},1000)});
+      hold.addEventListener('pointerup',release);hold.addEventListener('pointercancel',release);hold.addEventListener('lostpointercapture',release);
+    }
+  }
 
   /* ---------- task minigames ---------- */
   var activeTask = null;
@@ -2021,6 +2139,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     renderTask();
   }
   function closeTask(){
+    stopHold();
     activeTask = null;
     el('auTaskDialog').classList.remove('on');
   }
@@ -2034,6 +2153,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     var body = el('auTaskBody');
     if (!activeTask) return;
     if (activeTask.station === 'st-seq-admin') return renderCard(body);
+    if (activeTask.station === 'st-seq-weapons') return renderAsteroids(body);
+    if (activeTask.station === 'st-wires-shield') return renderShields(body);
+    if (activeTask.station === 'st-seq-o2') return renderFilter(body);
+    if (activeTask.station === 'st-hold-nav') return renderSteering(body);
+    if (activeTask.station === 'st-hold-med') return renderScan(body);
+    if (activeTask.station === 'st-upper' || activeTask.station === 'st-lower') return renderAlignment(body);
+    if (activeTask.station === 'st-hold-reactor') return renderSequence(body);
     if (activeTask.kind === 'wires') return renderWires(body);
     if (activeTask.kind === 'sequence') return renderSequence(body);
     if (activeTask.kind === 'hold') return renderHold(body);
@@ -2079,17 +2205,57 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       else{card.style.transform='';el('auCardHint').textContent='حاول مرة ثانية بسرعة مناسبة'}
     });
   }
+  function renderAsteroids(body){
+    if(taskState.hit==null)taskState.hit=0;
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>اضغط الكويكبات حتى تتدمر.</p><div class="asteroid-field" id="auAsteroids"></div><p class="hint" id="auAsteroidCount">'+taskState.hit+' / 20</p><button class="btn block" id="auTaskCancel"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',closeTask);
+    var field=el('auAsteroids');
+    function addRock(){var rock=document.createElement('button');rock.type='button';rock.className='rock';rock.setAttribute('aria-label','كويكب');rock.style.left=(5+Math.random()*80)+'%';rock.style.top=(5+Math.random()*70)+'%';rock.textContent='•';rock.onclick=function(){taskState.hit+=1;rock.remove();el('auAsteroidCount').textContent=taskState.hit+' / 20';if(taskState.hit>=20)completeTask();else addRock()};field.appendChild(rock)}
+    for(var j=0;j<5;j++)addRock();
+  }
+  function renderShields(body){
+    if(!taskState.shields)taskState.shields=[false,true,false,false,true,false,true];
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>فعّل كل قطع الدرع الحمراء.</p><div class="task-console"><div class="shield-board" id="auShields"></div></div><button class="btn block" id="auTaskCancel"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',closeTask);
+    var board=el('auShields');taskState.shields.forEach(function(on,i){var b=document.createElement('button');b.type='button';b.className=on?'lit':'';b.textContent=on?'ON':'OFF';b.onclick=function(){taskState.shields[i]=true;if(taskState.shields.every(Boolean))completeTask();else renderTask()};board.appendChild(b)});
+  }
+  function renderFilter(body){
+    if(taskState.cleaned==null)taskState.cleaned=0;
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>اسحب الأوراق إلى فتحة الفلتر.</p><div class="filter-panel" id="auFilter"><div class="filter-vent" id="auFilterVent"></div></div><p class="hint" id="auFilterCount">'+taskState.cleaned+' / 5</p><button class="btn block" id="auTaskCancel"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',closeTask);
+    var panel=el('auFilter');
+    for(var i=taskState.cleaned;i<5;i++){
+      var leaf=document.createElement('button');leaf.type='button';leaf.className='filter-leaf';leaf.setAttribute('aria-label','ورقة');leaf.style.left=(37+(i%3)*18)+'%';leaf.style.top=(13+Math.floor(i/3)*45)+'%';panel.appendChild(leaf);
+      (function(node){var sx=0,sy=0,drag=false;node.addEventListener('pointerdown',function(e){e.preventDefault();sx=e.clientX;sy=e.clientY;drag=true;node.setPointerCapture(e.pointerId)});node.addEventListener('pointermove',function(e){if(drag)node.style.transform='translate('+(e.clientX-sx)+'px,'+(e.clientY-sy)+'px)'});node.addEventListener('pointerup',function(e){if(!drag)return;drag=false;var rect=el('auFilterVent').getBoundingClientRect();if(e.clientX>=rect.left&&e.clientX<=rect.right&&e.clientY>=rect.top&&e.clientY<=rect.bottom){node.remove();taskState.cleaned+=1;el('auFilterCount').textContent=taskState.cleaned+' / 5';if(taskState.cleaned===5)completeTask()}else node.style.transform=''})})(leaf);
+    }
+  }
+  function renderSteering(body){
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>اسحب مؤشر التوجيه إلى المنتصف.</p><div class="steering-panel" id="auSteering"><div class="steering-cross"></div><button type="button" class="steering-knob" id="auSteeringKnob" aria-label="مؤشر التوجيه"></button></div><button class="btn block" id="auTaskCancel"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',closeTask);var panel=el('auSteering'),knob=el('auSteeringKnob'),drag=false;
+    knob.addEventListener('pointerdown',function(e){e.preventDefault();drag=true;knob.setPointerCapture(e.pointerId)});
+    knob.addEventListener('pointermove',function(e){if(!drag)return;var r=panel.getBoundingClientRect();knob.style.left=Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100))+'%';knob.style.top=Math.max(0,Math.min(100,(e.clientY-r.top)/r.height*100))+'%'});
+    knob.addEventListener('pointerup',function(e){if(!drag)return;drag=false;var r=panel.getBoundingClientRect();if(Math.hypot(e.clientX-(r.left+r.width/2),e.clientY-(r.top+r.height/2))<r.width*.12)completeTask()});
+  }
+  function renderAlignment(body){
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>حرّك المحرك حتى يصير المؤشر بالمنتصف.</p><div class="engine-control"><span class="engine-marker">◀</span><input id="auEngineSlider" type="range" min="0" max="100" value="15" aria-label="محاذاة المحرك"><span class="engine-marker">▶</span></div><p class="hint">المنتصف عند 50</p><button class="btn block" id="auTaskCancel"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',closeTask);el('auEngineSlider').addEventListener('change',function(){if(Math.abs(Number(this.value)-50)<=5)completeTask()});
+  }
+  function renderScan(body){
+    body.innerHTML='<h2>'+esc(activeTask.label)+'</h2><p>ابدأ الفحص وانتظر لين يكتمل.</p><div class="scan-panel"><div class="scan-icon">+</div><div class="hold-fill"><i id="auScanFill"></i></div><p class="status" id="auScanStatus">جاهز للفحص</p></div><button class="btn block green" id="auScanStart"><span>ابدأ الفحص</span></button><button class="btn block" id="auTaskCancel" style="margin-top:8px"><span>إلغاء</span></button>';
+    el('auTaskCancel').addEventListener('click',function(){stopHold();closeTask()});
+    el('auScanStart').addEventListener('click',function(){this.disabled=true;var start=Date.now(),task=activeTask,timer=setInterval(function(){if(activeTask!==task){clearInterval(timer);return}var n=Math.min(1,(Date.now()-start)/5000);el('auScanFill').style.width=(n*100)+'%';el('auScanStatus').textContent=Math.floor(n*100)+'%';if(n>=1){clearInterval(timer);completeTask()}},100);window.auStopHold=function(){clearInterval(timer)}});
+  }
   function renderSequence(body){
     if (!taskState.pattern) {
       taskState.pattern = [];
-      for (var k = 0; k < 5; k += 1) taskState.pattern.push(Math.floor(Math.random() * 4));
+      for (var k = 0; k < 5; k += 1) taskState.pattern.push(Math.floor(Math.random() * 9));
       taskState.index = 0;
       taskState.lit = -1;
       taskState.playing = true;
       playPattern();
     }
     var html = '<h2>' + esc(activeTask.label) + '</h2><p>كرّر تسلسل الإشارات.</p><div class="seq" style="margin-top:12px">';
-    for (var i = 0; i < 4; i += 1) {
+    for (var i = 0; i < 9; i += 1) {
       html += '<button data-seq="' + i + '" class="' + (taskState.lit === i ? 'lit' : '') + '">' + (i + 1) + '</button>';
     }
     html += '</div><p class="hint">' + (taskState.playing ? 'انتظر التسلسل…' : 'دورك: ' + taskState.index + '/' + taskState.pattern.length) +
@@ -2108,9 +2274,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     });
   }
   function playPattern(){
-    var step = 0;
+    var step = 0, task=activeTask, state=taskState;
     var timer = setInterval(function(){
-      if (!activeTask || activeTask.kind !== 'sequence') { clearInterval(timer); return; }
+      if (activeTask !== task || taskState !== state) { clearInterval(timer); return; }
       if (step >= taskState.pattern.length) {
         clearInterval(timer);
         taskState.playing = false;
@@ -2121,9 +2287,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       }
       taskState.lit = taskState.pattern[step];
       renderTask();
-      setTimeout(function(){ taskState.lit = -1; if (activeTask) renderTask(); }, 330);
+      setTimeout(function(){ if(activeTask === task && taskState === state){state.lit = -1;renderTask()} }, 330);
       step += 1;
     }, 640);
+    window.auStopHold=function(){clearInterval(timer)};
   }
   function renderHold(body){
     body.innerHTML = '<h2>' + esc(activeTask.label) + '</h2><p>اضغط وابقى ضاغط لين يكمل الشريط.</p>' +
@@ -2168,7 +2335,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       window.auStopHold=function(){clearInterval(timer)};
     });
   }
-  function stopHold(){ if (window.auStopHold) window.auStopHold(); }
+  function stopHold(){ if (window.auStopHold) window.auStopHold(); window.auStopHold=null; }
 
   /* ---------- meeting ---------- */
   el('auMeetingForm').addEventListener('submit',function(event){event.preventDefault();var input=el('auMeetingInput'),text=input.value.trim();if(!text)return;input.value='';act('meetingChat',{text:text});});
