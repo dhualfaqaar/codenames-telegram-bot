@@ -27,7 +27,7 @@ const check = (name: string, condition: boolean) => {
   passed += 1;
 };
 
-type Call = { method: string; body: FormData | null; url: string };
+type Call = { method: string; body: FormData | null; url: string; rawBody?: string };
 let calls: Call[] = [];
 let downloadBytes: Uint8Array = MP3;
 
@@ -41,7 +41,7 @@ globalThis.fetch = (async (input: any, init?: any) => {
   }
   const method = url.split('/').pop()!.split('?')[0];
   const body = init?.body instanceof FormData ? (init.body as FormData) : null;
-  calls.push({ method, body, url });
+  calls.push({ method, body, url, rawBody: typeof init?.body === 'string' ? init.body : undefined });
   if (method === 'getFile') return jsonResponse({ ok: true, result: { file_path: 'voice/file.mp3' } });
   if (method === 'getMe') return jsonResponse({ ok: true, result: { id: 1, username: 'testbot', first_name: 'Bot' } });
   return jsonResponse({ ok: true, result: { message_id: 1, audio: { file_id: 'audio-out' }, voice: { file_id: 'voice-out' } } });
@@ -94,9 +94,8 @@ async function bytesOf(call: Call, field: string): Promise<Uint8Array> {
   const mp4 = concat(new Uint8Array([0, 0, 0, 0x20]), text('ftypisom'), new Uint8Array(1024));
   const list = await runConversion('to_voice', 'video', mp4);
   check('الفيديو ما ينرسل بصمة بدون تحويل حقيقي', voiceCalls(list).length === 0);
-  check('الفيديو يتحول لملف صوتي M4A', audioCalls(list).length === 1);
-  const file = audioCalls(list)[0].body?.get('audio') as File;
-  check('امتداد M4A صحيح', String(file?.name || '').endsWith('.m4a') && String(file?.type || '') === 'audio/mp4');
+  check('الفيديو غير الصالح لا ينرسل كصوت', audioCalls(list).length === 0);
+  check('يظهر سبب الفشل', list.some(call => call.method === 'sendMessage' && call.rawBody?.includes('تعذّر استخراج صوت سليم')));
 }
 
 /* --------------------------------------- 3) مع محوّل ينتج OGG/Opus فعلي */

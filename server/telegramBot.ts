@@ -9868,6 +9868,11 @@ export class TelegramBotManager {
 
         let audioBytes =
           draft.sourceKind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(srcDl.bytes) : srcDl.bytes;
+        if (!audioBytes) {
+          if (waitId) await this.deleteMessage(chatId, waitId);
+          await this.sendMessage(chatId, 'تعذّر استخراج صوت سليم من هذا الملف. تأكد أن الفيديو بيه صوت وجرّب ملف MP4 آخر.');
+          return;
+        }
         let coverBytes: Uint8Array | undefined;
         if (draft.coverFileId) {
           const covDl = await this.downloadTelegramFileBytes(draft.coverFileId);
@@ -9887,7 +9892,6 @@ export class TelegramBotManager {
         const container = sniffAudioContainer(audioBytes);
         const isVoiceNote = isTelegramVoice(audioBytes);
         const meta = audioFileMeta(container);
-        const isM4a = meta.extension === 'm4a';
         const canCarryTags = !isVoiceNote;
 
         const safeBase = (draft.fileName || draft.title || 'audio').replace(/[\\/:*?"<>|]/g, '').trim() || 'audio';
@@ -9942,7 +9946,7 @@ export class TelegramBotManager {
           const outputFileId = String(upJson?.result?.audio?.file_id || upJson?.result?.voice?.file_id || '');
           if (outputFileId) {
             draft.fileId = outputFileId;
-            draft.sourceKind = isM4a ? 'video' : isVoiceNote ? 'voice' : 'audio';
+            draft.sourceKind = isVoiceNote ? 'voice' : 'audio';
             draft.waitingField = undefined;
             this.audioEditDrafts.set(uid, draft);
             this.audioOutputDrafts.set(`${uid}:${outputToken}`, { ...draft });
@@ -9991,6 +9995,11 @@ export class TelegramBotManager {
         // The extension/MIME must match the real bytes, otherwise the player breaks.
         const outBytes =
           saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
+        if (!outBytes) {
+          if (waitId) await this.deleteMessage(chatId, waitId);
+          await this.sendMessage(chatId, 'تعذّر استخراج صوت سليم من هذا الملف. تأكد أن الفيديو بيه صوت وجرّب ملف MP4 آخر.');
+          return;
+        }
         const meta = audioFileMeta(sniffAudioContainer(outBytes));
         sentId = await this.sendBinaryMultipart(
           chatId,
@@ -10016,6 +10025,11 @@ export class TelegramBotManager {
         } else {
           const audioBytes =
             saved.kind === 'video' ? EXT.stripVideoTracksFromMp4ToM4a(dl.bytes) : dl.bytes;
+          if (!audioBytes) {
+            if (waitId) await this.deleteMessage(chatId, waitId);
+            await this.sendMessage(chatId, 'تعذّر استخراج صوت سليم من هذا الملف. تأكد أن الفيديو بيه صوت وجرّب ملف MP4 آخر.');
+            return;
+          }
           const meta = audioFileMeta(sniffAudioContainer(audioBytes));
           sentId = await this.sendBinaryMultipart(
             chatId,

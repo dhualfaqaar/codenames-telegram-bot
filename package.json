@@ -27,6 +27,7 @@
     "test:amongus:dom": "node scripts/check-amongus-dom.mjs",
     "test:amongus:art-browser": "node scripts/check-amongus-art-browser.mjs",
     "test:audio": "tsx scripts/check-audio-formats.ts",
+    "test:audio:real": "tsx scripts/check-audio-real.ts",
     "test:voice": "tsx scripts/check-voice-delivery.ts",
     "test:sfx": "tsx scripts/check-game-sfx.ts",
     "test:sfx:dom": "node scripts/check-game-sfx-dom.mjs",
