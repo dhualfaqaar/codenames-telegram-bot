@@ -94,14 +94,7 @@ check('كتابة ID3 على OGG ممنوعة حتى ما يتخرب الفوي�
 
 /* ------------------------------------- إزالة مسار الفيديو من MP4 = M4A صحيح */
 
-check('نزع مسار الفيديو ينتج حاوية صوت معروفة', () => {
-  const stripped = EXT.stripVideoTracksFromMp4ToM4a(mp4);
-  const container = sniffAudioContainer(stripped);
-  return container === 'm4a' || container === 'unknown';
-});
-check('نزع مسار الفيديو من بايتات عشوائية ما يرمي استثناء', () => {
-  const out = EXT.stripVideoTracksFromMp4ToM4a(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
-  return out instanceof Uint8Array;
-});
+check('رفض ملف MP4 ناقص بدل ادعاء نجاح التحويل', () => EXT.stripVideoTracksFromMp4ToM4a(mp4) === null);
+check('رفض البايتات العشوائية', () => EXT.stripVideoTracksFromMp4ToM4a(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9])) === null);
 
 console.log(`Voice format checks passed: ${passed} assertions (container sniffing, voice gating, ID3 safety).`);
