@@ -9157,13 +9157,14 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(cb.id, 'جاري إرسال الفيديو...');
         const wait = await this.sendMessage(chatId, 'جاري إرسال الفيد الدائري.');
         try {
-          const bytes = await this.downloadShapeCircle(userId, match[1]);
+          const bytes = await this.downloadShapeVideo(userId, match[1], true);
           const sent = bytes && await this.sendBinaryMultipart(chatId, 'sendVideoNote', 'video_note', bytes, 'video.mp4', 'video/mp4');
           if (sent) { if (wait?.result?.message_id) await this.deleteMessage(chatId, wait.result.message_id); }
           else {
-            const text = 'ما گدرت أرسل هذا الفيديو دائري. ممكن صيغته غير مدعومة بتيليگرام؛ جرّب فيديو MP4 مربع ثاني.';
-            if (wait?.result?.message_id) await this.editMessageText(chatId, wait.result.message_id, text);
-            else await this.sendMessage(chatId, text);
+            const text = 'ما گدرت أرسل الفيديو مباشرة. ممكن صيغته غير مدعومة؛ دوس «حوّل الفيد» حتى أحاول بطريقة ثانية.';
+            const keyboard = [[{ text: 'حوّل الفيد', web_app: { url: this.shapeVideoUrl(match[1], 'circle') } }]];
+            if (wait?.result?.message_id) await this.editMessageText(chatId, wait.result.message_id, text, keyboard);
+            else await this.sendMessage(chatId, text, keyboard);
           }
         } catch {
           if (wait?.result?.message_id) await this.deleteMessage(chatId, wait.result.message_id);
@@ -9183,7 +9184,7 @@ export class TelegramBotManager {
       for (const [id, item] of this.shapeVideos) if (Date.now() - item.at >= 3600_000) this.shapeVideos.delete(id);
       while (this.shapeVideos.size >= 1000) this.shapeVideos.delete(this.shapeVideos.keys().next().value!);
       this.shapeVideos.set(userId, { fileId: '', session: '', at: Date.now() });
-      const text = 'فيد دائري\n\nالمتاح هسه هو إرسال فيديو مربع بصيغة MP4 كفيد دائري بدون تعديل الملف. أرسل فيديو مربع مدته لحد 60 ثانية وحجمه أقل من 20 MB. باقي الأشكال مو متوفرة هسه.';
+      const text = 'أشكال الفيديو\n\nأرسل فيديو مدته لحد 60 ثانية وحجمه أقل من 20 MB، وبعدها اختار الشكل. التحويل يبدأ بنافذة صغيرة على جهازك.';
       const keyboard = [[{ text: 'رجوع', callback_data: 'svc:main' }]];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
@@ -9583,22 +9584,33 @@ export class TelegramBotManager {
     const width = Number(msg.video?.width), height = Number(msg.video?.height), duration = Number(msg.video?.duration);
     const mime = String(msg.video?.mime_type || '').toLowerCase();
     const directCircle = Number.isInteger(width) && width > 0 && width === height && Number.isFinite(duration) && duration >= 0 && duration <= 60 && (!mime || mime === 'video/mp4');
-    if (!directCircle) {
-      await this.sendMessage(uid, 'المتاح هسه الفيد الدائري للفيديو المربع بصيغة MP4 فقط؛ أرسل فيديو مربع مدته لحد 60 ثانية. باقي الأشكال تحتاج تحويل مو متوفر هسه.');
-      return;
-    }
     const session = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
     this.shapeVideos.set(uid, { fileId: String(video.file_id), session, at: Date.now(), directCircle });
-    await this.sendMessage(uid, 'دوس «فيد دائري» حتى أحاول إرساله بدون تغيير الملف. تيليگرام ممكن يرفض بعض الصيغ.', [
-      [{ text: 'فيد دائري', callback_data: `shape:${session}:circle` }],
-      [{ text: 'رجوع للخدمات', callback_data: 'svc:main' }]
+    const circle = directCircle ? {text:'دائري',callback_data:`shape:${session}:circle`} : {text:'دائري',web_app:{url:this.shapeVideoUrl(session,'circle')}};
+    await this.sendMessage(uid, 'اختار الشكل. الدائري ينرسل كفيد دائري، والبقية كفيديو بخلفية سودة حول الشكل.', [
+      [circle, {text:'نجمي',web_app:{url:this.shapeVideoUrl(session,'star')}}],
+      [{text:'سداسي',web_app:{url:this.shapeVideoUrl(session,'hexagon')}}, {text:'خماسي',web_app:{url:this.shapeVideoUrl(session,'pentagon')}}],
+      [{text:'مثلث',web_app:{url:this.shapeVideoUrl(session,'triangle')}}],
+      [{text:'رجوع للخدمات',callback_data:'svc:main'}]
     ]);
   }
 
-  /** Pass a square MP4 through unchanged. Telegram decides whether it supports the encoding. */
-  private async downloadShapeCircle(uid: string, session: string): Promise<Uint8Array | null> {
+  private shapeVideoUrl(session: string, shape: string): string {
+    const url = new URL('/shape-video/', this.interactiveGamesUrl);
+    url.searchParams.set('session', session);
+    url.searchParams.set('shape', shape);
+    return url.toString();
+  }
+
+  public shapeVideoAllowed(uid: string, session: string): boolean {
     const draft = this.shapeVideos.get(uid);
-    if (!draft?.directCircle || draft.session !== session || Date.now() - draft.at >= 3600_000) return null;
+    return Boolean(draft?.fileId && draft.session === session && Date.now() - draft.at < 3600_000);
+  }
+
+  /** Bound downloads and never expose the Telegram file URL or token. */
+  private async downloadShapeVideo(uid: string, session: string, onlySquare: boolean): Promise<Uint8Array | null> {
+    const draft = this.shapeVideos.get(uid);
+    if (!draft?.fileId || !this.shapeVideoAllowed(uid, session) || (onlySquare && !draft.directCircle)) return null;
     const limit = 20 * 1024 * 1024;
     try {
       const response = await fetch(`https://api.telegram.org/bot${this.token}/getFile`, {
@@ -9618,12 +9630,28 @@ export class TelegramBotManager {
         chunks.push(part.value);
       }
       const current = this.shapeVideos.get(uid);
-      if (!current?.directCircle || current.session !== session || Date.now() - current.at >= 3600_000 || total < 12) return null;
+      if (!current?.fileId || !this.shapeVideoAllowed(uid, session) || (onlySquare && !current.directCircle) || total < 12) return null;
       const output = new Uint8Array(total);
       let pos = 0; for (const chunk of chunks) { output.set(chunk,pos); pos += chunk.length; }
-      if (String.fromCharCode(...output.subarray(4,8)) !== 'ftyp') return null;
+      if (onlySquare && String.fromCharCode(...output.subarray(4,8)) !== 'ftyp') return null;
       return output;
     } catch { return null; }
+  }
+
+  /** These methods are only exposed through the signed Telegram Mini App Worker route. */
+  public async shapeVideoSource(uid: string, session: string): Promise<Response> {
+    if (!this.shapeVideoAllowed(uid, session)) return new Response('expired', {status:403});
+    const bytes = await this.downloadShapeVideo(uid, session, false);
+    return bytes ? new Response(bytes as unknown as BodyInit, {headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store'}}) : new Response('unavailable', {status:502});
+  }
+
+  public async sendShapeVideo(uid: string, session: string, shape: string, bytes: Uint8Array): Promise<boolean> {
+    if (!this.shapeVideoAllowed(uid, session) || !['circle','star','hexagon','pentagon','triangle'].includes(shape) || bytes.length < 16 || bytes.length > 15 * 1024 * 1024 || String.fromCharCode(...bytes.subarray(4,8)) !== 'ftyp' || this.directCircleUploads.has(uid)) return false;
+    this.directCircleUploads.add(uid);
+    try {
+      const circle = shape === 'circle';
+      return Boolean(await this.sendBinaryMultipart(uid, circle ? 'sendVideoNote' : 'sendVideo', circle ? 'video_note' : 'video', bytes, 'video.mp4', 'video/mp4', circle ? {length:'480'} : {supports_streaming:'true'}));
+    } finally { this.directCircleUploads.delete(uid); }
   }
 
   /** استلام الملف المراد تحويل صيغته وعرض الصيغ المتاحة فوراً */
