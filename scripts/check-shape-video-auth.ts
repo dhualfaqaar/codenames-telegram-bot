@@ -30,13 +30,13 @@ try {
   await bot.handleShapeVideoInput('12345',{video:{file_id:'source',width:320,height:180,duration:1,mime_type:'video/mp4',file_size:16}});
   const draft=bot.shapeVideos.get('12345'), message=calls.filter(c=>c.method==='sendMessage').at(-1)!;
   const buttons=JSON.parse(message.init.body).reply_markup.inline_keyboard.flat().filter((b:any)=>b.web_app);
-  assert.deepEqual(buttons.map((b:any)=>new URL(b.web_app.url).searchParams.get('shape')),['circle','star','hexagon','pentagon','triangle']);
+  assert.deepEqual(buttons.map((b:any)=>new URL(b.web_app.url).searchParams.get('shape')),['circle']);
   assert.ok(buttons.every((b:any)=>new URL(b.web_app.url).searchParams.get('session')===draft.session));
   const token='123456:TEST', auth=await signed(token,12345), other=await signed(token,12346), expired=await signed(token,12345,Math.floor(Date.now()/1000)-90000);
   const instance=Object.create(BotState.prototype); instance.getBot=async()=>bot;
   const env={TELEGRAM_BOT_TOKEN:token,BOT_STATE:{idFromName:()=>1,get:()=>({fetch:(url:string,init:any)=>instance.fetch(new Request(url,init))})}};
   const ctx={} as any;
-  const headers={'authorization':`tma ${auth}`,'x-shape-session':draft.session,'x-shape-kind':'star','x-shape-user':'99999'};
+  const headers={'authorization':`tma ${auth}`,'x-shape-session':draft.session,'x-shape-kind':'circle','x-shape-user':'99999'};
   const req=(path:string,h:Record<string,string>,body?:BodyInit)=>new Request(`https://game.test/api/shape-video/${path}`,{method:'POST',headers:h,body});
   const src=await worker.fetch(req('source',headers),env,ctx);
   assert.equal(src.status,200); assert.deepEqual(new Uint8Array(await src.arrayBuffer()),input);
@@ -47,11 +47,13 @@ try {
   assert.equal((await worker.fetch(req('send',{...headers,'x-shape-session':'a'.repeat(32)},input),env,ctx)).status,403);
   assert.equal((await worker.fetch(req('send',headers,new Uint8Array(15*1024*1024+1)),env,ctx)).status,413);
   const uploaded=await worker.fetch(req('send',headers,input),env,ctx); assert.equal(uploaded.status,200);
-  const video=calls.filter(c=>c.method==='sendVideo').at(-1)!;
+  const video=calls.filter(c=>c.method==='sendVideoNote').at(-1)!;
   assert.equal(video.init.body.get('chat_id'),'12345','client cannot choose recipient');
-  assert.deepEqual(new Uint8Array(await (video.init.body.get('video') as Blob).arrayBuffer()),input);
-  const circle=await worker.fetch(req('send',{...headers,'x-shape-kind':'circle'},input),env,ctx); assert.equal(circle.status,200);
-  assert.equal(calls.filter(c=>c.method==='sendVideoNote').at(-1)!.init.body.get('chat_id'),'12345');
+  assert.deepEqual(new Uint8Array(await (video.init.body.get('video_note') as Blob).arrayBuffer()),input);
+  for (const shape of ['star','hexagon','pentagon','triangle']) {
+    assert.equal((await worker.fetch(req('send',{...headers,'x-shape-kind':shape},input),env,ctx)).status,401, `${shape} is disabled`);
+    assert.equal(await bot.sendShapeVideo('12345',draft.session,shape,input),false);
+  }
   rejectSend=true;
   assert.equal((await worker.fetch(req('send',headers,input),env,ctx)).status,502,'Telegram rejection not presented as success');
   rejectSend=false;

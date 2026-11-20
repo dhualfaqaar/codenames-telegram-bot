@@ -18,7 +18,8 @@ try {
   const msg=calls.filter(c=>c.method==='sendMessage').at(-1)!;
   const kb=JSON.parse(msg.init.body).reply_markup.inline_keyboard.flat();
   assert.deepEqual(kb.filter((b:any)=>b.callback_data?.startsWith('shape:')).map((b:any)=>b.callback_data.split(':')[2]),['circle']);
-  assert.deepEqual(kb.filter((b:any)=>b.web_app).map((b:any)=>new URL(b.web_app.url).searchParams.get('shape')),['star','hexagon','pentagon','triangle']);
+  assert.equal(kb.filter((b:any)=>b.web_app).length,0, 'eligible square video sends directly');
+  assert.equal(kb.filter((b:any)=>b.callback_data?.startsWith('shape:')).length,1, 'only circular button');
   const restored=new TelegramBotManager('TEST:TOKEN') as any; restored.importState(bot.exportState());
   assert.equal(restored.shapeVideos.get('12345').directCircle,true);
   await bot.handleExtraServicesCb(cb,`shape:${draft.session}:circle`);

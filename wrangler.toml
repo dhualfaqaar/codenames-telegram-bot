@@ -28,14 +28,9 @@ crons = ["*/5 * * * *"]
 
 [durable_objects]
 bindings = [
-  { name = "BOT_STATE", class_name = "BotState" },
-  { name = "SHAPE_VIDEO_JOBS", class_name = "ShapeVideoJobs" }
+  { name = "BOT_STATE", class_name = "BotState" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["BotState"]
-
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["ShapeVideoJobs"]
