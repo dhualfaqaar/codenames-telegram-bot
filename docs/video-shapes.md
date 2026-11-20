@@ -1,15 +1,31 @@
-# Video shapes
+# Direct video shapes
 
-In a private bot chat, the user opens **أشكال الفيديو**, sends a video, selects a shape and opens the Telegram Mini App. It downloads the original from Telegram through the Worker, converts it on the user's device with single-threaded FFmpeg.wasm, and uploads the result back through the Worker to Telegram. The circular option uses `sendVideoNote`; other options use `sendVideo` with a black background outside the polygon. The Worker never exposes the bot token or the Telegram file URL to the browser.
+The user sends a video to the private bot chat and chooses a Telegram callback button. The Worker submits a small authenticated job to a separate, owner-controlled HTTPS video processor. That service downloads the original directly from Telegram using its own bot-token secret, runs native FFmpeg, then sends the result directly to the same private chat. The bot token is never included in job requests. There is no Mini App or browser conversion.
 
-The Mini App needs WebAssembly, workers and `DecompressionStream('gzip')`. The compressed engine is about 10 MB on first load; the decompressed engine and video require substantially more device memory. The original must be at most 20 MiB and 60 seconds, and output at most 15 MiB. Unsupported devices, codecs or files produce an error rather than a fake success. Telegram's own video-note constraints and device performance still apply.
+Circle uses `sendVideoNote`. Star, hexagon, pentagon and triangle use `sendVideo` with black outside the shape. The input is limited to 20 MiB and 60 seconds and the output to 15 MiB. The service validates duration, dimensions, supported input formats and output size; it fails visibly rather than sending a fake result. Transcoding is lossy and can be slow; input without audio stays without audio.
 
-Telegram-signed Mini App `initData` is verified by the Worker. The user ID comes from the signature, not a client-supplied chat ID; a random per-video session expires after one hour or when another video is sent. Video bytes are not persisted in bot state. The source and output transit the Worker but conversion happens in the browser. Requests are size-limited; only one upload per user can run concurrently.
+## Deployment requirements — not provisioned by this repository
 
-## Third-party components
+The production bot runs on a Cloudflare Worker that cannot run native FFmpeg. Deploy `video-processor/Dockerfile` separately on a reliable Node/Docker host with outbound access to Telegram, enough CPU and memory for FFmpeg, and a publicly reachable **HTTPS** URL. The service is not a second polling/webhook bot and does not change the existing webhook. It handles a maximum of two concurrent jobs and rejects excess work. Running only the Worker without this service will make the shape feature explicitly unavailable.
 
-`public/shape-video/vendor` includes `@ffmpeg/ffmpeg` 0.12.15 (MIT) and the single-threaded `@ffmpeg/core` 0.12.10 (GPL-2.0-or-later). The distributed WebAssembly is the unmodified npm package file compressed with `gzip -n -9`. See the included license files and NOTICE for source and build links. It is intentionally vendored so users do not need to load an untrusted third-party CDN and Worker Builds can serve it directly.
+Set these as **private environment secrets** on the processor host, using the host's dashboard or secret manager, never in Git or chat:
 
-## Tests
+- `TELEGRAM_BOT_TOKEN`: the same bot token already used by the Worker; this grants the host control over the bot, so use a trusted, owner-controlled host.
+- `VIDEO_SHAPES_SECRET`: a strong random secret of at least 32 characters.
 
-`npm run test:shape-video` exercises the bot flow, state restore, signed Worker authentication, size limits and simulated Telegram success/failure. `npm run test:shape-video:browser` requires Playwright, @sparticuz/chromium, and native FFmpeg/FFprobe (`FFMPEG` and `FFPROBE` can select binaries). It actually runs the shipped WebAssembly in Chromium on sample videos, decodes the results, checks all five shapes and their audio, tests a silent video and rejects an overlong one. Telegram is mocked in both tests; neither verifies a real Telegram client or production delivery.
+The host injects `PORT`. `/health` is an unauthenticated liveness check, not a readiness or Telegram connectivity check. HTTPS must terminate at the host/reverse proxy; `/jobs` authenticates every request with the secret. Never expose the backend's plain HTTP port publicly without TLS.
+
+Configure these on the Worker, using private secret configuration rather than source control:
+
+- `VIDEO_SHAPES_PROCESSOR_URL`: the processor's HTTPS origin, with no username, password, query or fragment.
+- `VIDEO_SHAPES_SECRET`: the same secret configured on the processor.
+
+The bot refuses to enable the flow if configuration is absent, invalid or uses plain HTTP. Never post the bot token or shared secret in chat. The processor receives video metadata and video bytes from Telegram, writes temporary files with restricted permissions, and removes them after processing. An unexpected process termination can leave temporary files or lose an in-flight job; operators should use an ephemeral, private filesystem and arrange cleanup. Job acceptance is not a guarantee of delivery: a failed conversion or Telegram rejection triggers a failure message when possible, but a process crash may prevent it. Protect and monitor the processor host accordingly.
+
+## Verification
+
+- `npm run test:shape-video` checks the callback flow, user/session isolation, unavailable and busy cases and HTTPS submitter.
+- `FFMPEG=<path> FFPROBE=<path> npm run test:shape-video:processor` runs native FFmpeg against real clips, checks the five results and audio, no-audio clips, overlong inputs, HTTP authentication, concurrency and failure reporting. Telegram is mocked.
+- `FFMPEG=<path> FFPROBE=<path> npm run test:shape-video:direct` covers callback → job submission → real conversion → simulated Telegram delivery end to end, with no Mini App.
+
+A local test or successful Worker build does not prove that the separate production processor is deployed, reachable, or that a real Telegram client has received a result.

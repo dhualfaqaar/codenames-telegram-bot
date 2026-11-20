@@ -1,5 +1,0 @@
-FFmpeg.wasm: @ffmpeg/ffmpeg 0.12.15 (MIT) and @ffmpeg/core 0.12.10 (GPL-2.0-or-later).
-Sources and build instructions, including FFmpeg and linked codec libraries: https://github.com/ffmpegwasm/ffmpeg.wasm/tree/v0.12.10
-The FFmpeg core is redistributed under GPL-2.0-or-later; see LICENSE-GPL-2.txt.
-The core.wasm.gz.bin file is the gzip-compressed, unmodified ffmpeg-core.wasm distributed in @ffmpeg/core 0.12.10.
-FFmpeg.wasm JavaScript wrapper is MIT licensed: https://github.com/ffmpegwasm/ffmpeg.wasm/blob/main/LICENSE

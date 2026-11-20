@@ -7,14 +7,14 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-20-device-video-shapes-v75';
+export const BUILD_TAG = '2026-10-20-video-shape-service-v76';
 
 /** بصمة واجهة الألعاب، وليست نقطة دخول Worker مستقلة. */
 export const INTERACTIVE_APP_BUILD = '2026-10-20-amongus-lobby-solo-v73';
 
 /** ملخّص اللي بهذي النسخة — يظهر بـ /version حتى نتأكد إن الميزة موجودة. */
 export const BUILD_FEATURES: string[] = [
-  'أشكال الفيديو بمعالجة على الجهاز',
+  'أشكال الفيديو من المحادثة عند توفر خادم المعالجة',
   'مكتبة كتب 20,000 من Open Library',
   '29 صنف (علم نفس، آداب بلغات، سياسة، اقتصاد، علوم…)',
   'نبذة عربية من وصف حقيقي عند توفر الترجمة',
