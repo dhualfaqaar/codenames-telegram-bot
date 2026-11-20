@@ -7,7 +7,6 @@
  * so the bot stays online 24/7 with no server that can sleep.
  */
 import { TelegramBotManager } from '../server/telegramBot';
-import { createShapeVideoSubmitter } from '../src/services/shapeVideoProcessor';
 import { PartitionedBotState } from '../src/services/partitionedBotState';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
@@ -24,8 +23,6 @@ interface Env {
   WEBHOOK_SECRET: string;
   /** Where Telegram must deliver updates (defaults to this Worker's URL). */
   WEBHOOK_URL?: string;
-  VIDEO_SHAPES_PROCESSOR_URL?: string;
-  VIDEO_SHAPES_SECRET?: string;
   /** True only for isolated Worker Previews; external Telegram integrations stay disabled. */
   PREVIEW_MODE?: string;
   /** Optional: Telegram id of the bot owner (otherwise it is auto-detected). */
@@ -44,7 +41,7 @@ function safeRuntimeError(error: unknown, env: Partial<Env>): string {
   const message = error && typeof error === 'object' && typeof (error as any).message === 'string'
     ? (error as any).message : String(error ?? 'unknown error');
   let detail = message || '(empty error message)';
-  for (const secret of [env.TELEGRAM_BOT_TOKEN, env.WEBHOOK_SECRET, env.GEMINI_API_KEY, env.OPEN_SUBTITLES_API_KEY, env.VIDEO_SHAPES_SECRET]) {
+  for (const secret of [env.TELEGRAM_BOT_TOKEN, env.WEBHOOK_SECRET, env.GEMINI_API_KEY, env.OPEN_SUBTITLES_API_KEY]) {
     if (secret && secret.length >= 4) detail = detail.split(secret).join('[redacted]');
   }
   return detail.replace(/https?:\/\/\S+/gi, '[url]')
@@ -276,7 +273,6 @@ export class BotState {
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
       interactiveGamesUrl: interactiveGamesUrl.toString(),
-      shapeVideoSubmitter: createShapeVideoSubmitter(this.env.VIDEO_SHAPES_PROCESSOR_URL, this.env.VIDEO_SHAPES_SECRET),
       // مكتبة الكتب الكبيرة تنحفظ بمفاتيح مستقلة داخل نفس الـDurable Object.
       bookStorage: this.state.storage as any
     });

@@ -6,7 +6,6 @@ import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { registerAudioTranscoder, telegramBot } from './server/telegramBot';
-import { createShapeVideoSubmitter } from './src/services/shapeVideoProcessor';
 import { SUDOKU_MINI_APP_HTML } from './src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from './src/services/interactiveGamesMiniApp';
 import { BOT_AVATAR_JPG_BASE64 } from './src/assets/botAvatarBase64';
@@ -68,7 +67,6 @@ function registerFfmpegTranscoder(): void {
 }
 
 registerFfmpegTranscoder();
-telegramBot.configureShapeVideoSubmitter(createShapeVideoSubmitter(process.env.VIDEO_SHAPES_PROCESSOR_URL, process.env.VIDEO_SHAPES_SECRET));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
