@@ -18,7 +18,7 @@ try {
   const msg=calls.filter(c=>c.method==='sendMessage').at(-1)!;
   const kb=JSON.parse(msg.init.body).reply_markup.inline_keyboard.flat();
   assert.deepEqual(kb.filter((b:any)=>b.callback_data?.startsWith('shape:')).map((b:any)=>b.callback_data.split(':')[2]),['circle']);
-  assert.ok(kb.every((b:any)=>!b.web_app));
+  assert.deepEqual(kb.filter((b:any)=>b.web_app).map((b:any)=>new URL(b.web_app.url).searchParams.get('shape')),['star','hexagon','pentagon','triangle']);
   const restored=new TelegramBotManager('TEST:TOKEN') as any; restored.importState(bot.exportState());
   assert.equal(restored.shapeVideos.get('12345').directCircle,true);
   await bot.handleExtraServicesCb(cb,`shape:${draft.session}:circle`);
@@ -30,5 +30,5 @@ try {
   draft.at -= 3600_001;
   await bot.handleExtraServicesCb(cb,`shape:${draft.session}:circle`);
   assert.equal(calls.filter(c=>c.method==='sendVideoNote').length,1,'expired session rejected');
-  console.log('Free video-note callback, session and unavailable-shape checks passed.');
+  console.log('Video-note callback, shape buttons and session checks passed.');
 } finally {globalThis.fetch=original;}

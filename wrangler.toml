@@ -12,7 +12,7 @@ head_sampling_rate = 1
 [vars]
 WEBHOOK_URL = "https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev"
 
-# Ship the small single-threaded Stockfish browser worker as immutable static assets.
+# Serve browser game and video conversion assets; keep Stockfish requests on the Worker route.
 [assets]
 directory = "./public"
 binding = "ASSETS"

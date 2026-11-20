@@ -1,7 +1,15 @@
-# Direct video note: limited free fallback
+# Video shapes
 
-This draft removes the Mini App and attempts to re-upload an existing square MP4 as a Telegram video note, without transcoding or additional hosting. Telegram's video-note API can reject an unsupported encoding; such rejection is reported. Input must arrive as a Telegram video with square dimensions, no more than 60 seconds and no more than 20 MiB. The original bytes and audio are not modified. The file is downloaded from Telegram and re-uploaded as `sendVideoNote`; Bot API does not support changing the file type by reusing an ordinary video's `file_id`.
+In a private bot chat, send a video (up to 60 seconds and 20 MiB) and choose circle, star, hexagon, pentagon or triangle. The Mini App starts conversion automatically on the user's device; keep it open until the bot sends the result. The compressed browser engine is approximately 10 MB and may need to be downloaded again. Processing may be slow or unsupported on some devices. There is no separate conversion server.
 
-This is **not** a general video converter: landscape/portrait input cannot be cropped without video processing. Star, hexagon, pentagon and triangle masks also require actual video processing, which is not provided here. Those shapes are not offered. The current Worker deployment cannot run native FFmpeg; the user declined a separate processing service and browser conversion.
+The browser crops to a 480×480 square, encodes H.264/AAC, and preserves audio when present. Telegram displays the circle as a video note. Other shapes are ordinary square videos with a black background outside the shape; Telegram does not display arbitrary-shaped video notes. The converted upload is limited to 15 MiB. Existing eligible square MP4 Telegram videos can instead be sent directly as video notes without re-encoding; Telegram may reject some encodings, in which case the bot offers conversion.
 
-`npm run test:shape-video` tests session boundaries, buttons, and mocked Telegram calls. `FFMPEG=<path> npm run test:shape-video:free` creates a real sample with audio, checks the uploaded bytes and decoded audio are unchanged, and tests failure paths with a mocked Telegram API. Neither test verifies real Telegram acceptance or playback. Do not merge this partial replacement over the existing shape service without user agreement and a live test.
+The Worker verifies Telegram Mini App initData and forwards only the authenticated user ID. Source downloads and uploads are tied to that user's random, one-hour session; sending a new video invalidates the previous session. Files are retrieved from Telegram without exposing the bot token or file URL. Telegram Bot API file size and delivery restrictions still apply.
+
+Checks:
+
+- `npm run test:shape-video`: bot flow and signed Worker-to-Durable-Object authentication, isolation, size and failure checks with a mocked Telegram API.
+- `FFMPEG=<path> npm run test:shape-video:free`: direct square MP4 passthrough and audio checks with a mocked Telegram API.
+- `FFMPEG=<path> FFPROBE=<path> npm run test:shape-video:browser`: real Chromium and FFmpeg WASM conversions, masks, durations, audio, motion and retry, with Telegram mocked. Requires `@playwright/test`, `@sparticuz/chromium`, FFmpeg and ffprobe available locally.
+
+These tests do not verify actual Telegram delivery, playback, or compatibility on a particular phone.
