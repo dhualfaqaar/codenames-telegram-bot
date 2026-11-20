@@ -1166,8 +1166,9 @@ export class TelegramBotManager {
   private readonly openSubtitlesUserAgent: string;
   private readonly interactiveGamesUrl: string;
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
-  private shapeVideos: Map<string, { fileId: string; session: string; at: number; directCircle?: boolean }> = new Map();
+  private shapeVideos: Map<string, { fileId: string; session: string; at: number; directCircle?: boolean; cloudEligible?: boolean }> = new Map();
   private directCircleUploads = new Set<string>();
+  private readonly startShapeVideoJob?: (uid: string, fileId: string, shape: string, fallback: string) => Promise<boolean>;
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioOutputDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioMetadataPresets: Map<string, EXT.AudioMetadataPreset[]> = new Map();
@@ -1189,6 +1190,7 @@ export class TelegramBotManager {
       openSubtitlesApiKey?: string;
       openSubtitlesUserAgent?: string;
       interactiveGamesUrl?: string;
+      startShapeVideoJob?: (uid: string, fileId: string, shape: string, fallback: string) => Promise<boolean>;
       /** تخزين Durable Object لمكتبة الكتب الكبيرة (اختياري). */
       bookStorage?: BookStorageAdapter;
       scheduleChannelImport?: () => Promise<void>;
@@ -1202,6 +1204,7 @@ export class TelegramBotManager {
     this.geminiApiKey = String(serviceConfig.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
     this.openSubtitlesApiKey = String(serviceConfig.openSubtitlesApiKey || process.env.OPEN_SUBTITLES_API_KEY || '').trim();
     this.openSubtitlesUserAgent = String(serviceConfig.openSubtitlesUserAgent || process.env.OPEN_SUBTITLES_USER_AGENT || 'CodenamesTelegramBot v1.0').trim();
+    this.startShapeVideoJob = serviceConfig.startShapeVideoJob;
     this.interactiveGamesUrl = String(serviceConfig.interactiveGamesUrl || process.env.INTERACTIVE_GAMES_URL || 'https://codenames-telegram-bot.codenames-dhualfaqaar.workers.dev/interactive').trim();
     const channelStorage = serviceConfig.bookStorage || memoryBookStorage();
     this.channelBookIndex = new ChannelBookIndex(channelStorage);
@@ -9172,7 +9175,18 @@ export class TelegramBotManager {
         } finally { this.directCircleUploads.delete(userId); }
         return;
       }
-      await this.answerCallbackQuery(cb.id, 'هذا الشكل مو متاح بدون تحويل فيديو.', true);
+      if (this.startShapeVideoJob && draft.cloudEligible) {
+        await this.answerCallbackQuery(cb.id, 'جاري تجهيز الفيديو...');
+        try {
+          const ok = await this.startShapeVideoJob(userId, draft.fileId, match[2], this.shapeVideoUrl(match[1], match[2]));
+          if (ok) await this.sendMessage(chatId, 'جاري تحويل الفيديو. من يخلص ينرسل هنا بالمحادثة.');
+          else await this.sendMessage(chatId, 'التحويل مشغول أو مو متاح هسه. جرّب بعد شوي.', [[{text:'حوّل على جهازك',web_app:{url:this.shapeVideoUrl(match[1], match[2])}}]]);
+        } catch {
+          await this.sendMessage(chatId, 'تعذّر بدء التحويل هسه.', [[{text:'حوّل على جهازك',web_app:{url:this.shapeVideoUrl(match[1], match[2])}}]]);
+        }
+        return;
+      }
+      await this.answerCallbackQuery(cb.id, 'هذا الشكل يحتاج تحويل فيديو.', true);
       return;
     }
 
@@ -9184,7 +9198,9 @@ export class TelegramBotManager {
       for (const [id, item] of this.shapeVideos) if (Date.now() - item.at >= 3600_000) this.shapeVideos.delete(id);
       while (this.shapeVideos.size >= 1000) this.shapeVideos.delete(this.shapeVideos.keys().next().value!);
       this.shapeVideos.set(userId, { fileId: '', session: '', at: Date.now() });
-      const text = 'أشكال الفيديو\n\nأرسل فيديو مدته لحد 60 ثانية وحجمه أقل من 20 MB، وبعدها اختار الشكل. التحويل يبدأ بنافذة صغيرة على جهازك.';
+      const text = this.startShapeVideoJob
+        ? 'أشكال الفيديو\n\nأرسل فيديو مدته لحد 60 ثانية وحجمه أقل من 20 MB، وبعدها اختار الشكل.'
+        : 'أشكال الفيديو\n\nأرسل فيديو مدته لحد 60 ثانية وحجمه أقل من 20 MB، وبعدها اختار الشكل. التحويل يبدأ بنافذة صغيرة على جهازك.';
       const keyboard = [[{ text: 'رجوع', callback_data: 'svc:main' }]];
       if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
       else await this.sendMessage(chatId, text, keyboard);
@@ -9585,12 +9601,20 @@ export class TelegramBotManager {
     const mime = String(msg.video?.mime_type || '').toLowerCase();
     const directCircle = Number.isInteger(width) && width > 0 && width === height && Number.isFinite(duration) && duration >= 0 && duration <= 60 && (!mime || mime === 'video/mp4');
     const session = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-    this.shapeVideos.set(uid, { fileId: String(video.file_id), session, at: Date.now(), directCircle });
-    const circle = directCircle ? {text:'دائري',callback_data:`shape:${session}:circle`} : {text:'دائري',web_app:{url:this.shapeVideoUrl(session,'circle')}};
-    await this.sendMessage(uid, 'اختار الشكل. الدائري ينرسل كفيد دائري، والبقية كفيديو بخلفية سودة حول الشكل.', [
-      [circle, {text:'نجمي',web_app:{url:this.shapeVideoUrl(session,'star')}}],
-      [{text:'سداسي',web_app:{url:this.shapeVideoUrl(session,'hexagon')}}, {text:'خماسي',web_app:{url:this.shapeVideoUrl(session,'pentagon')}}],
-      [{text:'مثلث',web_app:{url:this.shapeVideoUrl(session,'triangle')}}],
+    // The external API charges by duration; unknown-duration documents stay on the device path.
+    const cloudEligible = Number.isFinite(Number(video.duration)) && Number(video.duration) > 0 && Number(video.duration) <= 60;
+    this.shapeVideos.set(uid, { fileId: String(video.file_id), session, at: Date.now(), directCircle, cloudEligible });
+    const button = (text: string, shape: string) => this.startShapeVideoJob && cloudEligible
+      ? {text,callback_data:`shape:${session}:${shape}`}
+      : {text,web_app:{url:this.shapeVideoUrl(session,shape)}};
+    const circle = directCircle ? {text:'دائري',callback_data:`shape:${session}:circle`} : button('دائري','circle');
+    const explanation = this.startShapeVideoJob && cloudEligible
+      ? 'اختار الشكل. الفيديو يترفع لخدمة خارجية حتى يتحوّل، والنتيجة ممكن تبقى عندها مؤقتاً لحد 24 ساعة. الدائري كفيد دائري والبقية بخلفية سودة.'
+      : 'اختار الشكل. الدائري ينرسل كفيد دائري، والبقية كفيديو بخلفية سودة حول الشكل.';
+    await this.sendMessage(uid, explanation, [
+      [circle, button('نجمي','star')],
+      [button('سداسي','hexagon'), button('خماسي','pentagon')],
+      [button('مثلث','triangle')],
       [{text:'رجوع للخدمات',callback_data:'svc:main'}]
     ]);
   }

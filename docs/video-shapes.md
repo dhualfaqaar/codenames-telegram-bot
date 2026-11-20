@@ -1,15 +1,18 @@
 # Video shapes
 
-In a private bot chat, send a video (up to 60 seconds and 20 MiB) and choose circle, star, hexagon, pentagon or triangle. The Mini App starts conversion automatically on the user's device; keep it open until the bot sends the result. The compressed browser engine is approximately 10 MB and may need to be downloaded again. Processing may be slow or unsupported on some devices. There is no separate conversion server.
+In private chat, a user sends a video up to 60 seconds and 20 MiB and chooses a shape. With `UPLOAD_POST_API_KEY` configured as an encrypted Worker secret and the job binding enabled, videos with a known duration are uploaded to Upload-Post and processed asynchronously. The user is told before choosing that a third-party service receives the video. Its free plan includes 30 media minutes per month shared by all bot users; availability, limits, privacy terms and charges must be checked with the provider. Upload-Post documents that a temporary publicly accessible result copy may remain for up to 24 hours. Never send Telegram file URLs, tokens, or secrets to the provider or log them.
 
-The browser crops to a 480×480 square, encodes H.264/AAC, and preserves audio when present. Telegram displays the circle as a video note. Other shapes are ordinary square videos with a black background outside the shape; Telegram does not display arbitrary-shaped video notes. The converted upload is limited to 15 MiB. Existing eligible square MP4 Telegram videos can instead be sent directly as video notes without re-encoding; Telegram may reject some encodings, in which case the bot offers conversion.
+A separate per-user Durable Object queues one job, polls it with alarms, then sends the result to that user. An ambiguous interrupted upload or send is not retried automatically, avoiding duplicate jobs or messages. A failed job, exhausted quota, or oversized result offers the existing on-device Mini App. Videos without known duration also use that Mini App to avoid unintentionally consuming provider quota. Missing secret or Preview mode leaves the existing on-device flow unchanged. The user must keep the Mini App open while it converts; it may download about 10 MB and may be slow or unsupported on some devices.
 
-The Worker verifies Telegram Mini App initData and forwards only the authenticated user ID. Source downloads and uploads are tied to that user's random, one-hour session; sending a new video invalidates the previous session. Files are retrieved from Telegram without exposing the bot token or file URL. Telegram Bot API file size and delivery restrictions still apply.
+Eligible square MP4 Telegram videos still use direct `sendVideoNote` without re-encoding. Other circles are encoded for Telegram video notes; stars, hexagons, pentagons and triangles are square MP4 videos with black backgrounds. Both processing paths crop to 480×480, encode H.264/AAC and preserve audio when present. The output limit is 15 MiB. Input size limits and delivery restrictions still apply.
+
+The Mini App API verifies Telegram initData and binds files to the user's random, one-hour session. The background queue is only callable internally after the bot validates the private callback and session. No Telegram token is shared with the processing provider.
 
 Checks:
 
-- `npm run test:shape-video`: bot flow and signed Worker-to-Durable-Object authentication, isolation, size and failure checks with a mocked Telegram API.
-- `FFMPEG=<path> npm run test:shape-video:free`: direct square MP4 passthrough and audio checks with a mocked Telegram API.
-- `FFMPEG=<path> FFPROBE=<path> npm run test:shape-video:browser`: real Chromium and FFmpeg WASM conversions, masks, durations, audio, motion and retry, with Telegram mocked. Requires `@playwright/test`, `@sparticuz/chromium`, FFmpeg and ffprobe available locally.
+- `npm run test:shape-video`: bot flow and signed Worker-to-Durable-Object authentication, isolation, size and failure checks with mocked Telegram.
+- `FFMPEG=<path> npm run test:shape-video:cloud`: mocked queue/provider/Telegram, errors and quota; real local FFmpeg masks and audio.
+- `FFMPEG=<path> npm run test:shape-video:free`: direct square MP4 passthrough and audio with mocked Telegram.
+- `FFMPEG=<path> FFPROBE=<path> npm run test:shape-video:browser`: Chromium/WASM conversion and retry with mocked Telegram; requires local Playwright, Chromium, FFmpeg and ffprobe.
 
-These tests do not verify actual Telegram delivery, playback, or compatibility on a particular phone.
+Mock tests and local FFmpeg do not verify that Upload-Post accepts the command, real Telegram delivery, or compatibility on a particular phone. Verify with a real account and a short non-sensitive video before relying on cloud conversion.
