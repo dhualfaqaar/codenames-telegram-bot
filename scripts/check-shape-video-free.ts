@@ -25,12 +25,12 @@ try {
   const bot=new TelegramBotManager('TEST:TOKEN') as any;
   const cb={id:'id',from:{id:12345,first_name:'Test'},message:{chat:{id:12345,type:'private'},message_id:9}};
   await bot.handleExtraServicesCb(cb,'svc:shapevideo');
-  assert.ok(calls.some(c=>c.method==='editMessageText' && c.init.body.includes('أشكال الفيديو')));
+  assert.ok(calls.some(c=>c.method==='editMessageText' && c.init.body.includes('فيد دائري')));
   await bot.handleShapeVideoInput('12345',{video:{file_id:'video-id',width:128,height:128,duration:1,mime_type:'video/mp4',file_size:source.length}});
   const draft=bot.shapeVideos.get('12345'); assert.equal(draft.directCircle,true);
   const kb=JSON.parse(calls.filter(c=>c.method==='sendMessage').at(-1)!.init.body).reply_markup.inline_keyboard.flat();
   assert.equal(kb.filter((b:any)=>b.callback_data?.startsWith('shape:')).length,1);
-  assert.equal(kb.filter((b:any)=>b.web_app).length,4, 'four other shapes open the Mini App');
+  assert.equal(kb.filter((b:any)=>b.web_app).length,0, 'square video has no Mini App button');
   const restored=new TelegramBotManager('TEST:TOKEN') as any; restored.importState(bot.exportState());
   assert.equal(restored.shapeVideos.get('12345').directCircle,true);
   await bot.handleExtraServicesCb(cb,`shape:${draft.session}:circle`);
@@ -57,6 +57,10 @@ try {
   assert.notEqual(bot.shapeVideos.get('12345').session,saved,'rectangle invalidates old video buttons');
   assert.equal(bot.shapeVideos.get('12345').fileId,'rect');
   assert.equal(bot.shapeVideos.get('12345').directCircle,false);
+  const rectKb=JSON.parse(calls.filter(c=>c.method==='sendMessage').at(-1)!.init.body).reply_markup.inline_keyboard.flat();
+  assert.equal(rectKb.filter((b:any)=>b.web_app).length,1, 'non-square video has one conversion button');
+  assert.equal(new URL(rectKb.find((b:any)=>b.web_app).web_app.url).searchParams.get('shape'),'circle');
+  assert.equal(rectKb.filter((b:any)=>b.callback_data?.startsWith('shape:')).length,0);
   await bot.handleShapeVideoInput('12345',{video:{file_id:'long',width:128,height:128,duration:61,mime_type:'video/mp4'}});
   assert.equal(bot.shapeVideos.get('12345').fileId,'','overlong input rejected');
   console.log('Free square MP4 passthrough: real PCM intact, bounds, failures and simulated Telegram note passed.');

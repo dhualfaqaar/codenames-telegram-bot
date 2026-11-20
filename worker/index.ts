@@ -7,7 +7,6 @@
  * so the bot stays online 24/7 with no server that can sleep.
  */
 import { TelegramBotManager } from '../server/telegramBot';
-export { ShapeVideoJobs } from './shapeVideoJobs';
 import { PartitionedBotState } from '../src/services/partitionedBotState';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
@@ -31,8 +30,8 @@ interface Env {
   GEMINI_API_KEY?: string;
   OPEN_SUBTITLES_API_KEY?: string;
   OPEN_SUBTITLES_USER_AGENT?: string;
+  /** Legacy secret may remain configured; redact it even though it is unused. */
   UPLOAD_POST_API_KEY?: string;
-  SHAPE_VIDEO_JOBS?: any;
   BOT_STATE: any;
   ASSETS?: { fetch(request: Request): Promise<Response> };
 }
@@ -276,13 +275,6 @@ export class BotState {
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
       interactiveGamesUrl: interactiveGamesUrl.toString(),
-      startShapeVideoJob: this.env.PREVIEW_MODE !== 'true' && this.env.UPLOAD_POST_API_KEY && this.env.SHAPE_VIDEO_JOBS
-        ? async (uid, fileId, shape, fallback) => {
-            const id = this.env.SHAPE_VIDEO_JOBS.idFromName(uid);
-            const stub = this.env.SHAPE_VIDEO_JOBS.get(id);
-            const response = await stub.fetch('https://shape-job.internal/start', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({uid,fileId,shape,fallback})});
-            return response.ok;
-          } : undefined,
       // مكتبة الكتب الكبيرة تنحفظ بمفاتيح مستقلة داخل نفس الـDurable Object.
       bookStorage: this.state.storage as any
     });
@@ -591,7 +583,7 @@ export default {
       const auth = request.headers.get('authorization') || '';
       const user = await verifyTelegramWebAppInitData(auth.startsWith('tma ') ? auth.slice(4) : '', String(env.TELEGRAM_BOT_TOKEN || ''));
       const session = request.headers.get('x-shape-session') || '', shape = request.headers.get('x-shape-kind') || '';
-      if (!user || !/^[a-f0-9]{32}$/.test(session) || !['circle','star','hexagon','pentagon','triangle'].includes(shape)) return new Response('unauthorized', {status:401});
+      if (!user || !/^[a-f0-9]{32}$/.test(session) || shape !== 'circle') return new Response('unauthorized', {status:401});
       const headers = new Headers({'x-shape-user':user.id, 'x-shape-session':session, 'x-shape-kind':shape});
       const send = requestUrl.pathname.endsWith('/send');
       let body: Uint8Array | undefined;

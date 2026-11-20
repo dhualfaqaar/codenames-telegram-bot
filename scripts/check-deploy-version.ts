@@ -49,8 +49,7 @@ check('مسار /version يرجع عدد الكتب', workerSrc.includes('bookCa
 
 // افحص الصادرات الفعلية ونقطة الدخول الخارجية، لا وجود النص فقط.
 const workerModule = await (new Function('url', 'return import(url)'))(new URL('../worker/index.ts', import.meta.url).href);
-check('صنف تحويل الفيديو المصدّر يطابق ربط Durable Object', typeof workerModule.ShapeVideoJobs?.prototype?.fetch === 'function' && typeof workerModule.ShapeVideoJobs?.prototype?.alarm === 'function' && config.includes('class_name = "ShapeVideoJobs"'));
-check('لا توجد صادرات قيم غير صالحة لـWorker', Object.keys(workerModule).every(name => name === 'default' || name === 'BotState' || name === 'ShapeVideoJobs'));
+check('لا توجد صادرات قيم غير صالحة لـWorker', Object.keys(workerModule).every(name => name === 'default' || name === 'BotState'));
 let fetchedPath = '';
 const fakeEnv: any = { BOT_STATE: { idFromName: () => 'main', get: () => ({ fetch: async (url: string) => {
   fetchedPath = url;
