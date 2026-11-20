@@ -7,6 +7,7 @@
  * so the bot stays online 24/7 with no server that can sleep.
  */
 import { TelegramBotManager } from '../server/telegramBot';
+export { ShapeVideoJobs } from './shapeVideoJobs';
 import { PartitionedBotState } from '../src/services/partitionedBotState';
 import { SUDOKU_MINI_APP_HTML } from '../src/services/sudokuMiniApp';
 import { interactiveGamesMiniAppHtml } from '../src/services/interactiveGamesMiniApp';
@@ -30,6 +31,8 @@ interface Env {
   GEMINI_API_KEY?: string;
   OPEN_SUBTITLES_API_KEY?: string;
   OPEN_SUBTITLES_USER_AGENT?: string;
+  UPLOAD_POST_API_KEY?: string;
+  SHAPE_VIDEO_JOBS?: any;
   BOT_STATE: any;
   ASSETS?: { fetch(request: Request): Promise<Response> };
 }
@@ -41,7 +44,7 @@ function safeRuntimeError(error: unknown, env: Partial<Env>): string {
   const message = error && typeof error === 'object' && typeof (error as any).message === 'string'
     ? (error as any).message : String(error ?? 'unknown error');
   let detail = message || '(empty error message)';
-  for (const secret of [env.TELEGRAM_BOT_TOKEN, env.WEBHOOK_SECRET, env.GEMINI_API_KEY, env.OPEN_SUBTITLES_API_KEY]) {
+  for (const secret of [env.TELEGRAM_BOT_TOKEN, env.WEBHOOK_SECRET, env.GEMINI_API_KEY, env.OPEN_SUBTITLES_API_KEY, env.UPLOAD_POST_API_KEY]) {
     if (secret && secret.length >= 4) detail = detail.split(secret).join('[redacted]');
   }
   return detail.replace(/https?:\/\/\S+/gi, '[url]')
@@ -273,6 +276,13 @@ export class BotState {
       openSubtitlesApiKey: this.env.OPEN_SUBTITLES_API_KEY,
       openSubtitlesUserAgent: this.env.OPEN_SUBTITLES_USER_AGENT,
       interactiveGamesUrl: interactiveGamesUrl.toString(),
+      startShapeVideoJob: this.env.PREVIEW_MODE !== 'true' && this.env.UPLOAD_POST_API_KEY && this.env.SHAPE_VIDEO_JOBS
+        ? async (uid, fileId, shape, fallback) => {
+            const id = this.env.SHAPE_VIDEO_JOBS.idFromName(uid);
+            const stub = this.env.SHAPE_VIDEO_JOBS.get(id);
+            const response = await stub.fetch('https://shape-job.internal/start', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({uid,fileId,shape,fallback})});
+            return response.ok;
+          } : undefined,
       // مكتبة الكتب الكبيرة تنحفظ بمفاتيح مستقلة داخل نفس الـDurable Object.
       bookStorage: this.state.storage as any
     });

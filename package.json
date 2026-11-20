@@ -29,6 +29,7 @@
     "test:audio": "tsx scripts/check-audio-formats.ts",
     "test:audio:real": "tsx scripts/check-audio-real.ts",
     "test:shape-video": "tsx scripts/check-shape-video.ts && tsx scripts/check-shape-video-auth.ts",
+    "test:shape-video:cloud": "tsx scripts/check-shape-video-cloud.ts",
     "test:shape-video:free": "tsx scripts/check-shape-video-free.ts",
     "test:shape-video:browser": "node scripts/check-shape-video-browser.mjs",
     "test:voice": "tsx scripts/check-voice-delivery.ts",
