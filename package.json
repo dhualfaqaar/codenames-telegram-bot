@@ -29,7 +29,7 @@
     "test:audio": "tsx scripts/check-audio-formats.ts",
     "test:audio:real": "tsx scripts/check-audio-real.ts",
     "test:shape-video": "tsx scripts/check-shape-video.ts",
-    "test:shape-video:browser": "node scripts/check-shape-video-browser.mjs",
+    "test:shape-video:free": "tsx scripts/check-shape-video-free.ts",
     "test:voice": "tsx scripts/check-voice-delivery.ts",
     "test:sfx": "tsx scripts/check-game-sfx.ts",
     "test:sfx:dom": "node scripts/check-game-sfx-dom.mjs",
