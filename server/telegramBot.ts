@@ -1166,6 +1166,8 @@ export class TelegramBotManager {
   private readonly openSubtitlesUserAgent: string;
   private readonly interactiveGamesUrl: string;
   private pendingConvert: Map<string, { fileId: string; kind: string }> = new Map();
+  private shapeVideos: Map<string, { fileId: string; session: string; at: number }> = new Map();
+  private shapeVideoUploads: Set<string> = new Set();
   private audioEditDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioOutputDrafts: Map<string, EXT.AudioMetadataDraft> = new Map();
   private audioMetadataPresets: Map<string, EXT.AudioMetadataPreset[]> = new Map();
@@ -1887,6 +1889,7 @@ export class TelegramBotManager {
       cinemaSubtitleResults: Array.from(this.cinemaSubtitleResults.entries()),
       lastCinemaRecognition: Array.from(this.lastCinemaRecognition.entries()),
       pendingConvert: Array.from(this.pendingConvert.entries()),
+      shapeVideos: Array.from(this.shapeVideos.entries()).filter(([, item]) => Date.now() - item.at < 3600_000).slice(-1000),
       audioEditDrafts: Array.from(this.audioEditDrafts.entries()),
       audioOutputDrafts: Array.from(this.audioOutputDrafts.entries()).slice(-300),
       audioMetadataPresets: Array.from(this.audioMetadataPresets.entries()),
@@ -1955,6 +1958,7 @@ export class TelegramBotManager {
     if (Array.isArray(state.cinemaSubtitleResults)) this.cinemaSubtitleResults = new Map(state.cinemaSubtitleResults);
     if (Array.isArray(state.lastCinemaRecognition)) this.lastCinemaRecognition = new Map(state.lastCinemaRecognition);
     if (Array.isArray(state.pendingConvert)) this.pendingConvert = new Map(state.pendingConvert);
+    if (Array.isArray(state.shapeVideos)) this.shapeVideos = new Map(state.shapeVideos.filter((entry: any) => Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1]?.fileId === 'string' && typeof entry[1]?.session === 'string' && Number.isFinite(entry[1]?.at) && Date.now() - entry[1].at < 3600_000).slice(-1000));
     if (Array.isArray(state.audioEditDrafts)) this.audioEditDrafts = new Map(state.audioEditDrafts);
     if (Array.isArray(state.audioOutputDrafts)) this.audioOutputDrafts = new Map(state.audioOutputDrafts);
     if (Array.isArray(state.audioMetadataPresets)) this.audioMetadataPresets = new Map(state.audioMetadataPresets);
@@ -2644,6 +2648,7 @@ export class TelegramBotManager {
       const mUid = String(sender.id);
       const hasMedia = Boolean(
         message.video ||
+          message.video_note ||
           message.audio ||
           message.voice ||
           message.photo ||
@@ -2651,6 +2656,12 @@ export class TelegramBotManager {
           message.animation ||
           message.document
       );
+      const shapeDraft = this.shapeVideos.get(mUid);
+      if (shapeDraft && Date.now() - shapeDraft.at >= 3600_000) this.shapeVideos.delete(mUid);
+      else if (hasMedia && shapeDraft) {
+        await this.handleShapeVideoInput(mUid, message);
+        return;
+      }
       const editDraft = this.audioEditDrafts.get(mUid);
       if (hasMedia && editDraft?.waitingField === 'cover') {
         const coverFid =
@@ -8131,6 +8142,7 @@ export class TelegramBotManager {
       this.cinemaSubtitleResults.delete(userId);
       this.pendingRouletteText.delete(userId);
       this.pendingConvert.delete(userId);
+      this.shapeVideos.delete(userId);
       this.audioEditDrafts.delete(userId);
       this.pendingVocalSep.delete(userId);
       this.pendingFootballFollow.delete(userId);
@@ -8746,6 +8758,7 @@ export class TelegramBotManager {
           { text: '🔄 تحويل الصيغ', callback_data: 'svc:convert' },
           { text: '🎼 عزل الموسيقى', callback_data: 'svc:vocal' }
         ],
+        [{ text: 'أشكال الفيديو', callback_data: 'svc:shapevideo' }],
         [
           { text: '⚡ قياس سرعة النت', callback_data: 'svc:speedtest' },
           { text: '⚽ مباريات كرة القدم', callback_data: 'svc:football' }
@@ -9123,6 +9136,22 @@ export class TelegramBotManager {
       return;
     }
 
+    if (data === 'svc:shapevideo') {
+      if (cb.message?.chat.type !== 'private') {
+        await this.answerCallbackQuery(cb.id, 'هاي الخدمة تشتغل بالخاص فقط.', true);
+        return;
+      }
+      for (const [id, item] of this.shapeVideos) if (Date.now() - item.at >= 3600_000) this.shapeVideos.delete(id);
+      while (this.shapeVideos.size >= 1000) this.shapeVideos.delete(this.shapeVideos.keys().next().value!);
+      this.shapeVideos.set(userId, { fileId: '', session: '', at: Date.now() });
+      const text = 'أشكال الفيديو\n\nأرسل فيديو مدته لحد 60 ثانية وحجمه أقل من 20 MB. بعدها اختار الشكل وافتح نافذة التحويل. المعالجة تصير على جهازك وتحتاج تنزيل محرّك أول مرة.';
+      const keyboard = [[{ text: 'رجوع', callback_data: 'svc:main' }]];
+      if (messageId) await this.editMessageText(chatId, messageId, text, keyboard);
+      else await this.sendMessage(chatId, text, keyboard);
+      await this.answerCallbackQuery(cb.id, '');
+      return;
+    }
+
     // ── 🔄 تحويل الصيغ وتعديل معلومات الصوتيات ──
     if (data === 'svc:convert') {
       this.pendingConvert.set(userId, { fileId: '', kind: 'waiting' });
@@ -9460,7 +9489,7 @@ export class TelegramBotManager {
 
   private async sendBinaryMultipart(
     chatId: string,
-    method: 'sendAudio' | 'sendVoice' | 'sendDocument' | 'sendPhoto' | 'sendSticker' | 'sendVideo' | 'sendAnimation',
+    method: 'sendAudio' | 'sendVoice' | 'sendDocument' | 'sendPhoto' | 'sendSticker' | 'sendVideo' | 'sendVideoNote' | 'sendAnimation',
     fieldName: string,
     bytes: Uint8Array,
     fileName: string,
@@ -9493,6 +9522,82 @@ export class TelegramBotManager {
       return null;
     } catch {
       return null;
+    }
+  }
+
+  private async handleShapeVideoInput(uid: string, msg: TelegramMessage): Promise<void> {
+    const video = msg.video || msg.video_note || (String(msg.document?.mime_type || '').startsWith('video/') ? msg.document : null);
+    if (!video?.file_id) {
+      await this.sendMessage(uid, 'أرسل فيديو حتى نغيّر شكله.');
+      return;
+    }
+    if (Number(video.file_size || 0) > 20 * 1024 * 1024) {
+      await this.sendMessage(uid, 'حجم الفيديو أكبر من 20 MB. أرسل مقطع أصغر.');
+      return;
+    }
+    if (Number(video.duration || 0) > 60) {
+      await this.sendMessage(uid, 'مدة الفيديو أكثر من 60 ثانية. أرسل مقطع أقصر.');
+      return;
+    }
+    const session = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    this.shapeVideos.set(uid, { fileId: String(video.file_id), session, at: Date.now() });
+    const shapeUrl = (shape: string) => {
+      const url = new URL('/shape-video/', this.interactiveGamesUrl);
+      url.searchParams.set('session', session);
+      url.searchParams.set('shape', shape);
+      return url.toString();
+    };
+    await this.sendMessage(uid, 'اختار الشكل حتى تفتح نافذة التحويل على جهازك. الدائري ينرسل كرسالة فيديو دائرية؛ باقي الأشكال تنرسل بفيديو عادي وخلفية سودة.', [
+      [{ text: 'دائري', web_app: { url: shapeUrl('circle') } }, { text: 'نجمي', web_app: { url: shapeUrl('star') } }],
+      [{ text: 'سداسي', web_app: { url: shapeUrl('hexagon') } }, { text: 'خماسي', web_app: { url: shapeUrl('pentagon') } }],
+      [{ text: 'مثلث', web_app: { url: shapeUrl('triangle') } }],
+      [{ text: 'رجوع للخدمات', callback_data: 'svc:main' }]
+    ]);
+  }
+
+  public shapeVideoAllowed(uid: string, session: string): boolean {
+    const entry = this.shapeVideos.get(uid);
+    return Boolean(entry?.fileId && entry.session === session && Date.now() - entry.at < 3600_000);
+  }
+
+  /** Signed Telegram Mini App user only; never expose the Bot API URL/token. */
+  public async shapeVideoSource(uid: string, session: string): Promise<Response> {
+    if (!this.shapeVideoAllowed(uid, session)) return new Response('expired', { status: 403 });
+    const entry = this.shapeVideos.get(uid)!;
+    try {
+      const file = await fetch(`https://api.telegram.org/bot${this.token}/getFile`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: entry.fileId }), signal: AbortSignal.timeout(15000)
+      });
+      const data: any = await file.json(), path = data?.result?.file_path;
+      const size = Number(data?.result?.file_size || 0);
+      if (!data?.ok || !path || typeof path !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(path) || path.split('/').includes('..') || size > 20 * 1024 * 1024) return new Response('unavailable', { status: 400 });
+      const response = await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`, { signal: AbortSignal.timeout(30000) });
+      const length = Number(response.headers.get('content-length') || 0);
+      if (!response.ok || !response.body || length > 20 * 1024 * 1024) return new Response('unavailable', { status: 400 });
+      const reader = response.body.getReader(), chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        total += value.length;
+        if (total > 20 * 1024 * 1024) { await reader.cancel(); return new Response('too large', { status: 413 }); }
+        chunks.push(value);
+      }
+      if (!total || !this.shapeVideoAllowed(uid, session)) return new Response('expired', {status:403});
+      return new Response(new Blob(chunks as BlobPart[]), { headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' } });
+    } catch { return new Response('unavailable', { status: 502 }); }
+  }
+
+  public async sendShapeVideo(uid: string, session: string, shape: string, bytes: Uint8Array): Promise<boolean> {
+    if (!this.shapeVideoAllowed(uid, session) || !['circle','star','hexagon','pentagon','triangle'].includes(shape) || bytes.length < 16 || bytes.length > 15 * 1024 * 1024 || String.fromCharCode(...bytes.subarray(4, 8)) !== 'ftyp') return false;
+    if (this.shapeVideoUploads.has(uid)) return false;
+    this.shapeVideoUploads.add(uid);
+    try {
+      const circle = shape === 'circle';
+      return Boolean(await this.sendBinaryMultipart(uid, circle ? 'sendVideoNote' : 'sendVideo', circle ? 'video_note' : 'video', bytes, 'video.mp4', 'video/mp4', circle ? {length:'480'} : {supports_streaming:'true'}));
+    } finally {
+      this.shapeVideoUploads.delete(uid);
     }
   }
 

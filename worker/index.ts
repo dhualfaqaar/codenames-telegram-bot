@@ -371,6 +371,20 @@ export class BotState {
     const bot = await this.getBot();
     if (pathname === '/interactive-config' && request.method === 'GET') return Response.json({ botUsername: await bot.getBotUsername() }, { headers: { 'Cache-Control': 'public, max-age=300' } });
 
+    // The outer Worker verifies Telegram initData and replaces these headers;
+    // the Durable Object itself is not reachable from the public internet.
+    if (pathname === '/shape-video-source' && request.method === 'POST') {
+      return bot.shapeVideoSource(request.headers.get('x-shape-user') || '', request.headers.get('x-shape-session') || '');
+    }
+    if (pathname === '/shape-video-send' && request.method === 'POST') {
+      const uid = request.headers.get('x-shape-user') || '', session = request.headers.get('x-shape-session') || '', shape = request.headers.get('x-shape-kind') || '';
+      if (!bot.shapeVideoAllowed(uid, session)) return Response.json({ok:false}, {status:403});
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      const ok = await bot.sendShapeVideo(uid, session, shape, bytes);
+      return Response.json({ok}, {status: ok ? 200 : 502, headers: {'Cache-Control':'no-store'}});
+    }
+
+
     // 🔎 /version — أي نسخة شغالة؟ (بلا كاش حتى تكون القراءة حقيقية)
     if (pathname === '/version' && request.method === 'GET') {
       let seen: { tag: string; at: number } | null = null;
@@ -559,6 +573,38 @@ export default {
     const id = env.BOT_STATE.idFromName('main');
     const stub = env.BOT_STATE.get(id);
     if (requestUrl.pathname === '/api/interactive/config' && request.method === 'GET') return stub.fetch('https://bot.internal/interactive-config');
+    if (requestUrl.pathname === '/api/shape-video/source' || requestUrl.pathname === '/api/shape-video/send') {
+      if (env.PREVIEW_MODE === 'true' || request.method !== 'POST') return new Response('unavailable', {status: 404});
+      const auth = request.headers.get('authorization') || '';
+      const user = await verifyTelegramWebAppInitData(auth.startsWith('tma ') ? auth.slice(4) : '', String(env.TELEGRAM_BOT_TOKEN || ''));
+      const session = request.headers.get('x-shape-session') || '', shape = request.headers.get('x-shape-kind') || '';
+      if (!user || !/^[a-f0-9]{32}$/.test(session) || !['circle','star','hexagon','pentagon','triangle'].includes(shape)) return new Response('unauthorized', {status:401});
+      const headers = new Headers({'x-shape-user':user.id, 'x-shape-session':session, 'x-shape-kind':shape});
+      const send = requestUrl.pathname.endsWith('/send');
+      let body: Uint8Array | undefined;
+      if (send) {
+        const max = 15 * 1024 * 1024, size = Number(request.headers.get('content-length') || 0);
+        if (size > max || !request.body) return new Response('too large', {status:413});
+        const reader = request.body.getReader(), chunks: Uint8Array[] = [];
+        let total = 0;
+        while (true) {
+          const part = await reader.read();
+          if (part.done) break;
+          total += part.value.length;
+          if (total > max) { await reader.cancel(); return new Response('too large', {status:413}); }
+          chunks.push(part.value);
+        }
+        body = new Uint8Array(total);
+        let at = 0; for (const chunk of chunks) { body.set(chunk, at); at += chunk.length; }
+      }
+      try {
+        return await stub.fetch(`https://bot.internal/shape-video-${send ? 'send' : 'source'}`, {method:'POST', headers, body: body as unknown as BodyInit});
+      } catch (error) {
+        logRuntimeFailure('SHAPE_VIDEO_REQUEST_FAILED', error, env);
+        return new Response('unavailable', {status:503});
+      }
+    }
+
     if (requestUrl.pathname.startsWith('/api/amongus')) {
       const headers = new Headers(request.headers);
       headers.delete('content-length');
