@@ -14,6 +14,7 @@ import * as MS from '../src/services/mediaServicesEngine';
 import { classifyTelegramMedia } from '../src/services/mediaKind';
 import * as ARX from '../src/services/arenaGamesEngine';
 import * as Measure from '../src/services/measurementGames';
+import { randomMeasurementComment } from '../src/services/measurementComments';
 import * as TRN from '../src/services/tournamentEngine';
 import * as STORY from '../src/services/truthLieEngine';
 import * as GE from '../src/services/guessEliminationEngine';
@@ -4236,12 +4237,14 @@ export class TelegramBotManager {
         ? [cb.from.first_name, cb.from.last_name].filter(Boolean).join(' ')
         : '') || 'اللاعب الثاني';
       game.result = Array.from({ length: Measure.MEASUREMENT_META[game.kind].mode === 'shared' ? 1 : 2 }, () => Measure.randomMeasurement());
+      game.comments = game.result.map(value => randomMeasurementComment(game!.kind, value));
       game.status = 'finished';
       game.updatedAt = Date.now();
       const result = await edit(Measure.renderMeasurementResult(game), [], 'HTML');
       if (!result?.ok) {
         game.status = 'playing';
         delete game.result;
+        delete game.comments;
         await this.answerCallbackQuery(cb.id, 'ما گدرت أفتح المربع، حاول مرة ثانية.', true);
       } else {
         await this.answerCallbackQuery(cb.id, '');

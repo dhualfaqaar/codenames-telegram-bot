@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { TelegramBotManager } from '../server/telegramBot';
 import { MEASUREMENT_GAMES, MEASUREMENT_META, MEASUREMENT_GRID_SIZE, renderMeasurementResult } from '../src/services/measurementGames';
+import { randomMeasurementComment } from '../src/services/measurementComments';
 
 const bot: any = new TelegramBotManager('TEST:TOKEN');
 bot.getBotUsername = async () => 'testbot';
@@ -31,6 +32,17 @@ const menu = await bot.buildGamesMenu('measure');
 assert.equal(menu.text, '*ألعاب القياس*');
 assert.equal(Object.keys(MEASUREMENT_GAMES).length, 18);
 assert.equal(MEASUREMENT_GRID_SIZE, 36);
+// Exercise every kind, band, boundary, and random choice without relying on chance.
+for (const kind of Object.keys(MEASUREMENT_GAMES) as Array<keyof typeof MEASUREMENT_GAMES>) {
+  for (const [low, high] of [[0, 19], [20, 39], [40, 59], [60, 79], [80, 100]]) {
+    const choices = Array.from({ length: 4 }, (_, i) => randomMeasurementComment(kind, low, () => (i + 0.5) / 4));
+    assert.equal(new Set(choices).size, 4, `${kind} band ${low} needs varied comments`);
+    assert.deepEqual(choices, Array.from({ length: 4 }, (_, i) => randomMeasurementComment(kind, high, () => (i + 0.5) / 4)));
+    assert(choices.every(text => text.length > 0 && text.length <= 100 && !/[<>\n]/.test(text)));
+  }
+}
+assert.throws(() => randomMeasurementComment('luck', -1), RangeError);
+assert.throws(() => randomMeasurementComment('luck', 101), RangeError);
 for (const [kind, label] of Object.entries(MEASUREMENT_GAMES)) {
   assert(menu.keyboard.flat().some((item: any) => item.callback_data === `hub:measure:${kind}` && item.text === label));
   const page = await bot.buildGamesMenu(`measure:${kind}`);
@@ -56,12 +68,18 @@ for (const [kind, label] of Object.entries(MEASUREMENT_GAMES)) {
   const mode = MEASUREMENT_META[kind as keyof typeof MEASUREMENT_META].mode;
   assert.equal(game.result.length, mode === 'shared' ? 1 : 2);
   assert(game.result.every((x: number) => Number.isInteger(x) && x >= 0 && x <= 100));
+  assert.equal(game.comments.length, game.result.length);
+  for (const [index, value] of game.result.entries()) {
+    const allowed = Array.from({ length: 4 }, (_, i) => randomMeasurementComment(kind as keyof typeof MEASUREMENT_GAMES, value, () => (i + 0.5) / 4));
+    assert(allowed.includes(game.comments[index]), `${kind} comment must match its own percentage`);
+  }
   assert.equal(edits.at(-1).parseMode, 'HTML');
   assert.deepEqual(edits.at(-1).keyboard, []);
   const text = edits.at(-1).text as string;
   assert(text.includes('<b>ناشر الأول</b>'));
   assert(text.includes('<b>ضيف ثاني</b>'));
   assert.equal((text.match(/%/g) || []).length, mode === 'shared' ? 1 : 2);
+  for (const [index, value] of game.result.entries()) assert(text.includes(`<b>${value}%</b>\n${game.comments[index]}`));
   if (mode === 'shared') assert(text.includes('</b> و <b>'));
   else assert(text.includes('\n\n'), 'personal results must be separated by a blank line');
 }
@@ -86,6 +104,7 @@ failEdit = true;
 await press(111, 'measure:pick:0');
 assert.equal(active.status, 'playing');
 assert.equal(active.result, undefined, 'failed edit restores ability to retry');
+assert.equal(active.comments, undefined, 'failed edit discards comments too');
 failEdit = false;
 await press(111, 'measure:pick:0');
 assert.equal(active.status, 'finished');
@@ -107,6 +126,8 @@ assert.equal(bot.measurementGames.get('inline:inline-C').status, 'playing');
 const restored: any = new TelegramBotManager('TEST:TOKEN');
 restored.importState(bot.exportState());
 assert.equal(restored.measurementGames.get('inline:inline-A').result[0], value);
+assert.deepEqual(restored.measurementGames.get('inline:inline-A').comments, active.comments);
+assert.equal(renderMeasurementResult(restored.measurementGames.get('inline:inline-A')), renderMeasurementResult(active));
 assert.equal(restored.measurementGames.get('inline:inline-A').status, 'finished');
 assert.equal(restored.measurementGames.get('inline:inline-B').status, 'rejected');
 assert(answers.some(x => x.text.includes('لازم لاعب ثاني')));
@@ -126,6 +147,10 @@ const dangerous = renderMeasurementResult({ kind: 'loyalty', hostId: '1', guestI
 assert(dangerous.includes('&lt;b&gt;&amp;Ali&lt;/b&gt;'));
 assert(dangerous.includes('Name Guest'));
 assert(dangerous.includes('24%') && dangerous.includes('62%'));
+const escapedComment = renderMeasurementResult({ kind: 'luck', hostId: '1', guestId: '2', status: 'finished', cells: [], result: [1, 99], comments: ['<bad>&', 'safe'], updatedAt: 1 });
+assert(escapedComment.includes('&lt;bad&gt;&amp;'));
+assert(escapedComment.includes('<b>99%</b>\nsafe'));
+assert(!dangerous.includes('undefined'), 'older saved games without comments remain renderable');
 // Two near-simultaneous presses cannot overwrite the selected result.
 await press(222, 'measure:accept:friendship:111', 'race');
 let releaseEdit!: () => void;
