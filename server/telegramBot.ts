@@ -4205,9 +4205,9 @@ export class TelegramBotManager {
         this.measurementGames.delete(oldest);
       }
       const text = action === 'accept'
-        ? `*${Measure.MEASUREMENT_GAMES[kind]}*`
+        ? Measure.renderMeasurementBoard(game)
         : `*${Measure.MEASUREMENT_GAMES[kind]}*\nانرفضت الدعوة.`;
-      const result = await edit(text, action === 'accept' ? Measure.measurementKeyboard(game) : []);
+      const result = await edit(text, action === 'accept' ? Measure.measurementKeyboard(game) : [], action === 'accept' ? 'HTML' : 'Markdown');
       if (!result?.ok) {
         if (this.measurementGames.get(key) === game) this.measurementGames.delete(key);
         await this.answerCallbackQuery(cb.id, 'ما گدرت أفتح اللعبة، حاول مرة ثانية.', true);
