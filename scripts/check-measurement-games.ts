@@ -28,13 +28,17 @@ const press = async (id: number, data: string, inline = 'inline-A') => {
 const categories = await bot.buildGamesMenu('duo');
 assert(categories.keyboard.flat().some((item: any) => item.callback_data === 'hub:measure'));
 const menu = await bot.buildGamesMenu('measure');
+assert.equal(menu.text, '*ألعاب القياس*');
 assert.equal(Object.keys(MEASUREMENT_GAMES).length, 18);
 for (const [kind, label] of Object.entries(MEASUREMENT_GAMES)) {
   assert(menu.keyboard.flat().some((item: any) => item.callback_data === `hub:measure:${kind}` && item.text === label));
   const page = await bot.buildGamesMenu(`measure:${kind}`);
+  assert.equal(page.text, `*${label}*`);
   assert.equal(page.keyboard[0][0].switch_inline_query_chosen_chat.query, `measure ${kind}`);
   await bot.handleInlineQuery({ id: 'iq', query: `measure ${kind}`, from: { id: 111, first_name: 'Host' } });
   assert.equal(result[0].title, label);
+  assert.equal(result[0].description, undefined);
+  assert.equal(result[0].input_message_content.message_text, `*${label}*`);
   assert.equal(result[0].reply_markup.inline_keyboard[0][0].callback_data, `measure:accept:${kind}:111`);
   assert.equal(result[0].reply_markup.inline_keyboard[0][1].callback_data, `measure:reject:${kind}:111`);
 }
@@ -42,6 +46,7 @@ await press(111, 'measure:accept:love:111');
 assert.equal(bot.measurementGames.size, 0, 'the host cannot accept their own invitation');
 await press(222, 'measure:accept:love:111');
 assert.equal(bot.measurementGames.get('inline:inline-A').guestId, '222');
+assert.equal(edits.at(-1).text, '*قياس الحب*');
 assert.equal(edits.at(-1).keyboard.length, 4);
 assert.equal(edits.at(-1).keyboard.flat().length, 16);
 await press(333, 'measure:accept:love:111');
@@ -51,6 +56,7 @@ assert.equal(bot.measurementGames.get('inline:inline-A').cells[0], null);
 await press(111, 'measure:pick:0');
 const value = bot.measurementGames.get('inline:inline-A').cells[0];
 assert(Number.isInteger(value) && value >= 0 && value <= 100);
+assert.equal(edits.at(-1).text, '*قياس الحب*');
 assert.equal(edits.at(-1).keyboard[0][0].text, `${value}%`);
 await press(222, 'measure:pick:0');
 assert.equal(bot.measurementGames.get('inline:inline-A').cells[0], value, 'repeat tap does not change result');

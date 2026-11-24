@@ -4202,7 +4202,7 @@ export class TelegramBotManager {
         this.measurementGames.delete(oldest);
       }
       const text = action === 'accept'
-        ? `*${Measure.MEASUREMENT_GAMES[kind]}*\nدوسوا أي مربع حتى تطلع نسبة عشوائية للتسلية فقط.`
+        ? `*${Measure.MEASUREMENT_GAMES[kind]}*`
         : `*${Measure.MEASUREMENT_GAMES[kind]}*\nانرفضت الدعوة.`;
       const result = await edit(text, action === 'accept' ? Measure.measurementKeyboard(game) : []);
       if (!result?.ok) {
@@ -4235,7 +4235,7 @@ export class TelegramBotManager {
       const value = Measure.randomMeasurement();
       game.cells[index] = value;
       game.updatedAt = Date.now();
-      const result = await edit(`*${Measure.MEASUREMENT_GAMES[game.kind]}*\nدوسوا أي مربع حتى تطلع نسبة عشوائية للتسلية فقط.`, Measure.measurementKeyboard(game));
+      const result = await edit(`*${Measure.MEASUREMENT_GAMES[game.kind]}*`, Measure.measurementKeyboard(game));
       if (!result?.ok) {
         game.cells[index] = null;
         await this.answerCallbackQuery(cb.id, 'ما گدرت أفتح المربع، حاول مرة ثانية.', true);
@@ -4656,9 +4656,8 @@ export class TelegramBotManager {
       const title = Measure.MEASUREMENT_GAMES[kind];
       await this.answerInlineQuery(iq.id, [{
         type: 'article', id: `measure:${kind}`, title,
-        description: 'انشر الدعوة بالقناة أو المجموعة؛ النتائج عشوائية للتسلية',
         input_message_content: {
-          message_text: `*${title}*\nدعوة للاعب ثاني\nالنتائج عشوائية للتسلية فقط.`,
+          message_text: `*${title}*`,
           parse_mode: 'Markdown'
         },
         reply_markup: { inline_keyboard: [[
@@ -7399,13 +7398,13 @@ export class TelegramBotManager {
         })));
       }
       keyboard.push([{ text: 'رجوع', callback_data: 'hub:duo' }]);
-      return { text: '*ألعاب القياس*\nاختار لعبة. النتائج عشوائية للتسلية فقط.', keyboard };
+      return { text: '*ألعاب القياس*', keyboard };
     }
     if (section.startsWith('measure:')) {
       const kind = section.slice('measure:'.length);
       if (!Measure.isMeasurementKind(kind)) return { text: 'ما لكيت هاي اللعبة.', keyboard: [[{ text: 'رجوع', callback_data: 'hub:measure' }]] };
       return {
-        text: `*${Measure.MEASUREMENT_GAMES[kind]}*\nانشر الدعوة، وبعد قبول لاعب ثاني دوسوا المربعات حتى تطلع نسب عشوائية للتسلية.`,
+        text: `*${Measure.MEASUREMENT_GAMES[kind]}*`,
         keyboard: [
           [inlineDestinationButton('انشر اللعبة', `measure ${kind}`, true)],
           [{ text: 'رجوع', callback_data: 'hub:measure' }]
