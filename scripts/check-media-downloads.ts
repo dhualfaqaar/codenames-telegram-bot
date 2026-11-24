@@ -12,6 +12,7 @@ import {
   MEDIA_TOTAL_BUDGET_MS,
   PROVIDER_FAILURE_THRESHOLD,
   boundedFetch,
+  cacheSet,
   failureKind,
   providerHealth,
   raceProviders,
@@ -283,6 +284,19 @@ async function main(): Promise<void> {
   );
   check('الإعادة تجيب البايتات من الـCDN بس', hitHosts.length <= 1 && mediaHits >= 1, hitHosts.join(' , '));
   check('الكاش قلّل النداءات فعلياً', hitHosts.length < firstCalls, `${firstCalls} → ${hitHosts.length}`);
+
+  // YouTube /watch URLs differ by their case-sensitive video ID, not pathname.
+  clearMediaCache();
+  cacheSet('yt:AbCdEfGhI01', { videoId: 'AbCdEfGhI01', items: [{ kind: 'video', url: 'https://cdn.example.test/first.mp4' }] });
+  cacheSet('yt:ZyXwVuTsR02', { videoId: 'ZyXwVuTsR02', items: [{ kind: 'video', url: 'https://cdn.example.test/second.mp4' }] });
+  cacheSet('yt:abcdefghI01', { videoId: 'abcdefghI01', items: [{ kind: 'video', url: 'https://cdn.example.test/lower.mp4' }] });
+  const ytOne = await withFetch(cacheStub, () => downloadFromPlatform('yt', 'https://www.youtube.com/watch?v=AbCdEfGhI01&t=5'));
+  const ytTwo = await withFetch(cacheStub, () => downloadFromPlatform('yt', 'https://www.youtube.com/watch?v=ZyXwVuTsR02'));
+  const ytLower = await withFetch(cacheStub, () => downloadFromPlatform('yt', 'https://youtu.be/abcdefghI01'));
+  const ytAlias = await withFetch(cacheStub, () => downloadFromPlatform('yt', 'https://youtu.be/AbCdEfGhI01'));
+  check('يوتيوب يحفظ كل فيديو بمعرفه وليس /watch', ytOne.videoId === 'AbCdEfGhI01' && ytTwo.videoId === 'ZyXwVuTsR02' && ytOne.items[0]?.url !== ytTwo.items[0]?.url);
+  check('معرف يوتيوب يحافظ على حالة الأحرف', ytLower.videoId === 'abcdefghI01' && ytLower.items[0]?.url.includes('lower'));
+  check('رابطا watch وyoutu.be لنفس الفيديو يشتركان بالكاش', ytAlias.videoId === ytOne.videoId && ytAlias.items[0]?.url === ytOne.items[0]?.url);
 
   // 7-ب) مرآة ترجّع صفحة حماية بدل المنشور، والمزوّد المستقل ينقذ التحميل ─────
   clearMediaCache();

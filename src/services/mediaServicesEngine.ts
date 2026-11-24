@@ -2705,6 +2705,12 @@ export async function extractYouTubeHighDefinition(videoId: string): Promise<Soc
 
 /** Same post reached through different tracking links must share one cache slot. */
 function cacheKeyFor(platform: SocialPlatform, rawUrl: string): string {
+  // YouTube watch URLs share the same /watch path: the video ID, including its
+  // case, is essential or the next request can receive somebody else's video.
+  if (platform === 'yt') {
+    const videoId = extractYoutubeVideoId(rawUrl);
+    if (videoId) return `yt:${videoId}`;
+  }
   try {
     const parsed = new URL(rawUrl);
     const host = parsed.hostname.toLowerCase().replace(/^www\./, '');

@@ -23,6 +23,7 @@
     "test:drawing": "tsx scripts/check-drawing-scoring.ts",
     "test:drawing:dom": "node scripts/check-drawing-room-dom.mjs",
     "test:media": "tsx scripts/check-media-downloads.ts",
+    "test:measurement": "tsx scripts/check-measurement-games.ts",
     "test:amongus": "tsx scripts/check-amongus.ts",
     "test:amongus:dom": "node scripts/check-amongus-dom.mjs",
     "test:amongus:art-browser": "node scripts/check-amongus-art-browser.mjs",

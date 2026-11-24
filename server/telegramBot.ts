@@ -13,6 +13,7 @@ import * as OOL from '../src/services/outOfLoopEngine';
 import * as MS from '../src/services/mediaServicesEngine';
 import { classifyTelegramMedia } from '../src/services/mediaKind';
 import * as ARX from '../src/services/arenaGamesEngine';
+import * as Measure from '../src/services/measurementGames';
 import * as TRN from '../src/services/tournamentEngine';
 import * as STORY from '../src/services/truthLieEngine';
 import * as GE from '../src/services/guessEliminationEngine';
@@ -1132,6 +1133,7 @@ export class TelegramBotManager {
   private amongUsCompletedMatches = 0;
   private oolGames: Map<string, OOL.OOLGame> = new Map();
   private arenaGames: Map<string, ARX.ArenaGame> = new Map();
+  private measurementGames: Map<string, Measure.MeasurementGame> = new Map();
   private tournamentGames: Map<string, TRN.TournamentGame> = new Map();
   private pendingClosestNum: Map<string, string> = new Map();
   private whispers: Map<string, MS.WhisperRecord> = new Map();
@@ -1872,6 +1874,7 @@ export class TelegramBotManager {
       amongUsCompletedMatches: this.amongUsCompletedMatches,
       oolGames: Array.from(this.oolGames.entries()),
       arenaGames: Array.from(this.arenaGames.entries()),
+      measurementGames: Array.from(this.measurementGames.entries()).slice(-200),
       tournamentGames: Array.from(this.tournamentGames.entries()).slice(-200),
       pendingClosestNum: Array.from(this.pendingClosestNum.entries()),
       whispers: Array.from(this.whispers.entries()).slice(-300),
@@ -1937,6 +1940,7 @@ export class TelegramBotManager {
     if (Number.isFinite(state.amongUsCompletedMatches)) this.amongUsCompletedMatches = Number(state.amongUsCompletedMatches);
     if (Array.isArray(state.oolGames)) this.oolGames = new Map(state.oolGames);
     if (Array.isArray(state.arenaGames)) this.arenaGames = new Map(state.arenaGames);
+    if (Array.isArray(state.measurementGames)) this.measurementGames = new Map(state.measurementGames.slice(-200));
     if (Array.isArray(state.tournamentGames)) this.tournamentGames = new Map(state.tournamentGames);
     if (Array.isArray(state.pendingClosestNum)) this.pendingClosestNum = new Map(state.pendingClosestNum);
     if (Array.isArray(state.whispers)) this.whispers = new Map(state.whispers);
@@ -3291,6 +3295,11 @@ export class TelegramBotManager {
       return;
     }
 
+    if (data.startsWith('measure:')) {
+      await this.handleMeasurementCallback(cb, data);
+      return;
+    }
+
     // ---- 🎮 قائمة الألعاب ----
     if (data.startsWith('hub:')) {
       await this.handleGamesMenu(cb, data.slice(4));
@@ -4151,6 +4160,93 @@ export class TelegramBotManager {
     throw new Error(`Unsupported random-match game: ${gameId}`);
   }
 
+  private async handleMeasurementCallback(cb: TelegramCallbackQuery, data: string) {
+    const key = cb.inline_message_id ? `inline:${cb.inline_message_id}` :
+      cb.message ? `chat:${cb.message.chat.id}:${cb.message.message_id}` : '';
+    if (!key) {
+      await this.answerCallbackQuery(cb.id, 'ما گدرت أحدد رسالة اللعبة.', true);
+      return;
+    }
+    const parts = data.split(':');
+    const action = parts[1];
+    const userId = String(cb.from.id);
+    const edit = (text: string, keyboard: any[][]) => cb.inline_message_id
+      ? this.editInlineMessageText(cb.inline_message_id, text, keyboard)
+      : this.editMessageText(String(cb.message!.chat.id), cb.message!.message_id, text, keyboard);
+    let game = this.measurementGames.get(key);
+
+    if (action === 'accept' || action === 'reject') {
+      const kind = parts[2] || '';
+      const hostId = parts[3] || '';
+      if (!Measure.isMeasurementKind(kind) || !/^\d+$/.test(hostId)) {
+        await this.answerCallbackQuery(cb.id, 'الدعوة غير صالحة.', true);
+        return;
+      }
+      if (game) {
+        await this.answerCallbackQuery(cb.id, 'هاي الدعوة تم الرد عليها.', true);
+        return;
+      }
+      if (userId === hostId) {
+        await this.answerCallbackQuery(cb.id, 'لازم لاعب ثاني يقبل أو يرفض الدعوة.', true);
+        return;
+      }
+      game = {
+        kind, hostId, guestId: userId,
+        status: action === 'accept' ? 'playing' : 'rejected',
+        cells: Array(16).fill(null), updatedAt: Date.now()
+      };
+      this.measurementGames.set(key, game);
+      while (this.measurementGames.size > 200) {
+        const oldest = this.measurementGames.keys().next().value;
+        if (oldest === undefined) break;
+        this.measurementGames.delete(oldest);
+      }
+      const text = action === 'accept'
+        ? `*${Measure.MEASUREMENT_GAMES[kind]}*\nدوسوا أي مربع حتى تطلع نسبة عشوائية للتسلية فقط.`
+        : `*${Measure.MEASUREMENT_GAMES[kind]}*\nانرفضت الدعوة.`;
+      const result = await edit(text, action === 'accept' ? Measure.measurementKeyboard(game) : []);
+      if (!result?.ok) {
+        if (this.measurementGames.get(key) === game) this.measurementGames.delete(key);
+        await this.answerCallbackQuery(cb.id, 'ما گدرت أفتح اللعبة، حاول مرة ثانية.', true);
+      } else {
+        await this.answerCallbackQuery(cb.id, action === 'accept' ? 'تم قبول الدعوة' : 'تم رفض الدعوة');
+      }
+      return;
+    }
+
+    if (action === 'pick') {
+      const index = Number(parts[2]);
+      if (!game || game.status !== 'playing') {
+        await this.answerCallbackQuery(cb.id, 'اللعبة مو متاحة هسه، انشر دعوة جديدة.', true);
+        return;
+      }
+      if (userId !== game.hostId && userId !== game.guestId) {
+        await this.answerCallbackQuery(cb.id, 'المربعات للاعبين اللي قبلوا الدعوة فقط.', true);
+        return;
+      }
+      if (!/^\d+$/.test(parts[2] || '') || !Number.isInteger(index) || index < 0 || index >= 16) {
+        await this.answerCallbackQuery(cb.id, 'المربع غير صالح.', true);
+        return;
+      }
+      if (game.cells[index] !== null) {
+        await this.answerCallbackQuery(cb.id, `النتيجة: ${game.cells[index]}%`, true);
+        return;
+      }
+      const value = Measure.randomMeasurement();
+      game.cells[index] = value;
+      game.updatedAt = Date.now();
+      const result = await edit(`*${Measure.MEASUREMENT_GAMES[game.kind]}*\nدوسوا أي مربع حتى تطلع نسبة عشوائية للتسلية فقط.`, Measure.measurementKeyboard(game));
+      if (!result?.ok) {
+        game.cells[index] = null;
+        await this.answerCallbackQuery(cb.id, 'ما گدرت أفتح المربع، حاول مرة ثانية.', true);
+      } else {
+        await this.answerCallbackQuery(cb.id, `النتيجة: ${value}%`, true);
+      }
+      return;
+    }
+    await this.answerCallbackQuery(cb.id, 'الزر غير صالح.', true);
+  }
+
   private async handleGamesMenu(cb: TelegramCallbackQuery, section: string) {
     const chatId = String(cb.message?.chat.id || cb.from.id);
     const messageId = cb.message?.message_id;
@@ -4553,6 +4649,25 @@ export class TelegramBotManager {
     }
     const deployerId = iq.from?.id ? String(iq.from.id) : '';
     const uid = deployerId ? `|${deployerId}` : '';
+
+    const measureQuery = q.match(/^measure\s+([a-z]+)$/);
+    if (measureQuery && Measure.isMeasurementKind(measureQuery[1]) && deployerId) {
+      const kind = measureQuery[1];
+      const title = Measure.MEASUREMENT_GAMES[kind];
+      await this.answerInlineQuery(iq.id, [{
+        type: 'article', id: `measure:${kind}`, title,
+        description: 'انشر الدعوة بالقناة أو المجموعة؛ النتائج عشوائية للتسلية',
+        input_message_content: {
+          message_text: `*${title}*\nدعوة للاعب ثاني\nالنتائج عشوائية للتسلية فقط.`,
+          parse_mode: 'Markdown'
+        },
+        reply_markup: { inline_keyboard: [[
+          { text: 'قبول', callback_data: `measure:accept:${kind}:${deployerId}` },
+          { text: 'رفض', callback_data: `measure:reject:${kind}:${deployerId}` }
+        ]] }
+      }]);
+      return;
+    }
 
     // ── إنشاء همسة آمنة مباشرة من المجموعة/القناة عبر الإنلاين ──
     const whisperCompose = rawQ.match(/^wh:new:(all|first|[1-5]):([\s\S]*)$/i);
@@ -7275,6 +7390,29 @@ export class TelegramBotManager {
     const botUser = await this.getBotUsername();
     const back = [{ text: '🔙 رجوع', callback_data: 'hub:main' }];
 
+    if (section === 'measure') {
+      const entries = Object.entries(Measure.MEASUREMENT_GAMES);
+      const keyboard: any[][] = [];
+      for (let i = 0; i < entries.length; i += 2) {
+        keyboard.push(entries.slice(i, i + 2).map(([kind, title]) => ({
+          text: title, callback_data: `hub:measure:${kind}`
+        })));
+      }
+      keyboard.push([{ text: 'رجوع', callback_data: 'hub:duo' }]);
+      return { text: '*ألعاب القياس*\nاختار لعبة. النتائج عشوائية للتسلية فقط.', keyboard };
+    }
+    if (section.startsWith('measure:')) {
+      const kind = section.slice('measure:'.length);
+      if (!Measure.isMeasurementKind(kind)) return { text: 'ما لكيت هاي اللعبة.', keyboard: [[{ text: 'رجوع', callback_data: 'hub:measure' }]] };
+      return {
+        text: `*${Measure.MEASUREMENT_GAMES[kind]}*\nانشر الدعوة، وبعد قبول لاعب ثاني دوسوا المربعات حتى تطلع نسب عشوائية للتسلية.`,
+        keyboard: [
+          [inlineDestinationButton('انشر اللعبة', `measure ${kind}`, true)],
+          [{ text: 'رجوع', callback_data: 'hub:measure' }]
+        ]
+      };
+    }
+
     // 📂 صفحة اختيار نوع الأغاني
     if (section === 'songpick') {
       return {
@@ -7333,6 +7471,9 @@ export class TelegramBotManager {
         keyboard.push(row);
       }
 
+      if (normalizedSection === 'duo') {
+        keyboard.unshift([{ text: 'ألعاب القياس', callback_data: 'hub:measure' }]);
+      }
       keyboard.push(back);
 
       const text =
