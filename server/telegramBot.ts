@@ -4170,9 +4170,9 @@ export class TelegramBotManager {
     const parts = data.split(':');
     const action = parts[1];
     const userId = String(cb.from.id);
-    const edit = (text: string, keyboard: any[][]) => cb.inline_message_id
-      ? this.editInlineMessageText(cb.inline_message_id, text, keyboard)
-      : this.editMessageText(String(cb.message!.chat.id), cb.message!.message_id, text, keyboard);
+    const edit = (text: string, keyboard: any[][], parseMode = 'Markdown') => cb.inline_message_id
+      ? this.editInlineMessageText(cb.inline_message_id, text, keyboard, parseMode)
+      : this.editMessageText(String(cb.message!.chat.id), cb.message!.message_id, text, keyboard, parseMode);
     let game = this.measurementGames.get(key);
 
     if (action === 'accept' || action === 'reject') {
@@ -4192,8 +4192,10 @@ export class TelegramBotManager {
       }
       game = {
         kind, hostId, guestId: userId,
+        hostName: this.users.get(hostId)?.name || 'الناشر',
+        guestName: [cb.from.first_name, cb.from.last_name].filter(Boolean).join(' ') || 'اللاعب الثاني',
         status: action === 'accept' ? 'playing' : 'rejected',
-        cells: Array(16).fill(null), updatedAt: Date.now()
+        cells: Array(Measure.MEASUREMENT_GRID_SIZE).fill(null), updatedAt: Date.now()
       };
       this.measurementGames.set(key, game);
       while (this.measurementGames.size > 200) {
@@ -4224,23 +4226,25 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(cb.id, 'المربعات للاعبين اللي قبلوا الدعوة فقط.', true);
         return;
       }
-      if (!/^\d+$/.test(parts[2] || '') || !Number.isInteger(index) || index < 0 || index >= 16) {
+      if (!/^\d+$/.test(parts[2] || '') || !Number.isInteger(index) || index < 0 || index >= Math.min(game.cells.length, Measure.MEASUREMENT_GRID_SIZE)) {
         await this.answerCallbackQuery(cb.id, 'المربع غير صالح.', true);
         return;
       }
-      if (game.cells[index] !== null) {
-        await this.answerCallbackQuery(cb.id, `النتيجة: ${game.cells[index]}%`, true);
-        return;
-      }
-      const value = Measure.randomMeasurement();
-      game.cells[index] = value;
+      // Finish before awaiting Telegram so simultaneous taps cannot change the result.
+      game.hostName ||= this.users.get(game.hostId)?.name || 'الناشر';
+      game.guestName ||= this.users.get(game.guestId || '')?.name || (userId === game.guestId
+        ? [cb.from.first_name, cb.from.last_name].filter(Boolean).join(' ')
+        : '') || 'اللاعب الثاني';
+      game.result = Array.from({ length: Measure.MEASUREMENT_META[game.kind].mode === 'shared' ? 1 : 2 }, () => Measure.randomMeasurement());
+      game.status = 'finished';
       game.updatedAt = Date.now();
-      const result = await edit(`*${Measure.MEASUREMENT_GAMES[game.kind]}*`, Measure.measurementKeyboard(game));
+      const result = await edit(Measure.renderMeasurementResult(game), [], 'HTML');
       if (!result?.ok) {
-        game.cells[index] = null;
+        game.status = 'playing';
+        delete game.result;
         await this.answerCallbackQuery(cb.id, 'ما گدرت أفتح المربع، حاول مرة ثانية.', true);
       } else {
-        await this.answerCallbackQuery(cb.id, `النتيجة: ${value}%`, true);
+        await this.answerCallbackQuery(cb.id, '');
       }
       return;
     }

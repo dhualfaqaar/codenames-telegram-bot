@@ -7,7 +7,7 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-20-measurement-clean-text-v81';
+export const BUILD_TAG = '2026-10-20-measurement-results-v82';
 
 /** بصمة واجهة الألعاب، وليست نقطة دخول Worker مستقلة. */
 export const INTERACTIVE_APP_BUILD = '2026-10-20-amongus-lobby-solo-v73';

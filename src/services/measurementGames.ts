@@ -1,4 +1,4 @@
-// ألعاب عشوائية للتسلية فقط، وليست اختباراً أو قياساً حقيقياً.
+// نسب ألعاب القياس عشوائية وليست نتائج حقيقية.
 export const MEASUREMENT_GAMES = {
   kiss: 'قياس القبلة',
   longing: 'قياس الاشتياق',
@@ -24,24 +24,72 @@ export type MeasurementKind = keyof typeof MEASUREMENT_GAMES;
 export function isMeasurementKind(value: string): value is MeasurementKind {
   return Object.prototype.hasOwnProperty.call(MEASUREMENT_GAMES, value);
 }
+
+export const MEASUREMENT_GRID_SIZE = 36;
+export const MEASUREMENT_META: Record<MeasurementKind, { emoji: string; label: string; mode: 'shared' | 'individual' }> = {
+  kiss: { emoji: '💋', label: 'القبلة', mode: 'shared' },
+  longing: { emoji: '💌', label: 'الاشتياق', mode: 'shared' },
+  love: { emoji: '❤️', label: 'الحب', mode: 'shared' },
+  friendship: { emoji: '🤝', label: 'الصداقة', mode: 'shared' },
+  understanding: { emoji: '🫶', label: 'التفاهم', mode: 'shared' },
+  trust: { emoji: '🔐', label: 'الثقة', mode: 'shared' },
+  loyalty: { emoji: '🛡️', label: 'الوفاء', mode: 'individual' },
+  luck: { emoji: '🍀', label: 'الحظ', mode: 'individual' },
+  patience: { emoji: '⏳', label: 'الصبر', mode: 'individual' },
+  intelligence: { emoji: '🧠', label: 'الذكاء', mode: 'individual' },
+  average: { emoji: '💯', label: 'المعدل', mode: 'individual' },
+  arabic: { emoji: '📚', label: 'العربي', mode: 'individual' },
+  english: { emoji: '🔤', label: 'الإنكليزي', mode: 'individual' },
+  biology: { emoji: '🧬', label: 'الأحياء', mode: 'individual' },
+  chemistry: { emoji: '🧪', label: 'الكيمياء', mode: 'individual' },
+  physics: { emoji: '⚛️', label: 'الفيزياء', mode: 'individual' },
+  islamic: { emoji: '🕌', label: 'الإسلامية', mode: 'individual' },
+  maths: { emoji: '📐', label: 'الرياضيات', mode: 'individual' }
+};
+
 export interface MeasurementGame {
   kind: MeasurementKind;
   hostId: string;
   guestId?: string;
-  status: 'playing' | 'rejected';
+  // Names are optional so invitations accepted on the previous version still work.
+  hostName?: string;
+  guestName?: string;
+  status: 'playing' | 'rejected' | 'finished';
   cells: Array<number | null>;
+  result?: number[];
   updatedAt: number;
 }
+
 export function measurementKeyboard(game: MeasurementGame): any[][] {
   const rows: any[][] = [];
-  for (let i = 0; i < 16; i += 4) {
-    rows.push(game.cells.slice(i, i + 4).map((value, offset) => ({
-      text: value === null ? String(i + offset + 1) : `${value}%`,
+  // Old active games have 16 cells; keep their existing buttons usable after upgrade.
+  const count = Math.min(MEASUREMENT_GRID_SIZE, game.cells.length);
+  for (let i = 0; i < count; i += 6) {
+    rows.push(game.cells.slice(i, Math.min(i + 6, count)).map((_value, offset) => ({
+      text: MEASUREMENT_META[game.kind].emoji,
       callback_data: `measure:pick:${i + offset}`
     })));
   }
   return rows;
 }
+
 export function randomMeasurement(): number {
   return Math.floor(Math.random() * 101);
+}
+
+// Telegram HTML mode: names can contain markup, control characters or line breaks.
+function safeName(value: string): string {
+  const plain = String(value || 'لاعب').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim() || 'لاعب';
+  return Array.from(plain).slice(0, 100).join('').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function renderMeasurementResult(game: MeasurementGame): string {
+  const meta = MEASUREMENT_META[game.kind];
+  const host = safeName(game.hostName || 'الناشر');
+  const guest = safeName(game.guestName || 'اللاعب الثاني');
+  const values = game.result || [];
+  if (meta.mode === 'shared') {
+    return `نسبة ${meta.label} بين <b>${host}</b> و <b>${guest}</b>\n<b>${values[0]}%</b>`;
+  }
+  return `نسبة ${meta.label} لـ <b>${host}</b>\n<b>${values[0]}%</b>\n\nنسبة ${meta.label} لـ <b>${guest}</b>\n<b>${values[1]}%</b>`;
 }
