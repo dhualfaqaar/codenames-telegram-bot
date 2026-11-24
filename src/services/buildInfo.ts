@@ -7,13 +7,14 @@
  * القاعدة: كل PR يغيّر `BUILD_TAG`. و`/version` بالبوت و`GET /version`
  * بالـWorker يعرضونه مع وقت أول تشغيل لهذي النسخة.
  */
-export const BUILD_TAG = '2026-10-20-measurement-results-v82';
+export const BUILD_TAG = '2026-10-20-measurement-comments-v83';
 
 /** بصمة واجهة الألعاب، وليست نقطة دخول Worker مستقلة. */
 export const INTERACTIVE_APP_BUILD = '2026-10-20-amongus-lobby-solo-v73';
 
 /** ملخّص اللي بهذي النسخة — يظهر بـ /version حتى نتأكد إن الميزة موجودة. */
 export const BUILD_FEATURES: string[] = [
+  'تعليقات عراقية مناسبة للنتائج في ألعاب القياس',
   'ألعاب القياس الثنائية',
   'تصحيح فصل كاش روابط يوتيوب حسب معرّف الفيديو',
   'فيد دائري فقط مع إرسال مباشر للمقاطع المربعة',
