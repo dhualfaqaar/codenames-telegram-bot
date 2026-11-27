@@ -34,6 +34,14 @@ import * as Cinema from '../src/services/cinemaServices';
 import { BOT_AVATAR_JPG_BASE64, BOT_AVATAR_PNG_BASE64 } from '../src/assets/botAvatarBase64';
 
 const ZW_GUARD = '\u2060\u200D\u2060';
+const UNKNOWN_GAME_PUBLISHER = 'unknown';
+function inlinePublisherTarget(deployerId?: string): string {
+  return deployerId && /^\d+$/.test(deployerId) ? `auto~${deployerId}` : 'auto';
+}
+function inlinePublisherId(target: string): string | undefined {
+  return /^auto~(\d{1,20})$/.exec(target)?.[1];
+}
+
 function escapeMarkdownV2Text(value: string): string {
   return String(value || '').replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
@@ -1177,7 +1185,6 @@ export class TelegramBotManager {
   private avatarDeliveredV2: boolean = false;
   private pendingVocalSep: Set<string> = new Set();
   private songSearches: Map<string, MS.SongSearchHit[]> = new Map();
-  private lastInlineDeployer?: { id: string; at: number };
   private commandsSyncVer: number = 0;
   /** هل البيئة الخارجية (Cloudflare Durable Object Alarm) تدير المؤقت؟ */
   private externalScheduler: boolean = false;
@@ -4528,7 +4535,7 @@ export class TelegramBotManager {
         title: `✊✋✌️ حجرة ورقة مقص (${r} راوندات)`,
         desc: 'اضغط لإرسال اللعبة مباشرة للقناة',
         text: `✊✋✌️ *حجرة ورقة مقص* (${r} راوندات)${hidden}\n${SEP}\n👥 *اللاعبون:* بانتظار الانضمام`,
-        keyboard: [[{ text: 'انضم', callback_data: `rpsb:join:${r}:auto` }]]
+        keyboard: [[{ text: 'انضم', callback_data: `rpsb:join:${r}:${inlinePublisherTarget(deployerId)}` }]]
       };
     }
     const hidden = encodeHiddenTag(`cn${uid}`);
@@ -4620,7 +4627,7 @@ export class TelegramBotManager {
         parse_mode: 'Markdown'
       },
         reply_markup: {
-        inline_keyboard: [[{ text: 'انضم', callback_data: `gqj:${k}:${speedMode ? 'speed' : 'normal'}:auto` }]]
+        inline_keyboard: [[{ text: 'انضم', callback_data: `gqj:${k}:${speedMode ? 'speed' : 'normal'}:${inlinePublisherTarget(deployerId)}` }]]
       }
     };
   }
@@ -4640,7 +4647,7 @@ export class TelegramBotManager {
         parse_mode: 'Markdown'
       },
       reply_markup: {
-        inline_keyboard: [[{ text: 'انضم', callback_data: 'mmj:auto' }]]
+        inline_keyboard: [[{ text: 'انضم', callback_data: `mmj:${inlinePublisherTarget(deployerId)}` }]]
       }
     };
   }
@@ -4652,7 +4659,6 @@ export class TelegramBotManager {
     const SEP = '━━━━━━━━━━━━━━━━━━━';
     if (iq.from && !iq.from.is_bot) {
       this.trackUser(iq.from, false);
-      this.lastInlineDeployer = { id: String(iq.from.id), at: Date.now() };
     }
     const deployerId = iq.from?.id ? String(iq.from.id) : '';
     const uid = deployerId ? `|${deployerId}` : '';
@@ -5052,14 +5058,16 @@ export class TelegramBotManager {
     if (!ours) return;
 
     const chatId = String(message.chat.id);
-    const recentDeployer =
-      this.lastInlineDeployer && Date.now() - this.lastInlineDeployer.at < 30_000
-        ? this.lastInlineDeployer.id
-        : '';
-    const deployerUserId = message.from?.id ? String(message.from.id) : hidden?.deployerId || recentDeployer;
+    // Channel posts can report an anonymous/channel sender, not the person who
+    // selected this inline result. Never use a different user's recent query.
+    const taggedPublisher = hidden?.deployerId && /^\d+$/.test(hidden.deployerId) ? hidden.deployerId : '';
+    const senderPublisher = message.chat.type !== 'channel' && message.from?.id && !message.from.is_bot
+      ? String(message.from.id) : '';
+    const deployerUserId = taggedPublisher || senderPublisher;
     const deployerRecord = deployerUserId ? this.users.get(deployerUserId) : undefined;
-    const deployerName = message.from?.first_name || deployerRecord?.name || 'الناشر';
-    const deployerUsername = message.from?.username || deployerRecord?.username;
+    const sameSender = deployerUserId && String(message.from?.id || '') === deployerUserId;
+    const deployerName = (sameSender ? message.from?.first_name : undefined) || deployerRecord?.name || 'الناشر';
+    const deployerUsername = (sameSender ? message.from?.username : undefined) || deployerRecord?.username;
 
     if (isStoryCard) {
       const mode: STORY.StoryMode = hiddenTag.endsWith(':group') ? 'group' : 'duo';
@@ -5214,7 +5222,7 @@ export class TelegramBotManager {
         const game = GG.mmCreate(
           chatId,
           message.chat.title || 'المحادثة',
-          deployerUserId ? String(deployerUserId) : undefined
+          deployerUserId || UNKNOWN_GAME_PUBLISHER
         );
         game.messageId = message.message_id;
         if (deployerUserId) {
@@ -5241,7 +5249,7 @@ export class TelegramBotManager {
         message.chat.title || 'المحادثة',
         kind2,
         speedMode,
-        deployerUserId ? String(deployerUserId) : undefined
+        deployerUserId || UNKNOWN_GAME_PUBLISHER
       );
       game.messageId = message.message_id;
       if (deployerUserId) {
@@ -5266,7 +5274,7 @@ export class TelegramBotManager {
       const r = !Number.isNaN(rFromHidden) ? rFromHidden : rMatch ? parseInt(rMatch[1], 10) : 5;
       const rounds = [5, 10, 15].includes(r) ? r : 5;
 
-      let game = RPS.createGame(chatId, message.chat.title || 'المحادثة', rounds, deployerUserId);
+      let game = RPS.createGame(chatId, message.chat.title || 'المحادثة', rounds, deployerUserId || UNKNOWN_GAME_PUBLISHER);
       if (deployerUserId) {
         game = RPS.join(game, deployerUserId, deployerName);
       }
@@ -6175,7 +6183,7 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
         return;
       }
-      const rebuilt = GG.createQuiz(cbChatId, cb.message?.chat.title || 'المحادثة', kind, speedMode);
+      const rebuilt = GG.createQuiz(cbChatId, cb.message?.chat.title || 'المحادثة', kind, speedMode, inlinePublisherId(target) || UNKNOWN_GAME_PUBLISHER);
       if (cb.message?.message_id) rebuilt.messageId = cb.message.message_id;
       if (cb.inline_message_id) rebuilt.inlineMessageId = cb.inline_message_id;
       this.gqGames.set(cbChatId, rebuilt);
@@ -6309,7 +6317,7 @@ export class TelegramBotManager {
       return;
     }
 
-    // 🎮 ابدأ — بس ناشر اللعبة (أو مشرف القناة) يبدأها
+    // 🎮 ابدأ — بس ناشر اللعبة يبدأها
     if (op === 'gqs') {
       if (game.status === 'lobby') {
         const allowed = await this.canHostStartGame(cb, game.chatId, game.hostId);
@@ -6346,7 +6354,12 @@ export class TelegramBotManager {
 
   private async handleMastermindCb(cb: TelegramCallbackQuery, data: string) {
     const tailId = data.split(':').slice(-1)[0] || '';
-    const cbChatId = /^-?\d{4,}$/.test(tailId) ? tailId : String(cb.message?.chat.id || '');
+    const storedInline = cb.inline_message_id
+      ? Array.from(this.mmGames.values()).find(g => g.inlineMessageId === cb.inline_message_id)
+      : undefined;
+    const cbChatId = (/^-?\d{4,}$/.test(tailId) || tailId.startsWith('mm_i_') ? tailId : '') ||
+      String(cb.message?.chat.id || '') || storedInline?.chatId ||
+      (cb.inline_message_id ? this.inlineSessionChatId('mm', cb.inline_message_id) : '');
     const playerId = String(cb.from.id);
     const playerName = cb.from.first_name || 'لاعب';
 
@@ -6358,7 +6371,7 @@ export class TelegramBotManager {
         await this.answerCallbackQuery(cb.id, '⚠️ لوحة قديمة — ابعث اللعبة من جديد من صفحتها 🆕', true);
         return;
       }
-      const rebuilt = GG.mmCreate(cbChatId, cb.message?.chat.title || 'المحادثة');
+      const rebuilt = GG.mmCreate(cbChatId, cb.message?.chat.title || 'المحادثة', inlinePublisherId(tailId) || UNKNOWN_GAME_PUBLISHER);
       if (cb.message?.message_id) rebuilt.messageId = cb.message.message_id;
       if (cb.inline_message_id) rebuilt.inlineMessageId = cb.inline_message_id;
       this.mmGames.set(cbChatId, rebuilt);
@@ -12495,7 +12508,7 @@ export class TelegramBotManager {
     const storedInline = cb.inline_message_id
       ? Array.from(this.rpsGames.values()).find(g => g.inlineMessageId === cb.inline_message_id)
       : undefined;
-    const chatId = (target && target !== 'auto' && !['5', '10', '15'].includes(target) ? target : '') ||
+    const chatId = (target && target !== 'auto' && !inlinePublisherId(target) && !['5', '10', '15'].includes(target) ? target : '') ||
       String(cb.message?.chat.id || '') || storedInline?.chatId ||
       (cb.inline_message_id ? this.inlineSessionChatId('rps', cb.inline_message_id) : '');
     let game = this.rpsGames.get(chatId);
@@ -12504,7 +12517,7 @@ export class TelegramBotManager {
 
     if (!game && (action === 'join' || action === 'start') && chatId) {
       const requestedRounds = parseInt(parts.find(x => ['5', '10', '15'].includes(x)) || '5', 10);
-      game = RPS.createGame(chatId, cb.message?.chat.title || 'محادثة خاصة', requestedRounds, userId);
+      game = RPS.createGame(chatId, cb.message?.chat.title || 'محادثة خاصة', requestedRounds, inlinePublisherId(target) || UNKNOWN_GAME_PUBLISHER);
       if (cb.message?.message_id && cb.message.chat.type !== 'private') game.messageId = cb.message.message_id;
       if (cb.inline_message_id) game.inlineMessageId = cb.inline_message_id;
       if (action === 'start') RPS.join(game, userId, userName);
@@ -14029,7 +14042,7 @@ export class TelegramBotManager {
   }
 
   /**
-   * لعبة جماعية تبدأها بس اللي نشرتها (أو مشرف القناة / مالك البوت).
+   * لعبة جماعية تبدأها بس اللي نشرها.
    * اللوحات القديمة اللي ما بيها ناشر تبقى مفتوحة حتى ما تتعطل.
    */
   private async canHostStartGame(
@@ -14038,18 +14051,14 @@ export class TelegramBotManager {
     hostId?: string | null
   ): Promise<{ ok: boolean; msg: string }> {
     const userId = String(cb.from.id);
+    // Old persisted games without a publisher keep their legacy behaviour.
+    // Newly reconstructed boards must not assign the first player as publisher.
     if (!hostId) return { ok: true, msg: '' };
-    if (String(hostId) === userId) return { ok: true, msg: '' };
-    if (this.isOwner(userId)) return { ok: true, msg: '' };
-    if (chatId && /^-?\d{4,}$/.test(chatId)) {
-      try {
-        const admins = await this.getChatAdministrators(chatId);
-        if (admins.some(a => String(a?.user?.id || '') === userId)) return { ok: true, msg: '' };
-      } catch {
-        /* القناة ما ترجع المشرفين؟ نكمل بالرفض الودّي */
-      }
+    if (hostId === UNKNOWN_GAME_PUBLISHER) {
+      return { ok: false, msg: 'ما گدرت أحدد ناشر اللعبة؛ انشرها من جديد حتى تبدأ.' };
     }
-    return { ok: false, msg: '🎮 بس اللي نشر اللعبة (أو مشرف القناة) يقدر يبدأها' };
+    if (String(hostId) === userId) return { ok: true, msg: '' };
+    return { ok: false, msg: '🎮 بس اللي نشر اللعبة يقدر يبدأها' };
   }
 
   public async deleteMessage(chatId: string, messageId: number): Promise<any> {
